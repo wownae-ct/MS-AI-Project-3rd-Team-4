@@ -1,0 +1,27 @@
+# 도메인: staging은 production과 같은 ingress-nginx 컨트롤러(같은 공인 IP)를 nip.io로 재사용한다
+# (infra/k8s/ingress-nginx/README.md 참고). ingress-nginx 설치 후 실제 IP를 확인해서 아래 호스트를
+# "<IP를-하이픈으로-치환>.nip.io"로 채울 것 — 예: IP가 20.1.2.3이면 20-1-2-3.nip.io.
+# TLS: cert-manager가 letsencrypt-nginx ClusterIssuer로 자동 발급(infra/k8s/cert-manager/README.md).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: backend
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-nginx
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - "<STAGING_NIP_IO_HOST_TBD>"
+      secretName: backend-staging-tls
+  rules:
+    - host: "<STAGING_NIP_IO_HOST_TBD>"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 80

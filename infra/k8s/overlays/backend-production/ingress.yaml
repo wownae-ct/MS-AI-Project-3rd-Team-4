@@ -1,0 +1,25 @@
+# 도메인: AKS/Azure LoadBalancer 자동생성 DNS 라벨(infra/k8s/ingress-nginx/README.md 참고).
+# TLS: cert-manager가 letsencrypt-nginx ClusterIssuer로 자동 발급(infra/k8s/cert-manager/README.md).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: backend
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-nginx
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - aicoach-production.koreacentral.cloudapp.azure.com
+      secretName: backend-production-tls
+  rules:
+    - host: "aicoach-production.koreacentral.cloudapp.azure.com"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 80
