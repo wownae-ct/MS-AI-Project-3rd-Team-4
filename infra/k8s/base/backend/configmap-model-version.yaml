@@ -1,0 +1,8 @@
+# ml 레포가 새 모델을 export하면 이 값만 바꿔서 PR — ArgoCD가 감지해서 재배포한다.
+# backend Deployment의 Init Container와 rag-cronjob이 둘 다 이 값을 읽는다 (두 base에 중복 배치 — App 간 동기화 의존성 방지).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: model-version
+data:
+  MODEL_VERSION: "v0.0.0-placeholder"
