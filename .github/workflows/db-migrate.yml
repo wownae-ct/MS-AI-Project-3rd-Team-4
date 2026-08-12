@@ -1,0 +1,31 @@
+name: db-migrate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group "${{ vars.AZURE_RG }}" \
+            --name "${{ vars.AKS_NAME }}" \
+            --overwrite-existing
+      - name: Run migration Job
+        run: |
+          kubectl delete job db-migrate -n backend --ignore-not-found
+          kubectl apply -f infra/k8s/base/db-migrate-job.yaml
+          kubectl wait --for=condition=complete job/db-migrate -n backend --timeout=180s

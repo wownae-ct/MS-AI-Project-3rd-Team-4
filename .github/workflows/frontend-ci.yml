@@ -1,0 +1,75 @@
+# ============================================================
+# frontend CI/CD
+#   npm build (러너에서 직접) → Azure Static Web Apps 배포
+#
+# 트리거: frontend 브랜치에 frontend/** 가 바뀌었을 때만
+# 인증 방식: 배포 토큰(deployment token) — OIDC 아님, backend-ci.yml과 별개 시크릿
+#
+# 주의(2nd팀 프로젝트에서 겪은 실수 재발 방지):
+#   SWA 배포 액션에 빌드까지 맡기면 내부 Oryx 빌드 컨테이너에서 실행되는데
+#   거기엔 위 env(VITE_API_BASE 등)가 전달되지 않아 빌드 결과물에 값이 안 박힌다.
+#   그래서 빌드는 반드시 이 러너에서 직접 하고, 배포 액션은 결과물만 업로드한다
+#   (skip_app_build: true).
+# ============================================================
+name: frontend-ci
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    paths: ['frontend/**']
+  push:
+    branches: [frontend]
+    paths: ['frontend/**']
+  workflow_dispatch:
+
+jobs:
+  build_and_deploy:
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write   # PR 프리뷰 배포 상태 코멘트에 필요
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 린트/테스트 게이트 — 통과 못하면 빌드/배포 안 함
+      - name: Install & lint
+        run: |
+          npm ci
+          npm run lint --if-present
+      - name: Test
+        run: npm run test --if-present
+
+      - name: Build
+        env:
+          VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
+        run: npm run build
+
+      - name: Deploy to Azure Static Web Apps
+        if: github.ref == 'refs/heads/frontend' || github.event_name == 'pull_request'
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: upload
+          app_location: frontend/dist
+          skip_app_build: true
+
+  close_pull_request:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Close PR preview environment
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: close

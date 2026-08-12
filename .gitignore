@@ -1,0 +1,90 @@
+# =============================================================================
+# 원칙: 실행되는 소스 코드만 추적한다.
+#       원본 데이터 · 중간 산출물(모델 체크포인트 등) · 개인 설정 · 시크릿은 전부 제외.
+# =============================================================================
+
+# ===== 시크릿 =====
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*credentials*.json
+*serviceaccount*.json
+secrets/
+secrets.yaml
+
+# ===== gitleaks (로컬 스캔 출력) =====
+gitleaks-report.json
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.uv/
+# uv.lock은 재현성을 위해 추적한다 (여기서 무시하지 않음)
+
+# ===== Node / frontend (Vite) =====
+node_modules/
+frontend/dist/
+frontend/build/
+.vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# ===== ML 데이터/산출물 =====
+# ★ 학습/추론 코드는 추적한다. 제외 대상은 원본 대용량 데이터와 학습 산출물뿐.
+ml/**/raw_data/
+ml/**/*.pt
+ml/**/*.onnx
+ml/**/*.ckpt
+ml/**/checkpoints/
+ml/**/runs/
+ml/**/mlruns/
+
+# ===== Bicep / Azure =====
+infra/bicep/**/*.json
+!infra/bicep/**/*.bicepparam
+.azure/
+infra/*keyvault*secrets*
+
+# ===== 로그 / 임시 =====
+*.log
+*.tmp
+*.bak
+*.pid
+scratch/
+
+# ===== IDE / OS =====
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# ===== AI 코딩 도구 개인 설정 =====
+# 팀원마다 쓰는 도구가 달라 예방적으로 전부 제외한다.
+CLAUDE.md
+.claude/
+.mcp.json
+.codex/
+AGENTS.md
+.antigravity/
+.cursor/
+.windsurf/
+.aider*
+
+# ===== 개인 기록용 docs =====
+docs/

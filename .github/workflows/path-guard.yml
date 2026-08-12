@@ -1,0 +1,41 @@
+name: path-guard
+
+# backend/frontend 브랜치는 각자 소유한 폴더만 받도록 강제한다.
+# CODEOWNERS는 리뷰 요구만 하고 실제 차단은 안 하므로, 여기서 diff 경로를 직접 검사한다.
+
+on:
+  pull_request:
+    branches: [backend, frontend]
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check changed paths match branch ownership
+        run: |
+          set -euo pipefail
+          BASE="${{ github.base_ref }}"
+          CHANGED=$(git diff --name-only "origin/${BASE}...HEAD")
+          echo "Changed files:"
+          echo "$CHANGED"
+
+          if [ "$BASE" = "backend" ]; then
+            ALLOWED_REGEX='^(backend/|ml/|db/|infra/|scripts/|\.github/|docs/|\.gitignore$|README\.md$|\.gitleaks\.toml$)'
+          elif [ "$BASE" = "frontend" ]; then
+            ALLOWED_REGEX='^(frontend/|docs/|\.github/)'
+          else
+            echo "'$BASE' 브랜치는 경로 제한 대상이 아닙니다."
+            exit 0
+          fi
+
+          VIOLATIONS=$(echo "$CHANGED" | grep -vE "$ALLOWED_REGEX" || true)
+          if [ -n "$VIOLATIONS" ]; then
+            echo "::error::다음 파일이 '$BASE' 브랜치 소유 폴더 밖에 있습니다:"
+            echo "$VIOLATIONS"
+            exit 1
+          fi
+          echo "OK: 모든 변경 파일이 '$BASE' 브랜치 소유 범위 안에 있습니다."

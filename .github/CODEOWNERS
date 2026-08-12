@@ -1,0 +1,11 @@
+# 폴더별 필수 리뷰어.
+# TEAMMATE_GITHUB_HANDLE 을 팀원의 실제 GitHub 아이디로 교체하세요.
+
+/backend/   @wownae-ct
+/ml/        @wownae-ct
+/db/        @wownae-ct
+/infra/     @wownae-ct
+/scripts/   @wownae-ct
+/.github/   @wownae-ct
+
+/frontend/  @TEAMMATE_GITHUB_HANDLE

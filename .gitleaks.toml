@@ -1,0 +1,12 @@
+title = "AI 홈트레이닝 코치 gitleaks 설정"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "오탐 예외"
+paths = [
+  '''\.env\.example$''',
+  '''docs/.*\.(pdf|docx|xlsx|pptx|html)$''',
+  '''uv\.lock$''',
+]

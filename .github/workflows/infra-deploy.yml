@@ -1,0 +1,42 @@
+name: infra-deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      whatIf:
+        description: 'true면 what-if만 실행(실배포 없음)'
+        type: boolean
+        default: true
+  pull_request:
+    paths: ['infra/bicep/**']
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  bicep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Bicep build (검증)
+        run: az bicep build --file infra/bicep/main.bicep
+      - name: What-if
+        run: |
+          az deployment group what-if \
+            --resource-group "${{ vars.AZURE_RG }}" \
+            --template-file infra/bicep/main.bicep \
+            --parameters infra/bicep/params/dev.bicepparam
+      - name: Deploy
+        if: github.event_name == 'workflow_dispatch' && inputs.whatIf == false
+        run: |
+          az deployment group create \
+            --resource-group "${{ vars.AZURE_RG }}" \
+            --template-file infra/bicep/main.bicep \
+            --parameters infra/bicep/params/dev.bicepparam
