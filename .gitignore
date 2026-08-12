@@ -44,15 +44,16 @@ npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
 
-# ===== ML 데이터/산출물 =====
-# ★ 학습/추론 코드는 추적한다. 제외 대상은 원본 대용량 데이터와 학습 산출물뿐.
-ml/**/raw_data/
-ml/**/*.pt
-ml/**/*.onnx
-ml/**/*.ckpt
-ml/**/checkpoints/
-ml/**/runs/
-ml/**/mlruns/
+# ===== 모델 아티팩트 (ml 레포에서 export돼 옴, 바이너리라 추적 안 함) =====
+backend/models/*.onnx
+backend/models/*.pt
+!backend/models/README.md
+
+# ===== RAG 원본/중간 산출물 (큐레이션 전, 대용량 — 정제 코드 자체는 추적함) =====
+data/ingest/*/raw_data/*
+!data/ingest/*/raw_data/README.md
+data/ingest/*/work/*
+!data/ingest/*/work/README.md
 
 # ===== Bicep / Azure =====
 infra/bicep/**/*.json

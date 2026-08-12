@@ -17,20 +17,24 @@ SeSAC MS AI 엔지니어 4기 3차 프로젝트 (2인 팀). 웹캠 기반 실시
 ## 폴더 구조
 
 ```
-backend/    FastAPI 게이트웨이 + 에이전트(coach/safety/planner/retriever) + DB 리포지토리
+backend/    FastAPI 게이트웨이 + 에이전트(coach/safety/planner/retriever) + RAG 인덱싱(rag/) + ONNX 추론(app/inference/)
 frontend/   React + MediaPipe(T0) + 룰엔진(T1) + WS 클라이언트
-ml/         포즈/TCN 모델 학습, ONNX export
-db/         SQL 마이그레이션/시드 (ORM 없음, asyncpg)
+data/       RAG 코퍼스(운동/부상 가이드 문서) — 이미지/영상 학습 데이터셋 아님
+db/         ORM(SQLAlchemy async) + 초기 시드 데이터
 infra/      Bicep(Azure 리소스) + AKS 매니페스트 + ArgoCD
 docs/       설계 문서, 제안서, 회의록
 ```
+
+> **레포 분리**: 포즈/TCN 모델 학습(데이터셋, 노트북, 체크포인트)은 별도 **ml 레포**에서 진행한다.
+> 이 레포는 학습된 모델을 ONNX로 받아 `backend/models/`에 두고 `backend/app/inference/`에서 서빙만 한다.
+> RAG는 학습이 아니라 서비스가 매 요청 호출하는 라이브 컴포넌트라 이 레포(`backend/rag/`, `data/`)에 남겼다.
 
 ## 브랜치 전략 & 폴더 소유권
 
 ```
 feature/backend-*  ─┐
 feature/infra-*     ├─ PR → backend  ─┐
-feature/ml-*        ┘                 │
+feature/rag-*       ┘                 │
                                        ├─ PR → main (배포 릴리스)
 feature/frontend-*  ─── PR → frontend ┘
 ```
@@ -38,7 +42,7 @@ feature/frontend-*  ─── PR → frontend ┘
 | 브랜치 | 용도 | 소유 폴더 | 직접 push |
 |---|---|---|---|
 | `main` | 배포 릴리스. `backend`/`frontend`의 PR만 받음 | 전체(머지 결과) | **금지** |
-| `backend` | 백엔드 통합 브랜치 | `backend/`, `ml/`, `db/`, `infra/`, 루트 설정 | 금지 (feature 브랜치 PR만) |
+| `backend` | 백엔드 통합 브랜치 | `backend/`, `data/`, `db/`, `infra/`, 루트 설정 | 금지 (feature 브랜치 PR만) |
 | `frontend` | 프론트 통합 브랜치 | `frontend/` | 금지 (feature 브랜치 PR만) |
 | `feature/*` | 실제 작업 브랜치 | 위 소유 폴더 내 | 자유 (본인 브랜치) |
 

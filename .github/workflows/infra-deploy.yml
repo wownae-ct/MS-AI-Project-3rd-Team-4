@@ -1,3 +1,6 @@
+# 전제조건(둘 다 없으면 azure/login에서 실패함) — infra/README.md "필요한 GitHub 설정" 참고:
+#   1. GitHub Secrets: AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID (OIDC 페더레이션)
+#   2. GitHub Variables: AZURE_RG (리소스그룹, az group create로 먼저 만들어야 함)
 name: infra-deploy
 
 on:

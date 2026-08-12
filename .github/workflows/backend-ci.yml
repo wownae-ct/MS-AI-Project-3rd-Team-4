@@ -2,7 +2,7 @@
 # backend CI/CD
 #   ruff lint → pytest(uv) → 도커 빌드 → ACR push
 #   → 배포는 ArgoCD Image Updater가 ACR 신규 태그를 감지해 자동 반영
-#   (Container Apps 프로젝트(team2)와 달리 az containerapp update 같은
+#   (Container Apps 프로젝트와 달리 az containerapp update 같은
 #    직접 배포 스텝이 없다 — GitOps라 여기선 이미지만 만들어 올린다)
 #
 # 트리거: backend 브랜치에 backend/** 가 바뀌었을 때만
@@ -11,67 +11,78 @@
 name: backend-ci
 
 on:
-  pull_request:
-    paths: ['backend/**', 'ml/**', 'db/**']
-  push:
-    branches: [backend]
-    paths: ['backend/**']
-  workflow_dispatch:
+    pull_request:
+        paths: ["backend/**", "data/**", "db/**"]
+    push:
+        branches: [backend]
+        paths: ["backend/**"]
+    workflow_dispatch:
 
 permissions:
-  id-token: write   # azure/login이 GitHub OIDC 토큰을 발급받게 허용
-  contents: read
+    id-token: write # azure/login이 GitHub OIDC 토큰을 발급받게 허용
+    contents: read
 
 env:
-  ACR_NAME: ${{ vars.ACR_NAME }}
-  IMAGE: ${{ vars.ACR_LOGIN_SERVER }}/backend
+    ACR_NAME: ${{ vars.ACR_NAME }}
+    IMAGE: ${{ vars.ACR_LOGIN_SERVER }}/backend
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
-    steps:
-      - uses: actions/checkout@v4
+    test:
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: backend
+        steps:
+            - uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
+            - name: Install uv
+              uses: astral-sh/setup-uv@v6
 
-      # uv.lock이 아직 없으면 `uv lock`을 로컬에서 한 번 실행해 커밋할 것.
-      # 그 전까지는 --frozen 없이 sync(락 없으면 새로 풀어서 설치).
-      - name: Sync dependencies
-        run: uv sync --extra dev
+            # uv.lock이 아직 없으면 `uv lock`을 로컬에서 한 번 실행해 커밋할 것.
+            # 그 전까지는 --frozen 없이 sync(락 없으면 새로 풀어서 설치).
+            - name: Sync dependencies
+              run: uv sync --extra dev
 
-      # 린트 게이트 — 통과 못하면 테스트/빌드 안 함
-      - name: Lint
-        run: uv run ruff check .
+            # 린트 게이트 — 통과 못하면 테스트/빌드 안 함
+            - name: Lint
+              run: uv run ruff check .
 
-      # 테스트 게이트 — 통과 못하면 이미지 빌드 안 함
-      - name: Test
-        run: uv run pytest -q
+            # 테스트 게이트 — 통과 못하면 이미지 빌드 안 함
+            # 아직 테스트가 하나도 없으면 pytest가 exit code 5(수집된 테스트 없음)로 죽는데,
+            # 이건 "테스트 실패"가 아니라 "테스트가 아직 없음"이므로 통과 처리한다.
+            # 첫 테스트가 생기면 이 관용 처리는 자연히 의미가 없어진다(정상 실행됨).
+            - name: Test
+              run: |
+                  uv run pytest -q || {
+                    code=$?
+                    if [ "$code" -eq 5 ]; then
+                      echo "::warning::수집된 테스트가 없습니다 (아직 정상 — 테스트 작성 시작하면 이 경고는 사라집니다)"
+                      exit 0
+                    fi
+                    exit "$code"
+                  }
 
-  build-and-push:
-    needs: test
-    if: github.ref == 'refs/heads/backend'
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
+    build-and-push:
+        needs: test
+        if: github.ref == 'refs/heads/backend'
+        runs-on: ubuntu-latest
+        permissions:
+            id-token: write
+            contents: read
+        steps:
+            - uses: actions/checkout@v4
 
-      - name: Azure login (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+            - name: Azure login (OIDC)
+              uses: azure/login@v2
+              with:
+                  client-id: ${{ secrets.AZURE_CLIENT_ID }}
+                  tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                  subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # 커밋 SHA로 태그 → 어떤 커밋이 배포됐는지 ArgoCD Application에서 바로 추적 가능
-      - name: Build & push image
-        run: |
-          az acr login --name "${{ env.ACR_NAME }}"
-          docker build -t "${{ env.IMAGE }}:${{ github.sha }}" -t "${{ env.IMAGE }}:latest" ./backend
-          docker push "${{ env.IMAGE }}:${{ github.sha }}"
-          docker push "${{ env.IMAGE }}:latest"
+            # 커밋 SHA로 태그 → 어떤 커밋이 배포됐는지 ArgoCD Application에서 바로 추적 가능
+            - name: Build & push image
+              run: |
+                  az acr login --name "${{ env.ACR_NAME }}"
+                  docker build -t "${{ env.IMAGE }}:${{ github.sha }}" -t "${{ env.IMAGE }}:latest" ./backend
+                  docker push "${{ env.IMAGE }}:${{ github.sha }}"
+                  docker push "${{ env.IMAGE }}:latest"
