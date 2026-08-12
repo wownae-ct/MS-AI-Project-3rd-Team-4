@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: backend-staging
+  namespace: argocd
+  annotations:
+    argocd-image-updater.argoproj.io/image-list: backend=aicoachacr.azurecr.io/backend
+    argocd-image-updater.argoproj.io/backend.update-strategy: latest
+    argocd-image-updater.argoproj.io/write-back-method: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4.git
+    targetRevision: backend
+    path: infra/k8s/overlays/backend-staging
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: staging
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
