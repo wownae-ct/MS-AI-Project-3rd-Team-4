@@ -8,7 +8,7 @@ metadata:
     # backend-ci.yml이 매 빌드마다 ":latest" 태그를 계속 덮어쓰는 구조라(태그 문자열은 안 바뀌고 digest만 바뀜)
     # "latest" 전략(여러 태그 중 최신 선택)은 새 이미지를 절대 감지 못 한다 — 고정 태그 아래서 digest 변화를
     # 추적하는 "digest" 전략을 써야 한다(2026-08-13, app-of-apps 재검토 중 발견해서 수정).
-    argocd-image-updater.argoproj.io/image-list: backend=team4hcacr.azurecr.io/backend:latest
+    argocd-image-updater.argoproj.io/image-list: backend=team4hcacr-drascbaqe8f2gcca.azurecr.io/backend:latest
     argocd-image-updater.argoproj.io/backend.update-strategy: digest
     argocd-image-updater.argoproj.io/write-back-method: argocd
 spec:
