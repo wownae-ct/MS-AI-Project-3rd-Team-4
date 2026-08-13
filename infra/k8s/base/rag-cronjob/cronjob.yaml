@@ -16,7 +16,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: rag-index
-              image: aicoachacr.azurecr.io/backend:latest
+              image: team4hcacr.azurecr.io/backend:latest
               imagePullPolicy: Always
               command: ["python", "-m", "rag.index"]
               envFrom:
