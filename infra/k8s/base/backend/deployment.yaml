@@ -49,7 +49,7 @@ spec:
                         mountPath: /models
             containers:
                 - name: backend
-                  image: team4hcacr.azurecr.io/backend:latest
+                  image: team4hcacr-drascbaqe8f2gcca.azurecr.io/backend:latest
                   imagePullPolicy: Always
                   ports:
                       - containerPort: 8000
