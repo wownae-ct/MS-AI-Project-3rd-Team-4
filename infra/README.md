@@ -197,6 +197,21 @@ az role assignment create --assignee <appId> --role Contributor \
   --scope /subscriptions/<subId>/resourceGroups/<RG>
 ```
 
+**⚠️ GitHub OIDC subject에 조직/레포 불변 ID가 붙는 경우**: 위처럼 등록했는데도
+`AADSTS700213: No matching federated identity record found ... subject 'repo:<org>@<orgId>/<repo>@<repoId>:pull_request'`
+가 나면, GitHub이 `repo:<org>/<repo>:...` 대신 `repo:<org>@<orgId>/<repo>@<repoId>:...` 형식으로 토큰을
+발급하는 것이다. 에러 메시지에 실제로 찍힌 subject 문자열을 그대로 복사해서 credential을 재등록하면 된다:
+```bash
+az ad app federated-credential delete --id <appId> --federated-credential-id github-pull-request
+az ad app federated-credential create --id <appId> --parameters '{
+  "name": "github-pull-request",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:<org>@<orgId>/<repo>@<repoId>:pull_request",
+  "audiences": ["api://AzureADTokenExchange"]
+}'
+```
+(`ref:refs/heads/<branch>` 트리거용 credential도 같은 레포라면 동일하게 ID가 붙으니 같이 갱신할 것.)
+
 **⚠️ Windows Git Bash(MINGW64) 함정**: `--scope`/`--query` 등 `/`로 시작하는 인자가 있는 `az` 명령을
 Git Bash에서 실행하면 MSYS의 POSIX→Windows 경로 자동변환이 그 인자를 경로로 오인해서 망가뜨린다. 구독 ID를
 정확히 넣었는데도 `MissingSubscription` 에러가 나면 이게 원인이다. 명령 앞에 `MSYS_NO_PATHCONV=1`을 붙이거나
