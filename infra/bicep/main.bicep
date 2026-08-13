@@ -93,6 +93,7 @@ module openai 'modules/openai.bicep' = {
     tags: tags
     logAnalyticsWorkspaceId: monitor.outputs.logAnalyticsId
     backendIdentityPrincipalId: aks.outputs.backendIdentityPrincipalId
+    keyVaultName: keyvault.outputs.keyVaultName
   }
 }
 
