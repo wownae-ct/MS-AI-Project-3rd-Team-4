@@ -142,9 +142,69 @@ ml팀 입장에서 매번 이 레포에 PR 올려야 하는 게 번거롭고 수
 
 ## 필요한 GitHub 설정
 
-| 이름 | 종류 | 값 |
+### GitHub Secrets (Settings → Secrets and variables → Actions → Secrets)
+
+| 이름 | 값 | 비고 |
 |---|---|---|
-| `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` | Secret | OIDC 페더레이션용 (장기 키 없음) |
-| `AZURE_STATIC_WEB_APPS_API_TOKEN` | Secret | SWA 배포 토큰 (OIDC 미지원) |
-| `VITE_API_BASE` | Secret | 프론트 빌드 시 주입할 백엔드 API 주소 — `https://aicoach-production.koreacentral.cloudapp.azure.com`(cert-manager 인증서 발급 확인 후 등록) |
-| `AZURE_RG` / `ACR_NAME` / `ACR_LOGIN_SERVER` / `AKS_NAME` | **Variable**(Settings → Actions → Variables) | 비밀 아님, 리소스 이름일 뿐 — Secrets에 넣지 않음 |
+| `AZURE_CLIENT_ID` | Azure AD App Registration의 `appId` | 아래 "Azure AD OIDC 설정" 참고 |
+| `AZURE_TENANT_ID` | `az account show --query tenantId -o tsv` | |
+| `AZURE_SUBSCRIPTION_ID` | `az account show --query id -o tsv` | |
+| `AZURE_STATIC_WEB_APPS_API_TOKEN` | `az staticwebapp secrets list --name <prefix>-swa --resource-group <RG> --query properties.apiKey -o tsv` | SWA는 OIDC 미지원이라 이것만 예외적으로 장기 토큰 사용 |
+| `VITE_API_BASE` | 프론트 빌드 시 주입할 백엔드 API 주소(P3에서 확정한 production 호스트) | cert-manager 인증서 발급 확인 후 등록 |
+| `POSTGRES_ADMIN_PASSWORD` | `infra/.env`의 값 그대로 | **여기 README/문서에 실제 값 절대 적지 말 것** — 평문 커밋된 적 있어서(2026-08-13) git 히스토리까지 재작성해서 지운 전례 있음 |
+
+### GitHub Variables (Settings → Secrets and variables → Actions → Variables)
+
+| 이름 | 값 | 비고 |
+|---|---|---|
+| `AZURE_RG` | 리소스그룹 이름 | 비밀 아님, 리소스 이름일 뿐 |
+| `ACR_NAME` | `<prefix>acr` (하이픈 제거) | `acr.bicep`의 이름 규칙과 동일 |
+| `ACR_LOGIN_SERVER` | `<prefix>acr.azurecr.io` | Bicep 출력값 `acrLoginServer` |
+| `AKS_NAME` | `<prefix>-aks` | Bicep 출력값 `aksName` |
+
+### Azure AD OIDC 설정 (GitHub Actions가 장기 키 없이 Azure에 로그인하는 절차)
+
+**개념**: 4단계가 순서대로 이어져야 `azure/login@v2`가 동작한다.
+
+| 단계 | 명령 | 하는 일 |
+|---|---|---|
+| 1. App Registration | `az ad app create --display-name "<repo>-github-oidc"` | 앱 정의를 테넌트에 등록, `appId` 발급 |
+| 2. Service Principal | `az ad sp create --id <appId>` | 그 앱의 실제 인스턴스 생성 — **role assignment는 SP한테 하는 것**이라 이게 있어야 권한을 줄 수 있음 |
+| 3. Federated Credential | `az ad app federated-credential create --id <appId> --parameters '{...}'` | "GitHub Actions의 어떤 토큰(레포+브랜치/PR 조건)을 이 앱인 척 신뢰할지" 등록. `subject`의 `<org>/<repo>`는 **반드시 실제 값으로 치환** — 리터럴로 두면 등록은 되지만 어떤 토큰과도 안 맞는 죽은 credential이 됨 |
+| 4. Role Assignment | `az role assignment create --assignee <appId> --role Contributor --scope <RG scope>` | SP한테 실제 권한 부여 — 로그인 성공 후 실제로 리소스를 만들 수 있게 함 |
+
+트리거 종류만큼 federated credential이 필요하다 — 이 프로젝트는 `push: branches:[backend]`(Docker push)와
+`pull_request:`(infra-deploy.yml what-if) 2가지라 2개 등록했다:
+
+```bash
+az ad app create --display-name "<repo>-github-oidc"
+az ad sp create --id <appId>
+
+az ad app federated-credential create --id <appId> --parameters '{
+  "name": "github-backend-branch",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:<org>/<repo>:ref:refs/heads/backend",
+  "audiences": ["api://AzureADTokenExchange"]
+}'
+az ad app federated-credential create --id <appId> --parameters '{
+  "name": "github-pull-request",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:<org>/<repo>:pull_request",
+  "audiences": ["api://AzureADTokenExchange"]
+}'
+
+az role assignment create --assignee <appId> --role Contributor \
+  --scope /subscriptions/<subId>/resourceGroups/<RG>
+```
+
+**⚠️ Windows Git Bash(MINGW64) 함정**: `--scope`/`--query` 등 `/`로 시작하는 인자가 있는 `az` 명령을
+Git Bash에서 실행하면 MSYS의 POSIX→Windows 경로 자동변환이 그 인자를 경로로 오인해서 망가뜨린다. 구독 ID를
+정확히 넣었는데도 `MissingSubscription` 에러가 나면 이게 원인이다. 명령 앞에 `MSYS_NO_PATHCONV=1`을 붙이거나
+세션 시작 시 `export MSYS_NO_PATHCONV=1`로 아예 꺼두면 된다. (WSL/Linux/macOS 터미널에서는 해당 없음.)
+
+**검증**:
+```bash
+MSYS_NO_PATHCONV=1 az role assignment list --scope /subscriptions/<subId>/resourceGroups/<RG> -o table
+```
+`--assignee <appId>`로 조회하면 방금 만든 SP라 Graph 전파 지연으로 한동안 안 나올 수 있다 — 스코프 기준
+조회가 더 확실하다.
