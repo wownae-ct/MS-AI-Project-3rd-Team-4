@@ -5,15 +5,24 @@ metadata:
   name: backend-production
   namespace: argocd
   annotations:
-    argocd-image-updater.argoproj.io/image-list: backend=aicoachacr.azurecr.io/backend
-    argocd-image-updater.argoproj.io/backend.update-strategy: latest
+    # backend-ci.yml이 매 빌드마다 ":latest" 태그를 계속 덮어쓰는 구조라(태그 문자열은 안 바뀌고 digest만 바뀜)
+    # "latest" 전략(여러 태그 중 최신 선택)은 새 이미지를 절대 감지 못 한다 — 고정 태그 아래서 digest 변화를
+    # 추적하는 "digest" 전략을 써야 한다(2026-08-13, app-of-apps 재검토 중 발견해서 수정).
+    argocd-image-updater.argoproj.io/image-list: backend=aicoachacr.azurecr.io/backend:latest
+    argocd-image-updater.argoproj.io/backend.update-strategy: digest
     argocd-image-updater.argoproj.io/write-back-method: argocd
 spec:
   project: default
-  source:
-    repoURL: https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4.git
-    targetRevision: main
-    path: infra/k8s/overlays/backend-production
+  # multi-source: 이 레포(overlay) + ml 레포(model-version ConfigMap)를 같은 production 네임스페이스로 합쳐서 배포.
+  # ml 레포 커밋만으로 반영됨(이 레포에 PR 필요 없음) — 재시작은 base/backend/deployment.yaml의
+  # reloader.stakater.com/auto 어노테이션 + Reloader 컨트롤러가 자동으로 처리(infra/ansible에서 설치).
+  sources:
+    - repoURL: https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4.git
+      targetRevision: main
+      path: infra/k8s/overlays/backend-production
+    - repoURL: <ML_REPO_URL> # ml 레포 git URL로 교체할 것
+      targetRevision: main
+      path: k8s/model-version
   destination:
     server: https://kubernetes.default.svc
     namespace: production

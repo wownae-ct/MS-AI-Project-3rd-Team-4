@@ -1,9 +1,12 @@
 # base = 환경 무관 공통 리소스. namespace는 overlays/<env>/kustomization.yaml이 주입한다.
+#
+# model-version ConfigMap은 여기 없다 — ml 레포가 소스(infra/k8s/apps/backend-*.yaml의 spec.sources
+# 2번째 항목이 ml 레포를 직접 바라봄, PR 없이 ml 레포 커밋만으로 반영됨). Reloader가 그 ConfigMap 변경을
+# 감지해서 deployment.yaml에 붙은 reloader.stakater.com/auto 어노테이션을 보고 자동 재시작시킨다.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - serviceaccount.yaml
   - secretproviderclass.yaml
-  - configmap-model-version.yaml
   - deployment.yaml
   - service.yaml

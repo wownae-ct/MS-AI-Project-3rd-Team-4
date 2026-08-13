@@ -59,15 +59,24 @@ kubectl patch deployment argocd-image-updater -n argocd --type merge -p \
 kubectl rollout restart deployment argocd-image-updater -n argocd
 ```
 
-argocd-image-updater 설정(`argocd-image-updater-config` ConfigMap 또는 `registries.conf`)에서 해당
-ACR을 `api_version: 'auto'`, workload identity 기반(`azure` credential 없이 노드/파드 identity 사용)으로
-잡아야 한다 — 정확한 키 이름은 실배포 후 라이브로 확인 필요(**미검증** — 업스트림 설치 매니페스트의
-ServiceAccount 이름이 `argocd-image-updater`가 맞는지도 함께 확인할 것, 버전에 따라 바뀔 수 있음).
+`argocd-image-updater-config` ConfigMap에 `registries.conf`를 병합하고, 인증은 공식 문서(Azure Workload
+Identity 예제)의 외부 스크립트 방식(`credentials: ext:/app/auth/auth.sh`)을 쓴다 — Image Updater에
+내장된 `azure` credential 타입은 따로 없고, `AZURE_FEDERATED_TOKEN_FILE`을 읽어 AAD 토큰 → ACR refresh
+token으로 직접 교환하는 스크립트가 필요하다(스크립트 원본:
+[argocd-image-updater 공식 문서](https://argocd-image-updater.readthedocs.io/en/stable/configuration/registries/)).
+이 스크립트는 `infra/k8s/argocd/argocd-image-updater-auth-script.yaml`(ConfigMap)로 이미 만들어뒀고,
+`infra/ansible/playbooks/bootstrap-cluster.yml`이 적용 + Deployment에 `ACR_NAME` env var/볼륨마운트까지
+자동으로 붙인다(수동 kubectl 불필요) — **미검증**: `argocd-image-updater` 컨테이너 이미지에 스크립트가
+쓰는 `python3`/`wget`이 실제로 있는지는 배포 후 `kubectl logs -n argocd deployment/argocd-image-updater`로
+확인 필요. 업스트림 설치 매니페스트의 ServiceAccount 이름이 `argocd-image-updater`가 맞는지도 함께 확인할 것
+(버전에 따라 바뀔 수 있음).
 
 ## 배포
 
 ```bash
-kubectl apply -f infra/k8s/apps/root-app.yaml
+kubectl apply -f infra/k8s/root-app.yaml
 ```
 
-이후 `infra/k8s/apps/*.yaml`에 Application을 추가하면 자동으로 동기화된다(app-of-apps).
+이후 `infra/k8s/apps/*.yaml`에 Application을 추가하면 자동으로 동기화된다(app-of-apps). `root-app.yaml`이
+`infra/k8s/apps/` 밖에 있는 이유는 자기참조(root-app이 관리하는 폴더 안에 자기 자신이 있으면 `prune: true`일 때
+스스로를 지울 수 있음) 방지 — [../../README.md](../../README.md) 참고.

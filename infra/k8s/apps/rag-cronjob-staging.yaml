@@ -5,10 +5,14 @@ metadata:
   namespace: argocd
 spec:
   project: default
-  source:
-    repoURL: https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4.git
-    targetRevision: backend
-    path: infra/k8s/overlays/rag-cronjob-staging
+  # rag-cronjob-production.yaml과 동일한 multi-source 구조 (거기 주석 참고).
+  sources:
+    - repoURL: https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4.git
+      targetRevision: backend
+      path: infra/k8s/overlays/rag-cronjob-staging
+    - repoURL: <ML_REPO_URL> # ml 레포 git URL로 교체할 것
+      targetRevision: main
+      path: k8s/model-version
   destination:
     server: https://kubernetes.default.svc
     namespace: staging
