@@ -24,14 +24,17 @@ spec:
             serviceAccountName: backend-sa
             initContainers:
                 # MODEL_VERSION(ConfigMap)이 가리키는 ONNX 모델을 Blob Storage에서 받아 emptyDir에 넣는다.
-                # Workload Identity로 인증(az login --identity) — 정확한 플래그는 실배포 시 검증 필요.
+                # Workload Identity로 인증 — client-id 없이 `az login --identity`만 쓰면 az CLI가 노드 IMDS로
+                # 빠지면서 "Multiple user assigned identities exist" 에러가 남(2026-08-14 실배포 중 확인).
+                # AZURE_CLIENT_ID(아래 backend identity의 UAMI client-id, Workload Identity 웹훅이 주입)를
+                # 명시해야 federated token 방식으로 정상 로그인됨.
                 - name: fetch-model
                   image: mcr.microsoft.com/azure-cli:latest
                   command:
                       - sh
                       - -c
                       - |
-                          az login --identity
+                          az login --identity --client-id "$AZURE_CLIENT_ID"
                           az storage blob download \
                             --account-name "$STORAGE_ACCOUNT_NAME" \
                             --container-name models \
