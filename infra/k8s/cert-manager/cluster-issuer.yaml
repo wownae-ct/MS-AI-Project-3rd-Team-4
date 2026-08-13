@@ -1,0 +1,17 @@
+# ingress-nginx를 1벌만 쓰므로(infra/k8s/ingress-nginx/README.md 참고) ClusterIssuer도 1개로 충분하다.
+# staging/production 둘 다 이 Issuer를 참조 — HTTP-01 challenge는 단일 nginx ingress class로 라우팅됨.
+# <LETSENCRYPT_EMAIL>은 실배포 전 팀 이메일로 교체할 것.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-nginx
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: "<LETSENCRYPT_EMAIL>"
+    privateKeySecretRef:
+      name: letsencrypt-nginx-key
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: nginx
