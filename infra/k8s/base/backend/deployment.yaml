@@ -24,17 +24,23 @@ spec:
             serviceAccountName: backend-sa
             initContainers:
                 # MODEL_VERSION(ConfigMap)이 가리키는 ONNX 모델을 Blob Storage에서 받아 emptyDir에 넣는다.
-                # Workload Identity로 인증 — client-id 없이 `az login --identity`만 쓰면 az CLI가 노드 IMDS로
-                # 빠지면서 "Multiple user assigned identities exist" 에러가 남(2026-08-14 실배포 중 확인).
-                # AZURE_CLIENT_ID(아래 backend identity의 UAMI client-id, Workload Identity 웹훅이 주입)를
-                # 명시해야 federated token 방식으로 정상 로그인됨.
+                # Workload Identity 인증 시도 이력(2026-08-14 실배포 중 확인):
+                #   1) `az login --identity` (client-id 없이) → "Multiple user assigned identities exist"
+                #      (az CLI가 노드 IMDS로 빠짐 — Workload Identity는 IMDS 방식이 아니라서 애초에 안 맞음)
+                #   2) `az login --identity --client-id "$AZURE_CLIENT_ID"` → "Identity not found"
+                #      (여전히 IMDS 경로라 이 UAMI가 노드에 물리적으로 안 붙어있어서 못 찾음)
+                # Workload Identity는 IMDS가 아니라 OIDC federated token 교환 방식이라 `--identity` 자체가
+                # 틀린 진입점이었음 — `--federated-token`(GitHub Actions OIDC↔Azure와 동일한 메커니즘)으로 전환.
                 - name: fetch-model
                   image: mcr.microsoft.com/azure-cli:latest
                   command:
                       - sh
                       - -c
                       - |
-                          az login --identity --client-id "$AZURE_CLIENT_ID"
+                          az login --service-principal \
+                            --username "$AZURE_CLIENT_ID" \
+                            --tenant "$AZURE_TENANT_ID" \
+                            --federated-token "$(cat "$AZURE_FEDERATED_TOKEN_FILE")"
                           az storage blob download \
                             --account-name "$STORAGE_ACCOUNT_NAME" \
                             --container-name models \
