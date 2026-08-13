@@ -93,17 +93,28 @@ flowchart LR
 backend와 rag는 **같은 브랜치(backend/main), 같은 Docker 이미지**를 쓰지만(코드가 `backend/rag/`에 같이 있음, pgvector라 DB 커넥션도 공유)
 배포 단위(ArgoCD Application)만 나눠서, RAG 재인덱싱을 상시 서빙 Deployment 재시작 없이 독립적으로 sync/pause할 수 있게 했다.
 
-## ML 모델 버전 관리 (ConfigMap + Init Container)
+## ML 모델 버전 관리 (ml 레포 multi-source + Reloader, 2026-08-13 개편)
 
 1. ml 레포가 로컬 학습 → `az storage blob upload`로 `models/<version>/model.onnx` 업로드
-2. 이 레포의 `infra/k8s/base/{backend,rag-cronjob}/configmap-model-version.yaml`(`MODEL_VERSION`)을 그 버전으로 PR
-3. ArgoCD가 변경 감지 → backend Deployment / rag-reindex CronJob 재생성
-4. Deployment의 **Init Container**(`fetch-model`)가 `MODEL_VERSION`에 해당하는 blob을 내려받아 emptyDir(`model-cache`)에 저장 → 메인 컨테이너(`backend/app/inference/`)가 그걸 로드
-5. 즉 모델 자체는 git에 안 올라가고, **버전 태그만 GitOps로 관리**됨
+2. ml 레포 자신의 `k8s/model-version/configmap-model-version.yaml`(`MODEL_VERSION`)을 그 버전으로 **바로 커밋**
+   (이 레포에 PR 필요 없음 — ml팀 소유 레포라 리뷰 없이 자기 파이프라인이 바로 반영)
+3. `infra/k8s/apps/{backend,rag-cronjob}-*.yaml`의 ArgoCD Application이 **multi-source**로 이 레포(overlay)와
+   ml 레포(`k8s/model-version/`)를 같은 네임스페이스에 같이 배포 — ArgoCD가 ml 레포 변경을 감지해서 ConfigMap을 갱신
+4. **Reloader**(`infra/ansible/playbooks/bootstrap-cluster.yml`가 설치)가 그 ConfigMap 변경을 감지해서 backend
+   Deployment를 자동 롤링 재시작(`reloader.stakater.com/auto` 어노테이션 기준) — 수동 `kubectl rollout restart` 불필요.
+   rag-cronjob은 매일 03:00 새 Pod로 뜨므로 별도 트리거 없이 자연히 최신 값을 읽음
+5. Deployment의 **Init Container**(`fetch-model`)가 `MODEL_VERSION`에 해당하는 blob을 내려받아 emptyDir(`model-cache`)에 저장 → 메인 컨테이너(`backend/app/inference/`)가 그걸 로드
+6. 즉 모델 자체는 git에 안 올라가고, **버전 태그만 GitOps로 관리**되되 그 git이 이 레포가 아니라 ml 레포임
+
+이전엔 `infra/k8s/base/{backend,rag-cronjob}/configmap-model-version.yaml`을 이 레포에 PR하는 방식이었는데,
+ml팀 입장에서 매번 이 레포에 PR 올려야 하는 게 번거롭고 수동 재시작도 귀찮다는 피드백으로 위 방식으로 변경함.
 
 ## ArgoCD (GitOps)
 
-`infra/k8s/argocd/`(설치) + `infra/k8s/apps/`(app-of-apps, `root-app.yaml`이 이 4개 Application을 관리) 구조.
+`infra/k8s/argocd/`(설치) + `infra/k8s/apps/`(app-of-apps, 이 4개 Application 정의) + `infra/k8s/root-app.yaml`
+(app-of-apps 루트 — `infra/k8s/apps/`를 관리) 구조. root-app을 apps/ 폴더 밖에 두는 이유: root-app이 자기 자신이
+관리하는 폴더 안에 있으면 ArgoCD가 자기 자신을 대상으로 sync/prune하게 돼서(자기참조), `prune: true`인 상태에서
+누군가 폴더 구조를 바꾸면 root-app이 스스로를 지워버릴 수 있음(2026-08-13, 리뷰 중 발견해서 분리).
 기존 홈랩 프로젝트(`k3s-repo`)의 app-of-apps 패턴을 재사용하되, 시크릿 백엔드만 SealedSecrets → Key Vault CSI+Workload Identity로 교체했다.
 프론트는 ArgoCD 범위 밖(SWA로 별도 배포).
 
@@ -118,7 +129,7 @@ backend와 rag는 **같은 브랜치(backend/main), 같은 Docker 이미지**를
 2. `az bicep build --file infra/bicep/main.bicep` — 로컬 검증
 3. `az deployment group what-if ...` — 드라이런
 4. `az deployment group create ...` — 실배포 (또는 `infra-deploy.yml` workflow_dispatch)
-5. ArgoCD 설치 (`infra/k8s/argocd/README.md` 참고) → `kubectl apply -f infra/k8s/apps/root-app.yaml`
+5. ArgoCD 설치 (`infra/k8s/argocd/README.md` 참고) → `kubectl apply -f infra/k8s/root-app.yaml`
 6. Bicep 출력값(`backendIdentityClientId`, `keyVaultUri`, `storageAccountName` 등)으로 `infra/k8s/base/**/*.yaml`의 `<PLACEHOLDER>` 값 채워서 재커밋
 
 ## 알려진 트레이드오프 (시간/예산 제약)
