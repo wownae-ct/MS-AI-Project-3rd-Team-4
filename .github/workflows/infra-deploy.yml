@@ -1,6 +1,9 @@
-# 전제조건(둘 다 없으면 azure/login에서 실패함) — infra/README.md "필요한 GitHub 설정" 참고:
-#   1. GitHub Secrets: AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID (OIDC 페더레이션)
-#   2. GitHub Variables: AZURE_RG (리소스그룹, az group create로 먼저 만들어야 함)
+# 전제조건 — infra/README.md "필요한 GitHub 설정" 참고:
+#   1. GitHub Secrets: AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID (OIDC 페더레이션, 없으면 azure/login 실패)
+#      + POSTGRES_ADMIN_PASSWORD (없으면 dev.bicepparam이 CHANGE_ME_LOCAL_ONLY로 폴백돼 배포 실패)
+#   2. GitHub Variables: AZURE_RG (리소스그룹, az group create로 먼저 만들어야 함), NAME_PREFIX(필수 — 없으면
+#      dev.bicepparam이 BCP427로 바로 실패), POSTGRES_ADMIN_LOGIN(선택, 없으면 pgadmin으로 폴백),
+#      CLUSTER_ADMIN_OBJECT_IDS(선택, 쉼표구분 GUID)
 name: infra-deploy
 
 on:
@@ -20,6 +23,12 @@ permissions:
 jobs:
   bicep:
     runs-on: ubuntu-latest
+    env:
+      NAME_PREFIX: ${{ vars.NAME_PREFIX }}
+      DEPLOY_ENVIRONMENT: ${{ vars.DEPLOY_ENVIRONMENT }}
+      POSTGRES_ADMIN_LOGIN: ${{ vars.POSTGRES_ADMIN_LOGIN }}
+      POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+      CLUSTER_ADMIN_OBJECT_IDS: ${{ vars.CLUSTER_ADMIN_OBJECT_IDS }}
     steps:
       - uses: actions/checkout@v4
       - name: Azure login (OIDC)
