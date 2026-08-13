@@ -171,7 +171,7 @@ ml팀 입장에서 매번 이 레포에 PR 올려야 하는 게 번거롭고 수
 | 1. App Registration | `az ad app create --display-name "<repo>-github-oidc"` | 앱 정의를 테넌트에 등록, `appId` 발급 |
 | 2. Service Principal | `az ad sp create --id <appId>` | 그 앱의 실제 인스턴스 생성 — **role assignment는 SP한테 하는 것**이라 이게 있어야 권한을 줄 수 있음 |
 | 3. Federated Credential | `az ad app federated-credential create --id <appId> --parameters '{...}'` | "GitHub Actions의 어떤 토큰(레포+브랜치/PR 조건)을 이 앱인 척 신뢰할지" 등록. `subject`의 `<org>/<repo>`는 **반드시 실제 값으로 치환** — 리터럴로 두면 등록은 되지만 어떤 토큰과도 안 맞는 죽은 credential이 됨 |
-| 4. Role Assignment | `az role assignment create --assignee <appId> --role Contributor --scope <RG scope>` | SP한테 실제 권한 부여 — 로그인 성공 후 실제로 리소스를 만들 수 있게 함 |
+| 4. Role Assignment | `az role assignment create --assignee <appId> --role Contributor --scope <RG scope>` **+** `--role "User Access Administrator"`(같은 스코프, 별도 명령으로 한 번 더) | SP한테 실제 권한 부여 — 로그인 성공 후 실제로 리소스를 만들 수 있게 함. **`User Access Administrator`도 반드시 같이 줄 것** — 이 Bicep이 ACR AcrPull 같은 role assignment를 직접 만드는데, `Contributor`만으로는 `Microsoft.Authorization/roleAssignments/write`가 막혀있어서(Azure가 의도적으로 분리— 권한 상승 방지) `Authorization failed ... roleAssignments/write` 에러가 난다 |
 
 트리거 종류만큼 federated credential이 필요하다 — 이 프로젝트는 `push: branches:[backend]`(Docker push)와
 `pull_request:`(infra-deploy.yml what-if) 2가지라 2개 등록했다:
