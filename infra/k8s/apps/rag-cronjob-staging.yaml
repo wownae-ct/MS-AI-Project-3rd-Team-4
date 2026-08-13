@@ -10,7 +10,7 @@ spec:
     - repoURL: https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4.git
       targetRevision: backend
       path: infra/k8s/overlays/rag-cronjob-staging
-    - repoURL: <ML_REPO_URL> # ml 레포 git URL로 교체할 것
+    - repoURL: https://github.com/wownae-ct/health-ml.git
       targetRevision: main
       path: k8s/model-version
   destination:
