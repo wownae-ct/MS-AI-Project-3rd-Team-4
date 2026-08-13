@@ -24,6 +24,11 @@ resource postgres 'Microsoft.DBforPostgreSQL/flexibleServers@2026-04-01-preview'
     version: postgresVersion
     administratorLogin: administratorLogin
     administratorLoginPassword: administratorLoginPassword
+    // 명시 안 하면 최신 API 버전에서 기본값이 Disabled로 나옴(2026-08-13, 실배포에서 발견 — AAD 관리자 등록이
+    // 계속 실패한 진짜 원인. VNet 없는 이 아키텍처는 공개+방화벽 규칙 방식이 전제라 명시적으로 켜야 함).
+    network: {
+      publicNetworkAccess: 'Enabled'
+    }
     authConfig: {
       activeDirectoryAuth: 'Enabled'
       passwordAuth: 'Enabled'
@@ -49,15 +54,72 @@ resource postgres 'Microsoft.DBforPostgreSQL/flexibleServers@2026-04-01-preview'
   }
 }
 
-// backend Managed Identity를 AAD 관리자로 등록 — 앱이 비밀번호 없이 접속 가능(설계 문서 "AAD 인증 병행" 반영)
-resource backendAadAdmin 'Microsoft.DBforPostgreSQL/flexibleServers/administrators@2026-04-01-preview' = {
-  parent: postgres
-  name: backendIdentityPrincipalId
+// 서버가 ARM상 Succeeded로 찍힌 직후에도 내부 AAD 인증 서브시스템은 아직 준비 안 된 상태일 수 있어서
+// (AadAuthOperationCannotBePerformedWhenServerIsNotAccessible — Azure/azure-postgresql#127, 미해결로
+// 남아있는 알려진 이슈) 네이티브 Microsoft.DBforPostgreSQL/flexibleServers/administrators 리소스 선언
+// 하나로는 안정적으로 안 됨(고정 시간 sleep도 "얼마나 기다려야 충분한지" 모르는 추측이라 근본 해결이 아님).
+// 그래서 실제로 그 명령을 반복 시도해서 "진짜 성공했는지"를 확인하는 스크립트로 대체한다 — 성공하면 즉시
+// 끝나고, 실패하면 30초 간격으로 최대 20번(10분)까지 재시도, 그래도 안 되면 스크립트 자체가 실패해서
+// 배포가 명확하게 실패로 끝난다(2026-08-13, sleep 180으로도 재현되어 이 방식으로 교체).
+
+// 스크립트가 실제로 az postgres flexible-server ad-admin create를 호출해야 해서 이번엔 identity가 필요함 —
+// 이 postgres 리소스에만 국한된 최소 권한(Contributor)만 부여.
+resource pgAdminScriptIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2025-05-31-preview' = {
+  name: '${namePrefix}-pg-admin-script-id'
+  location: location
+  tags: tags
+}
+
+resource pgAdminScriptRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(postgres.id, pgAdminScriptIdentity.id, 'Contributor')
+  scope: postgres
   properties: {
+    principalId: pgAdminScriptIdentity.properties.principalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c') // Contributor
     principalType: 'ServicePrincipal'
-    principalName: '${namePrefix}-backend-id'
-    tenantId: subscription().tenantId
   }
+}
+
+resource backendAadAdminScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
+  name: '${namePrefix}-pg-aad-admin-script'
+  location: location
+  kind: 'AzureCLI'
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${pgAdminScriptIdentity.id}': {}
+    }
+  }
+  properties: {
+    azCliVersion: '2.60.0'
+    retentionInterval: 'PT1H'
+    timeout: 'PT15M'
+    cleanupPreference: 'OnExpiration'
+    arguments: '${resourceGroup().name} ${postgres.name} ${backendIdentityPrincipalId} ${namePrefix}-backend-id'
+    scriptContent: '''
+      #!/bin/bash
+      set -euo pipefail
+      RG="$1"
+      SERVER="$2"
+      PRINCIPAL_ID="$3"
+      DISPLAY_NAME="$4"
+      for i in $(seq 1 20); do
+        if az postgres flexible-server ad-admin create \
+          --resource-group "$RG" --server-name "$SERVER" \
+          --object-id "$PRINCIPAL_ID" --display-name "$DISPLAY_NAME" --type ServicePrincipal; then
+          echo "AAD admin 등록 성공 (시도 $i번째)"
+          exit 0
+        fi
+        echo "시도 $i 실패 — 30초 후 재시도"
+        sleep 30
+      done
+      echo "20번 다 실패 — 서버가 계속 AAD 작업을 못 받는 상태"
+      exit 1
+    '''
+  }
+  dependsOn: [
+    pgAdminScriptRoleAssignment
+  ]
 }
 
 // pgvector 확장 허용 (RAG용 벡터 인덱스)

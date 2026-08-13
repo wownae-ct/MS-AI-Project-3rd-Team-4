@@ -1,4 +1,4 @@
-@description('Azure OpenAI — coach/safety/planner 에이전트 공용 LLM + RAG 임베딩. 전 리소스와 동일 리전(koreacentral) 유지 — gpt-5.4는 koreacentral에서 Standard/GlobalStandard 둘 다 지원됨(2026-08-13 확인)')
+@description('Microsoft Foundry(구 Azure OpenAI) — coach/safety/planner 에이전트 공용 LLM + RAG 임베딩. 전 리소스와 동일 리전(koreacentral) 유지 — gpt-5.4는 koreacentral에서 Standard/GlobalStandard 둘 다 지원됨(2026-08-13 확인).\nkind: AIServices(+ allowProjectManagement)로 처음부터 Foundry 리소스로 배포 — Azure OpenAI 전용 kind와 같은 리소스 타입이고 요금도 동일(실사용량만 과금), 다만 Speech/Vision/Language, Agent Service, 더 넓은 모델 카탈로그가 같은 리소스 밑에서 바로 열림(2026-08-13, Microsoft Learn "Upgrade Azure OpenAI to Microsoft Foundry" 확인 후 결정 — 굳이 나중에 kind를 바꾸는 마이그레이션을 거칠 이유가 없음).')
 param location string
 param namePrefix string
 param tags object = {}
@@ -29,7 +29,15 @@ resource openai 'Microsoft.CognitiveServices/accounts@2026-05-15-preview' = {
   name: '${namePrefix}-aoai'
   location: location
   tags: tags
-  kind: 'OpenAI'
+  // AIServices = Foundry 리소스(Azure OpenAI의 상위집합, 같은 리소스 타입·같은 요금). 나중에 Speech/Agent Service가
+  // 필요해지면 kind 마이그레이션 없이 이 리소스에서 바로 확장 가능 — Azure OpenAI 전용(kind: 'OpenAI')으로
+  // 시작했다가 나중에 옮기는 것과 비용/설정 차이가 없어서 처음부터 Foundry로 배포함.
+  kind: 'AIServices'
+  identity: {
+    // Foundry 프로젝트 관리(allowProjectManagement)에 필요 — backend가 이 리소스를 호출할 때 쓰는
+    // backendIdentity(User-Assigned)와는 별개, 리소스 자체의 identity
+    type: 'SystemAssigned'
+  }
   sku: {
     name: sku
   }
@@ -40,6 +48,8 @@ resource openai 'Microsoft.CognitiveServices/accounts@2026-05-15-preview' = {
     // API 키를 아예 비활성화 — 이 리소스는 backend만 쓰고(Storage처럼 외부 도구가 정적 키로 접근할 필요 없음),
     // Postgres AAD/Key Vault RBAC-only와 같은 "정적 비밀 없이 Managed Identity로만" 패턴을 여기도 적용
     disableLocalAuth: true
+    // Foundry 기능(프로젝트/Agent Service 등)을 쓰려면 필수 — kind: AIServices와 짝
+    allowProjectManagement: true
   }
 }
 
@@ -113,7 +123,9 @@ resource embeddingDeployment 'Microsoft.CognitiveServices/accounts/deployments@2
   parent: openai
   name: 'embedding'
   sku: {
-    name: 'Standard'
+    // 'Standard'는 koreacentral에서 text-embedding-3-small을 지원 안 함(실배포 확인, 2026-08-13) — chat/chat-mini와
+    // 동일하게 GlobalStandard로 통일.
+    name: 'GlobalStandard'
     capacity: embeddingDeploymentCapacity
   }
   properties: {

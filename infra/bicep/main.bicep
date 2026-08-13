@@ -4,9 +4,11 @@ targetScope = 'resourceGroup'
 param location string = resourceGroup().location
 
 @minLength(3)
-@description('리소스 이름 프리픽스. 서비스명 미확정 상태라 임시값 — 나중에 params만 바꾸면 됨')
-param namePrefix string = 'aicoach'
+@maxLength(12)
+@description('리소스 이름 프리픽스(팀/프로젝트 식별용, 영문 소문자+숫자만). 3~12자 제한은 가장 타이트한 하위 리소스인 Key Vault 이름 규칙(뒤에 -kv 붙는 형태로 24자 제한)에서 역산한 여유값. 기본값 없음(의도적) — infra/bicep/params/dev.bicepparam이 infra/.env의 NAME_PREFIX를 강제로 읽게 돼 있고, scripts/deploy-infra.sh가 실행 시 대화형으로 물어봐서 항상 채움')
+param namePrefix string
 
+@description('환경 태그(dev/staging 등). infra/.env의 DEPLOY_ENVIRONMENT로 채움')
 param environment string = 'dev'
 
 @description('Postgres 관리자 로그인 아이디')
@@ -15,6 +17,9 @@ param postgresAdminLogin string = 'pgadmin'
 @secure()
 @description('Postgres 관리자 비밀번호. CI에서는 secrets.POSTGRES_ADMIN_PASSWORD로 주입')
 param postgresAdminPassword string
+
+@description('kubectl AAD RBAC 클러스터 관리자로 등록할 AAD 오브젝트 ID들. 이메일이 아니라 GUID 필요 —\ndev.bicepparam에서 infra/.env의 CLUSTER_ADMIN_OBJECT_IDS(쉼표구분)로 채움')
+param clusterAdminPrincipalIds array = []
 
 var tags = {
   project: namePrefix
@@ -41,9 +46,6 @@ module acr 'modules/acr.bicep' = {
     logAnalyticsWorkspaceId: monitor.outputs.logAnalyticsId
   }
 }
-
-@description('kubectl AAD RBAC 클러스터 관리자로 등록할 AAD 오브젝트 ID들. 이메일이 아니라 GUID 필요 —\ndev.bicepparam에서 infra/.env의 CLUSTER_ADMIN_OBJECT_IDS(쉼표구분)로 채움')
-param clusterAdminPrincipalIds array = []
 
 // 3) AKS — Workload Identity(OIDC) + Container Insights + ACR pull 권한 + backend용 User-Assigned Identity
 module aks 'modules/aks.bicep' = {

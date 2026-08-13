@@ -1,5 +1,5 @@
 @description('프론트엔드 정적 호스팅 — GitHub Actions(frontend-ci.yml)가 별도로 빌드/배포, 여기선 리소스만 생성')
-param location string = 'eastus2'   // SWA는 일부 리전만 지원, 메인 배포 리전과 다를 수 있음
+param location string = 'eastasia'   // SWA는 일부 리전만 지원, 메인 배포 리전과 다를 수 있음
 param namePrefix string
 param tags object = {}
 @allowed(['Free', 'Standard'])
