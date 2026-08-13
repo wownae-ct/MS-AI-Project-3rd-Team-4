@@ -12,10 +12,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - "<STAGING_NIP_IO_HOST_TBD>"
+        - "20-249-52-148.nip.io"
       secretName: backend-staging-tls
   rules:
-    - host: "<STAGING_NIP_IO_HOST_TBD>"
+    - host: "20-249-52-148.nip.io"
       http:
         paths:
           - path: /
