@@ -25,6 +25,9 @@ param logAnalyticsWorkspaceId string
 @description('backend 워크로드용 Managed Identity principal ID — API 키 대신 이 identity로만 접근하게 함(disableLocalAuth)')
 param backendIdentityPrincipalId string
 
+@description('openai-endpoint 시크릿을 써넣을 대상 Key Vault 이름 — keyvault.bicep이 이 모듈보다 먼저 배포되므로(main.bicep 순서 4번→6번) 여기서 existing으로 참조 가능')
+param keyVaultName string
+
 resource openai 'Microsoft.CognitiveServices/accounts@2026-05-15-preview' = {
   name: '${namePrefix}-aoai'
   location: location
@@ -62,6 +65,38 @@ resource openaiUserRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd') // Cognitive Services OpenAI User
     principalType: 'ServicePrincipal'
   }
+}
+
+// 재현성: 배포 한 번으로 K8s SecretProviderClass가 기대하는 openai-endpoint까지 채워지게 함(수동 az keyvault
+// secret set 단계를 없앰). endpoint는 disableLocalAuth라서 API 키가 아니라 URL일 뿐이라 시크릿치곤 민감하지
+// 않지만, backend가 다른 시크릿(pg-connstr 등)과 동일한 방식(KV CSI 마운트)으로 읽게 해 일관성을 유지함.
+resource keyVault 'Microsoft.KeyVault/vaults@2026-03-01-preview' existing = {
+  name: keyVaultName
+}
+
+// 이 배포를 실행하는 주체(로컬 사용자 또는 CI OIDC SP)에게 Key Vault 시크릿 쓰기 권한 부여 — RBAC 인증
+// 모드에서는 Contributor 역할만으론 시크릿 데이터 평면에 접근 못 함(Key Vault 특유의 제약).
+resource deployerSecretsOfficerRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(keyVault.id, deployer().objectId, 'KeyVaultSecretsOfficer')
+  scope: keyVault
+  properties: {
+    principalId: deployer().objectId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7') // Key Vault Secrets Officer
+    // deployer()는 principalType을 안 알려줌 — userPrincipalName이 있으면 사람 계정, 없으면 SP/관리 ID로 판단
+    // (Microsoft Learn "deployer" 함수 문서: SP/관리 ID일 때 이 필드가 비어있을 수 있다고 명시)
+    principalType: empty(deployer().userPrincipalName) ? 'ServicePrincipal' : 'User'
+  }
+}
+
+resource openAiEndpointSecret 'Microsoft.KeyVault/vaults/secrets@2026-03-01-preview' = {
+  parent: keyVault
+  name: 'openai-endpoint'
+  properties: {
+    value: openai.properties.endpoint
+  }
+  dependsOn: [
+    deployerSecretsOfficerRoleAssignment
+  ]
 }
 
 resource diagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
