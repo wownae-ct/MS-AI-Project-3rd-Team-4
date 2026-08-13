@@ -1,0 +1,21 @@
+# app-of-apps 루트. k3s-repo/root-app.yaml 패턴을 그대로 이식.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-app
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4.git
+    targetRevision: HEAD
+    path: infra/k8s/apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
