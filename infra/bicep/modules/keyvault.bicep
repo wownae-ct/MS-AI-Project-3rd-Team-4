@@ -20,8 +20,11 @@ resource keyVault 'Microsoft.KeyVault/vaults@2026-03-01-preview' = {
     enableRbacAuthorization: true
     enableSoftDelete: true
     softDeleteRetentionInDays: 7
-    // 20일짜리 프로젝트, 08-31 이후 리소스그룹 자체를 지울 예정이라 개발 편의(같은 이름으로 즉시 재배포) 우선 — 의도적으로 off
-    enablePurgeProtection: false
+    // enablePurgeProtection 프로퍼티 자체를 명시 안 함(2026-08-13 수정) — 원래 "20일짜리 프로젝트라 개발 편의
+    // 우선, false로 명시"였는데, 실배포 중 같은 이름의 soft-delete된 Vault가 purge protection true인 채로
+    // 남아있어서 false로 덮어쓰려다 "cannot be set to false"(불가역 속성이라) 배포 실패함. 이 프로퍼티를 아예
+    // 안 적으면 soft-delete 복구 시 기존 값을 그대로 유지하고, 신규 생성 시엔 플랫폼 기본값을 따라가서
+    // 이런 충돌 자체가 안 생김.
     // networkAcls 미설정 = 완전 공개(ACR/OpenAI와 동일 패턴). VNet 미도입 결정에 따라 RBAC+Managed Identity로만 접근 통제.
     // 아래 3개(포털 "액세스 구성" 탭의 레거시 리소스 액세스 체크박스)는 이 아키텍처에 해당 없어 명시적으로 off:
     // VM 없음(AKS는 관리형) / 시크릿은 GitHub Secret→env var로 주입(ARM 템플릿에서 KV 직접 참조 안 함) / 디스크 암호화 키소스로 KV 미사용

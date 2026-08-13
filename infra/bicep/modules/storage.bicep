@@ -1,6 +1,5 @@
 @description('ML 모델 아티팩트(.onnx) Blob 저장소. ml 레포가 az storage blob upload로 올리고, AKS Init Container가 내려받는다.')
 param location string
-@minLength(3)
 param namePrefix string
 param tags object = {}
 

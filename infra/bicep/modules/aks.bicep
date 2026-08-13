@@ -151,6 +151,10 @@ resource backendIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2025-
 
 // 네임스페이스(staging/production)당 1개씩 — backend Deployment와 rag-cronjob이 같은 서비스어카운트 이름을 공유하므로
 // 네임스페이스 단위로만 federation을 나누면 됨(워크로드별로 나눌 필요 없음)
+// @batchSize(1) 필수 — 같은 Managed Identity 밑에 Federated Credential을 동시에 여러 개 쓰는 걸 Azure API가
+// 자체적으로 막아서(ConcurrentFederatedIdentityCredentialsWritesForSingleManagedIdentity), 반복문 기본
+// 병렬 배포를 강제로 순차 배포로 바꿔야 함(2026-08-13, 실배포 중 발견).
+@batchSize(1)
 resource federatedCredentials 'Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials@2025-05-31-preview' = [for ns in backendNamespaces: {
   parent: backendIdentity
   name: 'backend-sa-federation-${ns}'
