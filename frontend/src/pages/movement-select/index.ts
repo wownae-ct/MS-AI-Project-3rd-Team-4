@@ -1,2 +1,2 @@
-// M4 — 운동 선택 화면 조립 (§6.1) — 골격만 생성(06 플랜 §3). 슬라이스 밖에서는 이 public API로만 import (§6.1.1).
-export {};
+// pages/movement-select public API (§6.1.1)
+export { MovementSelectPage, type MovementSelectPageProps } from "./ui/MovementSelectPage";

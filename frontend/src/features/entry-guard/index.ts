@@ -1,4 +1,4 @@
-// features/entry-guard public API (§6.1.1) — 감지·판정·탈출 URL. GuardScreen UI는 M4에서 조립.
+// features/entry-guard public API (§6.1.1) — 감지·판정·탈출 URL + 안내 화면(§6.2.1)
 export {
   buildEscapeUrls,
   collectFeatureSupport,
@@ -10,3 +10,4 @@ export {
   type EscapeUrls,
   type FeatureSupport,
 } from "./lib/detect";
+export { GuardScreen, type GuardScreenProps } from "./ui/GuardScreen";

@@ -1,2 +1,2 @@
-// M4 — 세션 리포트 화면 (§6.1) — 골격만 생성(06 플랜 §3). 슬라이스 밖에서는 이 public API로만 import (§6.1.1).
-export {};
+// pages/report public API (§6.1.1)
+export { ReportPage, type ReportPageProps } from "./ui/ReportPage";

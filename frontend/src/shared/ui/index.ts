@@ -1,2 +1,5 @@
-// M1 이관 완료 — 공용 UI. 컴포넌트는 M4부터 — 골격만 생성(06 플랜 §3). 슬라이스 밖에서는 이 public API로만 import (§6.1.1).
-export {};
+// shared/ui public API (§6.1.1) — 스타일(tokens.css·components.css)은 app 진입점에서 1회 import한다.
+export { Button, type ButtonProps } from "./Button";
+export { Banner, type BannerProps, type BannerVariant } from "./Banner";
+export { Progress, type ProgressProps } from "./Progress";
+export { IconAudio, IconCheck, IconCopy, IconExternalLink, IconRefresh, IconScreenLock, IconWarning } from "./icons";
