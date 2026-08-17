@@ -1,0 +1,20 @@
+{
+  // Worker 격리 검사 프로젝트 (설계서 §6.1) — shared/protocol·shared/workers가
+  // DOM 타입 없이 컴파일됨을 강제한다. lib에 DOM을 추가하지 말 것.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "WebWorker"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "Bundler",
+    "isolatedModules": true,
+    "noEmit": true,
+    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.worker.tsbuildinfo",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "types": []
+  },
+  "include": ["src/shared/protocol", "src/shared/workers"]
+}
