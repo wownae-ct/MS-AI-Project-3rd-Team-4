@@ -1,2 +1,12 @@
-// M4 — §6.2.1 진입 경로 가드 (인앱 감지·안내) — 골격만 생성(06 플랜 §3). 슬라이스 밖에서는 이 public API로만 import (§6.1.1).
-export {};
+// features/entry-guard public API (§6.1.1) — 감지·판정·탈출 URL. GuardScreen UI는 M4에서 조립.
+export {
+  buildEscapeUrls,
+  collectFeatureSupport,
+  isInAppBrowser,
+  isIos,
+  isKakaoTalk,
+  resolveEntryGuard,
+  type EntryVerdict,
+  type EscapeUrls,
+  type FeatureSupport,
+} from "./lib/detect";
