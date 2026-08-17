@@ -1,2 +1,3 @@
-// M3 — vision.worker 예정. tsconfig.worker 격리 프로젝트 앵커 (§6.1) — 골격만 생성(06 플랜 §3). 슬라이스 밖에서는 이 public API로만 import (§6.1.1).
-export {};
+// shared/workers public API — window-assembler는 Worker 내부 전용 로직이다 (§4.4.0:
+// 조립은 Worker 소유, 메인은 헤더+send만). 메인 스레드 코드에서 import하지 말 것.
+export { assembleWindow, WindowCollector, FLOATS_PER_FRAME, type AssembledWindow, type TimedFrame } from "./window-assembler";

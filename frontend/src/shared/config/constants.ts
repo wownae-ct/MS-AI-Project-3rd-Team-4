@@ -57,3 +57,7 @@ export const WORKER_RECREATE_MAX = 2; // 초과 시 저주기 메인 스레드 �
 // ─── 「모델·오디오」 (§6.2·§4.5.2) ───
 export const MODEL_LOAD_BUDGET_MS = 5_000; // 초과 시 진행률 UI + 재시도
 export const CUE_MIN_INTERVAL_MS = 2_000; // 디바운스 — 우선순위 안전 > 폼 > 격려
+
+// ─── 상태 관리 (§1.1) ───
+// 컴포넌트 노출 요약치 갱신 10Hz 스로틀 — 프레임 단위 고빈도 데이터는 React state로 승격하지 않는다
+export const SUMMARY_UPDATE_INTERVAL_MS = 100;

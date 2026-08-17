@@ -1,2 +1,2 @@
-// M4 — T1 룰 엔진 (§4.5) — 골격만 생성(06 플랜 §3). 슬라이스 밖에서는 이 public API로만 import (§6.1.1).
-export {};
+// features/rules public API (§6.1.1). T1 엔진·params-loader는 rule_params 스키마 확정 후 (M4).
+export { CueScheduler, type CuePriority, type CueRequest } from "./model/cue-scheduler";
