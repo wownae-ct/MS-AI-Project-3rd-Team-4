@@ -38,6 +38,8 @@ export class WakeLockManager {
   private wanted = false;
   /** 수동 release 중임을 표시 — release 이벤트 단일 핸들러가 auto와 구분하는 근거 */
   private releasingIntentionally = false;
+  /** 진행 중 request — pageshow와 visibilitychange(visible)가 연달아 발화해도 획득은 1회만 (§5.2 이중 발화) */
+  private pendingRequest: Promise<boolean> | null = null;
 
   state: WakeLockState = "inactive";
 
@@ -72,34 +74,47 @@ export class WakeLockManager {
     return this.request("reacquire_failed");
   }
 
-  private async request(failureEvent: WakeLockTelemetryEvent): Promise<boolean> {
+  private request(failureEvent: WakeLockTelemetryEvent): Promise<boolean> {
     if (!this.wakeLock) {
       this.setState("unsupported");
-      return false;
+      return Promise.resolve(false);
     }
     // 규범: hidden 중 request() 금지 — 플랫폼이 거부한다. 호출 자체를 차단해 불필요한 실패 계측을 막는다.
-    if (this.getVisibility() === "hidden") return false;
-    try {
-      const sentinel = await this.wakeLock.request("screen");
-      this.sentinel = sentinel;
-      // release 이벤트 필수 구독 — 해제 사유와 무관한 단일 핸들러 (§5.3 C2-02)
-      sentinel.addEventListener("release", () => {
-        this.sentinel = null;
-        if (this.releasingIntentionally) {
-          this.setState("inactive");
-        } else {
-          // hidden 전환 외에 배터리 부족·절전에서도 발생 — 계측 후 복귀 시 재획득 대상
-          this.onTelemetry("auto_released");
-          this.setState("released-auto");
-        }
-      });
-      this.setState("active");
-      return true;
-    } catch {
-      this.onTelemetry(failureEvent);
-      this.setState("failed"); // §5.3 — 배너 표시 (onStateChange 경유)
-      return false;
-    }
+    if (this.getVisibility() === "hidden") return Promise.resolve(false);
+    // 이중 획득 방지: 활성 sentinel이 있으면 그대로 성공 — 새로 요청하면 이전 sentinel이
+    // 미해제로 잔존(화면 점유 지속)하고, 그 지연 release 이벤트가 새 참조를 오염시킨다.
+    if (this.sentinel) return Promise.resolve(true);
+    if (this.pendingRequest) return this.pendingRequest;
+
+    const wakeLock = this.wakeLock;
+    this.pendingRequest = (async () => {
+      try {
+        const sentinel = await wakeLock.request("screen");
+        this.sentinel = sentinel;
+        // release 이벤트 필수 구독 — 해제 사유와 무관한 단일 핸들러 (§5.3 C2-02)
+        sentinel.addEventListener("release", () => {
+          // 정체성 검사: 교체된 구 sentinel의 지연 이벤트가 현재 참조·상태를 건드리지 못하게 한다
+          if (this.sentinel !== sentinel) return;
+          this.sentinel = null;
+          if (this.releasingIntentionally) {
+            this.setState("inactive");
+          } else {
+            // hidden 전환 외에 배터리 부족·절전에서도 발생 — 계측 후 복귀 시 재획득 대상
+            this.onTelemetry("auto_released");
+            this.setState("released-auto");
+          }
+        });
+        this.setState("active");
+        return true;
+      } catch {
+        this.onTelemetry(failureEvent);
+        this.setState("failed"); // §5.3 — 배너 표시 (onStateChange 경유)
+        return false;
+      } finally {
+        this.pendingRequest = null;
+      }
+    })();
+    return this.pendingRequest;
   }
 
   /** 수동 해제 — pagehide/freeze·세션 종료 경로 (§5.1·§5.2) */

@@ -32,8 +32,16 @@ export function isKakaoTalk(ua: string): boolean {
   return ua.includes(KAKAOTALK_UA_MARKER);
 }
 
-export function isIos(ua: string): boolean {
-  return IOS_UA_PATTERN.test(ua);
+/** 판정에 쓰는 환경 신호 — UA만으로 부족한 축 (테스트 주입 가능) */
+export interface DeviceHints {
+  /** iPadOS 13+ 데스크톱 모드 검출용 — UA가 "Macintosh"로 위장하므로 터치 지점 수로 구분 */
+  maxTouchPoints?: number;
+}
+
+export function isIos(ua: string, hints: DeviceHints = {}): boolean {
+  if (IOS_UA_PATTERN.test(ua)) return true;
+  // iPadOS 13+는 기본이 데스크톱 UA(Macintosh) — 실제 Mac은 maxTouchPoints 0/1 (§6.2.1 iOS 전체 비지원)
+  return ua.includes("Macintosh") && (hints.maxTouchPoints ?? 0) > 1;
 }
 
 /** 브라우저 전역에서 기능 존재를 수집한다 — jsdom 테스트에서는 객체를 직접 만들어 주입 */
@@ -51,8 +59,8 @@ export function collectFeatureSupport(): FeatureSupport {
  * §6.2.1 판정 순서 — iOS가 인앱보다 우선한다: iOS 인앱은 탈출해도 WebKit이라
  * 탈출 유도가 아니라 비지원 안내가 규범이다.
  */
-export function resolveEntryGuard(ua: string, features: FeatureSupport): EntryVerdict {
-  if (isIos(ua)) return { kind: "unsupported-ios" };
+export function resolveEntryGuard(ua: string, features: FeatureSupport, hints: DeviceHints = {}): EntryVerdict {
+  if (isIos(ua, hints)) return { kind: "unsupported-ios" };
   if (isInAppBrowser(ua)) return { kind: "in-app", isKakao: isKakaoTalk(ua) };
   const missing = (Object.entries(features) as [keyof FeatureSupport, boolean][])
     .filter(([, ok]) => !ok)

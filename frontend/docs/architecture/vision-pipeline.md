@@ -21,7 +21,7 @@
 - 헬스 경로: 응답 타임아웃 → 재생성+재초기화+rule_params 재주입(횟수 상한) → 초과 시 저주기 메인 스레드 강등.
   `webglcontextlost` → CPU delegate 즉시 전환.
 - 추론용 OffscreenCanvas는 GPU delegate의 공식 필수 입력 — "캔버스는 메인 소유" 원칙(P0-7)의 위반이 아니라 별개 경로.
-- WASM·`.task` 모델은 self-hosting (`public/mediapipe/`) — CDN 하드코딩 금지 (P0-10). 배치 절차는 `docs/plan/03_툴체인_정비계획.md` §5.
+- WASM·`.task` 모델은 self-hosting (`public/mediapipe/`) — CDN 하드코딩 금지 (P0-10). ✅ 자산 배치 완료(2026-08-17) — SHA-256 기준선·갱신 규칙은 `frontend/public/mediapipe/README.md`, 절차는 [plan/03_적용로드맵.md](../plan/03_적용로드맵.md) §1-5.
 
 ## 3. CANON19 변환·윈도우 조립 (§4.4) — Worker 내부
 

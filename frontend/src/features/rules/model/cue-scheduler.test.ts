@@ -1,3 +1,4 @@
+// @vitest-environment node
 // 「모델·오디오」 디바운스·우선순위 검증 — 가짜 시계로 결정론화.
 import { describe, expect, it } from "vitest";
 import { CueScheduler, type CueRequest } from "./cue-scheduler";

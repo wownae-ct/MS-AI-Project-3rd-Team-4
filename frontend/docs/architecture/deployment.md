@@ -1,7 +1,7 @@
 # 배포·환경 — SWA·환경별 빌드·CSP·진입 경로
 
-> 근거: 설계서 v2.1 §6.2(자산·진입) · §6.4(배포). 실측 환경값은 `docs/plan/09_Azure_환경실측.md`,
-> CI 관련 오픈 이슈는 `docs/plan/08_리스크_오픈이슈.md` (I-2·I-8·I-9).
+> 근거: 설계서 v2.1 §6.2(자산·진입) · §6.4(배포). 실측 환경값 원자료는 로컬 준비 기획 09(팀 문서 채널로 요청),
+> CI·인프라 오픈 이슈는 [plan/05_리스크_오픈이슈.md](../plan/05_리스크_오픈이슈.md) (I-2·I-8·I-9).
 
 ## 1. 배포 토폴로지
 
@@ -26,7 +26,8 @@
 | mimeTypes (`.wasm`·`.task`) | MediaPipe 자산 로드 실패 (콘텐츠 타입 거부) |
 | CSP 헤더 (`wasm-unsafe-eval`·connect-src에 API/WS 호스트) | WASM 실행 차단·WS 연결 차단 |
 
-CSP의 API 호스트 값은 해당 빌드의 `VITE_API_BASE`와 동일해야 한다 — 환경별 산출물 전제와 연동 (`docs/plan/03_툴체인_정비계획.md` §6).
+CSP의 API 호스트 값은 해당 빌드의 `VITE_API_BASE`와 동일해야 한다 — 환경별 산출물 전제와 연동
+([plan/03_적용로드맵.md](../plan/03_적용로드맵.md) §1-6 · 템플릿: `frontend/staticwebapp.config.template.json`, `__API_HOST__` 치환은 I-8/I-9 확정 후).
 
 ## 4. 자산 self-hosting (§6.2, P0-10)
 

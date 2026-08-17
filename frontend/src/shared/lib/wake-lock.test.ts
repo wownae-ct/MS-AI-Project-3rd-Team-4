@@ -1,3 +1,4 @@
+// @vitest-environment node
 // §5.3 세칙 전건 검증 — 특히 "hidden 중 request 금지"·"auto/수동 release 구분 계측"이 1급 회귀다.
 import { describe, expect, it, vi } from "vitest";
 import { WakeLockManager, type WakeLockState, type WakeLockTelemetryEvent } from "./wake-lock";
@@ -102,6 +103,35 @@ describe("WakeLockManager (§5.3)", () => {
     await manager.acquireFromGesture(); // 실패 1 — acquire_failed (wanted는 유지됨)
     await manager.reacquireOnReturn(); // 실패 2 — reacquire_failed
     expect(events).toEqual(["acquire_failed", "reacquire_failed"]);
+  });
+
+  it("⚠ 활성 상태의 재획득은 재요청하지 않는다 — pageshow+visible 이중 발화에도 sentinel 1개 (불일치 1 회귀)", async () => {
+    const { manager, request } = setup();
+    await manager.acquireFromGesture();
+    await expect(manager.reacquireOnReturn()).resolves.toBe(true);
+    await expect(manager.reacquireOnReturn()).resolves.toBe(true);
+    expect(request).toHaveBeenCalledTimes(1); // 이중 획득이면 이전 sentinel이 미해제 잔존한다
+  });
+
+  it("⚠ 동시(in-flight) 재획득 호출도 request 1회로 합쳐진다", async () => {
+    const { manager, sentinels, request } = setup();
+    await manager.acquireFromGesture();
+    sentinels[0].dispatchRelease(); // 자동 해제 후
+    const [a, b] = await Promise.all([manager.reacquireOnReturn(), manager.reacquireOnReturn()]);
+    expect(a).toBe(true);
+    expect(b).toBe(true);
+    expect(request).toHaveBeenCalledTimes(2); // 최초 1 + 재획득 1 (동시 호출 합침)
+  });
+
+  it("⚠ 교체된 구 sentinel의 지연 release 이벤트가 새 sentinel 상태를 오염시키지 않는다", async () => {
+    const { manager, sentinels, states, events } = setup();
+    await manager.acquireFromGesture();
+    sentinels[0].dispatchRelease(); // 자동 해제 → released-auto
+    await manager.reacquireOnReturn(); // sentinel[1] 활성
+    sentinels[0].dispatchRelease(); // 구 sentinel의 중복·지연 이벤트
+    expect(manager.state).toBe("active"); // 정체성 검사로 무시됨
+    expect(states.at(-1)).toBe("active");
+    expect(events).toEqual(["auto_released"]); // 오계측 없음
   });
 
   it("원한 적 없거나 수동 해제된 상태의 재획득은 no-op (세션 종료 후 락 부활 방지)", async () => {

@@ -1,3 +1,4 @@
+// @vitest-environment node
 // §4.5.2 — "running 아니면 세션 차단"이 핵심 회귀다.
 import { describe, expect, it } from "vitest";
 import { AudioUnlock, type AudioUnlockState } from "./audio-unlock";

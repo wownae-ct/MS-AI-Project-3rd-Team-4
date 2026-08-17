@@ -1,3 +1,4 @@
+// @vitest-environment node
 // §7.1 거부 테스트 — 모든 실패가 "폐기 + 카운터, 예외 불방출"인지 전건 단언한다 (§3.5 P0).
 import { describe, expect, it } from "vitest";
 import { createRejectCounter, decodeFrame } from "./receive-guard";

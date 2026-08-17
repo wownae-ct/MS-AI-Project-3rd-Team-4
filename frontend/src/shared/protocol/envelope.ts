@@ -57,5 +57,8 @@ export function parseEnvelope(raw: string): Envelope | null {
   if (!isEnvelopeType(e.type)) return null;
   if (typeof e.seq !== "number") return null;
   if (typeof e.ts !== "number") return null;
+  // 선택 필드도 존재하면 타입을 좁힌다 — 오형(예: ack: "3")이 통과하면 하류에서 NaN 산술이 난다
+  if (e.ack !== undefined && typeof e.ack !== "number") return null;
+  if (e.revision !== undefined && typeof e.revision !== "number") return null;
   return e as unknown as Envelope;
 }

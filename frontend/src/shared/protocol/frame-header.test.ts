@@ -1,3 +1,4 @@
+// @vitest-environment node
 // §7.1 — 헤더 코덱 라운드트립. 기준은 골든 벡터(손 검산)이며 코덱 출력이 아니다 (순환 참조 금지).
 import { describe, expect, it } from "vitest";
 import { encodeHeader, readHeader } from "./frame-header";

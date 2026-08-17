@@ -1,3 +1,4 @@
+// @vitest-environment node
 // §4.4.3 윈도우 계약 검증 — 저프레임(12fps/8fps) 합성 입력이 §7.5 P0 수용 기준의 지정 케이스다.
 import { describe, expect, it } from "vitest";
 import { assembleWindow, FLOATS_PER_FRAME, WindowCollector, type TimedFrame } from "./window-assembler";
@@ -115,12 +116,23 @@ describe("WindowCollector — 스트라이드 격자·종결·축출", () => {
     expect(emitted).toEqual([0]);
   });
 
-  it("flush — 시작된 마지막 윈도우가 비율 충족이면 홀드 채움 조립", () => {
-    const { collector, emitted } = collect();
-    for (const f of framesAtRate(30, 0, 1400)) collector.push(f); // [0,1000) 방출됨, [500,1500) 미종결
+  it("flush — 실측이 걸친 미종결 윈도우 전부를 종결 (계량 누락 방지)", () => {
+    const { collector, emitted, dropped } = collect();
+    for (const f of framesAtRate(30, 0, 1400)) collector.push(f); // [0,1000) 방출됨
     expect(emitted).toEqual([0]);
     collector.flush();
-    expect(emitted).toEqual([0, 500]); // 잔여 [500,1500): 실측 27개 — 충족
+    // [500,1500) 실측 27개 · [1000,2000) 실측 12개 — 둘 다 비율 충족으로 emit
+    expect(emitted).toEqual([0, 500, 1000]);
+    expect(dropped).toEqual([]);
+  });
+
+  it("flush — 비율 미달 잔여 윈도우는 onDrop으로 종결 (무계상 소멸 금지)", () => {
+    const { collector, emitted, dropped } = collect();
+    for (const f of framesAtRate(30, 0, 1050)) collector.push(f); // [0,1000) 방출
+    collector.push(frameAt(1450)); // [1000,2000)에는 실측이 4개뿐 (1000·1016·1033·1450)
+    collector.flush();
+    expect(emitted).toEqual([0, 500]); // [500,1500): 실측 충분 — emit
+    expect(dropped).toEqual([1000]); // [1000,2000): 4개 < 하한 — drop 계상
   });
 
   it("장시간 입력에도 방출 결과 불변 — 축출이 보간 소스를 침식하지 않는다", () => {

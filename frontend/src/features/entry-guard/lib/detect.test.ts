@@ -60,6 +60,14 @@ describe("판정 우선순위 (§6.2.1)", () => {
     expect(resolveEntryGuard(UA.iosKakao, ALL_OK)).toEqual({ kind: "unsupported-ios" });
   });
 
+  it("iPadOS 13+ 데스크톱 UA(Macintosh + 멀티터치) → 비지원 안내 — UA만으로는 Mac과 구분 불가", () => {
+    const ipadDesktopUa =
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15";
+    expect(resolveEntryGuard(ipadDesktopUa, ALL_OK, { maxTouchPoints: 5 })).toEqual({ kind: "unsupported-ios" });
+    // 실제 Mac(터치 0)은 iOS로 오판하지 않는다 — Mac Safari는 기능 검사(rVFC 부재)로 걸러진다
+    expect(resolveEntryGuard(ipadDesktopUa, ALL_OK, { maxTouchPoints: 0 })).toEqual({ kind: "ok" });
+  });
+
   it("rVFC 부재 = 비지원 브라우저 — rAF 폴백이 아니라 안내 화면 (§4.1 C-10)", () => {
     const verdict = resolveEntryGuard(UA.chromeAndroid, { ...ALL_OK, rvfc: false });
     expect(verdict).toEqual({ kind: "unsupported-browser", missing: ["rvfc"] });

@@ -1,3 +1,4 @@
+// @vitest-environment node
 // §1.1 두 층 분리 검증 — "transient 쓰기가 스토어 알림을 유발하지 않는다"가 1급 회귀다.
 import { afterEach, describe, expect, it } from "vitest";
 import { createSummaryThrottle, sessionStore, transientPose, writeTransientPose } from "./session-store";

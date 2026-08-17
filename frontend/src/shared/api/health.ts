@@ -2,5 +2,6 @@
 import { http } from "./client";
 
 export function checkHealth() {
-  return http.get<{ status: string }>("/healthz");
+  // 응답 타입은 백엔드 Pydantic 확정 전 unknown 유지 (§0 — 타입을 지어내지 않는다)
+  return http.get<unknown>("/healthz");
 }

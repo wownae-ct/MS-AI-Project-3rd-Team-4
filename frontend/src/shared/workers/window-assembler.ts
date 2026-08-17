@@ -107,12 +107,18 @@ export class WindowCollector {
     }
   }
 
-  /** 세션 종료 시 잔여분 처리 — 시작된 마지막 윈도우가 비율 충족이면 홀드 채움으로 조립 (설계 결정 — 06 플랜) */
+  /**
+   * 세션 종료 시 잔여분 처리 — 실측이 걸쳐 있는(시작 ≤ 마지막 실측) 미종결 윈도우 **전부**를
+   * emit 또는 onDrop으로 종결한다. 일부만 처리하면 dropped_window_count 계량이 누락된다 (§6.5).
+   */
   flush(): void {
     if (this.nextWindowStartMs === null) return;
     const last = this.frames.at(-1);
-    if (last && last.tOffsetMs >= this.nextWindowStartMs) {
-      this.closeWindow(this.nextWindowStartMs);
+    if (last) {
+      while (this.nextWindowStartMs <= last.tOffsetMs) {
+        this.closeWindow(this.nextWindowStartMs);
+        this.nextWindowStartMs += WINDOW_STRIDE_MS;
+      }
     }
     this.frames = [];
     this.nextWindowStartMs = null;

@@ -4,6 +4,13 @@
 module.exports = {
   forbidden: [
     {
+      name: "no-circular",
+      comment: "순환 의존 금지 — FSD 하향 규칙의 전제 (dependency-cruiser 공식 권장 기본 규칙)",
+      severity: "error",
+      from: {},
+      to: { circular: true },
+    },
+    {
       name: "no-cross-feature",
       comment: "features 상호 import 금지 — vision→rules→realtime 조립은 app/pages 담당 (§6.1.1·§4.5)",
       severity: "error",
@@ -44,17 +51,20 @@ module.exports = {
     },
     {
       name: "no-slice-internals-from-outside",
-      comment: "슬라이스 밖에서는 index.ts public API만 (§6.1.1)",
+      comment: "슬라이스 밖에서는 슬라이스 루트 index.ts public API만 (§6.1.1) — 심층 index.ts는 우회로가 아니다",
       severity: "error",
       from: { path: "^src/", pathNot: "^src/(features|entities|pages)/" },
-      to: { path: "^src/(features|entities|pages)/[^/]+/.+", pathNot: "/index\\.ts$" },
+      to: { path: "^src/(features|entities|pages)/[^/]+/.+", pathNot: "^src/(features|entities|pages)/[^/]+/index\\.ts$" },
     },
     {
       name: "no-slice-internals-cross-slice",
       comment: "다른 슬라이스의 내부 파일 직접 import 금지 — 자기 슬라이스 내부는 허용 (§6.1.1)",
       severity: "error",
       from: { path: "^src/(features|entities|pages)/([^/]+)/" },
-      to: { path: "^src/(features|entities|pages)/[^/]+/.+", pathNot: ["/index\\.ts$", "^src/$1/$2/"] },
+      to: {
+        path: "^src/(features|entities|pages)/[^/]+/.+",
+        pathNot: ["^src/(features|entities|pages)/[^/]+/index\\.ts$", "^src/$1/$2/"],
+      },
     },
     {
       name: "workers-protocol-isolation",
@@ -74,6 +84,8 @@ module.exports = {
   options: {
     doNotFollow: { path: "node_modules" },
     tsConfig: { fileName: "tsconfig.app.json" },
+    // import type도 검사 — 미설정 시 type-only 상향·교차 import가 컴파일 후 소거되어 전 규칙을 통과한다
+    tsPreCompilationDeps: true,
     enhancedResolveOptions: { exportsFields: ["exports"], conditionNames: ["import", "require", "node", "default"] },
   },
 };

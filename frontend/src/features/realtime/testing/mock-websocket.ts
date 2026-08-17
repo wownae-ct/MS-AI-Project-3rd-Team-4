@@ -53,9 +53,33 @@ export class MockWebSocket {
   onclose: CloseHandler = null;
   onerror: ErrorHandler = null;
 
+  // addEventListener 스타일도 지원 — on* 전용이면 machine 구현이 EventTarget 스타일일 때 이벤트가 조용히 유실된다
+  private readonly listeners: Record<"open" | "message" | "close" | "error", ((ev?: unknown) => void)[]> = {
+    open: [],
+    message: [],
+    close: [],
+    error: [],
+  };
+
   constructor(url: string) {
     this.url = url;
     MockWebSocket.instances.push(this);
+  }
+
+  addEventListener(type: "open" | "message" | "close" | "error", listener: (ev?: unknown) => void): void {
+    this.listeners[type].push(listener);
+  }
+
+  removeEventListener(type: "open" | "message" | "close" | "error", listener: (ev?: unknown) => void): void {
+    const arr = this.listeners[type];
+    const i = arr.indexOf(listener);
+    if (i >= 0) arr.splice(i, 1);
+  }
+
+  private dispatch(type: "open" | "message" | "close" | "error", ev?: unknown): void {
+    // 스냅샷 순회 — 디스패치 중 리스너가 자기 자신을 제거해도 나머지가 건너뛰어지지 않는다
+    const snapshot = this.listeners[type].slice();
+    for (const l of snapshot) l(ev);
   }
 
   // ── 클라이언트 측 API (WebSocket 표준 동작 모사) ──────────────────────────
@@ -89,12 +113,14 @@ export class MockWebSocket {
     if (this.readyState !== MockWebSocket.CONNECTING) return;
     this.readyState = MockWebSocket.OPEN;
     this.onopen?.();
+    this.dispatch("open");
   }
 
   /** 서버 → 클라이언트 메시지 */
   serverMessage(data: MessageData): void {
     if (this.readyState !== MockWebSocket.OPEN) return;
     this.onmessage?.({ data });
+    this.dispatch("message", { data });
   }
 
   /** JSON Envelope 편의 주입 */
@@ -109,12 +135,15 @@ export class MockWebSocket {
   serverClose(code = 1005, reason = "", wasClean = false): void {
     if (this.readyState === MockWebSocket.CLOSED) return;
     this.readyState = MockWebSocket.CLOSED;
-    this.onclose?.({ code, reason, wasClean });
+    const ev: MockCloseEvent = { code, reason, wasClean };
+    this.onclose?.(ev);
+    this.dispatch("close", ev);
   }
 
   /** 네트워크 에러 — 실제 브라우저처럼 onerror 뒤 onclose(1006)가 따라온다 */
   serverError(withClose = true): void {
     this.onerror?.();
+    this.dispatch("error");
     if (withClose) this.serverClose(1006, "", false);
   }
 }

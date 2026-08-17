@@ -20,7 +20,11 @@ interface AppProps {
 function App({ guardVerdict }: AppProps) {
   // 진입 판정은 최초 1회 — 세션 도중 UA가 바뀌는 경우는 없다
   const [verdict] = useState<EntryVerdict>(
-    () => guardVerdict ?? resolveEntryGuard(navigator.userAgent, collectFeatureSupport()),
+    () =>
+      guardVerdict ??
+      resolveEntryGuard(navigator.userAgent, collectFeatureSupport(), {
+        maxTouchPoints: navigator.maxTouchPoints, // iPadOS 13+ 데스크톱 UA 검출 축 (§6.2.1)
+      }),
   );
   const [phase, setPhase] = useState<Phase>("select");
   const [sessionActive, setSessionActive] = useState(false);
@@ -42,7 +46,10 @@ function App({ guardVerdict }: AppProps) {
     const onVisibility = () => {
       if (document.visibilityState === "visible") void wakeRef.current?.reacquireOnReturn();
     };
-    const onPageShow = () => void wakeRef.current?.reacquireOnReturn();
+    // §5.2 — bfcache 복원 경로만 (persisted). 초기 로드 pageshow까지 재획득을 태우면 visible 경로와 중복 발화한다
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) void wakeRef.current?.reacquireOnReturn();
+    };
     const onPageHide = () => void wakeRef.current?.release();
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("pageshow", onPageShow);
@@ -75,7 +82,15 @@ function App({ guardVerdict }: AppProps) {
   };
 
   if (phase === "select") {
-    return <MovementSelectPage onStart={() => setPhase("session")} />;
+    return (
+      <MovementSelectPage
+        onStart={(movementId) => {
+          // 운동 코드는 rule_params 수신(§4.5.1)·세션 생성의 키 — 세션 상태에 보관
+          sessionStore.getState().setMovement(movementId);
+          setPhase("session");
+        }}
+      />
+    );
   }
   if (phase === "session") {
     return (

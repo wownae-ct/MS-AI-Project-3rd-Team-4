@@ -1,9 +1,9 @@
 # 디렉토리 구조 — FSD 레이어·슬라이스 지도
 
-> 근거: 설계서 v2.1 §6.1 (FSD 확정, 2026-08-14 사용자 지시). 운영 규칙의 SSOT는 `.claude/skills/directory-placement`,
-> 이관 실행 계획은 `docs/plan/04_FSD_이관계획.md`. 이 문서는 사람용 지도다.
+> 근거: 설계서 v2.1 §6.1 (FSD 확정, 2026-08-14 사용자 지시). 운영 규칙의 SSOT는 `.claude/skills/directory-placement`(로컬),
+> 실행 현황은 [plan/06_실행설계플랜.md](../plan/06_실행설계플랜.md). 이 문서는 사람용 지도다.
 
-## 1. 목표 구조 (M1 이관 후)
+## 1. 현행 구조 — ✅ 2026-08-17 M1 이관 완료
 
 ```
 frontend/src/
@@ -27,7 +27,8 @@ frontend/src/
 ## 2. import 규칙 (§6.1.1 — depcruise가 CI에서 차단)
 
 1. **레이어 하향만**: `app → pages → features → entities → shared`. 역방향 즉시 위반.
-2. **features 상호 import 금지** — vision↔rules↔realtime의 조립은 `app/`에서만.
+2. **features 상호 import 금지** — vision↔rules↔realtime의 조립은 `app/`·`pages/session`이 담당.
+   전역 스토어는 `app/store`에 있으므로 **pages는 스토어를 직접 import하지 못한다**(상향 금지) — app이 값을 props로 하향 주입한다.
 3. **슬라이스 밖에서는 `index.ts` public API만** — 내부 경로 심층 import 금지.
 4. **`shared/workers`는 `shared/protocol`만 import** — 두 폴더 모두 DOM 타입 비의존 (tsconfig.worker의 lib 제한이 1차 검사, depcruise `worker-no-dom`이 보조).
 
@@ -35,20 +36,22 @@ frontend/src/
 메인 전용 API를 Worker에서 호출하는 런타임 오류가 난다. 타입 수준(tsconfig 분리)과
 그래프 수준(depcruise)의 이중 게이트가 그 예방책이다.
 
-## 3. 현재 상태와 이관 매핑 (M1 전)
+## 3. 이관 결과와 슬라이스별 구현 현황 (2026-08-17)
 
-현재는 평면 구조(`src/{pose,rules,api,ws,ui}` + `App.tsx`/`main.tsx`)이며 **이관 전**이다.
+이관은 전건 `git mv`(이력 보존)로 완료됐다. 구계약 잔재(wave0 표기)는 이관과 동시에 제거했다.
 
-| 현재 | 이관 후 | 주의 |
+| 슬라이스 | 구현 상태 | 비고 |
 |---|---|---|
-| `App.tsx`·`main.tsx`·`App.test.tsx` | `app/` | setupTests는 루트 유지 가능 |
-| `api/*` | `shared/api/` | 라우터 1:1 유지, 개선(credentials 등)은 M2 |
-| `ws/client.ts` | `features/realtime/` | **이관이 아니라 재작성** — 현행은 구계약(wave0) 뼈대 |
-| `pose/` | `features/vision/` + `shared/workers/` | README 수치가 구판 — 이관 시 갱신 |
-| `rules/` | `features/rules/` | 〃 |
-| `ui/` | `pages/` + `shared/ui/` | 화면 조립은 pages, 범용만 shared/ui |
+| `shared/protocol` | ✅ 구현 완료 (§3 전체 + 골든/거부 테스트) | `canon19.ts`는 G-3 확정 전 잠정 |
+| `shared/workers` | 🟡 window-assembler(§4.4.3)만 — vision.worker는 M3 | DOM 비의존 격리 가동 |
+| `shared/config` · `shared/lib` · `shared/ui` | ✅ 상수·wake-lock·audio-unlock·토큰/컴포넌트 | telemetry는 M5 |
+| `features/realtime` | 🟡 준비만 (states·MockWebSocket·S1~S9 하네스) — `model/client.ts`는 구계약 뼈대, **M2 재작성**(G-4 대기) | |
+| `features/vision` | ⬜ M3 (G-3 대기) — 자산(public/mediapipe)은 확보됨 | |
+| `features/rules` | 🟡 cue-scheduler만 — engine·params-loader는 rule_params 스키마 대기 | |
+| `features/entry-guard` | ✅ 판정·GuardScreen | |
+| `pages` 3종 · `app` 조립 | ✅ 페이즈 전환·제스처 배선 | 라우터 도입은 의존성 승인 대상 — 보류 |
 
-이관 원칙: **파일 이동 PR에 동작 변경을 섞지 않는다** (리뷰 가능성). 실행 순서·게이트는 `docs/plan/04_FSD_이관계획.md`.
+이관 원칙(준수됨): **파일 이동 PR에 동작 변경을 섞지 않는다** (리뷰 가능성).
 
 ## 4. 자주 틀리는 배치 판단
 

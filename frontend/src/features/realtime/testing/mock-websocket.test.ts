@@ -1,3 +1,4 @@
+// @vitest-environment node
 // Mock 자체의 신뢰성 테스트 — 테스트 도구가 틀리면 S1~S9 전체가 무의미하다 (재발 방지: 도구 먼저 검증).
 import { afterEach, describe, expect, it } from "vitest";
 import { installMockWebSocket, MockWebSocket, type MockCloseEvent } from "./mock-websocket";
@@ -76,6 +77,19 @@ describe("MockWebSocket — 브라우저 동작 모사", () => {
     ws.onmessage = (ev) => received.push(ev.data);
     ws.serverEnvelope({ v: 1, type: "pong", seq: 1, ts: 0 });
     expect(received).toEqual(['{"v":1,"type":"pong","seq":1,"ts":0}']);
+  });
+
+  it("addEventListener 스타일도 on* 핸들러와 동일하게 수신한다 (이벤트 무성 유실 방지)", () => {
+    const ws = new MockWebSocket("wss://example.test/ws");
+    const got: string[] = [];
+    ws.addEventListener("open", () => got.push("open"));
+    ws.addEventListener("close", (ev) => got.push(`close:${(ev as MockCloseEvent).code}`));
+    const removed = () => got.push("removed");
+    ws.addEventListener("error", removed);
+    ws.removeEventListener("error", removed);
+    ws.serverOpen();
+    ws.serverError(); // onerror(제거됨) → close(1006)
+    expect(got).toEqual(["open", "close:1006"]);
   });
 
   it("installMockWebSocket — 전역 교체·레지스트리·복원", () => {
