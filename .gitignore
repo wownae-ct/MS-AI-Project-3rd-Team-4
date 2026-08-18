@@ -90,3 +90,5 @@ AGENTS.md
 # ===== 개인 기록용 docs =====
 docs/
 할일.md
+# ===== 공유형 docs는 ignore하지 않음 =====
+!frontend/docs/
