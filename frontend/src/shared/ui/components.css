@@ -1,0 +1,250 @@
+/* 공용 컴포넌트 스타일 — 값은 tokens.css 변수만 사용한다. */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  padding: var(--space-5) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.page__title {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  margin: 0;
+}
+
+.page__subtitle {
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+/* Button */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--tap-target);
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  font-size: var(--text-base);
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: filter 120ms ease;
+  width: 100%;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn:not(:disabled):active {
+  filter: brightness(0.92);
+}
+
+.btn--primary {
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
+
+.btn--secondary {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+.btn--danger {
+  background: var(--color-danger);
+  color: var(--color-accent-contrast);
+}
+
+/* Banner */
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+
+.banner__icon {
+  flex: none;
+  margin-top: 2px;
+}
+
+.banner__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.banner--info {
+  background: var(--color-info-bg);
+  color: var(--color-info);
+}
+
+.banner--warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.banner--danger {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.banner--success {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.banner .btn {
+  width: auto;
+  min-height: 36px;
+  font-size: var(--text-sm);
+  align-self: flex-start;
+}
+
+/* Progress */
+.progress {
+  width: 100%;
+  height: 8px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-sunken);
+  overflow: hidden;
+}
+
+.progress__fill {
+  height: 100%;
+  background: var(--color-accent);
+  transition: width 200ms ease;
+}
+
+.progress--indeterminate .progress__fill {
+  width: 40%;
+  animation: progress-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes progress-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(350%);
+  }
+}
+
+/* Card */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-raised);
+}
+
+.card--selectable {
+  cursor: pointer;
+  transition: border-color 120ms ease;
+  text-align: left;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+}
+
+.card--selected {
+  border-color: var(--color-accent);
+  outline: 2px solid var(--color-accent);
+  outline-offset: -1px;
+}
+
+/* Session 화면 */
+.session-stage {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-sunken);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+}
+
+.session-stage__video,
+.session-stage__overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.session-stage__overlay {
+  pointer-events: none;
+}
+
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+}
+
+.stat {
+  text-align: center;
+}
+
+.stat__value {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  display: block;
+}
+
+.stat__label {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+/* 큐 자막 영역 (§4.5.2 — 청각 접근성) */
+.cue-caption {
+  min-height: 2.5em;
+  text-align: center;
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.url-copy {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.url-copy__text {
+  flex: 1;
+  overflow-wrap: anywhere;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  background: var(--color-surface-sunken);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+}
