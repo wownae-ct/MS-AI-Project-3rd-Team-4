@@ -39,6 +39,10 @@ React + MediaPipe Pose + WebSocket 기반 AI 홈트레이닝 코치 SPA의 **구
 | [06_실행설계플랜.md](plan/06_실행설계플랜.md) | **통합 실행 설계 플랜 — 실행 기준 문서 (D-1~D-4 승인 · Phase 0+M1 완료)** | 전체 |
 | [07_외부요청문.md](plan/07_외부요청문.md) | 외부 요청 발신용 초안 (G-3·G-4·CI 정비) + 회신 추적 | 부록 D.1 |
 | [08_플랜모드_운영.md](plan/08_플랜모드_운영.md) | Claude Code 플랜 모드·서브에이전트 ↔ 이 문서군 연동 규칙 | — (공식 문서 근거) |
+| [tools/check-plan-docs.mjs](plan/tools/check-plan-docs.mjs) | plan 문서군 정합 점검기 — 헤더 블록·색인·링크·갱신일 | — (운영 도구) |
+
+> plan 폴더의 **문서 수명주기**(신설 판단 → 활성 → 종결 → 아카이브)와 헤더 표준 블록은 [plan/README](plan/README.md)가 단일 출처다.
+> 종결된 문서는 삭제하지 않고 `plan/archive/`로 이동하며, 이 표의 링크 경로도 그때 함께 고친다.
 
 ### architecture/ — 도메인별 아키텍처 해설
 | 문서 | 내용 | 설계서 근거 |
@@ -67,5 +71,6 @@ React + MediaPipe Pose + WebSocket 기반 AI 홈트레이닝 코치 SPA의 **구
 ## 갱신 규칙
 
 - 마일스톤(M1~M5) 경계마다 해당 도메인 문서를 실제 코드와 대조한다 (실행 기준: [plan/06_실행설계플랜.md](plan/06_실행설계플랜.md)).
+- 같은 경계에서 `node frontend/docs/plan/tools/check-plan-docs.mjs`로 plan 문서군 정합(링크·색인·갱신일)을 확인하고, 종결 조건을 채운 문서를 아카이브한다.
 - 설계서가 개정되면(현재 v2.1) 절 번호 참조를 전수 점검한다.
 - 문서 소유: 프론트 담당. 인프라·백엔드 사실은 여기서 단정하지 않고 담당 채널로 확인해 출처를 남긴다.
