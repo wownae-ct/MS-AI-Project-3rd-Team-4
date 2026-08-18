@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 커밋 전 검증 파이프라인. 순서: ①보호 브랜치 ②충돌 마커 ③대용량 파일 ④시크릿
-# ⑤백엔드 lint/format(변경분만) ⑥프론트 lint(변경분만, 툴 설치 시).
+# 커밋 전 검증 파이프라인. 순서: ①보호 브랜치 ②충돌 마커 ③CRLF 줄바꿈 ④대용량 파일
+# ⑤시크릿 ⑥백엔드 lint/format(변경분만) ⑦프론트 lint(변경분만, 툴 설치 시).
 # 실무 기준: pre-commit은 "빠르게" 끝나야 한다 — 전체 테스트 스위트는 여기서 안 돌리고
 # CI/pre-push 몫으로 남긴다. 여기 있는 건 전부 초 단위로 끝나는 정적 검사뿐이다.
 set -eo pipefail
@@ -37,7 +37,28 @@ if [[ -n "$staged_files" ]]; then
 fi
 ok "충돌 마커 없음"
 
-# ── ③ 대용량 파일 — 실수로 큰 바이너리/데이터 파일을 커밋하는 것 방지 ──
+# ── ③ CRLF 줄바꿈 — Windows에서 체크아웃/편집된 셸 스크립트가 CRLF로 커밋되는 것 방지.
+# .gitattributes(text=auto eol=lf)가 1차 방어선이지만, 아직 그 fix를 못 받은 브랜치이거나
+# 로컬 core.autocrlf 설정이 이를 우회하는 경우를 대비한 2차 방어선 — WSL/리눅스/맥/Windows
+# 어떤 환경에서 커밋하든 저장소엔 항상 LF만 들어가도록 여기서 한 번 더 막는다.
+# 셰뱅(#!/usr/bin/env bash)에 CR이 섞이면 'bash\r: No such file or directory'로 실행 자체가 깨진다.
+if [[ -n "$staged_files" ]]; then
+  crlf_hits=""
+  while IFS= read -r f; do
+    [[ -f "$f" ]] || continue
+    if git show ":$f" 2>/dev/null | grep -Iq $'\r'; then
+      crlf_hits+="$f"$'\n'
+    fi
+  done <<< "$staged_files"
+  if [[ -n "$crlf_hits" ]]; then
+    echo -e "${RED}다음 파일에 CRLF(Windows) 줄바꿈이 섞여 있습니다:${NC}"
+    echo -n "$crlf_hits"
+    fail "'git add --renormalize .' 후 CRLF가 남은 파일을 지우고 'git checkout -- <파일>'로 다시 체크아웃한 뒤 커밋하세요."
+  fi
+fi
+ok "CRLF 없음(전부 LF)"
+
+# ── ④ 대용량 파일 — 실수로 큰 바이너리/데이터 파일을 커밋하는 것 방지 ──
 MAX_SIZE_KB=5120  # HARDCODED — 5MB. 정말 필요하면 팀 합의 후 --no-verify로만 우회.
 if [[ -n "$staged_files" ]]; then
   while IFS= read -r f; do
@@ -50,7 +71,7 @@ if [[ -n "$staged_files" ]]; then
 fi
 ok "대용량 파일 없음(<${MAX_SIZE_KB}KB)"
 
-# ── ④ 시크릿 스캔 — gitleaks (.gitleaks.toml 설정 사용) ──
+# ── ⑤ 시크릿 스캔 — gitleaks (.gitleaks.toml 설정 사용) ──
 if ! command -v gitleaks &> /dev/null; then
   warn "gitleaks가 설치되어 있지 않습니다 — 시크릿 검사를 건너뜁니다."
   warn "설치: https://github.com/gitleaks/gitleaks (winget install gitleaks 또는 scoop install gitleaks)"
@@ -64,7 +85,7 @@ else
   fi
 fi
 
-# ── ⑤ 백엔드 Python — 스테이징된 .py 파일만 ruff check + ruff format --check ──
+# ── ⑥ 백엔드 Python — 스테이징된 .py 파일만 ruff check + ruff format --check ──
 # 전체 저장소가 아니라 "이번 커밋에 포함된 파일만" 검사한다 — 다른 사람이 작업 중인
 # 미완성 코드까지 내 커밋이 막지 않도록. uv run을 쓰는 이유: 이 프로젝트 전체가
 # uv로 관리되는 venv를 전제하므로(CLAUDE.md의 backend 커맨드 전부 uv run), 로컬에
@@ -86,7 +107,7 @@ if [[ -n "$py_files" ]]; then
   fi
 fi
 
-# ── ⑥ 프론트엔드 — 스테이징된 .ts/.tsx/.js/.jsx 파일이 있으면 lint ──
+# ── ⑦ 프론트엔드 — 스테이징된 .ts/.tsx/.js/.jsx 파일이 있으면 lint ──
 # 이 시점에 frontend/package.json이 아직 없을 수 있음(스캐폴딩 전) — node_modules 체크로
 # 그 경우엔 조용히 건너뛴다. lint 툴은 frontend가 정해지는 대로(예: oxlint) package.json의
 # lint 스크립트가 알아서 결정하므로 여기서 특정 툴을 하드코딩하지 않는다.
