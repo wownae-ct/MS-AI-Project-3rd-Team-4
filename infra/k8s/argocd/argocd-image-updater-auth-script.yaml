@@ -1,0 +1,27 @@
+# ArgoCD Image Updater가 ACR을 Workload Identity로 인증할 때 쓰는 외부 스크립트(registries.conf의
+# credentials: ext:/app/auth/auth.sh가 이걸 실행함). argocd-image-updater 공식 문서의 Azure Workload
+# Identity 예제를 그대로 씀(https://argocd-image-updater.readthedocs.io/en/stable/configuration/registries/).
+# AZURE_CLIENT_ID/AZURE_TENANT_ID/AZURE_FEDERATED_TOKEN_FILE은 파드가 Workload Identity 라벨+어노테이션을
+# 갖고 있으면 AKS webhook이 자동 주입한다 — infra/ansible/playbooks/bootstrap-cluster.yml이 이미 그 라벨/
+# 어노테이션을 붙이므로 추가 설정 불필요. ACR_NAME만 Deployment에 env var로 별도로 넣어줘야 함.
+# 미검증 — argocd-image-updater 컨테이너 이미지에 python3/wget이 실제로 있는지는 실배포 후 로그로 확인 필요.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-image-updater-auth
+  namespace: argocd
+data:
+  auth.sh: |
+    #!/bin/sh
+    set -eo pipefail
+    AAD_ACCESS_TOKEN=$(cat $AZURE_FEDERATED_TOKEN_FILE)
+    ACCESS_TOKEN=$(wget --output-document - --header "Content-Type: application/x-www-form-urlencoded" \
+    --post-data="grant_type=client_credentials&client_id=${AZURE_CLIENT_ID}&client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer&scope=https://management.azure.com/.default&client_assertion=${AAD_ACCESS_TOKEN}" \
+    https://login.microsoftonline.com/${AZURE_TENANT_ID}/oauth2/v2.0/token \
+    | python3 -c "import sys, json; print(json.load(sys.stdin)['access_token'])")
+    ACR_REFRESH_TOKEN=$(wget --quiet --header="Content-Type: application/x-www-form-urlencoded" \
+    --post-data="grant_type=access_token&service=${ACR_NAME}&access_token=${ACCESS_TOKEN}" \
+    --output-document - \
+    "https://${ACR_NAME}/oauth2/exchange" |
+    python3 -c "import sys, json; print(json.load(sys.stdin)['refresh_token'])")
+    echo "00000000-0000-0000-0000-000000000000:$ACR_REFRESH_TOKEN"

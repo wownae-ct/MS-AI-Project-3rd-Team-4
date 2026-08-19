@@ -1,0 +1,35 @@
+# 주기적 RAG 재인덱싱. data/rag_corpus 문서를 청킹·임베딩·pgvector upsert(backend/rag/index/).
+# backend Deployment와 같은 이미지(같은 backend 브랜치 빌드)를 쓰되 커맨드만 다르다 —
+# 그래서 배포 단위(ArgoCD sync)는 분리하면서 코드/의존성은 공유한다.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: rag-reindex
+spec:
+  schedule: "0 3 * * *"
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          serviceAccountName: backend-sa
+          restartPolicy: Never
+          containers:
+            - name: rag-index
+              image: team4hcacr-drascbaqe8f2gcca.azurecr.io/backend:latest
+              imagePullPolicy: Always
+              command: ["python", "-m", "rag.index"]
+              envFrom:
+                - configMapRef:
+                    name: model-version
+              volumeMounts:
+                - name: kv-secrets
+                  mountPath: /mnt/secrets
+                  readOnly: true
+          volumes:
+            - name: kv-secrets
+              csi:
+                driver: secrets-store.csi.k8s.io
+                readOnly: true
+                volumeAttributes:
+                  secretProviderClass: backend-kv

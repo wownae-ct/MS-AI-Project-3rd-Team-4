@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: rag-cronjob-staging
+  namespace: argocd
+spec:
+  project: default
+  # rag-cronjob-production.yaml과 동일한 multi-source 구조 (거기 주석 참고).
+  sources:
+    - repoURL: https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4.git
+      targetRevision: backend
+      path: infra/k8s/overlays/rag-cronjob-staging
+    - repoURL: https://github.com/wownae-ct/health-ml.git
+      targetRevision: main
+      path: k8s/model-version
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: staging
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
