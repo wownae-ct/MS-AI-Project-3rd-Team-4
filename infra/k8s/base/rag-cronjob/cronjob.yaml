@@ -19,9 +19,25 @@ spec:
               image: team4hcacr-drascbaqe8f2gcca.azurecr.io/backend:latest
               imagePullPolicy: Always
               command: ["python", "-m", "rag.index"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: backend-kv-secrets
+                      key: DATABASE_URL
+                - name: DATABASE_AUTH_MODE
+                  value: "aad"
+                - name: AZURE_OPENAI_ENDPOINT
+                  valueFrom:
+                    secretKeyRef:
+                      name: backend-kv-secrets
+                      key: AZURE_OPENAI_ENDPOINT
               volumeMounts:
                 - name: kv-secrets
                   mountPath: /mnt/secrets
+                  readOnly: true
+                - name: rag-corpus
+                  mountPath: /app/data/rag_corpus
                   readOnly: true
           volumes:
             - name: kv-secrets
@@ -30,3 +46,6 @@ spec:
                 readOnly: true
                 volumeAttributes:
                   secretProviderClass: backend-kv
+            - name: rag-corpus
+              configMap:
+                name: rag-corpus
