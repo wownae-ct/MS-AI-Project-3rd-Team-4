@@ -45,9 +45,8 @@ RUN useradd --system --uid 10001 appuser
 COPY --from=builder /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 
-# WORKDIR는 필수다. 모델 경로 계약(backend/models/README.md)이 CWD 상대경로
-# `backend/models/`에 의존하고, deployment.yaml의 Init Container가 /app/backend/models에
-# 모델을 마운트한다. WORKDIR가 없으면 CWD가 /가 되어 그 계약이 깨진다.
+# WORKDIR는 필수다 — CMD의 모듈 경로(app.gateway.main:app)가 CWD 기준으로 resolve된다.
+# WORKDIR가 없으면 CWD가 /가 되어 venv의 site-packages에서 app 패키지를 못 찾는다.
 WORKDIR /app
 
 USER appuser

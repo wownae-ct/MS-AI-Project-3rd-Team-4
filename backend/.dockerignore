@@ -9,10 +9,6 @@ __pycache__
 # 테스트는 이미지에 넣지 않는다(pyproject의 wheel packages에도 없음).
 tests
 
-# ONNX 모델은 ml 레포가 Blob Storage에 올리고 Deployment의 fetch-model Init Container가
-# /app/backend/models 에 채운다 — 이미지에 굽지 않는다.
-models
-
 # 이미지 안에서 쓸 일이 없는 파일들
 Dockerfile
 .dockerignore

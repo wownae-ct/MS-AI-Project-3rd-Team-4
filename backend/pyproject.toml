@@ -1,17 +1,17 @@
 [project]
 name = "backend"
 version = "0.1.0"
-description = "AI 홈트레이닝 코치 백엔드 (T2~T4 에이전트 게이트웨이)"
+description = "브리프코치 백엔드 (S2~S5 에이전트 게이트웨이)"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "asyncpg>=0.29",
-    "sqlalchemy[asyncio]>=2.0",
     "pydantic>=2.8",
     "azure-identity>=1.17",
     "azure-keyvault-secrets>=4.8",
     "openai>=1.40",
+    "langgraph>=0.2",
 ]
 
 [project.optional-dependencies]

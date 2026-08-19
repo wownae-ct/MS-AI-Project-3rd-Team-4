@@ -5,14 +5,10 @@ metadata:
   namespace: argocd
 spec:
   project: default
-  # backend-production.yaml과 동일한 multi-source 구조 — rag-cronjob도 같은 model-version ConfigMap을 읽는다.
-  sources:
-    - repoURL: https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4.git
-      targetRevision: main
-      path: infra/k8s/overlays/rag-cronjob-production
-    - repoURL: https://github.com/wownae-ct/health-ml.git
-      targetRevision: main
-      path: k8s/model-version
+  source:
+    repoURL: https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4.git
+    targetRevision: main
+    path: infra/k8s/overlays/rag-cronjob-production
   destination:
     server: https://kubernetes.default.svc
     namespace: production
