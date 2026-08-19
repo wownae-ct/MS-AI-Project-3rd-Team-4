@@ -1,3 +1,4 @@
 # seed
 
-크로스핏 + 일반 헬스 동작 카탈로그 등 초기 데이터. ORM 모델(`backend/app/db/models/`)로 스키마 생성한 뒤 삽입.
+질문 뱅크(`question` 테이블, 20~30개, 브리프코치_프로젝트_기획서_초안.md §3) 등 초기 데이터.
+`db/migrations/0001_init.sql` 적용 후 SQL INSERT 스크립트로 삽입한다(ORM 없음). 아직 미작성.
