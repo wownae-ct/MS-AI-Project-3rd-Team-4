@@ -8,10 +8,12 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "asyncpg>=0.29",
     "pydantic>=2.8",
+    "pydantic-settings>=2.4",
     "azure-identity>=1.17",
     "azure-keyvault-secrets>=4.8",
     "openai>=1.40",
     "langgraph>=0.2",
+    "tiktoken>=0.7",
 ]
 
 [project.optional-dependencies]
@@ -24,6 +26,9 @@ dev = [
 
 [tool.ruff]
 line-length = 100
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
 
 [tool.hatch.build.targets.wheel]
 packages = ["app", "rag"]
