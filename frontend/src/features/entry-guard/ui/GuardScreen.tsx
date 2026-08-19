@@ -1,11 +1,11 @@
-// §6.2.1 진입 안내 화면 (P0) — 세션 시작 전에 표시. 자동 재시도·자동 새로고침 없음(규범 금지).
+// 진입 안내 화면 — 답변 녹음 세션 시작 전에 표시. 자동 재시도·자동 새로고침 없음.
 // 판정별 분기: in-app → 외부 브라우저 유도(탈출 3단계, URL 복사 항상 병행) /
 // iOS → 비지원 안내(탈출 유도 금지 — 탈출해도 WebKit) / unsupported-browser → 지원 브라우저 목록.
 import { useState } from "react";
 import { Banner, Button, IconCopy, IconExternalLink } from "../../../shared/ui";
 import { buildEscapeUrls, type EntryVerdict } from "../lib/detect";
 
-/** §6.3 지원 매트릭스 — 안내 문구용 (판정 자체는 기능 검사) */
+/** 지원 매트릭스 — 안내 문구용 (판정 자체는 기능 검사) */
 const SUPPORTED_BROWSERS = "Chrome · Edge · 삼성인터넷 · 웨일 (최신 버전)";
 
 export interface GuardScreenProps {
@@ -42,7 +42,7 @@ export function GuardScreen({ verdict, currentUrl }: GuardScreenProps) {
       <main className="page">
         <h1 className="page__title">외부 브라우저로 열어 주세요</h1>
         <p className="page__subtitle">
-          앱 내 브라우저에서는 카메라를 사용할 수 없어 세션을 시작할 수 없습니다. 아래 방법으로 기본
+          앱 내 브라우저에서는 마이크를 사용할 수 없어 답변을 녹음할 수 없습니다. 아래 방법으로 기본
           브라우저에서 다시 열어 주세요.
         </p>
         {verdict.isKakao && (
@@ -86,7 +86,7 @@ export function GuardScreen({ verdict, currentUrl }: GuardScreenProps) {
   return (
     <main className="page">
       <h1 className="page__title">지원하지 않는 브라우저입니다</h1>
-      <Banner variant="warning">이 브라우저에는 실시간 자세 분석에 필요한 기능이 없습니다.</Banner>
+      <Banner variant="warning">이 브라우저에는 답변 녹음에 필요한 기능이 없습니다.</Banner>
       <p className="page__subtitle">지원 브라우저로 다시 열어 주세요: {SUPPORTED_BROWSERS}</p>
       <UrlCopyRow url={currentUrl} />
     </main>

@@ -1,8 +1,8 @@
-// §6.2.1 진입 판정 테스트 — 실 UA 픽스처 기반. 특히 "웨일 브라우저를 인앱으로 오차단하지 않는가"가 1급 회귀다.
+// 진입 판정 테스트 — 실 UA 픽스처 기반. 특히 "웨일 브라우저를 인앱으로 오차단하지 않는가"가 1급 회귀다.
 import { describe, expect, it } from "vitest";
 import { buildEscapeUrls, isInAppBrowser, resolveEntryGuard, type FeatureSupport } from "./detect";
 
-const ALL_OK: FeatureSupport = { rvfc: true, getUserMedia: true, webSocket: true, offscreenCanvas: true, wakeLock: true };
+const ALL_OK: FeatureSupport = { getUserMedia: true, mediaRecorder: true };
 
 // 대표 UA 픽스처 (구조 재현 — 버전 문자열은 판정에 무관)
 const UA = {
@@ -42,7 +42,7 @@ describe("인앱 감지 (§6.2.1 UA 목록)", () => {
   });
 });
 
-describe("판정 우선순위 (§6.2.1)", () => {
+describe("판정 우선순위", () => {
   it("일반 Chrome Android + 전 기능 → ok", () => {
     expect(resolveEntryGuard(UA.chromeAndroid, ALL_OK)).toEqual({ kind: "ok" });
   });
@@ -55,7 +55,7 @@ describe("판정 우선순위 (§6.2.1)", () => {
     expect(resolveEntryGuard(UA.instagram, ALL_OK)).toEqual({ kind: "in-app", isKakao: false });
   });
 
-  it("iOS는 인앱 여부와 무관하게 비지원 안내 — 탈출해도 WebKit (§6.2.1)", () => {
+  it("iOS는 인앱 여부와 무관하게 비지원 안내 — 탈출해도 WebKit", () => {
     expect(resolveEntryGuard(UA.iosSafari, ALL_OK)).toEqual({ kind: "unsupported-ios" });
     expect(resolveEntryGuard(UA.iosKakao, ALL_OK)).toEqual({ kind: "unsupported-ios" });
   });
@@ -68,13 +68,13 @@ describe("판정 우선순위 (§6.2.1)", () => {
     expect(resolveEntryGuard(ipadDesktopUa, ALL_OK, { maxTouchPoints: 0 })).toEqual({ kind: "ok" });
   });
 
-  it("rVFC 부재 = 비지원 브라우저 — rAF 폴백이 아니라 안내 화면 (§4.1 C-10)", () => {
-    const verdict = resolveEntryGuard(UA.chromeAndroid, { ...ALL_OK, rvfc: false });
-    expect(verdict).toEqual({ kind: "unsupported-browser", missing: ["rvfc"] });
+  it("MediaRecorder 부재 = 비지원 브라우저 — 답변 녹음이 불가능하므로 안내 화면", () => {
+    const verdict = resolveEntryGuard(UA.chromeAndroid, { ...ALL_OK, mediaRecorder: false });
+    expect(verdict).toEqual({ kind: "unsupported-browser", missing: ["mediaRecorder"] });
   });
 });
 
-describe("탈출 3단계 URL (§6.2.1 C2-03)", () => {
+describe("탈출 3단계 URL", () => {
   const current = "https://app.example.com/session/start?m=squat";
 
   it("① 카카오 전용 스킴 — URL 인코딩 필수", () => {

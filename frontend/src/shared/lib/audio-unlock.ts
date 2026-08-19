@@ -1,5 +1,5 @@
-// §4.5.2 오디오 언락 — 공식 패턴: 제스처 전 생성된 AudioContext는 'suspended'로 시작하므로
-// 세션 시작 버튼(제스처) 핸들러 안에서 resume()을 호출한다 (Wake Lock §5.3과 동일 핸들러).
+// 오디오 언락 — 공식 패턴: 제스처 전 생성된 AudioContext는 'suspended'로 시작하므로
+// 세션 시작 버튼(제스처) 핸들러 안에서 resume()을 호출한다 (Wake Lock과 동일 핸들러).
 // state !== 'running'이면 세션 시작을 차단하고 안내한다. 무음 버퍼 재생 기법은 쓰지 않는다(비공식 구전).
 
 export type AudioUnlockState = "locked" | "running" | "blocked" | "unsupported";
@@ -34,8 +34,8 @@ export class AudioUnlock {
   }
 
   /**
-   * 세션 시작 제스처 핸들러 안에서 호출한다. false면 세션 시작을 차단한다 (§4.5.2 —
-   * 조용한 실패 금지: 상태는 onStateChange로 안내 UI에 반영).
+   * 세션 시작 제스처 핸들러 안에서 호출한다. false면 세션 시작을 차단한다 —
+   * 조용한 실패 금지: 상태는 onStateChange로 안내 UI에 반영.
    */
   async unlockFromGesture(): Promise<boolean> {
     if (!this.createContext) {

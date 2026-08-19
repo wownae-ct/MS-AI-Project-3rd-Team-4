@@ -1,19 +1,20 @@
-// app 조립 (§6.1.1) — 진입 판정 → 화면 페이즈 전환 → 세션 제스처(오디오 언락 §4.5.2 + Wake Lock §5.3) 배선.
-// features 간 연결은 여기(app)와 pages/session만 담당한다. 스토어 값은 props로 하향 주입 (pages는 app import 금지).
-// 화면 전환은 선형 플로우(선택→세션→리포트)라 상태 기반 — 라우터 도입은 의존성 추가 승인 대상이라 보류.
-import { useEffect, useRef, useState } from "react";
+// app 조립 — 진입 판정 → 화면 페이즈 전환(연습→피드백→히스토리) → 녹음 제스처(오디오 언락 + Wake Lock) 배선.
+// features 간 연결은 여기(app)와 각 page만 담당한다. 스토어 값은 props로 하향 주입 (pages는 app import 금지).
+// 화면 전환은 선형 플로우라 상태 기반 — 라우터 도입은 의존성 추가 승인 대상이라 보류.
+import { useRef, useState } from "react";
 import { useStore } from "zustand";
 import { collectFeatureSupport, GuardScreen, resolveEntryGuard, type EntryVerdict } from "../features/entry-guard";
-import { MovementSelectPage } from "../pages/movement-select";
-import { SessionPage } from "../pages/session";
+import { PracticeSessionPage } from "../pages/practice-session";
+import { FeedbackPage } from "../pages/feedback";
 import { ReportPage } from "../pages/report";
 import { AudioUnlock, WakeLockManager, type AudioUnlockState, type WakeLockState } from "../shared/lib";
-import { sessionStore } from "./store/session-store";
+import { practiceStore } from "./store/practice-store";
+import type { QuestionCategory } from "../entities/question";
 
-type Phase = "select" | "session" | "report";
+type Phase = "practice" | "feedback" | "report";
 
 interface AppProps {
-  /** 테스트 주입용 — 미지정 시 실제 UA·기능 검사로 판정 (§6.2.1) */
+  /** 테스트 주입용 — 미지정 시 실제 UA·기능 검사로 판정 */
   guardVerdict?: EntryVerdict;
 }
 
@@ -23,11 +24,10 @@ function App({ guardVerdict }: AppProps) {
     () =>
       guardVerdict ??
       resolveEntryGuard(navigator.userAgent, collectFeatureSupport(), {
-        maxTouchPoints: navigator.maxTouchPoints, // iPadOS 13+ 데스크톱 UA 검출 축 (§6.2.1)
+        maxTouchPoints: navigator.maxTouchPoints,
       }),
   );
-  const [phase, setPhase] = useState<Phase>("select");
-  const [sessionActive, setSessionActive] = useState(false);
+  const [phase, setPhase] = useState<Phase>("practice");
 
   const [wakeLockState, setWakeLockState] = useState<WakeLockState>("inactive");
   const [audioState, setAudioState] = useState<AudioUnlockState>("locked");
@@ -36,88 +36,57 @@ function App({ guardVerdict }: AppProps) {
   const audioRef = useRef<AudioUnlock | null>(null);
   audioRef.current ??= new AudioUnlock({ onStateChange: setAudioState });
 
-  const repCount = useStore(sessionStore, (s) => s.repCount);
-  const setIndex = useStore(sessionStore, (s) => s.setIndex);
-  const currentFaultCode = useStore(sessionStore, (s) => s.currentFaultCode);
-  const connection = useStore(sessionStore, (s) => s.connection);
-
-  // §5.3 재획득은 visible/pageshow 복귀에서만 · §5.1 pagehide에서 명시 해제
-  useEffect(() => {
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") void wakeRef.current?.reacquireOnReturn();
-    };
-    // §5.2 — bfcache 복원 경로만 (persisted). 초기 로드 pageshow까지 재획득을 태우면 visible 경로와 중복 발화한다
-    const onPageShow = (e: PageTransitionEvent) => {
-      if (e.persisted) void wakeRef.current?.reacquireOnReturn();
-    };
-    const onPageHide = () => void wakeRef.current?.release();
-    document.addEventListener("visibilitychange", onVisibility);
-    window.addEventListener("pageshow", onPageShow);
-    window.addEventListener("pagehide", onPageHide);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
-      window.removeEventListener("pageshow", onPageShow);
-      window.removeEventListener("pagehide", onPageHide);
-    };
-  }, []);
+  const category = useStore(practiceStore, (s) => s.category);
+  const recordingState = useStore(practiceStore, (s) => s.recordingState);
 
   if (verdict.kind !== "ok") {
     return <GuardScreen verdict={verdict} currentUrl={window.location.href} />;
   }
 
-  // §4.5.2·§5.3 — 동일 제스처 핸들러에서 오디오 언락과 Wake Lock을 함께 수행.
-  // 오디오가 running이 아니면 세션 시작 차단(P0에 준하는 규범) · Wake Lock 실패는 차단이 아니라 배너.
-  const startSessionGesture = async (): Promise<void> => {
+  // 동일 제스처 핸들러에서 오디오 언락과 Wake Lock을 함께 수행.
+  // 오디오가 running이 아니면 녹음 시작 차단 · Wake Lock 실패는 차단이 아니라 배너.
+  const startRecordingGesture = async (): Promise<void> => {
     const audioOk = await audioRef.current?.unlockFromGesture();
     if (!audioOk) return;
     await wakeRef.current?.acquireFromGesture();
-    setSessionActive(true);
-    // M2·M3: 여기서 티켓 발급→WS 연결, 카메라 획득→Worker 파이프라인이 이어진다
+    practiceStore.getState().setRecordingState("recording");
+    // 다음 단계: 여기서 MediaRecorder 시작 → 타이머 종료 시 자동 제출로 이어진다
   };
 
-  const endSession = (): void => {
+  const submitAnswer = (): void => {
     void wakeRef.current?.release();
-    setSessionActive(false);
-    setPhase("report");
+    practiceStore.getState().setRecordingState("processing");
+    // 다음 단계: shared/api/answers.ts submitAnswer + SSE 피드백 스트림 연동
+    setPhase("feedback");
   };
 
-  if (phase === "select") {
+  if (phase === "practice") {
     return (
-      <MovementSelectPage
-        onStart={(movementId) => {
-          // 운동 코드는 rule_params 수신(§4.5.1)·세션 생성의 키 — 세션 상태에 보관
-          sessionStore.getState().setMovement(movementId);
-          setPhase("session");
-        }}
+      <PracticeSessionPage
+        category={category}
+        onSelectCategory={(c: QuestionCategory) => practiceStore.getState().selectQuestion(c, c)}
+        audioState={audioState}
+        wakeLockState={wakeLockState}
+        recordingState={recordingState}
+        onStartGesture={() => void startRecordingGesture()}
+        onSubmit={submitAnswer}
       />
     );
   }
-  if (phase === "session") {
+  if (phase === "feedback") {
     return (
-      <SessionPage
-        connection={connection}
-        repCount={repCount}
-        setIndex={setIndex}
-        currentFaultCode={currentFaultCode}
-        wakeLockState={wakeLockState}
-        audioState={audioState}
-        coachingNotice={null} /* M4 잔여: params-loader 연동 시 §4.5.1 강등 상태 반영 */
-        showManualReconnect={false} /* M2: 「백오프」 수동 버튼 조건 연동 */
-        sessionActive={sessionActive}
-        cueCaption={null} /* M4 잔여: CueScheduler 재생 콜백에서 자막 주입 */
-        onStartGesture={() => void startSessionGesture()}
-        onEndSession={endSession}
-        onManualReconnect={() => undefined}
+      <FeedbackPage
+        feedback={null}
+        metrics={null}
+        onNext={() => setPhase("report")}
       />
     );
   }
   return (
     <ReportPage
-      repCount={repCount}
-      setIndex={setIndex}
       onRestart={() => {
-        sessionStore.getState().resetSession();
-        setPhase("select");
+        practiceStore.getState().reset();
+        setPhase("practice");
       }}
     />
   );
