@@ -106,7 +106,7 @@ module staticwebapp 'modules/staticwebapp.bicep' = {
   }
 }
 
-// 8) ML 모델 아티팩트 Blob 저장소 — ml 레포가 업로드, AKS Init Container가 다운로드(ConfigMap의 버전 태그 기준). 읽기 권한도 모듈 내부에서 처리
+// 8) 범용 Blob 저장소 — 답변 오디오 저장용으로 재사용 예정(컨테이너/RBAC는 미구현, storage.bicep TODO 참고)
 module storage 'modules/storage.bicep' = {
   name: 'storage'
   params: {
