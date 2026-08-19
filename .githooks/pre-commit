@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 커밋 전 검증 파이프라인. 순서: ①보호 브랜치 ②충돌 마커 ③CRLF 줄바꿈 ④대용량 파일
-# ⑤시크릿 ⑥백엔드 lint/format(변경분만) ⑦프론트 lint(변경분만, 툴 설치 시).
+# ⑤시크릿 ⑥백엔드 lint/format(변경분만) ⑦프론트 lint(변경분만, 툴 설치 시) ⑧실행권한.
 # 실무 기준: pre-commit은 "빠르게" 끝나야 한다 — 전체 테스트 스위트는 여기서 안 돌리고
 # CI/pre-push 몫으로 남긴다. 여기 있는 건 전부 초 단위로 끝나는 정적 검사뿐이다.
 set -eo pipefail
@@ -72,12 +72,25 @@ fi
 ok "대용량 파일 없음(<${MAX_SIZE_KB}KB)"
 
 # ── ⑤ 시크릿 스캔 — gitleaks (.gitleaks.toml 설정 사용) ──
+# 명령이 `protect`에서 `git --pre-commit --staged`로 바뀐 이유: gitleaks v8.19.0이 detect/protect를
+# deprecated 처리하고 git/dir/stdin 체계로 재편했다. protect는 --help에서 숨겨진 채 아직 돌지만
+# 언제 제거될지 모르는 상태라 지금 옮겨둔다(공식 마이그레이션 gist 기준).
 if ! command -v gitleaks &> /dev/null; then
   warn "gitleaks가 설치되어 있지 않습니다 — 시크릿 검사를 건너뜁니다."
-  warn "설치: https://github.com/gitleaks/gitleaks (winget install gitleaks 또는 scoop install gitleaks)"
+  warn "설치: https://github.com/gitleaks/gitleaks/releases (리눅스/WSL: gitleaks_<버전>_linux_x64.tar.gz)"
+  warn "      Windows는 winget install gitleaks 또는 scoop install gitleaks"
 else
-  echo "gitleaks: 스테이징된 변경분에서 시크릿 검사 중..."
-  if gitleaks protect --staged --redact --verbose; then
+  # `git` 서브커맨드는 8.19.0부터 존재한다. 그 미만이면 아래 명령이 "unknown command"로 죽는데,
+  # 조용히 넘기지 않고 왜 검사를 못 하는지 명시하고 막는다.
+  gl_version=$(gitleaks version 2>/dev/null | tr -d 'v' | head -1)
+  gl_major=${gl_version%%.*}
+  gl_minor=$(echo "$gl_version" | cut -d. -f2)
+  if [[ -z "$gl_version" ]] || (( gl_major < 8 )) || { (( gl_major == 8 )) && (( gl_minor < 19 )); }; then
+    fail "gitleaks ${gl_version:-버전확인불가}는 너무 낮습니다 — 8.19.0 이상이 필요합니다(git 서브커맨드 도입 버전). https://github.com/gitleaks/gitleaks/releases 에서 갱신하세요."
+  fi
+
+  echo "gitleaks: 스테이징된 변경분에서 시크릿 검사 중... (v$gl_version)"
+  if gitleaks git --pre-commit --staged --redact --verbose .; then
     ok "gitleaks: 시크릿 없음"
   else
     echo ""
@@ -122,6 +135,22 @@ if [[ -n "$fe_files" ]]; then
     fi
     ok "프론트 lint 통과"
   fi
+fi
+
+# ── ⑧ 실행권한 — 셸 스크립트/훅이 인덱스 모드 100755로 커밋되는지 확인 ──
+# 워킹트리 chmod는 커밋에 안 들어간다. 실행권한이 빠지면 ./scripts/*.sh는 Permission denied로
+# 죽고, .githooks/*는 git이 아무 말 없이 건너뛰어 이 게이트 자체가 통째로 무력화된다.
+# 실제로 머지 커밋 d63a717이 b7febe4의 deploy-infra.sh 실행권한을 되돌린 사고가 있었다.
+# 규칙은 .githooks/check-exec-bits.sh 한 곳에만 두고 CI(repo-hygiene.yml)도 같은 파일을 쓴다.
+checker="$(git rev-parse --show-toplevel)/.githooks/check-exec-bits.sh"
+if [[ ! -f "$checker" ]]; then
+  # 조용히 넘어가지 않는다 — 검사가 빠졌다는 사실을 반드시 알린다.
+  warn "$checker 가 없습니다 — 실행권한 검사를 건너뜁니다(sparse-checkout에서 .githooks/가 빠졌을 수 있음)."
+else
+  if ! bash "$checker" --staged; then
+    fail "실행권한이 없는 셸 스크립트/훅이 스테이징되어 있습니다 — 위 'git update-index --chmod=+x' 명령을 실행한 뒤 다시 커밋하세요."
+  fi
+  ok "실행권한 정상(스테이징 대상)"
 fi
 
 echo -e "${GREEN}모든 pre-commit 검사 통과 — 커밋 진행.${NC}"
