@@ -72,12 +72,25 @@ fi
 ok "대용량 파일 없음(<${MAX_SIZE_KB}KB)"
 
 # ── ⑤ 시크릿 스캔 — gitleaks (.gitleaks.toml 설정 사용) ──
+# 명령이 `protect`에서 `git --pre-commit --staged`로 바뀐 이유: gitleaks v8.19.0이 detect/protect를
+# deprecated 처리하고 git/dir/stdin 체계로 재편했다. protect는 --help에서 숨겨진 채 아직 돌지만
+# 언제 제거될지 모르는 상태라 지금 옮겨둔다(공식 마이그레이션 gist 기준).
 if ! command -v gitleaks &> /dev/null; then
   warn "gitleaks가 설치되어 있지 않습니다 — 시크릿 검사를 건너뜁니다."
-  warn "설치: https://github.com/gitleaks/gitleaks (winget install gitleaks 또는 scoop install gitleaks)"
+  warn "설치: https://github.com/gitleaks/gitleaks/releases (리눅스/WSL: gitleaks_<버전>_linux_x64.tar.gz)"
+  warn "      Windows는 winget install gitleaks 또는 scoop install gitleaks"
 else
-  echo "gitleaks: 스테이징된 변경분에서 시크릿 검사 중..."
-  if gitleaks protect --staged --redact --verbose; then
+  # `git` 서브커맨드는 8.19.0부터 존재한다. 그 미만이면 아래 명령이 "unknown command"로 죽는데,
+  # 조용히 넘기지 않고 왜 검사를 못 하는지 명시하고 막는다.
+  gl_version=$(gitleaks version 2>/dev/null | tr -d 'v' | head -1)
+  gl_major=${gl_version%%.*}
+  gl_minor=$(echo "$gl_version" | cut -d. -f2)
+  if [[ -z "$gl_version" ]] || (( gl_major < 8 )) || { (( gl_major == 8 )) && (( gl_minor < 19 )); }; then
+    fail "gitleaks ${gl_version:-버전확인불가}는 너무 낮습니다 — 8.19.0 이상이 필요합니다(git 서브커맨드 도입 버전). https://github.com/gitleaks/gitleaks/releases 에서 갱신하세요."
+  fi
+
+  echo "gitleaks: 스테이징된 변경분에서 시크릿 검사 중... (v$gl_version)"
+  if gitleaks git --pre-commit --staged --redact --verbose .; then
     ok "gitleaks: 시크릿 없음"
   else
     echo ""
