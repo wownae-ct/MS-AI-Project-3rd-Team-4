@@ -1,5 +1,5 @@
 // @vitest-environment node
-// §5.3 세칙 전건 검증 — 특히 "hidden 중 request 금지"·"auto/수동 release 구분 계측"이 1급 회귀다.
+// 세칙 전건 검증 — 특히 "hidden 중 request 금지"·"auto/수동 release 구분 계측"이 1급 회귀다.
 import { describe, expect, it, vi } from "vitest";
 import { WakeLockManager, type WakeLockState, type WakeLockTelemetryEvent } from "./wake-lock";
 
@@ -45,7 +45,7 @@ function setup(opts: { failTimes?: number; visibility?: DocumentVisibilityState 
   return { manager, request, sentinels, states, events };
 }
 
-describe("WakeLockManager (§5.3)", () => {
+describe("WakeLockManager", () => {
   it("제스처 획득 성공 → active, request('screen') 1회", async () => {
     const { manager, request, states } = setup();
     await expect(manager.acquireFromGesture()).resolves.toBe(true);

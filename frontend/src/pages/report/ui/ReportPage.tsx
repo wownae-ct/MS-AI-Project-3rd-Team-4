@@ -1,32 +1,17 @@
-// 세션 리포트 화면 (§6.1) — 서버 판정 리포트(verdict 이력·정확도)는 M2 이후 연동. 지금은 로컬 요약만.
+// 세션 히스토리·리포트 화면 — 날짜별 세션 리스트 + 추이 차트 + 다음 연습 추천.
+// 브리프코치_프로젝트_기획서_초안.md §4 화면 3. 비동기 리포트 워커 연동은 이번 단계 범위 밖.
 import { Banner, Button } from "../../../shared/ui";
 
 export interface ReportPageProps {
-  repCount: number;
-  setIndex: number;
   onRestart: () => void;
 }
 
-export function ReportPage({ repCount, setIndex, onRestart }: ReportPageProps) {
+export function ReportPage({ onRestart }: ReportPageProps) {
   return (
     <main className="page">
-      <h1 className="page__title">세션 리포트</h1>
-      <div className="stat-row" aria-label="세션 결과">
-        <div className="stat">
-          <span className="stat__value">{repCount}</span>
-          <span className="stat__label">총 렙</span>
-        </div>
-        <div className="stat">
-          <span className="stat__value">{setIndex + 1}</span>
-          <span className="stat__label">세트</span>
-        </div>
-        <div className="stat">
-          <span className="stat__value">—</span>
-          <span className="stat__label">정확도</span>
-        </div>
-      </div>
-      <Banner variant="info">상세 판정 리포트는 서버 연동 후 제공됩니다.</Banner>
-      <Button onClick={onRestart}>새 세션 시작</Button>
+      <h1 className="page__title">세션 히스토리</h1>
+      <Banner variant="info">추이 리포트는 세션이 쌓인 뒤 서버 연동 후 제공됩니다.</Banner>
+      <Button onClick={onRestart}>새 연습 시작</Button>
     </main>
   );
 }

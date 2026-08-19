@@ -1,5 +1,5 @@
 // @vitest-environment node
-// §4.5.2 — "running 아니면 세션 차단"이 핵심 회귀다.
+// "running 아니면 세션 차단"이 핵심 회귀다.
 import { describe, expect, it } from "vitest";
 import { AudioUnlock, type AudioUnlockState } from "./audio-unlock";
 
@@ -13,7 +13,7 @@ function fakeContext(behavior: "resumes" | "stays-suspended" | "rejects") {
   };
 }
 
-describe("AudioUnlock (§4.5.2)", () => {
+describe("AudioUnlock", () => {
   it("제스처 resume 성공 → running, context 노출", async () => {
     const states: AudioUnlockState[] = [];
     const unlock = new AudioUnlock({ createContext: () => fakeContext("resumes"), onStateChange: (s) => states.push(s) });
