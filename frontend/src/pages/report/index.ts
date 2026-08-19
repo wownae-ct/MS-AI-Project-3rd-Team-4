@@ -1,2 +1,2 @@
-// pages/report public API (§6.1.1)
+// pages/report public API
 export { ReportPage, type ReportPageProps } from "./ui/ReportPage";

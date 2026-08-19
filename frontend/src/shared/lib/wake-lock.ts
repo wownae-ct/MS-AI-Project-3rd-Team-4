@@ -1,11 +1,11 @@
-// §5.3 Screen Wake Lock (P0) — OS 화면 잠금에 의한 세션 단절을 발생 자체에서 차단하는 1차 방어.
-// 규범 세칙: ① 획득은 세션 시작 제스처 핸들러 안(오디오 언락과 동일 핸들러) ② WakeLockSentinel의
+// Screen Wake Lock — OS 화면 잠금에 의한 세션 단절을 발생 자체에서 차단하는 1차 방어.
+// 규칙: ① 획득은 세션 시작 제스처 핸들러 안(오디오 언락과 동일 핸들러) ② WakeLockSentinel의
 // release 이벤트 필수 구독(배터리 부족·절전에서도 자동 해제됨 — 단일 핸들러에서 상태 반영+계측)
 // ③ 재획득은 visible/pageshow 복귀에서만 — hidden 중 request() 금지(거부됨) ④ 실패 시 배너.
 
 export type WakeLockState = "inactive" | "active" | "released-auto" | "failed" | "unsupported";
 
-/** §6.5 wake_lock_failure_rate 계측 이벤트 — release 이벤트 핸들러에서 계상 */
+/** wake_lock_failure_rate 계측 이벤트 — release 이벤트 핸들러에서 계상 */
 export type WakeLockTelemetryEvent = "acquire_failed" | "reacquire_failed" | "auto_released";
 
 interface WakeLockLike {
@@ -18,7 +18,7 @@ interface WakeLockSentinelLike {
 }
 
 export interface WakeLockManagerOptions {
-  /** 배너 표시 등 UI 반영 (§5.3 실패 시 배너) */
+  /** 배너 표시 등 UI 반영 (실패 시 배너) */
   onStateChange?: (state: WakeLockState) => void;
   onTelemetry?: (event: WakeLockTelemetryEvent) => void;
   /** 테스트 주입 — 미지정 시 navigator.wakeLock */
@@ -38,7 +38,7 @@ export class WakeLockManager {
   private wanted = false;
   /** 수동 release 중임을 표시 — release 이벤트 단일 핸들러가 auto와 구분하는 근거 */
   private releasingIntentionally = false;
-  /** 진행 중 request — pageshow와 visibilitychange(visible)가 연달아 발화해도 획득은 1회만 (§5.2 이중 발화) */
+  /** 진행 중 request — pageshow와 visibilitychange(visible)가 연달아 발화해도 획득은 1회만 (이중 발화 방지) */
   private pendingRequest: Promise<boolean> | null = null;
 
   state: WakeLockState = "inactive";
@@ -62,13 +62,13 @@ export class WakeLockManager {
     this.onStateChange(state);
   }
 
-  /** 세션 시작 제스처 핸들러에서 호출한다 (§5.3 — 제스처 밖 호출은 플랫폼이 거부할 수 있음) */
+  /** 세션 시작 제스처 핸들러에서 호출한다 (제스처 밖 호출은 플랫폼이 거부할 수 있음) */
   async acquireFromGesture(): Promise<boolean> {
     this.wanted = true;
     return this.request("acquire_failed");
   }
 
-  /** visible/pageshow 복귀 경로 전용 (§5.2·§5.3) — 다른 곳에서 호출하지 않는다 */
+  /** visible/pageshow 복귀 경로 전용 — 다른 곳에서 호출하지 않는다 */
   async reacquireOnReturn(): Promise<boolean> {
     if (!this.wanted) return false; // 세션이 원한 적 없거나 수동 해제됨 — 재획득 대상 아님
     return this.request("reacquire_failed");
@@ -91,7 +91,7 @@ export class WakeLockManager {
       try {
         const sentinel = await wakeLock.request("screen");
         this.sentinel = sentinel;
-        // release 이벤트 필수 구독 — 해제 사유와 무관한 단일 핸들러 (§5.3 C2-02)
+        // release 이벤트 필수 구독 — 해제 사유와 무관한 단일 핸들러
         sentinel.addEventListener("release", () => {
           // 정체성 검사: 교체된 구 sentinel의 지연 이벤트가 현재 참조·상태를 건드리지 못하게 한다
           if (this.sentinel !== sentinel) return;
@@ -108,7 +108,7 @@ export class WakeLockManager {
         return true;
       } catch {
         this.onTelemetry(failureEvent);
-        this.setState("failed"); // §5.3 — 배너 표시 (onStateChange 경유)
+        this.setState("failed"); // 배너 표시 (onStateChange 경유)
         return false;
       } finally {
         this.pendingRequest = null;
@@ -117,7 +117,7 @@ export class WakeLockManager {
     return this.pendingRequest;
   }
 
-  /** 수동 해제 — pagehide/freeze·세션 종료 경로 (§5.1·§5.2) */
+  /** 수동 해제 — pagehide/freeze·세션 종료 경로 */
   async release(): Promise<void> {
     this.wanted = false;
     const sentinel = this.sentinel;
