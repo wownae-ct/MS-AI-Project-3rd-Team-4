@@ -11,6 +11,9 @@ spec:
     spec:
       backoffLimit: 0
       template:
+        metadata:
+          labels:
+            azure.workload.identity/use: "true"
         spec:
           serviceAccountName: backend-sa
           restartPolicy: Never
