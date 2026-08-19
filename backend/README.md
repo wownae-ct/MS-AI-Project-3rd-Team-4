@@ -1,6 +1,7 @@
 # backend
 
-FastAPI(asyncio) 게이트웨이 + 에이전트 서비스. SQLAlchemy(async) ORM 사용, 마이그레이션 파일 없음(`db/` 참고).
+FastAPI(asyncio) 게이트웨이 + 에이전트 서비스. ORM 없이 순수 SQL(asyncpg) — 스키마는 번호 붙인
+마이그레이션 파일로 관리한다(`db/` 참고).
 
 ```
 app/
@@ -16,7 +17,7 @@ app/
   orchestration/ LangGraph 4-노드 그래프(extract_metrics→coach_agent→verify_agent→finalize)
   stt/         음성 인식 (Whisper / gpt-4o-transcribe)
   db/
-    models/    SQLAlchemy ORM 모델
+    queries/   테이블/기능별 순수 SQL 쿼리 함수 (ORM 매핑 없음)
   core/        설정, 공용 스키마
 rag/
   index/       오프라인 인덱싱 — data/rag_corpus(화법 가이드 정제 문서)를 청킹·임베딩·pgvector upsert (수동/배치, 요청 경로 아님)
