@@ -1,2 +1,2 @@
-"""SQLAlchemy(async, asyncpg 드라이버) ORM 계층. 세션/엔진 설정 + models/ 하위 테이블 정의.
-스키마는 마이그레이션 파일 없이 ORM 메타데이터로 직접 생성한다(Base.metadata.create_all)."""
+"""asyncpg 커넥션 풀. ORM 없이 순수 SQL — 쿼리는 app/db/queries/에 함수로 작성한다.
+스키마는 db/migrations/의 번호 붙인 SQL 파일 + db/migrate.py 러너로 관리(Alembic 등 프레임워크 없음)."""

@@ -19,9 +19,6 @@ spec:
               image: team4hcacr-drascbaqe8f2gcca.azurecr.io/backend:latest
               imagePullPolicy: Always
               command: ["python", "-m", "rag.index"]
-              envFrom:
-                - configMapRef:
-                    name: model-version
               volumeMounts:
                 - name: kv-secrets
                   mountPath: /mnt/secrets
