@@ -151,7 +151,17 @@ ml팀 입장에서 매번 이 레포에 PR 올려야 하는 게 번거롭고 수
 | `AZURE_SUBSCRIPTION_ID` | `az account show --query id -o tsv` | |
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | `az staticwebapp secrets list --name <prefix>-swa --resource-group <RG> --query properties.apiKey -o tsv` | SWA는 OIDC 미지원이라 이것만 예외적으로 장기 토큰 사용 |
 | `VITE_API_BASE` | 프론트 빌드 시 주입할 백엔드 API 주소(P3에서 확정한 production 호스트) | cert-manager 인증서 발급 확인 후 등록 |
-| `POSTGRES_ADMIN_PASSWORD` | `infra/.env`의 값 그대로 | **여기 README/문서에 실제 값 절대 적지 말 것** — 평문 커밋된 적 있어서(2026-08-13) git 히스토리까지 재작성해서 지운 전례 있음 |
+| `POSTGRES_ADMIN_PASSWORD` | `infra/.env`의 값 그대로 | **여기 README/문서에 실제 값 절대 적지 말 것** — 평문 커밋된 적 있음(2026-08-13). ⚠️ 아래 "히스토리 잔존" 참고 |
+
+> **⚠️ 이 문서의 이전 기술은 사실과 달랐다 (2026-08-19 정정)**
+>
+> 예전에 여기 "git 히스토리까지 재작성해서 지운 전례 있음"이라고 적혀 있었다. **재작성은 없었다.**
+> `595a12f`는 파일 내용에서만 지웠고, 평문 값은 지금도 **11개 커밋**에 남아 있다
+> (`main`·`backend`·`feature/backend` 세 브랜치 모두의 조상 — GitHub compare API로 확인).
+> 브랜치 tip은 모두 깨끗하지만, 저장소 접근 권한이 있으면 히스토리에서 복원할 수 있다.
+>
+> 이 문장이 제일 위험했다 — 팀이 "이미 정리됐다"고 믿게 만들어 **대응이 필요하다는 판단 자체를
+> 막고 있었기 때문**이다. 대응 방법과 판단 근거는 [시크릿-회전.md](./시크릿-회전.md) 참고.
 
 ### GitHub Variables (Settings → Secrets and variables → Actions → Variables)
 
