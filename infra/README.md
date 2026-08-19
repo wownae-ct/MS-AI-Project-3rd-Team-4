@@ -40,13 +40,12 @@ flowchart LR
     end
     subgraph Data["데이터"]
         PG["PostgreSQL Flexible<br/>+ pgvector"]
-        BLOB["Blob Storage<br/>ONNX 모델 아티팩트"]
+        BLOB["Blob Storage<br/>(답변 오디오, 재사용 예정)"]
     end
     KV["Key Vault"]
     ACR["Container Registry"]
     SWA["Static Web Apps"]
     LAW["Log Analytics"]
-    ML["ml 레포<br/>(로컬 학습)"]
 
     USERS -- "aicoach-production...cloudapp.azure.com (HTTPS)" --> ING
     USERS -- "nip.io (HTTPS, 내부 점검용)" --> ING
@@ -59,8 +58,6 @@ flowchart LR
     ARGO_BP -- sync --> NS_P
     ARGO_RP -- sync --> NS_P
     FCI -- OIDC 불가, 배포토큰 --> SWA
-    ML -- "az storage blob upload" --> BLOB
-    GW_S & GW_P -- "Init Container가 MODEL_VERSION(ConfigMap) 기준 다운로드" --> BLOB
     GW_S & GW_P & CJ_S & CJ_P -- Workload Identity --> KV
     GW_S & GW_P --> AOAI
     GW_S & GW_P --> PG
@@ -76,7 +73,7 @@ flowchart LR
 | **Container Registry** | 백엔드 이미지(backend Deployment와 rag-reindex CronJob이 같은 이미지 공유). kubelet identity에 AcrPull, ArgoCD Image Updater는 전용 Workload Identity로 AcrPull(정적 토큰 없음) |
 | **Key Vault** | 시크릿 저장(Azure OpenAI 키, DB 연결정보 등). RBAC 인증, 앱은 Workload Identity로 직접 조회 |
 | **PostgreSQL Flexible Server** | 세션/판정/트레이스 + pgvector(RAG). `azure.extensions=VECTOR` 활성화. MVP는 public+방화벽(VNet 미사용). AAD 인증을 비밀번호 인증과 병행(backend Managed Identity가 AAD 관리자로 등록) |
-| **Blob Storage** | ml 레포가 학습한 ONNX 모델 아티팩트. `models/<version>/model.onnx` 경로 규칙, backend workload identity에 Blob 읽기 권한만 부여 |
+| **Blob Storage** | 범용 저장소. 이전엔 ml 레포의 ONNX 모델 아티팩트용이었으나(TCN 제거로 사용 종료), 답변 오디오 저장 용도로 재사용 예정 — 컨테이너/RBAC는 미구현(`infra/bicep/modules/storage.bicep` TODO 참고) |
 | **Azure OpenAI** | `chat`(gpt-5.4) + `chat-mini`(gpt-5.4-mini, coach/safety/planner) + `embedding`(text-embedding-3-small, retriever/rag 인덱싱) 배포 분리. **API 키 완전 비활성화**(`disableLocalAuth: true`) — backend Managed Identity에 "Cognitive Services OpenAI User" RBAC만 부여 |
 | **Static Web Apps** | 프론트엔드 정적 호스팅 (Free) |
 | **Log Analytics + App Insights** | AKS Container Insights + 앱 관측성 |
@@ -93,21 +90,9 @@ flowchart LR
 backend와 rag는 **같은 브랜치(backend/main), 같은 Docker 이미지**를 쓰지만(코드가 `backend/rag/`에 같이 있음, pgvector라 DB 커넥션도 공유)
 배포 단위(ArgoCD Application)만 나눠서, RAG 재인덱싱을 상시 서빙 Deployment 재시작 없이 독립적으로 sync/pause할 수 있게 했다.
 
-## ML 모델 버전 관리 (ml 레포 multi-source + Reloader, 2026-08-13 개편)
-
-1. ml 레포가 로컬 학습 → `az storage blob upload`로 `models/<version>/model.onnx` 업로드
-2. ml 레포 자신의 `k8s/model-version/configmap-model-version.yaml`(`MODEL_VERSION`)을 그 버전으로 **바로 커밋**
-   (이 레포에 PR 필요 없음 — ml팀 소유 레포라 리뷰 없이 자기 파이프라인이 바로 반영)
-3. `infra/k8s/apps/{backend,rag-cronjob}-*.yaml`의 ArgoCD Application이 **multi-source**로 이 레포(overlay)와
-   ml 레포(`k8s/model-version/`)를 같은 네임스페이스에 같이 배포 — ArgoCD가 ml 레포 변경을 감지해서 ConfigMap을 갱신
-4. **Reloader**(`infra/ansible/playbooks/bootstrap-cluster.yml`가 설치)가 그 ConfigMap 변경을 감지해서 backend
-   Deployment를 자동 롤링 재시작(`reloader.stakater.com/auto` 어노테이션 기준) — 수동 `kubectl rollout restart` 불필요.
-   rag-cronjob은 매일 03:00 새 Pod로 뜨므로 별도 트리거 없이 자연히 최신 값을 읽음
-5. Deployment의 **Init Container**(`fetch-model`)가 `MODEL_VERSION`에 해당하는 blob을 내려받아 emptyDir(`model-cache`)에 저장 → 메인 컨테이너(`backend/app/inference/`)가 그걸 로드
-6. 즉 모델 자체는 git에 안 올라가고, **버전 태그만 GitOps로 관리**되되 그 git이 이 레포가 아니라 ml 레포임
-
-이전엔 `infra/k8s/base/{backend,rag-cronjob}/configmap-model-version.yaml`을 이 레포에 PR하는 방식이었는데,
-ml팀 입장에서 매번 이 레포에 PR 올려야 하는 게 번거롭고 수동 재시작도 귀찮다는 피드백으로 위 방식으로 변경함.
+> **브리프코치 피벗(2026-08-19) 이후**: 여기 있던 "ML 모델 버전 관리" 절(ml 레포 multi-source +
+> Reloader)을 제거했다 — 커스텀 모델(TCN)이 없어졌다. 전체 흐름은
+> [`infra/old/모델버전-GitOps.md`](old/모델버전-GitOps.md)에 보존돼 있다.
 
 ## ArgoCD (GitOps)
 
