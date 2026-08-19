@@ -1,0 +1,43 @@
+name: repo-hygiene
+
+# 로컬 훅(.githooks/)이 못 막는 구멍을 CI에서 막는다.
+# 훅은 (1) setup-hooks.sh를 안 돌린 사람, (2) --no-verify, (3) GitHub 웹 UI에서 만든 머지 커밋
+# 에서 전부 우회된다. 실제로 실행권한 유실 사고(d63a717)는 로컬 머지 경로로 들어와,
+# 이후 어떤 커밋도 그 파일을 건드리지 않아 변경분 기반 검사로는 영영 안 잡히는 상태였다.
+# 그래서 여기서는 변경분이 아니라 "트리 전체"를 본다.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 셸 스크립트/훅의 git 인덱스 모드가 100755인지 검사한다.
+      # 규칙은 .githooks/check-exec-bits.sh 한 곳에만 두고 로컬 훅과 CI가 같은 파일을 공유한다.
+      - name: 실행권한(100755) 검사
+        run: |
+          set -euo pipefail
+          if [ ! -f .githooks/check-exec-bits.sh ]; then
+            echo "::error::.githooks/check-exec-bits.sh 가 없습니다 — 검사를 건너뛰지 않고 실패시킵니다."
+            exit 1
+          fi
+          bash .githooks/check-exec-bits.sh --all
+
+      # CRLF는 .gitattributes(text=auto eol=lf)와 pre-commit ③이 막지만, 위와 같은 이유로
+      # 둘 다 우회될 수 있다. 셰뱅에 CR이 섞이면 'bash\r: No such file or directory'로 죽는다.
+      - name: CRLF 줄바꿈 검사
+        run: |
+          set -euo pipefail
+          # -I: 바이너리 제외, -l: 파일명만. 히트가 없으면 grep은 exit 1을 내므로 || true로 받는다.
+          HITS=$(git -c core.quotePath=false grep -Il $'\r' -- . || true)
+          if [ -n "$HITS" ]; then
+            echo "::error::다음 파일에 CRLF 줄바꿈이 섞여 있습니다:"
+            echo "$HITS"
+            echo "수정: git add --renormalize . 후 커밋하세요."
+            exit 1
+          fi
+          echo "OK: CRLF 없음(전부 LF)."
