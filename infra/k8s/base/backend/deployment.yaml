@@ -1,0 +1,92 @@
+# backend 서비스(gateway 진입점 + T2/T3/T4 에이전트가 한 프로세스에서 동작) 배포 매니페스트.
+# 컨테이너 이미지 태그는 ArgoCD Image Updater가 ACR 신규 태그 감지 시 자동으로 갱신한다(수동 편집 불필요).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: backend
+    labels:
+        app: backend
+    annotations:
+        # ml 레포가 model-version ConfigMap을 바꿔도(정적 이름 유지) K8s가 알아서 재기동해주지 않는다 —
+        # Reloader가 이 어노테이션을 보고 참조 중인 ConfigMap/Secret 변경을 감지해서 롤링 재시작시킨다.
+        reloader.stakater.com/auto: "true"
+spec:
+    replicas: 1
+    selector:
+        matchLabels:
+            app: backend
+    template:
+        metadata:
+            labels:
+                app: backend
+                azure.workload.identity/use: "true"
+        spec:
+            serviceAccountName: backend-sa
+            initContainers:
+                # MODEL_VERSION(ConfigMap)이 가리키는 ONNX 모델을 Blob Storage에서 받아 emptyDir에 넣는다.
+                # Workload Identity 인증 시도 이력(2026-08-14 실배포 중 확인):
+                #   1) `az login --identity` (client-id 없이) → "Multiple user assigned identities exist"
+                #      (az CLI가 노드 IMDS로 빠짐 — Workload Identity는 IMDS 방식이 아니라서 애초에 안 맞음)
+                #   2) `az login --identity --client-id "$AZURE_CLIENT_ID"` → "Identity not found"
+                #      (여전히 IMDS 경로라 이 UAMI가 노드에 물리적으로 안 붙어있어서 못 찾음)
+                # Workload Identity는 IMDS가 아니라 OIDC federated token 교환 방식이라 `--identity` 자체가
+                # 틀린 진입점이었음 — `--federated-token`(GitHub Actions OIDC↔Azure와 동일한 메커니즘)으로 전환.
+                - name: fetch-model
+                  image: mcr.microsoft.com/azure-cli:latest
+                  command:
+                      - sh
+                      - -c
+                      - |
+                          az login --service-principal \
+                            --username "$AZURE_CLIENT_ID" \
+                            --tenant "$AZURE_TENANT_ID" \
+                            --federated-token "$(cat "$AZURE_FEDERATED_TOKEN_FILE")"
+                          az storage blob download \
+                            --account-name "$STORAGE_ACCOUNT_NAME" \
+                            --container-name models \
+                            --name "$MODEL_VERSION/model.onnx" \
+                            --file /models/model.onnx \
+                            --auth-mode login
+                  envFrom:
+                      - configMapRef:
+                            name: model-version
+                  env:
+                      - name: STORAGE_ACCOUNT_NAME
+                        value: "team4hcstg"
+                  volumeMounts:
+                      - name: model-cache
+                        mountPath: /models
+            containers:
+                - name: backend
+                  image: team4hcacr-drascbaqe8f2gcca.azurecr.io/backend:latest
+                  imagePullPolicy: Always
+                  ports:
+                      - containerPort: 8000
+                  env:
+                      - name: PORT
+                        value: "8000"
+                  volumeMounts:
+                      - name: kv-secrets
+                        mountPath: /mnt/secrets
+                        readOnly: true
+                      - name: model-cache
+                        mountPath: /app/backend/models
+                  readinessProbe:
+                      httpGet:
+                          path: /readyz
+                          port: 8000
+                      initialDelaySeconds: 5
+                  livenessProbe:
+                      httpGet:
+                          path: /healthz
+                          port: 8000
+                      initialDelaySeconds: 10
+            volumes:
+                - name: kv-secrets
+                  csi:
+                      driver: secrets-store.csi.k8s.io
+                      readOnly: true
+                      volumeAttributes:
+                          secretProviderClass: backend-kv
+                - name: model-cache
+                  emptyDir: {}

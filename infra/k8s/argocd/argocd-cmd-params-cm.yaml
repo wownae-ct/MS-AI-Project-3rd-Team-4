@@ -1,0 +1,12 @@
+# k3s-repo/argocd의 홈랩 설정을 이식. AKS에서도 TLS는 ingress(NGINX)에서 종료하고
+# argocd-server 자체는 insecure(내부 HTTP)로 두는 동일 패턴을 사용한다.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-cmd-params-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  server.insecure: "true"
