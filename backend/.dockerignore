@@ -1,0 +1,19 @@
+# 빌드 컨텍스트에서 제외 — .venv만 수백 MB라 매 빌드마다 데몬으로 전송된다.
+# 주의: pyproject.toml / uv.lock 은 빌드에 필요하므로 절대 제외하지 않는다.
+.venv
+.pytest_cache
+.ruff_cache
+__pycache__
+*.pyc
+
+# 테스트는 이미지에 넣지 않는다(pyproject의 wheel packages에도 없음).
+tests
+
+# ONNX 모델은 ml 레포가 Blob Storage에 올리고 Deployment의 fetch-model Init Container가
+# /app/backend/models 에 채운다 — 이미지에 굽지 않는다.
+models
+
+# 이미지 안에서 쓸 일이 없는 파일들
+Dockerfile
+.dockerignore
+README.md

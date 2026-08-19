@@ -1,13 +1,55 @@
-FROM python:3.12-slim AS base
+# uv 공식 Docker 가이드(docs.astral.sh/uv/guides/integration/docker) 패턴.
+# 이전 버전의 문제 4가지를 한번에 정리한 것:
+#   1) `uv pip install ... || true` — 의존성 설치가 실패해도 이미지가 만들어졌다.
+#   2) `COPY app ./app`만 있어 rag/가 이미지에 없었다. rag-reindex CronJob이
+#      `python -m rag.index`를 실행하므로 이 이미지로는 무조건 ModuleNotFoundError였다.
+#   3) uv.lock을 쓰지 않아 CI(`uv sync --locked`)와 이미지의 의존성 버전이 갈릴 수 있었다.
+#   4) root로 실행했다.
+
+FROM python:3.12-slim AS builder
+
+# 버전 고정 — `:latest`는 빌드 재현성을 깨뜨린다.
+COPY --from=ghcr.io/astral-sh/uv:0.12.5 /uv /uvx /bin/
+
+# UV_COMPILE_BYTECODE: 미리 .pyc를 만들어 두면 런타임(비루트)이 쓰기를 시도하지 않는다.
+# UV_LINK_MODE=copy: 캐시 마운트와 대상이 다른 파일시스템이라 하드링크가 안 된다.
+# UV_PYTHON_DOWNLOADS=0: 베이스 이미지의 python3.12를 쓰고 따로 내려받지 않는다.
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=0
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir uv
+# ── 의존성 레이어 — 코드와 분리해서 코드만 바뀌면 이 레이어를 캐시에서 재사용한다.
+# bind 마운트라 pyproject/uv.lock이 이 레이어에 남지 않는다.
+# --locked: 락이 pyproject와 어긋나면 exit 1 (CI의 backend-ci.yml과 같은 플래그).
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --locked --no-install-project --no-editable
 
-COPY pyproject.toml ./
-RUN uv pip install --system --no-cache -r pyproject.toml || true
-
+# ── 프로젝트 레이어. 2차 sync는 프로젝트 자체를 빌드하므로 pyproject/uv.lock이
+# bind 마운트가 아니라 "실제 파일"로 있어야 한다.
+# pyproject.toml의 packages = ["app", "rag"] 덕분에 이 설치 하나로 rag까지 들어간다.
+COPY pyproject.toml uv.lock ./
 COPY app ./app
+COPY rag ./rag
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-editable
 
+# ── 런타임 이미지 — 빌드 도구 없이 완성된 venv만 가져온다.
+FROM python:3.12-slim
+
+RUN useradd --system --uid 10001 appuser
+
+COPY --from=builder /app/.venv /app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+
+# WORKDIR는 필수다. 모델 경로 계약(backend/models/README.md)이 CWD 상대경로
+# `backend/models/`에 의존하고, deployment.yaml의 Init Container가 /app/backend/models에
+# 모델을 마운트한다. WORKDIR가 없으면 CWD가 /가 되어 그 계약이 깨진다.
+WORKDIR /app
+
+USER appuser
 EXPOSE 8000
 CMD ["uvicorn", "app.gateway.main:app", "--host", "0.0.0.0", "--port", "8000"]
