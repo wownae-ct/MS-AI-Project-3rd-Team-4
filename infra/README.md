@@ -151,7 +151,18 @@ ml팀 입장에서 매번 이 레포에 PR 올려야 하는 게 번거롭고 수
 | `AZURE_SUBSCRIPTION_ID` | `az account show --query id -o tsv` | |
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | `az staticwebapp secrets list --name <prefix>-swa --resource-group <RG> --query properties.apiKey -o tsv` | SWA는 OIDC 미지원이라 이것만 예외적으로 장기 토큰 사용 |
 | `VITE_API_BASE` | 프론트 빌드 시 주입할 백엔드 API 주소(P3에서 확정한 production 호스트) | cert-manager 인증서 발급 확인 후 등록 |
-| `POSTGRES_ADMIN_PASSWORD` | `infra/.env`의 값 그대로 | **여기 README/문서에 실제 값 절대 적지 말 것** — 평문 커밋된 적 있어서(2026-08-13) git 히스토리까지 재작성해서 지운 전례 있음 |
+| `POSTGRES_ADMIN_PASSWORD` | `infra/.env`의 값 그대로 | **여기 README/문서에 실제 값 절대 적지 말 것** — 평문 커밋된 적 있음(2026-08-13). ⚠️ 아래 "히스토리 잔존" 참고 |
+
+> **⚠️ 이 문서의 이전 기술은 사실과 달랐다 (2026-08-19 정정)**
+>
+> 예전에 여기 "git 히스토리까지 재작성해서 지운 전례 있음"이라고 적혀 있었다. **재작성은 없었다.**
+> `595a12f`는 파일 내용에서만 지웠고, 평문 값은 지금도 **11개 커밋**에 남아 있다
+> (`main`·`backend`·`feature/backend` 세 브랜치 모두의 조상 — GitHub compare API로 확인).
+> 브랜치 tip은 모두 깨끗하지만, 저장소 접근 권한이 있으면 히스토리에서 복원할 수 있다.
+>
+> 이 문장이 제일 위험했다 — 팀이 "이미 정리됐다"고 믿게 만들어 **대응이 필요하다는 판단 자체를
+> 막고 있었기 때문**이다. 경위·노출 범위와 결정(회전하지 않음, 2026-08-19) 기록은
+> [시크릿-회전.md](./시크릿-회전.md) 참고.
 
 ### GitHub Variables (Settings → Secrets and variables → Actions → Variables)
 
@@ -159,8 +170,28 @@ ml팀 입장에서 매번 이 레포에 PR 올려야 하는 게 번거롭고 수
 |---|---|---|
 | `AZURE_RG` | 리소스그룹 이름 | 비밀 아님, 리소스 이름일 뿐 |
 | `ACR_NAME` | `<prefix>acr` (하이픈 제거) | `acr.bicep`의 이름 규칙과 동일 |
-| `ACR_LOGIN_SERVER` | `<prefix>acr.azurecr.io` | Bicep 출력값 `acrLoginServer` |
+| `ACR_LOGIN_SERVER` | **`az acr show -n <ACR_NAME> --query loginServer -o tsv \| tr -d '\r'`** | ⚠️ 유추 금지 + `tr -d '\r'` 생략 금지 — 아래 참고 |
 | `AKS_NAME` | `<prefix>-aks` | Bicep 출력값 `aksName` |
+
+> **`ACR_LOGIN_SERVER`를 손으로 조합하면 안 되는 이유** (2026-08-19 실제 CI 실패)
+>
+> 이 값은 `<prefix>acr.azurecr.io`가 **아니다.** Azure는 ACR 로그인 서버에 전역 이름 충돌을
+> 막기 위한 고유 접미사를 붙이므로 실제 값은 `<prefix>acr-<임의문자열>.azurecr.io` 형태다.
+> 정본은 Bicep 출력 `acrLoginServer`(= `acr.properties.loginServer`, `bicep/modules/acr.bicep`)이고,
+> 그걸 조회하는 가장 짧은 방법이 위 `az acr show` 명령이다.
+>
+> **`| tr -d '\r'`를 빼면 안 된다** (2026-08-19 실제로 두 번째 CI 실패를 냈다).
+> WSL에서 `az`를 부르면 `appendWindowsPath=true` 때문에 Windows용 Azure CLI
+> (`/mnt/c/Program Files/Microsoft SDKs/Azure/CLI2/wbin/az`)가 잡히고, 그 출력은 CRLF다.
+> `$(...)`는 끝의 `\n`만 떼므로 `\r`가 값에 남아 GitHub Variable에 그대로 저장된다.
+> 눈으로는 안 보이지만 빌드는 이렇게 죽는다:
+> `invalid tag "team4hcacr-....azurecr.io\r/backend:<sha>": invalid reference format`
+>
+> 실제로 이 문서가 `<prefix>acr.azurecr.io`로 안내한 탓에 Variables에 접미사 없는 값이 등록됐고,
+> `backend-ci`의 이미지 push가 `dial tcp: lookup team4hcacr.azurecr.io: no such host`로 실패해
+> **ArgoCD Image Updater가 감지할 새 태그가 없어 배포가 멈춰 있었다.**
+> 커밋 `053b18d`이 같은 문제를 K8s 매니페스트 4개에서 고쳤지만 이 변수와 문서는 남아 있었다
+> (같은 뿌리의 이름 충돌 이슈는 `트러블슈팅.md` #1의 `aicoachacr` 폐기 건).
 
 ### Azure AD OIDC 설정 (GitHub Actions가 장기 키 없이 Azure에 로그인하는 절차)
 
