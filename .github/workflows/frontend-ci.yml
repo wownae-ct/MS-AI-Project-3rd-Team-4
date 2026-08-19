@@ -37,7 +37,7 @@ jobs:
 
             - uses: actions/setup-node@v4
               with:
-                  node-version: "20"
+                  node-version: "24"
 
             # 린트/테스트 게이트 — 통과 못하면 빌드/배포 안 함
             - name: Install & lint
