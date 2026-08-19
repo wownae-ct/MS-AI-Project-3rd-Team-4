@@ -82,6 +82,31 @@ jobs:
                   tenant-id: ${{ secrets.AZURE_TENANT_ID }}
                   subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+            # GitHub Variables에 눈에 안 보이는 제어문자가 섞여 들어오는 걸 여기서 막는다.
+            # 2026-08-19에 실제로 났다 — WSL에서 Windows용 az CLI로 값을 뽑아 넣는 바람에
+            # ACR_LOGIN_SERVER 끝에 CR이 붙었고, docker가 이렇게 죽었다:
+            #   invalid tag "...azurecr.io\r/backend:<sha>": invalid reference format
+            # 에러 메시지만으로는 원인을 짐작하기 어려우니 값을 먼저 검증하고 명확히 실패시킨다.
+            - name: 이미지 참조 값 검증
+              run: |
+                  set -euo pipefail
+                  fail=0
+                  for name in ACR_NAME IMAGE; do
+                    value="${!name}"
+                    if [ -z "$value" ]; then
+                      echo "::error::$name 이 비어 있습니다 — 저장소 Variables를 확인하세요."
+                      fail=1
+                    elif printf '%s' "$value" | LC_ALL=C grep -qP '[\x00-\x1f\x7f]'; then
+                      echo "::error::$name 에 제어문자가 섞여 있습니다(CR 등). 값을 다시 등록하세요:"
+                      echo "::error::  gh variable set ACR_LOGIN_SERVER --body \"\$(az acr show -n <ACR_NAME> --query loginServer -o tsv | tr -d '\r')\""
+                      printf '%s' "$value" | od -c | head -3
+                      fail=1
+                    else
+                      echo "OK: $name = $value"
+                    fi
+                  done
+                  exit "$fail"
+
             # 커밋 SHA로 태그 → 어떤 커밋이 배포됐는지 ArgoCD Application에서 바로 추적 가능
             - name: Build & push image
               env:
