@@ -26,7 +26,7 @@ jobs:
           echo "$CHANGED"
 
           if [ "$BASE" = "backend" ]; then
-            ALLOWED_REGEX='^(backend/|data/|db/|infra/|scripts/|\.githooks/|\.github/|docs/|\.gitignore$|\.gitattributes$|README\.md$|\.gitleaks\.toml$)'
+            ALLOWED_REGEX='^(backend/|data/|db/|infra/|scripts/|\.githooks/|\.github/|docs/|\.gitignore$|\.gitattributes$|README\.md$|\.gitleaks\.toml$|\.gitleaksignore$)'
           elif [ "$BASE" = "frontend" ]; then
             ALLOWED_REGEX='^(frontend/|docs/|\.github/)'
           else
