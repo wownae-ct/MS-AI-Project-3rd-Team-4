@@ -169,7 +169,7 @@ ml팀 입장에서 매번 이 레포에 PR 올려야 하는 게 번거롭고 수
 |---|---|---|
 | `AZURE_RG` | 리소스그룹 이름 | 비밀 아님, 리소스 이름일 뿐 |
 | `ACR_NAME` | `<prefix>acr` (하이픈 제거) | `acr.bicep`의 이름 규칙과 동일 |
-| `ACR_LOGIN_SERVER` | **`az acr show -n <ACR_NAME> --query loginServer -o tsv` 의 출력을 그대로** | ⚠️ 이름 규칙으로 유추하지 말 것 — 아래 참고 |
+| `ACR_LOGIN_SERVER` | **`az acr show -n <ACR_NAME> --query loginServer -o tsv \| tr -d '\r'`** | ⚠️ 유추 금지 + `tr -d '\r'` 생략 금지 — 아래 참고 |
 | `AKS_NAME` | `<prefix>-aks` | Bicep 출력값 `aksName` |
 
 > **`ACR_LOGIN_SERVER`를 손으로 조합하면 안 되는 이유** (2026-08-19 실제 CI 실패)
@@ -178,6 +178,13 @@ ml팀 입장에서 매번 이 레포에 PR 올려야 하는 게 번거롭고 수
 > 막기 위한 고유 접미사를 붙이므로 실제 값은 `<prefix>acr-<임의문자열>.azurecr.io` 형태다.
 > 정본은 Bicep 출력 `acrLoginServer`(= `acr.properties.loginServer`, `bicep/modules/acr.bicep`)이고,
 > 그걸 조회하는 가장 짧은 방법이 위 `az acr show` 명령이다.
+>
+> **`| tr -d '\r'`를 빼면 안 된다** (2026-08-19 실제로 두 번째 CI 실패를 냈다).
+> WSL에서 `az`를 부르면 `appendWindowsPath=true` 때문에 Windows용 Azure CLI
+> (`/mnt/c/Program Files/Microsoft SDKs/Azure/CLI2/wbin/az`)가 잡히고, 그 출력은 CRLF다.
+> `$(...)`는 끝의 `\n`만 떼므로 `\r`가 값에 남아 GitHub Variable에 그대로 저장된다.
+> 눈으로는 안 보이지만 빌드는 이렇게 죽는다:
+> `invalid tag "team4hcacr-....azurecr.io\r/backend:<sha>": invalid reference format`
 >
 > 실제로 이 문서가 `<prefix>acr.azurecr.io`로 안내한 탓에 Variables에 접미사 없는 값이 등록됐고,
 > `backend-ci`의 이미지 push가 `dial tcp: lookup team4hcacr.azurecr.io: no such host`로 실패해
