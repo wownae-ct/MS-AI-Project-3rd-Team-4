@@ -1,33 +1,40 @@
-# AI 홈트레이닝 코치 (서비스명 미정)
+# 브리프코치 (BriefCoach)
 
-SeSAC MS AI 엔지니어 4기 3차 프로젝트 (2인 팀). 웹캠 기반 실시간 자세 인식 + 멀티 에이전트 코칭 앱.
-크로스핏 + 일반 헬스 동작 데이터를 함께 다룬다. 아키텍처 기준 문서는 `docs/설계/wave0_contract.html`,
-`docs/설계/design_meeting_final_5.html` 참고.
+SeSAC MS AI 엔지니어 4기 3차 프로젝트 (2인 팀). 기술직을 위한 AI 화법 트레이너 — 기술면접/고객설명/
+장애보고 상황을 제한시간 안에 음성으로 연습하면, 두괄식·STAR 구조·간결성 기준으로 RAG 근거검증을 거친
+코칭 피드백을 받는다. 이전 주제("크로스핏 폼 코치", 웹캠 기반 실시간 운동 자세 코칭)에서 인프라·협업
+구조는 그대로 두고 주제만 전환(2026-08-19)했다. 현재 설계 문서는 `docs/new/plan/브리프코치_*.md` 6종
+(로컬 전용, git 미추적).
 
-## 아키텍처 개요 (T0~T4 티어)
+## 아키텍처 개요 (S0~S5 단계)
 
-| 티어 | 위치 | 역할 |
+실시간(<20ms) 판정이 필요했던 이전 구조(T0~T4)와 달리, "답변 후 피드백"이라 훨씬 단순한 선형
+파이프라인이다.
+
+| 단계 | 위치 | 역할 |
 |---|---|---|
-| T0 | frontend | MediaPipe Pose로 관절 좌표 추출 |
-| T1 | frontend | 룰엔진 판정 + 렙 카운트 (서버 왕복 없음) |
-| T2 | backend | TCN 자세 판정 + 코칭 문장 스트리밍 (coach agent) |
-| T3 | backend | RAG + guardrail 안전 판정 (safety agent) |
-| T4 | backend worker | 세션 리포트/다음 처방 (planner agent, 비동기) |
+| S0~S1 | frontend | 질문/타이머 표시, 답변 녹음 → 서버 업로드 |
+| S2 | backend | STT 전사 + 필러워드/wpm/문장수 등 결정론적 지표 추출 (비-LLM) |
+| S3 | backend | 코칭 에이전트 — 두괄식/STAR 구조 판정 + 전달력 피드백 스트리밍(SSE) |
+| S4 | backend | 근거검증 에이전트 — RAG로 코칭 코멘트가 화법 가이드 코퍼스에 근거하는지 확인, 실패 시 재시도/강등 |
+| S5 | backend worker | 세션 리포트(반복 약점 패턴, 다음 연습 추천, 비동기) |
 
 ## 폴더 구조
 
 ```
-backend/    FastAPI 게이트웨이 + 에이전트(coach/safety/planner/retriever) + RAG 인덱싱(rag/) + ONNX 추론(app/inference/)
-frontend/   React + MediaPipe(T0) + 룰엔진(T1) + WS 클라이언트
-data/       RAG 코퍼스(운동/부상 가이드 문서) — 이미지/영상 학습 데이터셋 아님
-db/         ORM(SQLAlchemy async) + 초기 시드 데이터
-infra/      Bicep(Azure 리소스) + AKS 매니페스트 + ArgoCD
-docs/       설계 문서, 제안서, 회의록
+backend/    FastAPI 게이트웨이 + 에이전트(coach/verify/planner/retriever) + LangGraph 오케스트레이션
+            + 결정론적 지표 추출(metrics/) + STT(stt/) + RAG 인덱싱(rag/)
+frontend/   React + SSE 피드백 클라이언트 + 답변 녹음 (Vite+React+TS)
+data/       RAG 코퍼스(STAR/화법 가이드 문서) — 이전 주제의 운동/부상 가이드 아님
+db/         번호 붙인 SQL 마이그레이션 파일(migrations/) + 러너(migrate.py) + 시드 데이터 — ORM 없음
+infra/      Bicep(Azure 리소스) + AKS 매니페스트 + ArgoCD — 이전 주제 빌드 그대로 재사용
+docs/       docs/new/plan/이 현재 설계 문서. 이전 주제 설계 문서는 docs/old/에 보존(로컬 전용)
 ```
 
-> **레포 분리**: 포즈/TCN 모델 학습(데이터셋, 노트북, 체크포인트)은 별도 **ml 레포**에서 진행한다.
-> 이 레포는 학습된 모델을 ONNX로 받아 `backend/models/`에 두고 `backend/app/inference/`에서 서빙만 한다.
-> RAG는 학습이 아니라 서비스가 매 요청 호출하는 라이브 컴포넌트라 이 레포(`backend/rag/`, `data/`)에 남겼다.
+> **커스텀 모델 학습 없음**: 이전 주제는 별도 `ml` 레포에서 포즈판정 모델(TCN)을 학습해 ONNX로
+> 서빙했는데, 이번 주제는 커스텀 학습이 전혀 없다 — STT는 서드파티 API(Azure OpenAI
+> Whisper/gpt-4o-transcribe) 호출일 뿐이다. RAG는 학습이 아니라 서비스가 매 요청 호출하는 라이브
+> 컴포넌트라 이 레포(`backend/rag/`, `data/`)에 있다.
 
 ## 브랜치 전략 & 폴더 소유권
 
