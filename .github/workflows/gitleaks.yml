@@ -2,7 +2,8 @@ name: gitleaks
 
 on:
   push:
-  pull_request:
+    branches: [main] # 최종 안전망 — feature/backend/frontend push마다 도는 건 낭비(로컬 pre-commit 훅이 이미 걸러줌)
+  pull_request: # 모든 PR(머지 게이트) — main 브랜치 보호 규칙의 required check
 
 jobs:
   scan:
