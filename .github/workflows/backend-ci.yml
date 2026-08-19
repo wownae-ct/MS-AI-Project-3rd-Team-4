@@ -33,10 +33,10 @@ jobs:
             run:
                 working-directory: backend
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
 
             - name: Install uv
-              uses: astral-sh/setup-uv@v6
+              uses: astral-sh/setup-uv@v10.0.1
 
             # --locked: uv.lock이 pyproject.toml과 일치함을 단언한다. 누군가 의존성을 추가하고
             # `uv lock`을 다시 돌리지 않으면 여기서 exit 1로 막힌다 — 락을 커밋하는 목적인
@@ -73,10 +73,10 @@ jobs:
             id-token: write
             contents: read
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
 
             - name: Azure login (OIDC)
-              uses: azure/login@v2
+              uses: azure/login@v3
               with:
                   client-id: ${{ secrets.AZURE_CLIENT_ID }}
                   tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -84,6 +84,10 @@ jobs:
 
             # 커밋 SHA로 태그 → 어떤 커밋이 배포됐는지 ArgoCD Application에서 바로 추적 가능
             - name: Build & push image
+              env:
+                  # Dockerfile이 `RUN --mount=type=cache`를 쓰는데 이건 BuildKit 전용 문법이다.
+                  # 러너 기본값에 기대지 않고 명시한다 — 꺼져 있으면 빌드가 문법 에러로 죽는다.
+                  DOCKER_BUILDKIT: "1"
               run: |
                   az acr login --name "${{ env.ACR_NAME }}"
                   docker build -t "${{ env.IMAGE }}:${{ github.sha }}" -t "${{ env.IMAGE }}:latest" ./backend

@@ -14,7 +14,7 @@ jobs:
   hygiene:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # 셸 스크립트/훅의 git 인덱스 모드가 100755인지 검사한다.
       # 규칙은 .githooks/check-exec-bits.sh 한 곳에만 두고 로컬 훅과 CI가 같은 파일을 공유한다.
