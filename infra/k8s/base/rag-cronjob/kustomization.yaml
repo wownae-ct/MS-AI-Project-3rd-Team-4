@@ -5,3 +5,19 @@ resources:
   - serviceaccount.yaml
   - secretproviderclass.yaml
   - cronjob.yaml
+
+# 코퍼스를 CronJob 파드에만 마운트 — backend Deployment는 DB만 조회하지 이 파일을 안 읽으므로
+# Docker 이미지/빌드 컨텍스트는 안 건드린다. 콘텐츠가 바뀌면 kustomize가 해시 접미사 포함
+# 이름으로 자동 재생성하고, 같은 kustomization 안의 cronjob.yaml volumes.configMap.name 참조도
+# 자동으로 그 이름에 맞춰 치환된다.
+#
+# speech_guide_corpus.json은 data/rag_corpus/speech_guide_corpus.json의 복사본이다(원본을
+# kustomization 루트 밖에서 참조하면 --load-restrictor LoadRestrictionsNone이 필요한데, 이건
+# 이 ArgoCD 인스턴스가 관리하는 모든 Application의 kustomize 빌드에 전역 적용되는 설정이라
+# rag-cronjob 하나 때문에 클러스터 전체 기본 보안 수준을 낮출 만큼 이 문제가 크지 않다고
+# 판단함, 2026-08-19). 두 파일이 벌어지지 않게 CI에서 diff로 검증한다
+# (.github/workflows/backend-ci.yml의 corpus-sync-check) — 코퍼스를 고칠 땐 두 경로 다 갱신할 것.
+configMapGenerator:
+  - name: rag-corpus
+    files:
+      - speech_guide_corpus.json

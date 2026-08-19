@@ -12,7 +12,13 @@ name: backend-ci
 
 on:
     pull_request:
-        paths: ["backend/**", "data/**", "db/**"]
+        paths:
+            [
+                "backend/**",
+                "data/**",
+                "db/**",
+                "infra/k8s/base/rag-cronjob/speech_guide_corpus.json",
+            ]
     push:
         branches: [backend]
         paths: ["backend/**"]
@@ -27,6 +33,23 @@ env:
     IMAGE: ${{ vars.ACR_LOGIN_SERVER }}/backend
 
 jobs:
+    corpus-sync-check:
+        # infra/k8s/base/rag-cronjob/speech_guide_corpus.json은 data/rag_corpus/speech_guide_corpus.json의
+        # 복사본이다(kustomize configMapGenerator가 kustomization 루트 밖 파일을 못 읽어서, ArgoCD
+        # 전역 load-restrictor 설정을 바꾸는 대신 이 방법을 택함 — infra/k8s/base/rag-cronjob/
+        # kustomization.yaml 주석 참고). 두 파일이 벌어지면 이 CronJob이 색인하는 코퍼스가
+        # 조용히 낡은 채로 남는다 — 여기서 막는다.
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v7
+            - name: 코퍼스 원본과 복사본이 일치하는지 확인
+              run: |
+                  diff data/rag_corpus/speech_guide_corpus.json \
+                       infra/k8s/base/rag-cronjob/speech_guide_corpus.json || {
+                    echo "::error::data/rag_corpus/speech_guide_corpus.json과 infra/k8s/base/rag-cronjob/speech_guide_corpus.json이 다릅니다 — 코퍼스를 고쳤으면 두 경로 다 갱신하세요."
+                    exit 1
+                  }
+
     test:
         runs-on: ubuntu-latest
         defaults:

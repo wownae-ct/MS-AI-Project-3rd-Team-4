@@ -74,29 +74,17 @@ resource keyVault 'Microsoft.KeyVault/vaults@2026-03-01-preview' existing = {
   name: keyVaultName
 }
 
-// 이 배포를 실행하는 주체(로컬 사용자 또는 CI OIDC SP)에게 Key Vault 시크릿 쓰기 권한 부여 — RBAC 인증
-// 모드에서는 Contributor 역할만으론 시크릿 데이터 평면에 접근 못 함(Key Vault 특유의 제약).
-resource deployerSecretsOfficerRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(keyVault.id, deployer().objectId, 'KeyVaultSecretsOfficer')
-  scope: keyVault
-  properties: {
-    principalId: deployer().objectId
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7') // Key Vault Secrets Officer
-    // deployer()는 principalType을 안 알려줌 — userPrincipalName이 있으면 사람 계정, 없으면 SP/관리 ID로 판단
-    // (Microsoft Learn "deployer" 함수 문서: SP/관리 ID일 때 이 필드가 비어있을 수 있다고 명시)
-    principalType: empty(deployer().userPrincipalName) ? 'ServicePrincipal' : 'User'
-  }
-}
-
+// deployer(로컬 사용자/CI OIDC SP)에게 Key Vault 시크릿 쓰기 권한(Secrets Officer)을 부여하는
+// roleAssignment는 modules/keyvault.bicep 한 곳에서만 선언한다(이 모듈과 postgres.bicep 둘 다 같은
+// Vault에 시크릿을 쓰는데, 서로 의존관계 없이 병렬 배포될 수 있어 각자 선언하면 같은 GUID 리소스를
+// 두 번 선언하는 경합이 생길 수 있음). keyVaultName 파라미터를 받는 것만으로 main.bicep의 모듈 간
+// 암묵적 dependsOn이 keyvault 모듈(role assignment 포함) 완료를 보장한다.
 resource openAiEndpointSecret 'Microsoft.KeyVault/vaults/secrets@2026-03-01-preview' = {
   parent: keyVault
   name: 'openai-endpoint'
   properties: {
     value: openai.properties.endpoint
   }
-  dependsOn: [
-    deployerSecretsOfficerRoleAssignment
-  ]
 }
 
 resource diagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
