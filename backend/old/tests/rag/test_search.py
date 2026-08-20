@@ -1,8 +1,7 @@
 from unittest.mock import AsyncMock
 
-import pytest
-
 import app.agents.retriever.search as search_module
+import pytest
 from app.agents.retriever.search import SpeechGuideMatch, search_speech_guide
 
 

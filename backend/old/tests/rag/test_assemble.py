@@ -1,5 +1,4 @@
 import pytest
-
 from rag.index.assemble import build_insertable_docs
 from rag.index.corpus import ParsedDoc
 

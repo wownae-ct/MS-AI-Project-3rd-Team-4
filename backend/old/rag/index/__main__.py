@@ -4,10 +4,11 @@ data/rag_corpus/ 문서를 청킹·임베딩(Azure OpenAI)·pgvector upsert."""
 import asyncio
 from pathlib import Path
 
+from app.db.queries.speech_guide import sync_docs_and_chunks
+
 from app.core.config import get_settings
 from app.core.embeddings import embed_texts, get_embedding_client
 from app.db import get_connection
-from app.db.queries.speech_guide import sync_docs_and_chunks
 from rag.index.assemble import build_insertable_docs
 from rag.index.chunker import chunk_text
 from rag.index.corpus import load_corpus

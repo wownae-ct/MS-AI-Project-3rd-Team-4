@@ -1,7 +1,6 @@
 import json
 
 import pytest
-
 from rag.index.corpus import extract_url, load_corpus
 
 
