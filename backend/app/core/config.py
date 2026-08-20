@@ -17,7 +17,8 @@ class Settings(BaseSettings):
     # infra/bicep/modules/openai.bicep의 실제 배포 이름(모델명 아님).
     azure_openai_embedding_deployment: str = "embedding"
     # TODO(재확인): 구현 시점에 실제 배포된 리소스/openai 패키지 버전과 다시 맞춰볼 것
-    # (브리프코치_기술설계서.md §8 미결).
+    # (원래 브리프코치_기술설계서.md §8 미결 항목 — 문서는 docs/old/brief/plan/에 아카이브,
+    # 웨딩레이더 기술설계서에서 같은 항목 재확인 필요).
     azure_openai_api_version: str = "2024-10-21"
 
     # 05_RAG_design.md §4: 벡터 top-8 + tsvector top-8 → RRF 융합 → top-5 컨텍스트.
