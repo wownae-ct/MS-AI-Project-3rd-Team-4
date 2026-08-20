@@ -1,6 +1,6 @@
 // 세션 히스토리·리포트 화면 — 날짜별 세션 리스트 + 추이 차트 + 다음 연습 추천.
 // 브리프코치_프로젝트_기획서_초안.md §4 화면 3. 비동기 리포트 워커 연동은 이번 단계 범위 밖.
-import { Banner, Button } from "../../../shared/ui";
+import { Banner, Button } from "@/shared/ui";
 
 export interface ReportPageProps {
   onRestart: () => void;

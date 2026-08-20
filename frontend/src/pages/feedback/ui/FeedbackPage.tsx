@@ -1,8 +1,8 @@
 // 즉시 피드백 화면 — 구조 점수 뱃지 + 코칭 코멘트 스트리밍 + 리라이트 예시 + 필러워드/wpm 요약.
 // 브리프코치_프로젝트_기획서_초안.md §4 화면 2. SSE 연동은 이번 단계 범위 밖 — 스토어 값 표시만 배선.
-import type { AnswerMetrics } from "../../../entities/answer";
-import type { CoachFeedback } from "../../../entities/coach-feedback";
-import { Banner, Button } from "../../../shared/ui";
+import type { AnswerMetrics } from "@/entities/answer";
+import type { CoachFeedback } from "@/entities/coach-feedback";
+import { Banner, Button } from "@/shared/ui";
 
 export interface FeedbackPageProps {
   feedback: CoachFeedback | null;
@@ -24,9 +24,7 @@ export function FeedbackPage({ feedback, metrics, onNext }: FeedbackPageProps) {
     <main className="page">
       <h1 className="page__title">즉시 피드백</h1>
 
-      {!feedback ? (
-        <Banner variant="info">코칭 결과를 기다리는 중입니다 (서버 연동 전 임시 화면).</Banner>
-      ) : (
+      {feedback ? (
         <>
           <div className="stat-row" aria-label="구조 점수">
             <ScoreBadge label="두괄식" value={feedback.structureScore.opening} />
@@ -44,6 +42,8 @@ export function FeedbackPage({ feedback, metrics, onNext }: FeedbackPageProps) {
             </div>
           )}
         </>
+      ) : (
+        <Banner variant="info">코칭 결과를 기다리는 중입니다 (서버 연동 전 임시 화면).</Banner>
       )}
 
       {metrics && (

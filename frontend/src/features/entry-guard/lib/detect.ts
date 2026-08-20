@@ -1,6 +1,6 @@
 // 진입 경로 감지 — 답변 녹음 세션 시작 "전"에 판정한다. 순수 함수 유지(테스트 결정론).
 // 인앱에서의 getUserMedia 재시도 루프·자동 새로고침은 구현하지 않는다 — Kakao 공식 답변: reload로 복구 불가.
-import { IN_APP_UA_MARKERS, IOS_UA_PATTERN, KAKAO_OPEN_EXTERNAL_SCHEME, KAKAOTALK_UA_MARKER } from "../../../shared/config";
+import { IN_APP_UA_MARKERS, IOS_UA_PATTERN, KAKAO_OPEN_EXTERNAL_SCHEME, KAKAOTALK_UA_MARKER } from "@/shared/config";
 
 /** 진입 판정 — GuardScreen이 이 값으로 분기한다 */
 export type EntryVerdict =
