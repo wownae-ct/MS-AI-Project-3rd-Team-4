@@ -10,9 +10,9 @@ FK 주의: speech_guide_chunk.doc_id는 ON DELETE CASCADE 없이 REFERENCES spee
 from dataclasses import dataclass
 
 import asyncpg
+from rag.index.assemble import InsertableDoc
 
 from app.core.embeddings import to_pgvector_literal
-from rag.index.assemble import InsertableDoc
 
 
 @dataclass(frozen=True)

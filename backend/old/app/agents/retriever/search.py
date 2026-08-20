@@ -5,12 +5,12 @@ FastAPI Depends 기반 커넥션 풀 주입은 아직 안 함 — 이 함수를 
 from dataclasses import dataclass
 
 import asyncpg
+from app.db.queries.speech_guide import search_chunks_by_embedding
 from openai import AsyncAzureOpenAI
 
 from app.core.config import get_settings
 from app.core.embeddings import embed_query, get_embedding_client
 from app.db import get_connection
-from app.db.queries.speech_guide import search_chunks_by_embedding
 
 
 @dataclass(frozen=True)

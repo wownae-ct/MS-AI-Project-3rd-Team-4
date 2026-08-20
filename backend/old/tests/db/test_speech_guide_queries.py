@@ -1,7 +1,6 @@
 from contextlib import asynccontextmanager
 
 import pytest
-
 from app.db.queries.speech_guide import search_chunks_by_embedding, sync_docs_and_chunks
 from rag.index.assemble import InsertableChunk, InsertableDoc
 

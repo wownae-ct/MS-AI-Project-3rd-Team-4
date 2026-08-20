@@ -26,9 +26,11 @@ dev = [
 
 [tool.ruff]
 line-length = 100
+extend-exclude = ["old"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+norecursedirs = ["old"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["app", "rag"]
