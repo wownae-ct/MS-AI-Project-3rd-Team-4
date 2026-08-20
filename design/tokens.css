@@ -1,0 +1,47 @@
+/*
+ * 메리맵 디자인 토큰 — CSS 커스텀 프로퍼티
+ *
+ * 이 파일은 ../DESIGN.md 프론트매터에서 그대로 옮긴 것입니다. 톤/색을 바꿀 땐
+ * DESIGN.md를 먼저 갱신하고, 여기 값을 그 값과 동일하게 맞추세요 — DESIGN.md가
+ * source of truth, 이 파일은 그 CSS 구현체입니다.
+ *
+ * 프론트엔드 브랜치에서 실구현할 때 frontend/src/styles/ 아래로 복사해서
+ * 전역으로 import하면 됩니다 (예: frontend/src/styles/tokens.css).
+ */
+
+:root {
+  /* Color — primary */
+  --color-primary: #8B3F63;       /* 베리 플럼 — FOCUS 배지·주요 액션·강조 텍스트 전용, 배경 워시 금지 */
+  --color-primary-soft: #F1DEE7;  /* 배지 등 옅은 배경용 */
+
+  /* Color — neutral */
+  --color-ink: #1D1B19;           /* 본문 텍스트, 헤드라인 */
+  --color-ink-soft: #726B65;      /* 보조 텍스트, 캡션 */
+  --color-bg: #F7F6F4;            /* 페이지 배경 */
+  --color-surface: #FFFFFF;       /* 카드 등 표면 */
+  --color-line: #E7E3DE;          /* 보더, 구분선, 진행률 바 트랙 */
+
+  /* Color — semantic: 아직 미확정 (DESIGN.md "Do's and Don'ts" 참고). 실구현 때 추가할 것.
+  --color-success: ;
+  --color-warning: ;
+  --color-danger: ;
+  */
+
+  /* Typography */
+  --font-family-base: 'Wanted Sans Variable', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  --font-weight-heading: 700;
+  --font-weight-body: 400;
+
+  /* Shape */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-pill: 999px;
+  --border-width: 1px;
+
+  /* Spacing */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 20px;
+  --space-xl: 24px;
+}
