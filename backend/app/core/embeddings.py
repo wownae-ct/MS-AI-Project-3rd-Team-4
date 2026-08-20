@@ -1,6 +1,5 @@
-"""Azure OpenAI 임베딩 클라이언트. coach/verify가 나중에 붙을 때도 이 모듈을 그대로 재사용
-(DRY) — backend/rag/index/(오프라인 색인)와 app/agents/retriever/(런타임 검색) 둘 다 여기서
-클라이언트/함수를 가져다 쓴다."""
+"""Azure OpenAI 임베딩 클라이언트. app/rag/indexing.py(오프라인 색인)와 app/rag/retrieval.py
+(런타임 하이브리드 검색) 둘 다 여기서 클라이언트/함수를 가져다 쓴다(DRY)."""
 
 from azure.identity import get_bearer_token_provider
 from openai import AsyncAzureOpenAI

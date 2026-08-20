@@ -17,7 +17,6 @@ on:
                 "backend/**",
                 "data/**",
                 "db/**",
-                "infra/k8s/base/rag-cronjob/speech_guide_corpus.json",
             ]
     push:
         branches: [backend]
@@ -32,24 +31,13 @@ env:
     ACR_NAME: ${{ vars.ACR_NAME }}
     IMAGE: ${{ vars.ACR_LOGIN_SERVER }}/backend
 
-jobs:
-    corpus-sync-check:
-        # infra/k8s/base/rag-cronjob/speech_guide_corpus.json은 data/rag_corpus/speech_guide_corpus.json의
-        # 복사본이다(kustomize configMapGenerator가 kustomization 루트 밖 파일을 못 읽어서, ArgoCD
-        # 전역 load-restrictor 설정을 바꾸는 대신 이 방법을 택함 — infra/k8s/base/rag-cronjob/
-        # kustomization.yaml 주석 참고). 두 파일이 벌어지면 이 CronJob이 색인하는 코퍼스가
-        # 조용히 낡은 채로 남는다 — 여기서 막는다.
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v7
-            - name: 코퍼스 원본과 복사본이 일치하는지 확인
-              run: |
-                  diff data/rag_corpus/speech_guide_corpus.json \
-                       infra/k8s/base/rag-cronjob/speech_guide_corpus.json || {
-                    echo "::error::data/rag_corpus/speech_guide_corpus.json과 infra/k8s/base/rag-cronjob/speech_guide_corpus.json이 다릅니다 — 코퍼스를 고쳤으면 두 경로 다 갱신하세요."
-                    exit 1
-                  }
+# corpus-sync-check(브리프코치 speech_guide_corpus.json 원본↔ConfigMap 복사본 diff 검증) job은
+# 웨딩레이더 피벗에서 원본이 data/old/rag_corpus/로 아카이브되면서 제거했다 — 남겨두면 이 diff가
+# 영구히 실패해 모든 backend PR을 막았을 것. ConfigMap 기반 코퍼스 배포 자체가 DS1~DS8 다중 문서
+# 구조에 맞게 재설계 필요(infra/k8s/base/rag-cronjob/cronjob.yaml의 TODO 참고) — 재설계 시 필요하면
+# 새 sync-check를 다시 추가할 것.
 
+jobs:
     test:
         runs-on: ubuntu-latest
         defaults:
