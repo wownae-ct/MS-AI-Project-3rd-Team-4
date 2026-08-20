@@ -22,7 +22,9 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
+    # pgcrypto는 안 쓴다 — gen_random_uuid()는 PostgreSQL 13부터 core 내장 함수라 확장이 필요
+    # 없고(04_DB_spec.md §7 원문의 CREATE EXTENSION pgcrypto는 불필요), Azure Postgres Flexible
+    # Server의 azure.extensions 허용목록에도 기본적으로 없어서 실제로 막힌다(실측 확인).
     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
     op.execute("""

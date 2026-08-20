@@ -7,8 +7,11 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 from app.core.config import get_settings
-from app.core.db import _to_asyncpg_url
+from app.core.db import _to_asyncpg_url, _wants_ssl
 from app.models import Base
+
+_settings = get_settings()
+_connect_args = {"ssl": "require"} if _wants_ssl(_settings.database_url) else {}
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -21,7 +24,10 @@ if config.config_file_name is not None:
 
 # DB URL은 alembic.ini가 아니라 앱과 동일한 .env(app.core.config.Settings)에서 읽는다 —
 # 두 곳에 같은 값을 중복 관리하지 않기 위해서.
-config.set_main_option("sqlalchemy.url", _to_asyncpg_url(get_settings().database_url))
+# ConfigParser(alembic.ini 파서)의 기본 보간법은 '%'를 특수문자로 취급한다 — 비밀번호를
+# URL-encode(예: '@' -> '%40')한 DSN을 그대로 넣으면 "invalid interpolation syntax"로 죽는다
+# (실측 확인, 2026-08-20). '%'를 '%%'로 escape해서 리터럴로 저장한다.
+config.set_main_option("sqlalchemy.url", _to_asyncpg_url(_settings.database_url).replace("%", "%%"))
 
 target_metadata = Base.metadata
 
@@ -72,6 +78,7 @@ async def run_async_migrations() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=_connect_args,
     )
 
     async with connectable.connect() as connection:
