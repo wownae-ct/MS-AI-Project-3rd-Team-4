@@ -1,22 +1,14 @@
 {
-  "__TEMPLATE__": "§6.4.1 초안 템플릿 (M5 반영용) — __API_HOST__를 환경 확정값(I-8/I-9)으로 치환해 staticwebapp.config.json으로 저장한다. VITE_API_BASE와 동일 환경값이어야 하며(§6.4 빌드타임 정적 치환), 이 파일 자체는 SWA가 읽지 않는다. CSP connect-src에 wss를 명시하는 이유: 'self'는 websocket 스킴으로 해석되지 않음(§2.1.4·MDN). globalHeaders는 API 응답에는 적용되지 않으므로 백엔드 보안 헤더는 별도(§6.4.1).",
+  "__TEMPLATE__": "초안 템플릿. __API_HOST__를 환경 확정값으로 치환해 staticwebapp.config.json으로 저장한다. VITE_API_BASE와 동일 환경값이어야 한다(빌드타임 정적 치환 — docs/architecture/toolchain.md §6). 이 파일 자체는 SWA가 읽지 않는다. globalHeaders는 API 응답에 적용되지 않으므로 백엔드 보안 헤더는 별도로 설정한다.",
+
+  "__CSP_NOTE__": "CSP는 실제로 쓰는 것만 남긴다 — 축소가 곧 보안 개선이다. 현재 코드 실측(2026-08-20): 전송은 SSE(EventSource) + REST뿐이고 WebSocket 클라이언트가 없어 wss:를 뺐다. Worker 진입점과 blob: URL 사용이 없어 worker-src와 img-src blob:을 뺐다. WASM 자산이 없어 'wasm-unsafe-eval'을 뺐다. 이 중 하나라도 도입하면 그때 해당 지시어를 함께 추가한다.",
+
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": ["/assets/*", "*.wasm", "*.task"]
+    "exclude": ["/assets/*"]
   },
-  "mimeTypes": {
-    ".wasm": "application/wasm",
-    ".task": "application/octet-stream"
-  },
+
   "globalHeaders": {
-    "Content-Security-Policy": "script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' https://__API_HOST__ wss://__API_HOST__; img-src 'self' blob:; worker-src 'self' blob:"
-  },
-  "routes": [
-    {
-      "route": "/mediapipe/*",
-      "headers": {
-        "Cache-Control": "public, max-age=31536000, immutable"
-      }
-    }
-  ]
+    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://__API_HOST__; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; object-src 'none'"
+  }
 }
