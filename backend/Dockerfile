@@ -1,10 +1,10 @@
 # uv 공식 Docker 가이드(docs.astral.sh/uv/guides/integration/docker) 패턴.
 # 이전 버전의 문제 4가지를 한번에 정리한 것:
 #   1) `uv pip install ... || true` — 의존성 설치가 실패해도 이미지가 만들어졌다.
-#   2) `COPY app ./app`만 있어 rag/가 이미지에 없었다. rag-reindex CronJob이
-#      `python -m rag.index`를 실행하므로 이 이미지로는 무조건 ModuleNotFoundError였다.
-#   3) uv.lock을 쓰지 않아 CI(`uv sync --locked`)와 이미지의 의존성 버전이 갈릴 수 있었다.
-#   4) root로 실행했다.
+#   2) uv.lock을 쓰지 않아 CI(`uv sync --locked`)와 이미지의 의존성 버전이 갈릴 수 있었다.
+#   3) root로 실행했다.
+# (예전엔 rag/가 app/ 밖의 별도 최상위 패키지라 COPY가 하나 더 필요했지만, 웨딩레이더
+#  피벗에서 app/rag/로 옮겨졌으므로 `COPY app ./app` 하나로 충분하다.)
 
 FROM python:3.12-slim AS builder
 
@@ -30,10 +30,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # ── 프로젝트 레이어. 2차 sync는 프로젝트 자체를 빌드하므로 pyproject/uv.lock이
 # bind 마운트가 아니라 "실제 파일"로 있어야 한다.
-# pyproject.toml의 packages = ["app", "rag"] 덕분에 이 설치 하나로 rag까지 들어간다.
 COPY pyproject.toml uv.lock ./
 COPY app ./app
-COPY rag ./rag
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-editable
 
@@ -45,10 +43,10 @@ RUN useradd --system --uid 10001 appuser
 COPY --from=builder /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 
-# WORKDIR는 필수다 — CMD의 모듈 경로(app.gateway.main:app)가 CWD 기준으로 resolve된다.
+# WORKDIR는 필수다 — CMD의 모듈 경로(app.main:app)가 CWD 기준으로 resolve된다.
 # WORKDIR가 없으면 CWD가 /가 되어 venv의 site-packages에서 app 패키지를 못 찾는다.
 WORKDIR /app
 
 USER appuser
 EXPOSE 8000
-CMD ["uvicorn", "app.gateway.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

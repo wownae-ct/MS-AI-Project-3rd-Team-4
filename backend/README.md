@@ -1,31 +1,26 @@
 # backend
 
-FastAPI(asyncio) 게이트웨이 + 에이전트 서비스. ORM 없이 순수 SQL(asyncpg) — 스키마는 번호 붙인
-마이그레이션 파일로 관리한다(`db/` 참고).
+FastAPI(asyncio) 게이트웨이. SQLAlchemy 2.0 async + Alembic — 스키마는 `app/models/`(선언적
+모델)이 유일한 출처, 마이그레이션은 `alembic/`(`db/` 참고).
 
 ```
 app/
-  gateway/
-    main.py    FastAPI app 인스턴스 (Dockerfile CMD가 가리키는 지점)
-    routers/   health/questions/sessions/answers/reports/admin — 도메인별 REST 라우터 (SSE만, WS 없음)
-  agents/
-    coach/     S3 — 두괄식/STAR 구조 판정 + 전달력 피드백 LLM 스트리밍
-    verify/    S4 — RAG 근거검증(guardrail) — 채점 코멘트가 화법 가이드 코퍼스에 근거하는지 확인
-    planner/   S5 — 비동기 세션 리포트(추이·다음 연습 추천) 워커
-    retriever/ 런타임 RAG 검색 (pgvector 조회만, 인덱싱은 안 함)
-  metrics/     S2 — 결정론적 지표 추출(필러워드/wpm/문장수/침묵), 비-LLM
-  orchestration/ LangGraph 4-노드 그래프(extract_metrics→coach_agent→verify_agent→finalize)
-  stt/         음성 인식 (Whisper / gpt-4o-transcribe)
-  db/
-    queries/   테이블/기능별 순수 SQL 쿼리 함수 (ORM 매핑 없음)
-  core/        설정, 공용 스키마
-rag/
-  index/       오프라인 인덱싱 — data/rag_corpus(화법 가이드 정제 문서)를 청킹·임베딩·pgvector upsert (수동/배치, 요청 경로 아님)
-               원본 문서 정제 자체는 여기 아니라 data/ingest/<source>/ 담당
+  main.py      FastAPI app 인스턴스 (Dockerfile CMD가 가리키는 지점)
+  deps.py      공용 의존성 — 인증이 없으므로 "로그인 사용자"가 아니라 시드된 단일 weddings 행
+  routers/     health/wedding/category/budget/vendor_case/chat/dashboard — 23개 엔드포인트
+               (docs/wedding/plan/03_API_spec.md), 현재 대부분 501 스텁
+  services/    비즈니스 로직(라우터가 얇게 유지되도록) — Phase 1부터 채워짐, 현재 빈 패키지
+  schemas/     Pydantic v2 요청/응답 스키마 — Phase 1부터 채워짐, 현재 빈 패키지
+  models/      SQLAlchemy 2.0 선언적 모델, 14개 테이블(docs/wedding/plan/04_DB_spec.md §7)
+  rag/         retrieve(하이브리드 검색+RRF) → generate → verify LangGraph 3노드
+               (docs/wedding/plan/05_RAG_design.md), indexing.py는 rag-reindex CronJob 진입점
+  core/        설정(config.py), DB 엔진/세션(db.py), Azure AAD 인증(auth.py), 임베딩 클라이언트
+  old/         BriefCoach(2026-08-19 피벗) 구현 아카이브 — ruff/pytest 대상 제외, 참고용
+alembic/       마이그레이션. DB URL은 alembic.ini가 아니라 app.core.config.Settings에서 읽는다
 tests/
 ```
 
 소유 브랜치: `backend`
 
-> 이전 주제("크로스핏 폼 코치")의 설계 문서는 `docs/old/`에 보존돼 있다(로컬 전용, git 미추적 — `.gitignore`의
-> `docs/` 규칙 참고).
+> 이전 두 주제("크로스핏 폼 코치", "브리프코치")는 각각 `docs/old/`(로컬 전용, git 미추적)와
+> `backend/old/`(git 추적, lint/test 제외)에 보존돼 있다.

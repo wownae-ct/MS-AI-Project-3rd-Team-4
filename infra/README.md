@@ -87,7 +87,7 @@ flowchart LR
 | `rag-cronjob-staging` | `backend` | `staging` | CronJob(주기적 재인덱싱, 매일 03:00) |
 | `rag-cronjob-production` | `main` | `production` | CronJob |
 
-backend와 rag는 **같은 브랜치(backend/main), 같은 Docker 이미지**를 쓰지만(코드가 `backend/rag/`에 같이 있음, pgvector라 DB 커넥션도 공유)
+backend와 rag는 **같은 브랜치(backend/main), 같은 Docker 이미지**를 쓰지만(코드가 `backend/app/rag/`에 같이 있음, pgvector라 DB 커넥션도 공유)
 배포 단위(ArgoCD Application)만 나눠서, RAG 재인덱싱을 상시 서빙 Deployment 재시작 없이 독립적으로 sync/pause할 수 있게 했다.
 
 > **브리프코치 피벗(2026-08-19) 이후**: 여기 있던 "ML 모델 버전 관리" 절(ml 레포 multi-source +
