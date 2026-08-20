@@ -50,8 +50,8 @@ export class WakeLockManager {
         ? (navigator.wakeLock as unknown as WakeLockLike)
         : undefined);
     this.getVisibility = options.getVisibility ?? (() => document.visibilityState);
-    this.onStateChange = options.onStateChange ?? (() => undefined);
-    this.onTelemetry = options.onTelemetry ?? (() => undefined);
+    this.onStateChange = options.onStateChange ?? (() => {});
+    this.onTelemetry = options.onTelemetry ?? (() => {});
   }
 
   private setState(state: WakeLockState): void {
@@ -63,14 +63,16 @@ export class WakeLockManager {
   }
 
   /** 세션 시작 제스처 핸들러에서 호출한다 (제스처 밖 호출은 플랫폼이 거부할 수 있음) */
-  async acquireFromGesture(): Promise<boolean> {
+  acquireFromGesture(): Promise<boolean> {
     this.wanted = true;
     return this.request("acquire_failed");
   }
 
   /** visible/pageshow 복귀 경로 전용 — 다른 곳에서 호출하지 않는다 */
-  async reacquireOnReturn(): Promise<boolean> {
-    if (!this.wanted) return false; // 세션이 원한 적 없거나 수동 해제됨 — 재획득 대상 아님
+  reacquireOnReturn(): Promise<boolean> {
+    // 세션이 원한 적 없거나 수동 해제됨 — 재획득 대상 아님.
+    // async를 떼었으므로 평범한 false가 자동 래핑되지 않는다. 명시적으로 Promise를 돌려준다.
+    if (!this.wanted) return Promise.resolve(false);
     return this.request("reacquire_failed");
   }
 

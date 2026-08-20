@@ -3,13 +3,13 @@
 // 화면 전환은 선형 플로우라 상태 기반 — 라우터 도입은 의존성 추가 승인 대상이라 보류.
 import { useRef, useState } from "react";
 import { useStore } from "zustand";
-import { collectFeatureSupport, GuardScreen, resolveEntryGuard, type EntryVerdict } from "../features/entry-guard";
-import { PracticeSessionPage } from "../pages/practice-session";
-import { FeedbackPage } from "../pages/feedback";
-import { ReportPage } from "../pages/report";
-import { AudioUnlock, WakeLockManager, type AudioUnlockState, type WakeLockState } from "../shared/lib";
+import { collectFeatureSupport, GuardScreen, resolveEntryGuard, type EntryVerdict } from "@/features/entry-guard";
+import { PracticeSessionPage } from "@/pages/practice-session";
+import { FeedbackPage } from "@/pages/feedback";
+import { ReportPage } from "@/pages/report";
+import { AudioUnlock, WakeLockManager, type AudioUnlockState, type WakeLockState } from "@/shared/lib";
 import { practiceStore } from "./store/practice-store";
-import type { QuestionCategory } from "../entities/question";
+import type { QuestionCategory } from "@/entities/question";
 
 type Phase = "practice" | "feedback" | "report";
 
@@ -64,7 +64,7 @@ function App({ guardVerdict }: AppProps) {
     return (
       <PracticeSessionPage
         category={category}
-        onSelectCategory={(c: QuestionCategory) => practiceStore.getState().selectQuestion(c, c)}
+        onSelectCategory={(c: QuestionCategory) => practiceStore.getState().selectCategory(c)}
         audioState={audioState}
         wakeLockState={wakeLockState}
         recordingState={recordingState}

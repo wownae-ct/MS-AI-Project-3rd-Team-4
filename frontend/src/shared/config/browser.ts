@@ -19,7 +19,7 @@ export const IN_APP_UA_MARKERS = [
 export const KAKAOTALK_UA_MARKER = "KAKAOTALK";
 
 /** iOS 계열 판별 — 인앱 탈출 유도 대신 비지원 안내로 분기(정책 상속, 재검토 여지 있음) */
-export const IOS_UA_PATTERN = /iPhone|iPad|iPod/i;
+export const IOS_UA_PATTERN = /iPhone|iPad|iPod/iu;
 
 /**
  * 탈출 1단계 — 카카오톡 전용 스킴 (커뮤니티 검증 패턴, 공식 미문서화).
