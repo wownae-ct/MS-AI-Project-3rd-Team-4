@@ -27,18 +27,47 @@ from app.models import Base
 
 
 class Wedding(Base):
-    """인증이 없으므로 이 표에는 항상 딱 1행만 있다(서비스 코드로 강제, DB CHECK 아님)."""
+    """인증이 없으므로 이 표에는 항상 딱 1행만 있다(서비스 코드로 강제, DB CHECK 아님).
+
+    wedding_date_precision부터 sdm_priority까지 5개 컬럼은 2026-08-21 온보딩 개인화 스코프
+    확장분(04_DB_spec.md §4-(1) "2026-08-21 추가" 참고) — 최초 스캐폴딩 당시엔 없었다."""
 
     __tablename__ = "weddings"
-    __table_args__ = (CheckConstraint("total_budget > 0", name="ck_weddings_total_budget"),)
+    __table_args__ = (
+        CheckConstraint("total_budget > 0", name="ck_weddings_total_budget"),
+        CheckConstraint(
+            "wedding_date_precision IN "
+            "('EXACT','APPROX_H2_THIS_YEAR','APPROX_H1_NEXT_YEAR','APPROX_H2_NEXT_YEAR','NO_PLAN')",
+            name="ck_weddings_date_precision",
+        ),
+        CheckConstraint("user_role IN ('BRIDE','GROOM')", name="ck_weddings_user_role"),
+        CheckConstraint(
+            "taste_preference IN ('MINIMAL','BUDGET','GRAND','BALANCED')",
+            name="ck_weddings_taste_preference",
+        ),
+        CheckConstraint(
+            "venue_priority IN ('FOOD','LOCATION','PARKING','CAPACITY')",
+            name="ck_weddings_venue_priority",
+        ),
+        CheckConstraint(
+            "sdm_priority IN ('DRESS','PHOTO','MAKEUP')", name="ck_weddings_sdm_priority"
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
     )
     wedding_date: Mapped[date] = mapped_column(Date, nullable=False)
+    wedding_date_precision: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="EXACT"
+    )
     total_budget: Mapped[int] = mapped_column(BigInteger, nullable=False)
     region_code: Mapped[str] = mapped_column(Text, nullable=False)
     guest_count: Mapped[int | None]
+    user_role: Mapped[str] = mapped_column(Text, nullable=False)
+    taste_preference: Mapped[str | None] = mapped_column(Text)
+    venue_priority: Mapped[str | None] = mapped_column(Text)
+    sdm_priority: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
