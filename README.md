@@ -1,40 +1,43 @@
-# 브리프코치 (BriefCoach)
+# 웨딩레이더 (WeddingRadar, 가칭)
 
-SeSAC MS AI 엔지니어 4기 3차 프로젝트 (2인 팀). 기술직을 위한 AI 화법 트레이너 — 기술면접/고객설명/
-장애보고 상황을 제한시간 안에 음성으로 연습하면, 두괄식·STAR 구조·간결성 기준으로 RAG 근거검증을 거친
-코칭 피드백을 받는다. 이전 주제("크로스핏 폼 코치", 웹캠 기반 실시간 운동 자세 코칭)에서 인프라·협업
-구조는 그대로 두고 주제만 전환(2026-08-19)했다. 현재 설계 문서는 `docs/new/plan/브리프코치_*.md` 6종
-(로컬 전용, git 미추적).
+SeSAC MS AI 엔지니어 4기 3차 프로젝트 (2인 팀). 예식장·스드메(드레스/스튜디오/메이크업) 중심으로
+예산·타임라인·계약전 체크리스트를 관리하고, 실제 사례(좋은예/나쁜예)와 공식 통계에 근거한 RAG
+상담을 받는 웨딩 준비 앱. "크로스핏 폼 코치"(웹캠 운동 코칭) → "브리프코치"(AI 화법 트레이너)에
+이은 **2차 주제 전환**(2026-08-20)으로, 인프라·협업 구조는 그대로 두고 주제만 다시 바꿨다. 현재
+설계 문서는 `docs/wedding/plan/*.md` 10종(`00_BASELINE.md`가 SSOT, 로컬 전용, git 미추적).
 
-## 아키텍처 개요 (S0~S5 단계)
+## 아키텍처 개요 (routers → services → models/rag)
 
-실시간(<20ms) 판정이 필요했던 이전 구조(T0~T4)와 달리, "답변 후 피드백"이라 훨씬 단순한 선형
-파이프라인이다.
+실시간 판정이나 다단계 에이전트 파이프라인이 필요 없는, CRUD API + RAG 상담 1개 엔드포인트 위주의
+비교적 단순한 구조다.
 
-| 단계 | 위치 | 역할 |
+| 레이어 | 위치 | 역할 |
 |---|---|---|
-| S0~S1 | frontend | 질문/타이머 표시, 답변 녹음 → 서버 업로드 |
-| S2 | backend | STT 전사 + 필러워드/wpm/문장수 등 결정론적 지표 추출 (비-LLM) |
-| S3 | backend | 코칭 에이전트 — 두괄식/STAR 구조 판정 + 전달력 피드백 스트리밍(SSE) |
-| S4 | backend | 근거검증 에이전트 — RAG로 코칭 코멘트가 화법 가이드 코퍼스에 근거하는지 확인, 실패 시 재시도/강등 |
-| S5 | backend worker | 세션 리포트(반복 약점 패턴, 다음 연습 추천, 비동기) |
+| Routers | `backend/app/routers/` | 23개 REST 엔드포인트(health/wedding/category/budget/vendor_case/chat/dashboard) |
+| Services | `backend/app/services/` | 비즈니스 로직 |
+| Models | `backend/app/models/` | SQLAlchemy 2.0 async, 14개 테이블 |
+| RAG | `backend/app/rag/` | indexing(오프라인 색인) / retrieval(하이브리드 검색+RRF) / graph(LangGraph 3노드: retrieve→generate→verify) |
+
+**무인증 MVP** — 로그인 없음, 시드된 단일 `weddings` 행 하나로 데모(BASELINE §0). 실서비스 전환
+시에만 인증을 재도입한다.
 
 ## 폴더 구조
 
 ```
-backend/    FastAPI 게이트웨이 + 에이전트(coach/verify/planner/retriever) + LangGraph 오케스트레이션
-            + 결정론적 지표 추출(metrics/) + STT(stt/) + RAG 인덱싱(rag/)
-frontend/   React + SSE 피드백 클라이언트 + 답변 녹음 (Vite+React+TS)
-data/       RAG 코퍼스(STAR/화법 가이드 문서) — 이전 주제의 운동/부상 가이드 아님
-db/         번호 붙인 SQL 마이그레이션 파일(migrations/) + 러너(migrate.py) + 시드 데이터 — ORM 없음
+backend/    FastAPI(app/main.py) + SQLAlchemy 2.0 async 모델(app/models/) + Alembic(alembic/)
+            + routers/services/rag. backend/old/에 브리프코치 시절 구현 아카이브(lint/test 제외)
+frontend/   React + SSE 상담 클라이언트 (Vite+React+TS) — 2026-08-20 기준 아직 브리프코치 화면
+            그대로, frontend 브랜치에서 별도 재구성 필요
+data/       RAG 코퍼스(DS1_PRICE~DS8_UGC — 참가격/소비자원 사례/표준계약서/정부정책/설문/
+            체크리스트/타임라인/UGC). data/old/에 브리프코치 화법 코퍼스 아카이브
+db/         콘텐츠 시드(seed/) + 브리프코치 시절 raw-SQL 마이그레이션 아카이브(old/) — 스키마
+            자체는 backend/app/models/ + backend/alembic/에 있음
 infra/      Bicep(Azure 리소스) + AKS 매니페스트 + ArgoCD — 이전 주제 빌드 그대로 재사용
-docs/       docs/new/plan/이 현재 설계 문서. 이전 주제 설계 문서는 docs/old/에 보존(로컬 전용)
+docs/       docs/wedding/plan/이 현재 설계 문서. 이전 주제들 설계 문서는 docs/old/에 보존(로컬 전용)
 ```
 
-> **커스텀 모델 학습 없음**: 이전 주제는 별도 `ml` 레포에서 포즈판정 모델(TCN)을 학습해 ONNX로
-> 서빙했는데, 이번 주제는 커스텀 학습이 전혀 없다 — STT는 서드파티 API(Azure OpenAI
-> Whisper/gpt-4o-transcribe) 호출일 뿐이다. RAG는 학습이 아니라 서비스가 매 요청 호출하는 라이브
-> 컴포넌트라 이 레포(`backend/rag/`, `data/`)에 있다.
+> **커스텀 모델 학습 없음**: RAG는 학습이 아니라 서비스가 매 요청 호출하는 라이브 컴포넌트라 이
+> 레포(`backend/app/rag/`, `data/`)에 있다. Azure OpenAI가 chat/embedding 배포를 분리 제공한다.
 
 ## 브랜치 전략 & 폴더 소유권
 
