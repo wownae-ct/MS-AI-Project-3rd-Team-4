@@ -3,12 +3,14 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": "^24.15.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
-    "lint": "oxlint .",
-    "depcruise": "depcruise src",
+    "lint": "oxlint --deny-warnings .",
     "test": "vitest run",
     "preview": "vite preview"
   },
@@ -23,10 +25,9 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
-    "dependency-cruiser": "^18.2.0",
     "jsdom": "^30.0.1",
     "oxlint": "^1.78.0",
-    "typescript": "~6.0.3",
+    "typescript": "~7.0.2",
     "vite": "^8.2.1",
     "vitest": "^4.1.10"
   }

@@ -1,3 +1,195 @@
+// FSD 레이어 경계 강제. 설계·근거: docs/architecture/layers.md §4
+//
+// 규칙이 import 지정자 "문자열"에 걸리므로 경로 별칭 규약이 전제다 —
+// 슬라이스 내부는 상대 경로, 슬라이스 밖은 @/. 그래서 @/ 가 나오면 그 자체로 경계를 넘은 것이고,
+// 레이어당 override 하나로 충분하다 (슬라이스가 늘어도 설정을 고칠 필요가 없다).
+//
+// !! overrides 는 top-level 규칙을 병합하지 않고 "대체"한다 !!
+// 따라서 공통 패턴 2종(슬라이스 내부 금지 · 별칭 우회 차단)을 매 override 에 반복한다.
+// 새 레이어 override 를 추가할 때 이걸 빠뜨리면 그 레이어만 조용히 무방비가 된다.
+//
+// allowTypeImports 를 설정하지 않는 것이 중요하다 — 미설정이 기본값이고, 그래야 `import type` 도
+// 검사된다. type-only import 는 컴파일 후 소거되므로 검사하지 않으면 상향·교차 import 가 전부 빠져나간다.
 {
-  "ignorePatterns": ["old/**", "dist/**", "node_modules/**"]
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+
+  // !! plugins 는 "추가"가 아니라 "대체"다 !!
+  // 기본 활성(eslint·typescript·unicorn·oxc)을 여기 다시 적지 않으면 그것들이 꺼진다.
+  // 실측: 미지정 97 rules → ["import","react"] 만 적으면 80 rules(기본값 소실) → 아래 조합 119 rules.
+  // 규칙을 늘리려다 줄이는 사고가 나기 쉬운 자리다. 플러그인을 추가할 때 rules 수를 함께 확인할 것.
+  "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "react"],
+
+  "ignorePatterns": ["dist/**", "node_modules/**"],
+
+  // 카테고리 선택 근거 (2026-08-20 전수 실측):
+  //   correctness 118 rules /   0 진단  — 기본
+  //   perf         11 rules /   0 진단  — 공짜
+  //   suspicious   44 rules / 108 진단  — 105건이 아래 react-in-jsx-scope 하나. 끄면 실질 3건
+  //   pedantic     95 rules /  39 진단  — 실질 + 취향 혼재. 취향만 아래에서 개별 해제
+  //   style       147 rules / 455 진단  — 미채택: 규칙끼리 모순한다
+  //                                       (import/no-named-export 86건 ↔ import/prefer-default-export 1건)
+  //   restriction  81 rules / 213 진단  — 미채택: 구형 런타임 타깃용이다
+  //                                       (oxc/no-async-await 40건 등, build.target은 chrome111)
+  "categories": {
+    "correctness": "error",
+    "perf": "error",
+    "suspicious": "error",
+    "pedantic": "error"
+  },
+
+  "rules": {
+    "import/no-cycle": "error",
+
+    // --- 카테고리에 딸려 오지만 이 저장소에서 틀리거나 맞지 않는 규칙 ---
+    // jsx: "react-jsx"(자동 런타임)에서는 React를 스코프에 둘 필요가 없다. 이미 무의미한 규칙이다.
+    "react/react-in-jsx-scope": "off",
+    // CSS 사이드이펙트 import(main.tsx)와 테스트 셋업(setupTests.ts)은 정당한 용법이다.
+    "import/no-unassigned-import": "off",
+    // 이 저장소는 설계 근거를 코드 옆에 적는 것을 관례로 삼는다. 규칙과 관례가 충돌하면 관례가 이긴다.
+    "eslint/no-inline-comments": "off",
+    // 크기 신호는 유용하나 임계값을 정하지 않은 채 켜면 소음이다. 별도 판단 대상.
+    "eslint/max-lines-per-function": "off",
+
+    // 어느 override 에도 걸리지 않는 파일(예: src 바로 아래)에 적용되는 공통 패턴.
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["@/{entities,features,pages}/*/**"],
+            "message": "슬라이스 밖에서는 루트 index만 import한다 — 내부 파일 직접 참조 금지 (public API 우회)"
+          },
+          {
+            "regex": "^\\.\\.(/\\.\\.)*/(app|pages|features|entities|shared)(/|$)",
+            "message": "슬라이스를 넘는 상대 경로 금지 — @/ 별칭을 쓸 것 (별칭 규약이 경계 검사의 전제다)"
+          }
+        ]
+      }
+    ]
+  },
+
+  "overrides": [
+    {
+      // 테스트 더블은 Promise 반환 인터페이스를 흉내 내야 해서 body 에 await 가 없어도 async 가 필수다
+      // (FakeSentinel.release() · 가짜 AudioContext.resume() · vi.fn(async …)).
+      // async 를 떼면 반환값이 Promise 가 아니게 되어 대상 인터페이스와 어긋난다 — 규칙이 여기선 틀렸다.
+      // 프로덕션 코드에는 그대로 적용된다(실제로 wake-lock.ts 에서 잘못된 async 를 이 규칙으로 찾았다).
+      "files": ["**/*.test.ts", "**/*.test.tsx"],
+      "rules": { "eslint/require-await": "off" }
+    },
+    {
+      // shared — 최하층. 위로 아무것도 못 본다.
+      "files": ["src/shared/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@/{entities,features,pages}/*/**"],
+                "message": "슬라이스 밖에서는 루트 index만 import한다"
+              },
+              {
+                "regex": "^\\.\\.(/\\.\\.)*/(app|pages|features|entities|shared)(/|$)",
+                "message": "슬라이스를 넘는 상대 경로 금지 — @/ 별칭을 쓸 것"
+              },
+              {
+                "group": [
+                  "@/app", "@/app/**",
+                  "@/pages", "@/pages/**",
+                  "@/features", "@/features/**",
+                  "@/entities", "@/entities/**"
+                ],
+                "message": "shared는 최하층이다 — 상위 레이어를 import할 수 없다"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      // entities — 상향 금지 + 다른 entity 슬라이스 금지 (자기 슬라이스는 상대 경로라 걸리지 않는다).
+      "files": ["src/entities/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@/{entities,features,pages}/*/**"],
+                "message": "슬라이스 밖에서는 루트 index만 import한다"
+              },
+              {
+                "regex": "^\\.\\.(/\\.\\.)*/(app|pages|features|entities|shared)(/|$)",
+                "message": "슬라이스를 넘는 상대 경로 금지 — @/ 별칭을 쓸 것"
+              },
+              {
+                "group": [
+                  "@/app", "@/app/**",
+                  "@/pages", "@/pages/**",
+                  "@/features", "@/features/**",
+                  "@/entities", "@/entities/**"
+                ],
+                "message": "entities는 상위 레이어와 다른 entity 슬라이스를 import할 수 없다"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      // features — 상향 금지 + feature 상호 금지. feature 간 조립은 app·pages 담당.
+      "files": ["src/features/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@/{entities,features,pages}/*/**"],
+                "message": "슬라이스 밖에서는 루트 index만 import한다"
+              },
+              {
+                "regex": "^\\.\\.(/\\.\\.)*/(app|pages|features|entities|shared)(/|$)",
+                "message": "슬라이스를 넘는 상대 경로 금지 — @/ 별칭을 쓸 것"
+              },
+              {
+                "group": [
+                  "@/app", "@/app/**",
+                  "@/pages", "@/pages/**",
+                  "@/features", "@/features/**"
+                ],
+                "message": "features는 상위 레이어와 다른 feature를 import할 수 없다 — feature 간 조립은 app·pages 담당"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      // pages — app 금지 + 다른 page 금지. 스토어 값은 app이 props로 하향 주입한다.
+      "files": ["src/pages/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@/{entities,features,pages}/*/**"],
+                "message": "슬라이스 밖에서는 루트 index만 import한다"
+              },
+              {
+                "regex": "^\\.\\.(/\\.\\.)*/(app|pages|features|entities|shared)(/|$)",
+                "message": "슬라이스를 넘는 상대 경로 금지 — @/ 별칭을 쓸 것"
+              },
+              {
+                "group": ["@/app", "@/app/**", "@/pages", "@/pages/**"],
+                "message": "pages는 app과 다른 page를 import할 수 없다 — 스토어 값은 app이 props로 하향 주입한다"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

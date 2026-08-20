@@ -4,6 +4,11 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    // tsconfig.app.json의 paths("@/*")를 그대로 쓴다 — 별칭 정의를 두 곳에 두지 않기 위해서다.
+    // 수동 alias는 절대 경로가 필요해 node:url 의존을 부르는데, 그 대가를 치를 이유가 없다.
+    tsconfigPaths: true,
+  },
   build: {
     // 지원 매트릭스(정책 상속) — Chromium 111 하한 명시 배열.
     // Vite 기본값('baseline-widely-available')은 Firefox·Safari 포함이라 위임 금지.
@@ -13,7 +18,6 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: "./src/setupTests.ts",
-    // old/는 브리프코치 피벗 전 레거시 보존 — 활성 테스트 대상이 아니다.
-    exclude: ["**/node_modules/**", "**/dist/**", "old/**"],
+    exclude: ["**/node_modules/**", "**/dist/**"],
   },
 });
