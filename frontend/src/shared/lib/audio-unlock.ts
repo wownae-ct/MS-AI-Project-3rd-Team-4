@@ -24,8 +24,8 @@ export class AudioUnlock {
 
   constructor(options: AudioUnlockOptions = {}) {
     this.createContext =
-      options.createContext ?? (typeof AudioContext !== "undefined" ? () => new AudioContext() : undefined);
-    this.onStateChange = options.onStateChange ?? (() => undefined);
+      options.createContext ?? (typeof AudioContext === "undefined" ? undefined : () => new AudioContext());
+    this.onStateChange = options.onStateChange ?? (() => {});
   }
 
   /** 재생용 컨텍스트 — 언락 성공 후에만 존재 */
