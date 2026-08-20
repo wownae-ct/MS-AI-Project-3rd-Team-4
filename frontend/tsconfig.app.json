@@ -11,6 +11,11 @@
     "noEmit": true,
     "tsBuildInfoFile": "./node_modules/.cache/tsconfig.app.tsbuildinfo",
     "jsx": "react-jsx",
+    // 경로 별칭 — baseUrl 없이 paths만 선언한다. TypeScript 7이 baseUrl을 제거했으므로
+    // 이것이 유일한 전방호환 형태다(tsconfig 파일 위치 기준 상대 해석).
+    // Vite는 resolve.tsconfigPaths로 이 선언을 그대로 읽는다 — 별칭을 두 곳에 적지 않는다.
+    // 설계: docs/architecture/layers.md §3
+    "paths": { "@/*": ["./src/*"] },
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,

@@ -37,22 +37,41 @@ jobs:
 
             - uses: actions/setup-node@v4
               with:
-                  # undici(8.0.3+, jsdom 30이 끌어옴)가 worker_threads.markAsUncloneable를 요구하는데
-                  # 이 API는 Node 22.10+/23+에만 있음 — Node 20은 이미 undici 8.x 지원 대상도 아님
-                  node-version: "24"
+                  # 버전은 frontend/.nvmrc가 단일 출처 — 로컬과 CI가 갈라지지 않게 값을 중복하지 않는다.
+                  # 하한 근거: jsdom 30.0.1 engines = ^22.22.2 || ^24.15.0 || >=26.0.0 (전 의존성 중 최협)
+                  # 상세: frontend/docs/architecture/toolchain.md §2
+                  node-version-file: frontend/.nvmrc
+                  cache: npm
+                  # 락파일이 하위 디렉터리라 명시 필요 (setup-node는 defaults.run.working-directory를 따르지 않는다)
+                  cache-dependency-path: frontend/package-lock.json
 
-            # 린트/테스트 게이트 — 통과 못하면 빌드/배포 안 함
-            - name: Install & lint
-              run: |
-                  npm ci
-                  npm run lint --if-present
+            - name: Install
+              run: npm ci
+
+            # ---- 검증 게이트 — 통과 못하면 빌드/배포 안 함 ----
+            # --if-present를 쓰지 않는다: 스크립트가 사라져도 성공으로 처리되어 게이트가 조용히 없어진다.
+            - name: Typecheck
+              run: npm run typecheck
+
+            # oxlint은 검사 대상이 0개면(경로 오류·ignore 과다) 스스로 exit 1로 실패한다 — 실측 확인.
+            # 별도의 "검사 파일 수 > 0" 게이트가 필요 없는 이유다 (toolchain.md §5.3 ②).
+            - name: Lint
+              run: npm run lint
+
             - name: Test
-              run: npm run test --if-present
+              run: npm test
 
             - name: Build
               env:
                   VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
-              run: npm run build
+              run: |
+                  # 포크에서 온 PR에는 secret이 전달되지 않는다(GitHub 사양). 값이 비면 코드의 `?? ""`
+                  # 폴백 때문에 상대 경로 번들이 조용히 만들어지므로 최소한 눈에 보이게 한다.
+                  # 근본 해결은 toolchain.md §6.3 (값 부재를 드러내는 처리) — 백엔드 호스트 확정 후.
+                  if [ -z "$VITE_API_BASE" ]; then
+                    echo "::warning::VITE_API_BASE가 비어 있다 — 포크 PR이거나 시크릿 미설정. API 호출이 상대 경로로 나간다."
+                  fi
+                  npm run build
 
             - name: Deploy to Azure Static Web Apps
               if: github.ref == 'refs/heads/frontend' || github.event_name == 'pull_request'
