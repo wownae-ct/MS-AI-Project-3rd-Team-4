@@ -13,6 +13,7 @@
 | 항목 | 값 |
 |---|---|
 | `oxlint --format=json .` | 54 files · **262 rules** · 진단 0 |
+| `vite build` 산출물 | **199 kB** (gzip 64.9 kB) · 절대경로 0 · 개발 JSX 0 (§5.4) |
 | `vitest run` | **11개 파일 · 94개 테스트 통과** |
 | `typescript` | **`~7.0.2`** (단독 — 별칭 병존 없음) |
 | `engines.node` · `.nvmrc` | `^24.15.0` · `24.19.0` |
@@ -294,6 +295,53 @@ $ npx depcruise src --exclude "^src"
 이 워크플로는 `pull_request`에 트리거되고 빌드 스텝에서 `VITE_API_BASE: ${{ secrets.VITE_API_BASE }}`를 넣는다. 포크에서 온 PR에서는 이 값이 비어 오는데, 코드의 `?? ""` 폴백 때문에 **빌드가 성공하고 상대 경로 번들이 SWA 프리뷰로 배포된다.** 실패 신호가 어디에도 없다.
 
 → 근본 해결은 §6.3이다. 값 부재가 드러나는 처리로 바꾸면 이 경로도 함께 막힌다. 그 전까지는 **포크 PR 프리뷰의 API 호출이 동작하지 않는다는 것을 알고 있어야 한다.**
+
+---
+
+### 5.4 프로덕션 빌드가 개발 시맨틱으로 돌던 결함 ✅ 해소 (2026-08-20)
+
+**이 저장소에서 실제로 발생했던 일이다.** `import.meta.env.DEV` 가드가 프로덕션 번들에서 제거되는지 확인하다가 발견했다.
+
+#### 근본 원인
+
+`frontend/.env`에 `NODE_ENV=development`가 있었고, Vite의 `envDir` 기본값이 프로젝트 루트라 **빌드가 그 파일을 읽었다.**
+
+Vite 버그가 아니라 문서화된 동작이다 — [Env and Mode](https://vite.dev/guide/env-and-mode):
+
+> *"`NODE_ENV=...` can be set in the command, and also in your `.env` file."*
+
+그리고 **`MODE`와 `PROD`/`DEV`는 독립적인 개념**이다. `MODE`는 `--mode`에서, `PROD`/`DEV`는 **`NODE_ENV`에서** 온다. 그래서 `vite build`가 다음 모순 상태로 돌았다:
+
+```
+ZDEV[true]ZPROD[false]ZMODE[production]
+```
+
+**결함은 구성에 있었다** — 프로젝트 공용 env 파일(Azure·PostgreSQL·AKS)이 Vite의 env 로딩 범위 안에 있어, 프론트가 쓰지도 않는 변수 하나가 빌드 시맨틱을 뒤집었다.
+
+#### 실측된 피해와 해소
+
+| 항목 | 결함 상태 | 해소 후 |
+|---|---|---|
+| 소스 절대 경로가 번들에 박힘 | **10건 이상** (`C:/programming/…/Button.tsx`) | **0** |
+| 개발용 JSX 트랜스폼(`jsxDEV` 메타데이터) | 다수 | **0** |
+| `import.meta.env.DEV` 가드로 감싼 코드 | **프로덕션에서 실행됨** | **0** |
+| 번들 크기 | 398 kB | **199 kB** (gzip 64.9 kB) |
+
+**가장 위험한 것은 세 번째다.** "DEV로 감쌌으니 프로덕션에 안 나간다"는 가정이 전부 거짓이 된다. 그리고 **조용하다** — 빌드는 성공하고 경고도 없다.
+
+절대 경로 노출은 별개의 문제이기도 하다. 배포물에서 디렉터리 구조와 사용자명이 읽힌다.
+
+#### 재발 방지 — `assert-production-build`
+
+원인(`NODE_ENV` 줄)은 지웠지만 **`.env`는 `.gitignore` 대상이라 사람마다 파일이 다르다.** 한 사람이 고쳐도 다른 환경에서 재발할 수 있다.
+
+그래서 `vite.config.ts`에 빌드 전용 플러그인을 두어 **원인이 무엇이든 잡는다** — `mode === "production"`인데 `isProduction`이 `false`면 빌드를 실패시키고 원인·조치를 메시지로 알려준다.
+
+`mode`를 함께 보는 이유는 `--mode staging` + `NODE_ENV=production` 같은 정당한 조합을 막지 않기 위해서다. 두 개념이 독립이므로 모드만으로 단정하지 않는다.
+
+게이트가 실제로 막는지 주입으로 확인했다 — `NODE_ENV=development npx vite build`가 exit 1로 실패한다.
+
+> **교훈** — `import.meta.env.DEV`로 감싸면 프로덕션에서 제거된다는 것은 **가정이었고 이 저장소에서는 거짓이었다.** 번들을 직접 열어보지 않았으면 모른 채 넘어갔다. **빌드 산출물에 대한 주장은 산출물을 열어서 확인한다.**
 
 ---
 
