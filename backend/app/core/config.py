@@ -20,10 +20,11 @@ class Settings(BaseSettings):
     # (브리프코치_기술설계서.md §8 미결).
     azure_openai_api_version: str = "2024-10-21"
 
-    rag_corpus_path: str = "data/rag_corpus/speech_guide_corpus.json"
-    rag_chunk_min_chars: int = 300
-    rag_chunk_max_chars: int = 500
-    rag_search_default_k: int = 5
+    # 05_RAG_design.md §4: 벡터 top-8 + tsvector top-8 → RRF 융합 → top-5 컨텍스트.
+    rag_vector_top_k: int = 8
+    rag_tsvector_top_k: int = 8
+    rag_context_top_k: int = 5
+    rag_rrf_k: int = 60
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
