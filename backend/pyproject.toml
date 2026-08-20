@@ -1,12 +1,15 @@
 [project]
 name = "backend"
 version = "0.1.0"
-description = "브리프코치 백엔드 (S2~S5 에이전트 게이트웨이)"
+description = "웨딩레이더 백엔드 (FastAPI + SQLAlchemy 2.0 async + RAG 상담)"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "asyncpg>=0.29",
+    "sqlalchemy[asyncio]>=2.0",
+    "alembic>=1.13",
+    "pgvector>=0.3",
     "pydantic>=2.8",
     "pydantic-settings>=2.4",
     "azure-identity>=1.17",
@@ -33,7 +36,7 @@ asyncio_mode = "auto"
 norecursedirs = ["old"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["app", "rag"]
+packages = ["app"]
 
 [build-system]
 requires = ["hatchling"]
