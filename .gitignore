@@ -94,11 +94,13 @@ docs/
 # errors/2026-08-19-gitignore-blanket-ignores-backend-rag-docs.md 참고). 로컬 디스크가 사라지면
 # 복구 불가능하므로 예외 처리.
 !backend/old/rag/docs/
-# frontend/docs/도 위 블랭킷 규칙(앵커링 안 된 `docs/`)에 같은 방식으로 걸려 2026-08-21에 재발
-# 발견 — frontend_uiux_design_plan.md, 로고(초안), mockups/ 전부 지금까지 git 미추적이었음.
-# 같은 사고 클래스가 두 번째로 재발한 것 — 예외 처리.
-!frontend/docs/
 할일.md
+
+# ===== 로컬 전용 제품/디자인 워킹 문서 =====
+# impeccable 스킬(PRODUCT.md/DESIGN.md 워크플로) 산출물. docs/와 마찬가지로 로컬 전용, git 비추적.
+PRODUCT.md
+DESIGN.md
+design/
 # infra/old/는 레거시 계획 문서 아카이브 — infra/할일.md가 infra/old/할일-크로스핏폼코치.md로
 # 리네임되면서 위 bare 파일명 규칙(할일.md)을 벗어나 git에 커밋된 사고가 있었음(2026-08-19,
 # 평문 비밀번호 포함). 파일명이 아니라 디렉터리 전체를 무시해서 같은 사고를 구조적으로 막는다.
