@@ -1,4 +1,7 @@
-# 주기적 RAG 재인덱싱. data/rag_corpus 문서를 청킹·임베딩·pgvector upsert(backend/rag/index/).
+# 주기적 RAG 재인덱싱. DS1~DS8 코퍼스 문서를 청킹·임베딩·pgvector upsert(backend/app/rag/indexing.py).
+# TODO(RAG 구현 시점, Phase 3/8-23 이전): 아래 rag-corpus ConfigMap 볼륨은 BriefCoach 시절
+# 단일 JSON 코퍼스 배포 방식 그대로 남아있다 — 웨딩레이더는 DS1~DS8 다중 문서 코퍼스라 이 배포
+# 방식 자체를 다시 설계해야 한다(indexing.py 실제 구현과 함께).
 # backend Deployment와 같은 이미지(같은 backend 브랜치 빌드)를 쓰되 커맨드만 다르다 —
 # 그래서 배포 단위(ArgoCD sync)는 분리하면서 코드/의존성은 공유한다.
 apiVersion: batch/v1
@@ -21,7 +24,7 @@ spec:
             - name: rag-index
               image: team4hcacr-drascbaqe8f2gcca.azurecr.io/backend:latest
               imagePullPolicy: Always
-              command: ["python", "-m", "rag.index"]
+              command: ["python", "-m", "app.rag.indexing"]
               env:
                 - name: DATABASE_URL
                   valueFrom:
