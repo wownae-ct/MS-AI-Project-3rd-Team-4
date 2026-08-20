@@ -1,5 +1,0 @@
-# self-hosting 자산은 바이트 불변이어야 한다 — EOL 변환 시 SHA-256 기준선(public/mediapipe/README.md)과
-# 어긋나 무결성 검증이 무효가 된다. 텍스트 취급 금지.
-public/mediapipe/** -text
-*.task binary
-*.wasm binary
