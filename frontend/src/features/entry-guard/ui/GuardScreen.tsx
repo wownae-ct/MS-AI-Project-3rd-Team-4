@@ -2,7 +2,7 @@
 // 판정별 분기: in-app → 외부 브라우저 유도(탈출 3단계, URL 복사 항상 병행) /
 // iOS → 비지원 안내(탈출 유도 금지 — 탈출해도 WebKit) / unsupported-browser → 지원 브라우저 목록.
 import { useState } from "react";
-import { Banner, Button, IconCopy, IconExternalLink } from "../../../shared/ui";
+import { Banner, Button, IconCopy, IconExternalLink } from "@/shared/ui";
 import { buildEscapeUrls, type EntryVerdict } from "../lib/detect";
 
 /** 지원 매트릭스 — 안내 문구용 (판정 자체는 기능 검사) */

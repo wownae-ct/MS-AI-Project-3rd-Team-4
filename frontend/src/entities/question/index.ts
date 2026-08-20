@@ -1,9 +1,3 @@
-// question 도메인 모델 — 브리프코치_DB_설계서_ERD.md의 question과 대응.
-export type QuestionCategory = "tech_interview" | "customer_explain" | "incident_report";
-
-export interface Question {
-  id: string;
-  category: QuestionCategory;
-  promptText: string;
-  timeLimitSec: number;
-}
+// question 슬라이스 public API — 슬라이스 밖에서는 이 파일만 import한다.
+export type { Question, QuestionCategory } from "./model";
+export * as questionApi from "./api";

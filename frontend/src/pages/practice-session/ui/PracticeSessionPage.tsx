@@ -1,10 +1,10 @@
 // 연습 세션 화면 — 질문 카드 + 카테고리 선택 + 타이머/녹음 자리. 브리프코치_프로젝트_기획서_초안.md §4 화면 1.
 // 질문 뱅크 API는 백엔드 501 스텁이라 연동 전 상태를 명시한다 (조용한 실패 금지).
 // FSD: pages는 app을 import하지 못하므로 스토어 값·핸들러는 app이 props로 내려준다.
-import type { QuestionCategory } from "../../../entities/question";
-import type { RecordingState } from "../../../entities/practice-session";
-import type { AudioUnlockState, WakeLockState } from "../../../shared/lib";
-import { Banner, Button } from "../../../shared/ui";
+import type { QuestionCategory } from "@/entities/question";
+import type { RecordingState } from "@/entities/practice-session";
+import type { AudioUnlockState, WakeLockState } from "@/shared/lib";
+import { Banner, Button } from "@/shared/ui";
 
 const CATEGORY_LABEL: Record<QuestionCategory, string> = {
   tech_interview: "기술면접",
