@@ -56,8 +56,8 @@
 | [adr/0002-typescript-7을-단독으로-채택한다.md](adr/0002-typescript-7을-단독으로-채택한다.md) | TypeScript 7 단독 채택 + Node 24 고정 — **승인·적용 완료** |
 | [adr/0003-스타일링-엔진으로-tailwind-css-v4를-채택한다.md](adr/0003-스타일링-엔진으로-tailwind-css-v4를-채택한다.md) | Tailwind CSS v4 채택 + DESIGN.md 토큰을 @theme로 이관 — **승인·적용 완료** |
 | [adr/0004-접근성-프리미티브로-base-ui를-채택한다.md](adr/0004-접근성-프리미티브로-base-ui를-채택한다.md) | 접근성 프리미티브로 Base UI 채택(Tabs·Progress) — **승인·적용 완료** |
-| 0005 | 라우터 선택 — **예약**(`src/app/App.tsx`가 참조). 미작성 |
-| [adr/0006-디자인-규범의-ssot를-프론트엔드-안에-둔다.md](adr/0006-디자인-규범의-ssot를-프론트엔드-안에-둔다.md) | 디자인 규범 SSOT를 프론트엔드 안에 두고 네임스페이스 폐기·빌드 게이트로 강제 — **제안** |
+| [adr/0005-라우터로-tanstack-router를-채택한다.md](adr/0005-라우터로-tanstack-router를-채택한다.md) | 라우터 TanStack Router 채택 + 라우트 단위 코드 분할 — **제안**(승인 조건 R1~R7 측정 대기) |
+| [adr/0006-디자인-규범의-ssot를-프론트엔드-안에-둔다.md](adr/0006-디자인-규범의-ssot를-프론트엔드-안에-둔다.md) | 디자인 규범 SSOT를 프론트엔드 안에 두고 네임스페이스 폐기·빌드 게이트로 강제 — **승인** |
 
 ## 적용 로드맵
 
