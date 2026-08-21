@@ -1,5 +1,13 @@
+# [왕초보 가이드] Ingress 개념 자체는 ../backend-production/ingress.yaml 상단 주석 참고 — 이
+# 파일은 프로덕션과 구조가 완전히 동일하고 host(도메인)만 다르다.
+#
 # 도메인: staging은 production과 같은 ingress-nginx 컨트롤러(같은 공인 IP)를 nip.io로 재사용한다
-# (infra/k8s/ingress-nginx/README.md 참고). ingress-nginx 설치 후 실제 IP를 확인해서 아래 호스트를
+# (infra/k8s/ingress-nginx/README.md 참고). nip.io는 "IP 주소를 통째로 도메인처럼 쓰게 해주는"
+# 무료 공개 DNS 서비스 — 예를 들어 20.1.2.3이라는 IP는 실제로 도메인을 사지 않아도
+# "20-1-2-3.nip.io"라는 이름으로 그냥 resolve된다(해당 서비스가 뒤에서 IP를 그대로 돌려주는
+# 방식). staging은 팀 내부 점검용이라 이렇게 임시 도메인으로 충분하고, production만 Azure가
+# 공짜로 주는 "예쁜" 도메인(merrymap-production...)을 쓴다.
+# ingress-nginx 설치 후 실제 IP를 확인해서 아래 호스트를
 # "<IP를-하이픈으로-치환>.nip.io"로 채울 것 — 예: IP가 20.1.2.3이면 20-1-2-3.nip.io.
 # TLS: cert-manager가 letsencrypt-nginx ClusterIssuer로 자동 발급(infra/k8s/cert-manager/README.md).
 apiVersion: networking.k8s.io/v1
