@@ -38,8 +38,17 @@ helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm repo update
 helm install ingress-nginx ingress-nginx/ingress-nginx \
   --namespace ingress-nginx --create-namespace \
-  --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-dns-label-name"=merrymap-production
+  --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-dns-label-name"=merrymap-production \
+  --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz
 ```
+
+**⚠️ `azure-load-balancer-health-probe-request-path` 어노테이션 필수(2026-08-21 실제 장애로 발견)**:
+이게 없으면 Azure LB가 nodePort의 `/`를 헬스프로브로 치는데, ingress-nginx 기본 백엔드는 매칭되는
+Host가 없는 요청에 404를 돌려줘서(정상 동작) Azure가 모든 백엔드를 영구 unhealthy로 표시한다
+(`DipAvailability`/`VipAvailability` 0%로 실측). 같은 VNet 내부 트래픽은 다른 경로를 타서 영향을
+안 받아 오래 안 들켰지만, 실제 인터넷 트래픽(Let's Encrypt HTTP-01 challenge 포함)은 조용히
+타임아웃됐다 — staging/production 둘 다 TLS 인증서가 배포 이후 한 번도 발급 성공한 적이 없었음.
+`/healthz`는 ingress-nginx가 Host 무관하게 항상 200을 돌려주는 경로라 이 문제를 해결한다.
 
 설치 후 공인 IP 확인 → staging용 `nip.io` 호스트를 만들 때 필요:
 
