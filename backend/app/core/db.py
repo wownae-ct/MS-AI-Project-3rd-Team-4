@@ -3,7 +3,6 @@
 AAD 인증 모드는 동일한 패턴 유지: DSN에 비밀번호가 없으면 연결 시점마다 do_connect 이벤트에서
 DefaultAzureCredential 토큰을 password로 주입한다(토큰은 ~1시간 후 만료되므로 커넥션마다 새로 받음)."""
 
-import asyncio
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import event
@@ -46,8 +45,12 @@ def create_engine(settings: Settings) -> AsyncEngine:
 
         @event.listens_for(engine.sync_engine, "do_connect")
         def _inject_aad_token(dialect, conn_rec, cargs, cparams):
-            token = asyncio.run(asyncio.to_thread(get_credential().get_token, AAD_PG_SCOPE))
-            cparams["password"] = token.token
+            # do_connect는 AsyncEngine에서도 SQLAlchemy의 greenlet 브릿지를 통해 동기적으로
+            # 실행된다 — 이미 실행 중인 이벤트 루프와 같은 스레드(다른 greenlet 스택)에서 돌아가므로
+            # asyncio.run()을 쓰면 "cannot be called from a running event loop"로 항상 깨진다
+            # (실제로 rag-reindex CronJob에서 재현됨). get_token()은 원래 동기 함수라 그냥 직접
+            # 호출하면 된다 — asyncio로 감쌀 이유가 없다.
+            cparams["password"] = get_credential().get_token(AAD_PG_SCOPE).token
 
     return engine
 
