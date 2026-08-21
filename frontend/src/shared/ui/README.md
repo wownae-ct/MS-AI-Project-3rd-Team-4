@@ -44,6 +44,21 @@ CSS 는 사이드이펙트라 `index.ts` 로 재수출할 수 없다 — 그래�
 6. **아이콘은 인라인 SVG** — 외부 아이콘 CDN 금지(self-hosting 원칙). 20개를 넘으면 라이브러리 도입을 재검토한다.
 7. **폰트는 self-host** — Wanted Sans Variable(OFL-1.1). 디자인 문서가 Pretendard 를 명시적으로 기각했다.
 
+### 폰트 — variable/split 을 쓰는 이유
+
+패키지가 4가지 변종을 제공한다. `variable/split`(92 파일, raw 2,281,860 B)을 골랐다.
+
+| 변종 | 파일 | raw | 판정 |
+|---|---|---|---|
+| **variable / split** | 92 | 2,281,860 B | ✅ `unicode-range` 로 **쓰인 글자 조각만** 전송. 스타일가이드 1화면 실측 **18개** |
+| variable / complete | 1 | 1,289,292 B | 한 글자만 써도 1.29 MB 전량 |
+| static / split | 644 | 8,771,656 B | 가변축으로 위계를 만드는 디자인 문서 방침과 어긋남 |
+| static / complete | 7 | 4,675,776 B | 위와 같음 |
+
+**`preload` 를 쓰지 않는다.** `unicode-range` 분할에서는 브라우저가 페이지 내용을 보고 조각을 고른다 — 어떤 조각이 필요한지 **정적으로 알 수 없으므로** preload 대상을 지정할 수 없다. 찍어서 걸면 안 쓰는 조각을 강제로 받게 만들어 오히려 손해다.
+
+**`font-display: swap` 은 패키지 CSS 기본값이며 그대로 둔다.** LCP 에 유리하고 CLS 에 불리한 교환인데, 이 저장소는 `theme.css` 가 `--text-*--line-height` 를 **명시**해 두어 폰트 교체가 줄 높이를 바꾸지 못한다. 남는 위험은 자간 차이로 줄 수가 바뀌는 경우뿐이다. 실제로 문제가 되는지는 **저속 네트워크에서만** 드러난다 — 로컬 preview 는 폰트가 블록 구간 안에 도착해 스왑을 지나가지 않는다(측정 절차와 대비책은 `docs/architecture/toolchain.md` §8.2).
+
 ## 코드 규약
 
 **런타임 조립 클래스명 금지.** Tailwind 는 소스를 평문 스캔한다 — 공식 문서 원문: *"doesn't attempt to actually parse your files as code in any way."*
