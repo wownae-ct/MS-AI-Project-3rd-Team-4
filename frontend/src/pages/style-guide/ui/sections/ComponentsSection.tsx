@@ -23,7 +23,10 @@ export function MoneySection() {
 
 export function ButtonSection() {
   return (
-    <Section title="버튼" hint="primary · secondary · ghost. 최소 터치 타겟 44px.">
+    <Section
+      title="버튼"
+      hint="primary · secondary · ghost. 최소 터치 타겟 44px — WCAG AAA 2.5.5 · Apple HIG 44pt · KRDS 44px 의 수렴 (AA 최저선은 24px)."
+    >
       <Card className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-3">
           <Button>주요 액션</Button>
@@ -48,9 +51,11 @@ export function ButtonSection() {
         </Button>
       </Card>
       <Rule>
-        마우스를 올려 보세요 — primary 는 밝기가 오르고, secondary 는 보더가 진해지며, ghost 는 옅은 배경이
-        깔립니다. 입체 효과를 쓰지 않는 대신 보더와 배경으로만 표현합니다. 터치 기기에서는 이 효과가 아예
-        적용되지 않습니다(<code className="font-bold">@media (hover:hover)</code>).
+        마우스를 올려 보세요 — primary 는 배경이 <span className="font-bold">짙어지고</span>(
+        <code className="font-bold">primary-hover</code>, 밝기 필터가 아닙니다), secondary 는 보더가 진해지며,
+        ghost 는 옅은 배경이 깔립니다. 입체 효과를 쓰지 않는 대신 보더와 배경으로만 표현합니다. 비활성 버튼은
+        세 변이 모두 호버에 반응하지 않습니다. 터치 기기에서는 이 효과가 아예 적용되지 않습니다(
+        <code className="font-bold">@media (hover:hover)</code>).
       </Rule>
     </Section>
   );

@@ -7,7 +7,7 @@
 // 셀렉터는 role/label/text 만 쓴다. 클래스명·data-testid·스냅샷을 쓰지 않는다 —
 // 스타일을 바꿀 때마다 테스트가 깨지면 테스트가 리팩터링을 막는 족쇄가 된다.
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StyleGuidePage } from "./StyleGuidePage";
 
@@ -107,14 +107,36 @@ describe("탭 — 키보드 접근성", () => {
 });
 
 describe("규범 표시", () => {
+  // 개수 하한(>= 3)을 단언하지 않는다 — D6 이 하나를 닫고 D2 가 하나를 열어 우연히 3 이 유지됐는데,
+  // 그 우연에 기대면 닫힌 결정이 다시 열려도(또는 그 반대여도) 테스트가 모른다. 어떤 것이 열려 있고
+  // 어떤 것이 닫혔는지 내용으로 단언한다.
   it("아직 확정되지 않은 결정을 화면에 드러낸다 — 조용히 넘기지 않는다", () => {
     render(<StyleGuidePage />);
-    expect(screen.getAllByText("열린 결정").length).toBeGreaterThanOrEqual(3);
+    expect(screen.getAllByText("열린 결정").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/지원 브라우저 범위가 확정되지 않았습니다/u)).toBeInTheDocument();
+    expect(screen.getByText(/디자인 판단을 기다립니다/u)).toBeInTheDocument(); // D2
+  });
+
+  it("닫은 결정은 규범으로 표시한다 — 상태 색은 도입하지 않는다 (D6)", () => {
+    render(<StyleGuidePage />);
+    expect(screen.getByText(/상태 색\(성공 · 경고 · 위험\)은 도입하지 않습니다/u)).toBeInTheDocument();
   });
 
   it("지금 쓰지 않기로 한 것을 명시한다", () => {
     render(<StyleGuidePage />);
     expect(screen.getByText("다크모드")).toBeInTheDocument();
     expect(screen.getByText("그림자")).toBeInTheDocument();
+    expect(screen.getByText("ring-*")).toBeInTheDocument();
+  });
+
+  it("라운드 4단계를 카탈로그로 보여 준다 (D1)", () => {
+    render(<StyleGuidePage />);
+    // "16px" 는 타이포 절에도 있다 — 형태 절 안에서만 찾는다.
+    const heading = screen.getByRole("heading", { level: 2, name: "형태" });
+    const section = heading.closest("section");
+    expect(section).not.toBeNull();
+    for (const px of ["8px", "10px", "16px", "999px"]) {
+      expect(within(section as HTMLElement).getByText(px)).toBeInTheDocument();
+    }
   });
 });

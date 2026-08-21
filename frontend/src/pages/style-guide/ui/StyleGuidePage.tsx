@@ -16,7 +16,7 @@ import {
   ProgressSection,
   TabsSection,
 } from "./sections/ComponentsSection";
-import { FocusSection, NonGoalsSection, SurfaceSection } from "./sections/SystemSection";
+import { FocusSection, NonGoalsSection, ShapeSection, SurfaceSection } from "./sections/SystemSection";
 
 export function StyleGuidePage() {
   return (
@@ -26,6 +26,7 @@ export function StyleGuidePage() {
     >
       <ColorSection />
       <TypographySection />
+      <ShapeSection />
       <MoneySection />
       <ButtonSection />
       <BadgeSection />
