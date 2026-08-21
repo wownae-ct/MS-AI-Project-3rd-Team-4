@@ -26,15 +26,15 @@
 
 | 문서 | 내용 |
 |---|---|
-| [decisions.md](decisions.md) | 규범 결정 D1~D10 — 맥락 · 대안 · 결정 · 적용 지점 · 되돌림 비용 |
+| [decisions.md](decisions.md) | 규범 결정 D1~D11 — 맥락 · 대안 · 결정 · 적용 지점 · 되돌림 비용 |
 | [a11y.md](a11y.md) | 접근성 정책 — 터치 타겟 · 글자 크기 · 대비. 표준 원문과 **근거 등급** |
-| [namespaces.md](namespaces.md) | Tailwind 네임스페이스 폐기 감사 — **「덮어쓰기」와 「폐기」는 다르다** |
+| [namespaces.md](namespaces.md) | Tailwind 네임스페이스 폐기 감사 + **게이트 설계의 정본** — 「덮어쓰기」와 「폐기」는 다르다 · 폐기가 실제로 막는 범위(컴파일 실측) · 파서 기반 게이트 |
 | [layout.md](layout.md) | 앱 셸 계약 · 라우트 표 · 내비게이션 접근성 · 화면별 폭 |
 | [inventory.md](inventory.md) | 6화면 UI 패턴 → Base UI 매핑 · 번들 비용 · 구현 함정 |
 | [implementation-plan.md](implementation-plan.md) | 구현 순서(커밋 단위)와 검증 절차 |
 | [../mockups/README.md](../mockups/README.md) | 화면 스펙의 출처와 한계 |
 
-관련 결정 기록: [ADR 0006](../adr/0006-디자인-규범의-ssot를-프론트엔드-안에-둔다.md) (상태: **제안**)
+관련 결정 기록: [ADR 0006](../adr/0006-디자인-규범의-ssot를-프론트엔드-안에-둔다.md) (상태: **승인** — 2026-08-21 개정·승인)
 
 ## 현행 규범 요약
 
@@ -67,7 +67,8 @@
 
 - **The Flat-By-Default Rule** — 그림자를 쓰지 않는다. 표면 구분은 **1px 헤어라인 보더**(`border-line`)로만. 호버도 그림자가 아니라 보더/배경의 옅은 변화로.
 - ⚠️ **위 3개는 "정의된 것"이지 "전부"가 아니다.** Tailwind 기본 `--radius-*` 8단계가 살아 있어 `rounded-2xl`(16px)·`rounded-4xl`(32px)도 생성된다 → [namespaces.md](namespaces.md) · [D1](decisions.md#d1-라운드를-4단계로-고정한다)
-- ⚠️ **"그림자 토큰을 두지 않는다"도 마찬가지다.** 기본 그림자 토큰 22개가 살아 있다 → [D10](decisions.md#d10-그림자-네임스페이스를-폐기하고-게이트를-3속성으로-넓힌다)
+- ⚠️ **"그림자 토큰을 두지 않는다"도 마찬가지다.** 기본 그림자 토큰 22개가 살아 있다 → [D10](decisions.md#d10-그림자-네임스페이스를-폐기하고-게이트를-파서로-다시-만든다)
+- ⚠️ **`ring-*`는 어떤 네임스페이스 폐기로도 막히지 않는다**(컴파일 실측). 게이트가 커스텀 속성까지 봐야 닫힌다 → [D9](decisions.md#d9-ring--를-금지어로-둔다) · [namespaces.md](namespaces.md)
 
 ### 서체
 

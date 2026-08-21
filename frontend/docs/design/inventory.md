@@ -69,7 +69,7 @@ Base UI는 `@floating-ui/react`를 벤더링해 `@base-ui/react/floating-ui-reac
 | checkbox | 4.8 KB | ***floating-ui-react/*** (공유) | **46.2 KB** |
 | dialog | 7.6 KB | | |
 
-**현재 예산 여유: JS gzip 16,412 B · CSS gzip(@font-face 제외) 2,324 B.**
+**현재 예산 여유: JS gzip 약 16.4 kB · CSS gzip(@font-face 제외) 약 2.3 kB** (2026-08-21 빌드 실측 75,588 / 3,676 기준. 게이트 `measured` 기준선 75,223 / 3,683 과 어긋나 있어 [implementation-plan.md](implementation-plan.md) C5에서 갱신한다 — 이 문서의 숫자도 그때 함께 맞춘다).
 Slider(14.5) + Field(8.5) + Tabs(8.7)만 얹어도 넘긴다. **상한은 코드 스플리팅을 적용한 뒤 실측값과 함께 올린다** — `scripts/check-bundle-budget.mjs`가 *"측정값과 함께 올린다. 조용히 올리면 이 게이트는 의미를 잃는다"* 고 못 박아 뒀다.
 
 ## 3. 패턴 → 컴포넌트 매핑
@@ -124,16 +124,20 @@ per-thumb `min`/`max`는 없다. Root의 `min`/`max`/`step`/`minStepsBetweenValu
 
 ### ② 원래 값 고스트 마커 — 네이티브 없음, 공식과 동일하게 복제 가능
 
-Slider는 CSS 변수를 노출하지 않는다(전 컴포넌트 grep 결과 slider는 0건). 대신 위치 계산이 소스에 그대로 있다:
+Slider가 **Thumb 위치용으로 노출하는 CSS 변수는 없다.** (`Indicator`는 `--start-position` · `--relative-size`를 설정하고, `inset` 모드에서는 `--position`을 쓴다 — 초판의 *"CSS 변수 0건"* 은 틀렸다. 다만 그 변수들은 Indicator·inset 전용이라 기본 `thumbAlignment='center'`의 Thumb 위치를 알려 주지는 않는다.) Thumb 위치 계산은 소스에 그대로 있다 — **실제 코드는 방향·RTL 분기가 있어 아래처럼 일반화돼 있다**(`slider/thumb/SliderThumb.mjs`, 축자 인용):
 
 ```js
-// slider/thumb/SliderThumb.mjs:222-226
-{ position:'absolute', insetInlineStart:`${thumbValuePercent}%`, top:'50%', translate:'-50% -50%' }
+const startEdge = vertical ? 'bottom' : 'insetInlineStart';
+const crossOffsetProperty = vertical ? 'left' : 'top';
+// …
+[startEdge]: inset ? 'var(--position)' : `${thumbValuePercent}%`,
+[crossOffsetProperty]: '50%',
+translate: `${(vertical || !rtl ? -1 : 1) * 50}% ${(vertical ? 1 : -1) * 50}%`,
 ```
 
-`<Slider.Track>` 안에 형제로 넣고 동일 공식(`(v - min) / (max - min) * 100`)을 쓰면 픽셀 단위로 맞는다.
+수평 · LTR · 비-inset 이면 `insetInlineStart: ${percent}%` · `top: 50%` · `translate: -50% -50%` 로 환원된다. `<Slider.Track>` 안에 형제로 넣고 동일 공식(`(v - min) / (max - min) * 100`)을 쓰면 픽셀 단위로 맞는다.
 
-⚠️ **`thumbAlignment`를 건드리지 않는다.** 기본값 `'center'`가 아니면 Base UI가 `ResizeObserver` 실측값(`--start-position` · `--relative-size`)을 쓰므로 순수 퍼센트 계산과 어긋난다.
+⚠️ **`thumbAlignment`를 건드리지 않는다.** 기본값 `'center'`가 아니면 Base UI가 `ResizeObserver` 실측값(`--start-position` · `--relative-size`)을 쓰므로 순수 퍼센트 계산과 어긋난다. **`inset`도 쓰지 않는다** — 그러면 위치가 `var(--position)`로 바뀌어 공식이 달라진다.
 
 ### 키보드 (자동 처리)
 

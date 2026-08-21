@@ -110,13 +110,13 @@ padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
 
 `auto-fit` 그리드는 브레이크포인트를 늘리지 않고 카드가 스스로 재배치되게 한다.
 
-⚠️ **`Card`가 이미 `@container`를 달고 있다.** 이는 `container-type: inline-size`를 설정해 **자식의 퍼센트 폭 계산 기준을 바꾼다.** 슬라이더 고스트 마커([inventory.md](inventory.md) §S6)처럼 퍼센트로 위치를 잡는 요소를 카드 안에 넣을 때 확인이 필요하다.
+⚠️ **`Card`가 이미 `@container`를 달고 있다.** 이는 `container-type: inline-size`를 설정해 **자식의 퍼센트 폭 계산 기준을 바꾼다.** 슬라이더 고스트 마커([inventory.md](inventory.md) §4 ②)처럼 퍼센트로 위치를 잡는 요소를 카드 안에 넣을 때 확인이 필요하다.
 
 ## 8. 라우터 — 결정 전 조사 결과
 
-**라우터 선택은 ADR로 확정한다**(`src/app/App.tsx`가 그렇게 참조하고 있다). 아래는 그 ADR의 입력이다.
+**라우터 선택은 ADR 0005로 확정한다** — 번호는 예약돼 있고 **아직 작성되지 않았다**(`src/app/App.tsx`·`App.test.tsx` 주석이 0005를 참조하고 있어 번호를 비워 둔 것. [../adr/README.md](../adr/README.md)). 아래는 그 ADR의 입력이다.
 
-**제약: JS 번들 예산 여유가 16,412 B(gzip)뿐이다.**
+**제약: JS 번들 예산 여유가 약 16.4~16.8 kB(gzip)뿐이다.** 한도 92,000 B 대비 — 게이트 `measured` 기준선(75,223)으로는 16,777 B, 2026-08-21 빌드 실측(75,588)으로는 16,412 B. **두 값이 갈리는 것 자체가 결함**이다(`measured`가 실측을 따라가지 못함 → [implementation-plan.md](implementation-plan.md) C5에서 기준선을 갱신한다). 여기서는 보수적으로 작은 쪽을 쓴다.
 
 | 패키지 | 최신 | React peer | gzip (barrel 상한) | 확인 |
 |---|---|---|---|---|
@@ -132,11 +132,11 @@ padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
 - **v8의 자동 코드 스플리팅은 Framework 모드 전용**이다. 정적 SPA 호스팅에서는 Declarative / Data 모드 + 수동 `lazy` 조합이 현실적이다
 - `wouter`는 코드 스플리팅 내장이 없다 — `React.lazy` + `<Suspense>`를 직접 조합한다
 
-**호스팅 연동** — SPA는 서버 폴백이 필요하다. `staticwebapp.config.json`의
+**호스팅 연동** — SPA는 서버 폴백이 필요하다. 저장소에는 **`staticwebapp.config.template.json`**(초안)만 있고 배포본 `staticwebapp.config.json`은 **아직 생성되지 않았다**(`__API_HOST__` 치환이 배포 호스트 확정을 기다린다). template에 이미 들어 있는 것:
 ```json
 { "navigationFallback": { "rewrite": "/index.html", "exclude": ["/assets/*"] } }
 ```
-이 파일은 **자산 캐시 헤더(`/assets/*`에 `immutable, max-age=31536000`)와 같은 파일**이므로 함께 처리한다.
+**아직 없는 것** — 자산 캐시 헤더(`/assets/*`에 `public, max-age=31536000, immutable`). 해시 파일명이라 안전하고 호스트와 무관하므로 **template 단계에서 미리 넣을 수 있다**(`../architecture/toolchain.md` 「배포 시 필요한 캐시 헤더」). 라우터 도입 시 같은 파일을 만지므로 함께 처리한다.
 
 ## 9. 화면 스펙이 답하지 않는 것
 
