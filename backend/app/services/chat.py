@@ -1,9 +1,19 @@
 """#20-22 실제 DB + RAG 로직. 03_API_spec.md §3, 05_RAG_design.md §2/§7.
 
-stream_chat_response가 #22의 핵심이다 — retrieve → (0건이면 고정 안내, 아니면 스트리밍 생성) →
-verify 순서로 실행하며, 매 단계 결과를 SSE 이벤트로 즉시 흘려보낸다. 그래프(app/rag/graph.py)를
-거치지 않고 여기서 직접 orchestrate하는 이유는 실시간 토큰 스트리밍이 필요해서다(같은 파일
-docstring 참고)."""
+stream_chat_response가 #22의 핵심이다. app/rag/graph.py의 그래프(retrieve→generate→verify)를
+graph.astream(..., stream_mode=["custom", "values"])로 순회하는 얇은 래퍼다 — "custom" 청크는
+generate_node가 get_stream_writer()로 흘려보낸 토큰이라 그대로 SSE token 이벤트로 전달하고,
+"values" 청크는 매 노드가 끝날 때마다의 상태 스냅샷이라 마지막 것만 최종 answer/context/verdict로
+쓴다. 그래프와 로직을 분리하지 않고 하나로 합친 이유: 예전엔 이 파일이 그래프를 거치지 않고
+retrieve/generate/verify를 직접 재구현해서 app/rag/graph.py와 로직이 중복돼 있었다.
+
+stream_chat_response는 라우터가 넘겨준 Depends(get_session) 세션을 쓰지 않고 자체적으로
+get_session_factory()로 세션을 연다 — FastAPI는 StreamingResponse를 반환하는 라우터 함수가
+"리턴"하는 즉시(스트리밍 바디가 실제로 소비되기 전에) yield 의존성을 정리한다(session.close()가
+먼저 실행됨). 라우터가 주입한 세션을 제너레이터 안에서 계속 쓰면 요청 스코프 밖에서 커밋이
+일어나는 셈이라, 직후 다른 요청이 같은 커넥션 풀에서 그 커밋을 못 보는 실제 버그로 이어졌다(실DB
+회귀 검증 중 발견 — SSE로 메시지 저장까지 다 되는데 바로 이어지는 GET .../messages가 방금 저장한
+답변을 못 읽음). 이 함수가 자기 완결적으로 세션을 열고 닫으면 이 레이스가 사라진다."""
 
 import time
 from collections.abc import AsyncIterator
@@ -14,16 +24,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.embeddings import get_azure_openai_client
+from app.core.db import get_session_factory
 from app.core.errors import api_error
 from app.models import Category, ChatMessage, ChatSession, Wedding
-from app.rag.generation import (
-    NO_CONTEXT_ANSWER,
-    NO_CONTEXT_REASON,
-    build_chat_messages,
-    verify_answer,
-)
-from app.rag.retrieval import retrieve
+from app.rag.graph import ChatState, build_graph
 from app.schemas.chat import (
     ChatMessageCreate,
     CitationOut,
@@ -32,6 +36,8 @@ from app.schemas.chat import (
     TokenEventData,
     VerificationEventData,
 )
+
+_GRAPH = build_graph()
 
 
 async def create_chat_session(
@@ -68,36 +74,36 @@ def _sse(event: str, data: BaseModel) -> str:
 
 
 async def stream_chat_response(
-    session: AsyncSession, chat_session: ChatSession, payload: ChatMessageCreate
+    chat_session_id: UUID, payload: ChatMessageCreate
 ) -> AsyncIterator[str]:
     start = time.monotonic()
-    category = await session.get(Category, chat_session.category_id)
 
-    session.add(ChatMessage(session_id=chat_session.id, role="user", content=payload.content))
-    await session.commit()
+    async with get_session_factory()() as session:
+        chat_session = await get_chat_session(session, chat_session_id)
+        category = await session.get(Category, chat_session.category_id)
 
-    settings = get_settings()
-    chunks = await retrieve(session, payload.content, category.code, settings)
+        session.add(ChatMessage(session_id=chat_session.id, role="user", content=payload.content))
+        await session.commit()
 
-    if not chunks:
-        answer = NO_CONTEXT_ANSWER
-        citations: list[CitationOut] = []
-        verdict, reason = "GENERAL", NO_CONTEXT_REASON
-        yield _sse("token", TokenEventData(delta=answer))
-    else:
-        client = get_azure_openai_client(settings)
-        stream = await client.chat.completions.create(
-            model=settings.azure_openai_chat_deployment,
-            messages=build_chat_messages(category.code, chunks, payload.content),
-            stream=True,
-        )
-        answer_parts: list[str] = []
-        async for event in stream:
-            delta = event.choices[0].delta.content if event.choices else None
-            if delta:
-                answer_parts.append(delta)
-                yield _sse("token", TokenEventData(delta=delta))
-        answer = "".join(answer_parts)
+        settings = get_settings()
+        initial_state: ChatState = {
+            "query": payload.content,
+            "category_code": category.code,
+            "context": [],
+            "answer": "",
+            "verdict": "",
+            "verification_reason": "",
+        }
+        config = {"configurable": {"session": session, "settings": settings}}
+
+        final_state: ChatState = initial_state
+        async for mode, chunk in _GRAPH.astream(
+            initial_state, config, stream_mode=["custom", "values"]
+        ):
+            if mode == "custom":
+                yield _sse("token", TokenEventData(delta=chunk["delta"]))
+            else:
+                final_state = chunk
 
         citations = [
             CitationOut(
@@ -106,24 +112,32 @@ async def stream_chat_response(
                 source_tier=c.source_tier,
                 source_url=c.source_url,
             )
-            for c in chunks
+            for c in final_state["context"]
         ]
-        verdict, reason = await verify_answer(client, settings, chunks, answer)
+        yield _sse("citations", CitationsEventData(citations=citations))
+        yield _sse(
+            "verification",
+            VerificationEventData(
+                verdict=final_state["verdict"], reason=final_state["verification_reason"]
+            ),
+        )
 
-    yield _sse("citations", CitationsEventData(citations=citations))
-    yield _sse("verification", VerificationEventData(verdict=verdict, reason=reason))
+        latency_ms = int((time.monotonic() - start) * 1000)
+        assistant_message = ChatMessage(
+            session_id=chat_session.id,
+            role="assistant",
+            content=final_state["answer"],
+            citations=[c.model_dump() for c in citations],
+            verification={
+                "verdict": final_state["verdict"],
+                "reason": final_state["verification_reason"],
+            },
+            latency_ms=latency_ms,
+        )
+        session.add(assistant_message)
+        await session.commit()
+        await session.refresh(assistant_message)
 
-    latency_ms = int((time.monotonic() - start) * 1000)
-    assistant_message = ChatMessage(
-        session_id=chat_session.id,
-        role="assistant",
-        content=answer,
-        citations=[c.model_dump() for c in citations],
-        verification={"verdict": verdict, "reason": reason},
-        latency_ms=latency_ms,
-    )
-    session.add(assistant_message)
-    await session.commit()
-    await session.refresh(assistant_message)
-
-    yield _sse("done", DoneEventData(message_id=str(assistant_message.id), latency_ms=latency_ms))
+        yield _sse(
+            "done", DoneEventData(message_id=str(assistant_message.id), latency_ms=latency_ms)
+        )

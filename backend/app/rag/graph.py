@@ -4,16 +4,18 @@
 검색 결과가 0건이면(RAG_NO_CONTEXT, API 명세서 #22) LLM을 아예 호출하지 않고 고정 안내 문구 +
 verdict=GENERAL로 처리한다 — 근거 없는 질문에 모델이 그럴듯한 답을 지어내는 걸 원천 차단한다.
 
-이 그래프는 스트리밍하지 않는다(완성된 답변 하나를 한 번에 반환). 실제 SSE 토큰 스트리밍은
-app/services/chat.py가 이 그래프를 거치지 않고 client.chat.completions.create(..., stream=True)를
-직접 호출한다 — 이 프로젝트는 LangChain 러너블이 아니라 openai SDK를 직접 쓰므로, LangGraph의
-`astream_events`가 채팅 모델 토큰을 자동으로 잡아주지 않는다(LangChain 콜백 체계에 연결된
-러너블에서만 동작). 그래서 이 그래프는 스트리밍이 필요 없는 용도(평가 스크립트, 배치 테스트 등)에
-쓴다."""
+generate_node는 LangGraph 네이티브 커스텀 스트리밍(get_stream_writer + stream_mode="custom")으로
+토큰을 실시간으로 흘려보낸다 — LangChain 러너블이 아니라 openai SDK를 직접 쓰므로 astream_events는
+못 쓰지만, get_stream_writer()는 러너블 없이도 노드 안에서 임의 데이터를 실시간 스트림에 얹을 수
+있는 공식 API다. stream_mode="custom" 없이 ainvoke()/astream(stream_mode="values")로 호출하면
+writer가 기본 no-op이라(langgraph.runtime.Runtime.stream_writer 기본값) 평가 스크립트 같은 배치
+용도에도 그대로 쓸 수 있다 — app/services/chat.py의 실시간 SSE 스트리밍과 이 그래프가 같은 코드
+경로를 공유한다(과거엔 두 곳에 로직이 중복돼 있었음)."""
 
 from typing import TypedDict
 
 from langchain_core.runnables import RunnableConfig
+from langgraph.config import get_stream_writer
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
@@ -45,16 +47,26 @@ async def retrieve_node(state: ChatState, config: RunnableConfig) -> dict:
 
 
 async def generate_node(state: ChatState, config: RunnableConfig) -> dict:
+    writer = get_stream_writer()
+
     if not state["context"]:
+        writer({"type": "token", "delta": NO_CONTEXT_ANSWER})
         return {"answer": NO_CONTEXT_ANSWER}
 
     settings: Settings = config["configurable"].get("settings") or get_settings()
     client = get_azure_openai_client(settings)
-    response = await client.chat.completions.create(
+    stream = await client.chat.completions.create(
         model=settings.azure_openai_chat_deployment,
         messages=build_chat_messages(state["category_code"], state["context"], state["query"]),
+        stream=True,
     )
-    return {"answer": response.choices[0].message.content}
+    answer_parts: list[str] = []
+    async for event in stream:
+        delta = event.choices[0].delta.content if event.choices else None
+        if delta:
+            answer_parts.append(delta)
+            writer({"type": "token", "delta": delta})
+    return {"answer": "".join(answer_parts)}
 
 
 async def verify_node(state: ChatState, config: RunnableConfig) -> dict:
