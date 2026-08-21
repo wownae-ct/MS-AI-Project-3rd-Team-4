@@ -39,7 +39,7 @@ const BUDGETS = [
 ];
 
 /**
- * DESIGN.md·PRODUCT.md 가 금지한 것이 산출물에 실제로 없는지 본다.
+ * 규범(docs/design/)이 금지한 것이 산출물에 실제로 없는지 본다.
  * 규범을 문서로만 두면 지키는 것이 사람뿐이다 — 이 저장소의 나머지 게이트와 같은 수준으로 올린다.
  *
  * **속성 이름이 아니라 값까지 본다.** `grep box-shadow` 로 검사하면 Preflight 의
@@ -47,7 +47,7 @@ const BUDGETS = [
  */
 const CSS_NORMS = [
   {
-    label: "그림자 금지 — DESIGN.md 「The Flat-By-Default Rule」",
+    label: "그림자 금지 — 「The Flat-By-Default Rule」 (docs/design/README.md)",
     // 부정 전방탐색을 콜론 **바로 뒤**에 두고 공백을 그 안에서 소비한다.
     // `\s*(?!none\b)` 로 쓰면 `\s*` 가 백트래킹하며 전방탐색을 우회해
     // `box-shadow: none`(공백 있음)을 오탐한다 — 실측 확인.
@@ -56,9 +56,9 @@ const CSS_NORMS = [
     hint: "표면 구분은 1px 헤어라인 보더(border-line)로만 한다.",
   },
   {
-    label: "다크모드 금지 — PRODUCT.md 「다크모드는 스코프 아님(라이트 테마만)」",
+    label: "다크모드 금지 — 라이트 전용 (docs/design/README.md 「현행 규범 요약」)",
     pattern: /prefers-color-scheme/gu,
-    hint: "색은 theme.css 의 단일 팔레트만 쓴다. 다크가 필요해지면 PRODUCT.md 를 먼저 바꾼다.",
+    hint: "색은 theme.css 의 단일 팔레트만 쓴다. 다크가 필요해지면 docs/design/decisions.md 에 결정을 먼저 쓴다.",
   },
 ];
 
@@ -158,7 +158,7 @@ if (normViolations.length > 0) {
   for (const { norm, sample, count } of normViolations) {
     lines.push(`  ${norm.label}`, `    ${count}건 — 예: ${sample}`, `    조치: ${norm.hint}`, "");
   }
-  lines.push("규범을 바꾸려면 DESIGN.md·PRODUCT.md 를 먼저 갱신한다. 여기서 예외를 만들지 않는다.");
+  lines.push("규범을 바꾸려면 docs/design/decisions.md 를 먼저 갱신한다. 여기서 예외를 만들지 않는다.");
   console.error(lines.join("\n"));
   process.exitCode = 1;
 }

@@ -79,6 +79,22 @@
 - 금액은 항상 `tabular-nums` + 700 — `Money` 컴포넌트가 강제한다
 - `preload`를 쓰지 않는다 · `@font-face` 메트릭 오버라이드를 넣지 않는다 (근거: `../architecture/toolchain.md` §8.2)
 
+### 컴포넌트 스펙 (현행)
+
+원 디자인 문서의 `components.*` 값을 코드가 옮긴 것. 코드 주석이 여기를 가리킨다.
+
+| 컴포넌트 | 값 | 구현 |
+|---|---|---|
+| `badge-focus` | 배경 `primary-soft` · 글자 `primary` · 모서리 `rounded-pill` · 12px 700 | `Badge` — 변이 없음(규범이 정의한 배지가 하나뿐) |
+| `button-ghost` | 배경 투명 · 글자 `primary` · 모서리 `rounded-sm` · padding 5px 11px | `Button variant="ghost"` — 세로 5px 는 `min-h-tap`(44px)이 대신한다 |
+| `button` primary / secondary | primary 면 + surface 글자 / surface 면 + line 보더 + ink 글자 · `rounded-md` | `Button` — 호버는 **열린 결정**(→ [D4](decisions.md#d4-호버-색을-77354f로-확정한다)) |
+| 진행률 | 트랙 `line` · 채움 `primary` · `rounded-pill` · 높이 8px | `Progress` — 불확정 표현은 [D11](decisions.md#d11-불확정-진행률의-시각-표현) |
+| 카드 | `surface` 면 · 1px `line` 보더 · `rounded-md`(현행) · padding 16px | `Card` — 라운드 16px 전환은 [D1](decisions.md#d1-라운드를-4단계로-고정한다) |
+
+### 범위 밖 (현행)
+
+- **다크모드 없음** — 라이트 전용. 빌드 게이트가 `prefers-color-scheme` 을 산출 CSS 에서 막는다.
+
 ### 타이포 · 접근성
 
 | 역할 | 값 |

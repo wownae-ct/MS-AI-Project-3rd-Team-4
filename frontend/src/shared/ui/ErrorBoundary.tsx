@@ -6,8 +6,8 @@
 // 잡히지 '않는' 것에 주의: 이벤트 핸들러·비동기 콜백·SSR에서 던진 예외는 바운더리를 통과한다.
 // 그런 경로는 각자 try/catch 로 다뤄야 한다 — 바운더리가 있다고 안전하다고 오해하지 말 것.
 //
-// 안내 문구에 semantic color(위험/경고)를 쓰지 않는다 — DESIGN.md 가 상태 색을 아직 정하지 않았다.
-// 지어내지 않고 중립 표면 + 1px 보더로 표현한다.
+// 안내 문구에 semantic color(위험/경고)를 쓰지 않는다 — 상태 색은 도입하지 않기로 닫았다 (D6, docs/design/decisions.md).
+// 중립 표면 + 1px 보더 + role="alert" 로 표현한다.
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { Button } from "./Button";
 import { Page } from "./Page";

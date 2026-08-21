@@ -39,7 +39,10 @@ export function ColorSection() {
       </Card>
       <Rule>
         Tailwind 기본 팔레트를 <code className="font-bold">--color-*: initial</code> 로 폐기했습니다. 위
-        7색 밖의 색은 유틸리티 자체가 생성되지 않으므로, 하드코딩하면 화면에서 바로 드러납니다.
+        7색 밖의 <span className="font-bold">명명 유틸리티</span>(<code>bg-red-500</code> 류)는 없습니다.
+        단 임의값(<code>bg-[#77354F]</code>)은 테마와 무관하게 그대로 컴파일되므로 —
+        <span className="font-bold">빌드 게이트가 산출 CSS 의 색을 <code>theme.css</code> 와 대조해
+        막습니다.</span> 막았다고 적은 것이 아니라 실제로 막힙니다.
       </Rule>
       <OpenDecision>
         상태 색(성공 · 경고 · 위험)은 디자인 문서가 확정하지 않은 항목입니다. 지금 팔레트에 없으므로 경고 ·
