@@ -5,7 +5,7 @@
 7f285e0c0ff7afe4a6d1bb6be8ab0c73aeebaca9:infra/구현-요약.md:korean-plaintext-credential:89
 
 # 오탐 — RAG 코퍼스 원본 아카이브(data/raw/, 손대지 않는 원문 보존 원칙)에 들어있는 제3자
-# 뉴스 사이트(Businesskorea)의 카카오 공유 위젯 JS SDK 키. 이 키는 WeddingRadar 시크릿이
+# 뉴스 사이트(Businesskorea)의 카카오 공유 위젯 JS SDK 키. 이 키는 MerryMap 시크릿이
 # 아니라 그 웹페이지 소스에 원래부터 공개 삽입돼 있던 클라이언트 키다(카카오 JS SDK는
 # 도메인 제한으로 보호되는 공개 키가 원래 설계).
 data/raw/DS5_DUO/businesskorea_264825.html:generic-api-key:697

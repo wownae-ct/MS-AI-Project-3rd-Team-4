@@ -2,7 +2,7 @@
 
 Importer: app/models/__init__.py (re-exports Wedding/Category/WeddingCategory for
 alembic autogenerate and, later, routers/services). No data files touched — pure ORM
-mapping. User's instruction: 웨딩레이더 피벗 스켈레톤 재구성(plan §3), DDL 1:1 반영."""
+mapping. User's instruction: 메리맵 피벗 스켈레톤 재구성(plan §3), DDL 1:1 반영."""
 
 import uuid
 from datetime import date, datetime

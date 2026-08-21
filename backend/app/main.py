@@ -1,7 +1,11 @@
 """FastAPI 앱 엔트리포인트. Dockerfile의 CMD(`app.main:app`)가 이 모듈을 가리킨다.
 
-인증 없음(BASELINE v3.0 §0) — CORS는 로컬 개발 오리진만 허용, 운영은 Static Web Apps
-Linked Backend 동일 오리진이라 CORS 자체가 불필요(03_API_spec.md §1)."""
+인증 없음(BASELINE v3.0 §0) — 프론트(Static Web Apps)와 백엔드(AKS Ingress)가 서로 다른 오리진이라
+크로스 오리진 CORS가 필요하다. 애초 계획이던 "SWA Linked Backend로 동일 오리진화, CORS 불필요"는
+2026-08-21 확인 결과 성립하지 않는다 — Linked Backend는 Azure Functions/App Service/Container Apps/
+API Management만 지원하고 AKS는 대상이 아니며, 이 프로젝트의 SWA는 애초에 Linked Backend를 지원하지
+않는 Free 티어다(Standard 이상 필요). 03_API_spec.md §1 갱신 완료, 상세 근거는
+docs/AI-Sessions/wiki/decisions/2026-08-21-cors-not-linked-backend.md 참고."""
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -12,12 +16,16 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.routers import budget, category, chat, dashboard, health, vendor_case, wedding
 
 LOCAL_DEV_ORIGIN = "http://localhost:5173"
+# team4hc-swa(Free tier)의 defaultHostname. PR 프리뷰 환경은 "<defaultHostname>-<식별자>.7.azurestaticapps.net"
+# 형태로 뜨므로(Azure 문서 기준) 접미사까지 정규식으로 허용 — 값이 바뀌면(SWA 재생성 등) 여기도 갱신할 것.
+SWA_ORIGIN_REGEX = r"^https://polite-island-0bb189700(-[a-zA-Z0-9]+)?\.7\.azurestaticapps\.net$"
 
-app = FastAPI(title="웨딩레이더 API", version="0.1.0")
+app = FastAPI(title="메리맵 API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[LOCAL_DEV_ORIGIN],
+    allow_origin_regex=SWA_ORIGIN_REGEX,
     allow_methods=["*"],
     allow_headers=["*"],
 )
