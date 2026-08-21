@@ -45,10 +45,12 @@
 | **C2c** | **산문이 유틸리티를 만드는 경로 차단** — 주석·표의 bare `rounded` → 실제 클래스명 · `p-5 p-6` 제거 · `@source not "../../**/*.md"` | `Badge.tsx` · `Button.tsx` · `shared/ui/README.md` · `styles.css` | V1 · **V5** | ✅ |
 | **C3** | **게이트를 파서로 — 순수 모듈 분리 + `lightningcss` 명시 + 금지 게이트 3종 + 소스측 검사** (+ T1 픽스처 40건을 같은 커밋에 — 모듈과 함께 태어나야 회귀를 막는다) | `scripts/lib/css-norms.mjs` · `scripts/lib/source-norms.mjs` · `scripts/lib/__tests__/` · `check-bundle-budget.mjs` · `package.json` | V1 · V3 · **V4** | ✅ V3 오탐 0 · V4 4종 전부 exit 1 + `file:line` |
 | **C4** | **네임스페이스 폐기 + 토큰** — `--radius-*` · 그림자 4계열 폐기, `--radius-lg` · `--color-primary-hover` 추가 | `theme.css` (+ 규범 문서의 「현행」 표 갱신 · D1/D4/D8/D9/D10 상태) | V1 · V3 | ✅ 게이트 출력 「팔레트 8색 · 라운드 4종」 · 오탐 0 |
-| **C5** | **유지 검사 + 예산 기준선 복구** — `REQUIRED_RETIREMENTS` 6종 · `BUDGETS.measured` 실측 갱신 | `check-bundle-budget.mjs` | V1 · **V6** · V9 | |
-| **C6** | **게이트 자동 검증** — 체커 픽스처 · 폐기 계약(`compile()`) · 유령 유틸리티 | `scripts/lib/__tests__/*.test.mjs` · vitest 설정 | V1 | |
-| **C7** | **프리미티브** — `Card` 라운드 · `Button` 호버 반전 + 3변이 `enabled:` · `color-scheme` + `viewport-fit` · `IconProps` | `Card.tsx` · `Button.tsx` · `styles.css` · `index.html` · `icons.tsx` · `index.ts` | V1 · V7 · V8 | |
-| **C8** | **스타일가이드 + 테스트 동시 수정** — `ShapeSection` · D6 닫힘 · D2 열림 · NonGoals 확장 · 단언 2건 | `pages/style-guide/**` · `StyleGuidePage.test.tsx` | V1 · V12 | |
+| **C5** | **유지 검사 + 예산 기준선 복구** — `REQUIRED_RETIREMENTS` 6종 · `BUDGETS.measured` 실측 갱신 | `check-bundle-budget.mjs` | V1 · **V6** · V9 | ✅ V6: `--radius-*: initial` 삭제 → 「폐기 5/6종」 exit 1, 복구 후 통과 |
+| **C6** | **게이트 자동 검증** — 체커 픽스처(T1은 C3과 함께) · 폐기 계약 T2(`compile()` + 실제 `theme.css`) · 유령 후보 T3(Tailwind 실제 스캐너 `@tailwindcss/oxide`로 `src/`를 스캔) | `scripts/lib/__tests__/*.test.mjs` | V1 | ✅ |
+| **C7** | **프리미티브** — `Card` 라운드 · `Button` 호버 반전 + 3변이 `enabled:` · `color-scheme` + `viewport-fit` · `IconProps`(`export` + `className`) | `Card.tsx` · `Button.tsx` · `styles.css` · `index.html` · `icons.tsx` · `index.ts` | V1 · V7 · V8 | ✅ V8: `brightness` 0 · `color-scheme:light` 1 · `:enabled:hover` 규칙 생성 |
+| **C8** | **스타일가이드 + 테스트 동시 수정** — `ShapeSection` · D6 닫힘 · D2 열림 · NonGoals 확장(`ring-*` · 그림자 4계열 · 산문 함정) · 단언 내용화 + 신규 2건 | `pages/style-guide/**` · `StyleGuidePage.test.tsx` | V1 · V12 | ✅ (V12 눈 확인은 `npm run preview -- --host 127.0.0.1`) |
+
+> **C6 의 폐기 계약 테스트가 문서 오류를 하나 잡았다** — `rounded-full` 은 `staticValues` 라 `--radius-*: initial` 로 **사라지지 않는다.** 초판·ADR·namespaces 가 「사라진다」고 적었던 것은 그 전 실험의 셀렉터 판독 버그였다. 테스트·문서 6곳을 정정했고, `full` 은 라운드 값 게이트가 `∞px` 로 잡는다. **이것이 테스트를 모듈과 함께 두는 이유다.**
 | **C9** | `docs/architecture/` 정정 — `toolchain.md` 부록·§5.3·§4 · `layers.md` 「E」 참조·설정 골격 | `docs/architecture/*.md` | 문서 | |
 | **C10** | `frontend/README.md` 재작성 | `README.md` | 문서 | |
 

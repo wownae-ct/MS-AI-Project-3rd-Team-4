@@ -92,11 +92,11 @@
 - **쉬워지는 것**: 라운드 선택이 4개 중 하나로 좁혀진다. 문서의 서술이 사실과 일치한다
 - **어려워지는 것**: 예외가 필요하면 임의값(`rounded-[12px]`)을 써야 하고, 그건 리뷰에서 눈에 띈다 — 의도한 마찰이다
 - **되돌리려면**: `theme.css` 한 블록 되돌림 + `Card` 한 줄. 단 그 사이 `rounded-lg`를 쓴 코드가 있으면 함께 정리해야 하므로 **화면 구현 전에 하는 것이 싸다**
-- **검증**: `scripts/lib/__tests__/`의 폐기 계약 테스트가 `compile()`로 `rounded-3xl` · `rounded-full`이 **생성되지 않음**을 상시 단언한다. `rounded-none`(`border-radius: 0`)은 살아남지만 토큰 밖 값이 아니라 「없음」이라 무해 — 이것도 **살아남는다고 단언**해 고정한다
+- **검증**: `scripts/lib/__tests__/retirement-contract.test.mjs`가 `compile()` + 실제 `theme.css`로 `rounded-3xl`·`2xl`·`xl`·`xs`가 **생성되지 않음**을 상시 단언한다. **살아남는 것도 단언**한다 — `rounded-none`(`0`, 토큰 밖 값이 아님)과 `rounded-full`(`calc(infinity * 1px)`) 둘 다 `staticValues`라 폐기와 무관하다. `full`은 빌드 게이트가 `∞px`로 잡는다
 
 **현재 사용처 실측** — `src/**/*.tsx`에서 `rounded-sm` 9 · `rounded-md` 4 · `rounded-pill` 3. 폐기 대상 단계 사용 **0건**이라 지금이 가장 싸다.
 
-**컴파일로 확인한 것** — 폐기 후 `rounded-full`(`calc(infinity * 1px)`)도 함께 사라진다. `staticValues`라 살아남을 것이라는 추정이 있었으나 **틀렸다**(설치본 `compile()` 실측, [namespaces.md](namespaces.md) 표).
+**정정 기록** — 이 절은 한때 *"폐기 후 `rounded-full`도 함께 사라진다(실측)"* 라고 적었다. **틀렸다.** 그 실험의 셀렉터 판독 코드에 버그가 있었고, 폐기 계약 테스트를 실제 `theme.css`로 돌리자 `rounded-full`이 생성되는 것이 드러났다. 테스트가 문서를 잡은 사례라 지우지 않고 남긴다. 원형이 필요하면 `rounded-pill`(999px)이다.
 
 ---
 

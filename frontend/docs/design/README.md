@@ -68,7 +68,7 @@
 | `--radius-pill` | `999px` | 배지 · 진행률 · 세그먼트 |
 
 - **The Flat-By-Default Rule** — 그림자를 쓰지 않는다. 표면 구분은 **1px 헤어라인 보더**(`border-line`)로만. 호버도 그림자가 아니라 보더/배경의 옅은 변화로.
-- **위 4단계가 전부다.** `--radius-*: initial` 로 Tailwind 기본 8단계를 **폐기**했다(2026-08-21). `rounded-2xl`·`rounded-full` 은 생성되지 않는다(컴파일 실측). `rounded-none`(0)은 남지만 토큰 밖 값이 아니다 → [D1](decisions.md#d1-라운드를-4단계로-고정한다)
+- **위 4단계가 전부다.** `--radius-*: initial` 로 Tailwind 기본 8단계를 **폐기**했다(2026-08-21). `rounded-2xl` 류는 생성되지 않는다(컴파일 실측). ⚠️ **`rounded-full`(∞px)과 `rounded-none`(0)은 `staticValues` 라 폐기와 무관하게 살아남는다** — `none` 은 토큰 밖 값이 아니고, `full` 은 빌드 게이트가 `border-radius` 값으로 잡는다. 원형은 `rounded-pill`. 이 사실은 폐기 계약 테스트가 처음 잡았다(그 전 실험 기록은 틀렸었다) → [D1](decisions.md#d1-라운드를-4단계로-고정한다)
 - **그림자 토큰은 폐기됐다.** `--shadow-*` · `--drop-shadow-*` · `--inset-shadow-*` · `--text-shadow-*` 전부 `initial`(2026-08-21). 기본 22개가 생성되지 않는다 → [D10](decisions.md#d10-그림자-네임스페이스를-폐기하고-게이트를-파서로-다시-만든다)
 - ⚠️ **`ring-*`는 어떤 네임스페이스 폐기로도 막히지 않는다**(컴파일 실측). 빌드 게이트가 커스텀 속성(`--tw-ring-*`)까지 봐서 잡는다 → [D9](decisions.md#d9-ring--를-금지어로-둔다) · [namespaces.md](namespaces.md)
 - **폐기 상태는 빌드가 지킨다** — `theme.css` 에서 `initial` 줄이 하나라도 사라지면 게이트의 유지 검사가 빌드를 실패시킨다 (C5 적용 후)

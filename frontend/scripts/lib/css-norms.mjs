@@ -218,7 +218,8 @@ export function checkCssNorms(cssText, { filename, palette, radii }) {
         if (atom.startsWith("var(")) return !radii.names.has(atom.slice(4, -1));
         return !radii.values.has(atom);
       });
-      if (bad.length > 0) report("radius", rule, `${name}: ${bad.join(" ")}`);
+      // shorthand 는 네 모서리 × (가로, 세로) 8개 원자가 나온다 — 같은 값은 한 번만 보여 준다.
+      if (bad.length > 0) report("radius", rule, `${name}: ${[...new Set(bad)].join(" ")}`);
     }
   };
 
