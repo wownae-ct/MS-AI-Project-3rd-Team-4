@@ -1,7 +1,7 @@
 [project]
 name = "backend"
 version = "0.1.0"
-description = "웨딩레이더 백엔드 (FastAPI + SQLAlchemy 2.0 async + RAG 상담)"
+description = "메리맵 백엔드 (FastAPI + SQLAlchemy 2.0 async + RAG 상담)"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",

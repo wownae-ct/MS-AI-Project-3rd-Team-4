@@ -10,10 +10,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - aicoach-production.koreacentral.cloudapp.azure.com
+        - merrymap-production.koreacentral.cloudapp.azure.com
       secretName: backend-production-tls
   rules:
-    - host: "aicoach-production.koreacentral.cloudapp.azure.com"
+    - host: "merrymap-production.koreacentral.cloudapp.azure.com"
       http:
         paths:
           - path: /
