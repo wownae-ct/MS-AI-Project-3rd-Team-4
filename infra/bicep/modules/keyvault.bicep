@@ -44,6 +44,23 @@ resource kvSecretsUserRoleAssignment 'Microsoft.Authorization/roleAssignments@20
   }
 }
 
+// 이 배포를 실행하는 주체(로컬 사용자 또는 CI OIDC SP)에게 Key Vault 시크릿 쓰기 권한 부여 — RBAC 인증
+// 모드에서는 Contributor 역할만으론 시크릿 데이터 평면에 접근 못 함(Key Vault 특유의 제약). openai.bicep/
+// postgres.bicep 둘 다 이 Vault에 시크릿을 쓰기 전에 필요 — 두 모듈은 서로 의존관계가 없어 병렬로 배포될
+// 수 있으므로, 각 모듈이 따로 같은 GUID의 roleAssignment를 선언하면 경합이 생길 수 있다. 그래서 여기
+// keyvault 모듈 한 곳에서만 선언하고, openai/postgres는 keyVaultName 파라미터를 받는 것만으로(main.bicep의
+// 모듈 간 암묵적 dependsOn) 이 role assignment가 끝난 뒤에 실행되도록 보장한다.
+resource deployerSecretsOfficerRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(keyVault.id, deployer().objectId, 'KeyVaultSecretsOfficer')
+  scope: keyVault
+  properties: {
+    principalId: deployer().objectId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7') // Key Vault Secrets Officer
+    // deployer()는 principalType을 안 알려줌 — userPrincipalName이 있으면 사람 계정, 없으면 SP/관리 ID로 판단
+    principalType: empty(deployer().userPrincipalName) ? 'ServicePrincipal' : 'User'
+  }
+}
+
 output keyVaultId string = keyVault.id
 output keyVaultName string = keyVault.name
 output keyVaultUri string = keyVault.properties.vaultUri

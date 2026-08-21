@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# 머지 커밋 전 검사. pre-commit과 별개로 필요한 이유:
+# git은 충돌 없이 자동 머지될 때 pre-commit을 부르지 않고 pre-merge-commit만 부른다.
+# 실행권한 유실 사고(d63a717)가 정확히 머지 경로에서 났으므로 이쪽도 막아둔다.
+# 충돌이 난 머지는 사용자가 직접 git commit을 하므로 pre-commit ⑧이 담당한다.
+#
+# 머지는 자주 일어나지 않으므로 스테이징분(--staged)이 아니라 트리 전체(--all)를 본다 —
+# 머지 결과 트리에 이미 실행권한이 빠진 파일이 남아 있으면 그것까지 잡기 위함.
+set -eo pipefail
+
+RED='\033[0;31m'; NC='\033[0m'
+checker="$(git rev-parse --show-toplevel)/.githooks/check-exec-bits.sh"
+
+if [[ ! -f "$checker" ]]; then
+  echo "⚠ $checker 가 없습니다 — 머지 커밋의 실행권한 검사를 건너뜁니다." >&2
+  exit 0
+fi
+
+if ! bash "$checker" --all; then
+  echo -e "${RED}✗ 머지 커밋 차단: 실행권한이 빠진 셸 스크립트/훅이 머지 결과에 있습니다.${NC}" >&2
+  echo "위 'git update-index --chmod=+x' 명령을 실행한 뒤 'git commit'으로 머지를 마무리하세요." >&2
+  exit 1
+fi
+exit 0

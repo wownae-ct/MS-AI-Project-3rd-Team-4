@@ -13,16 +13,10 @@ metadata:
     argocd-image-updater.argoproj.io/write-back-method: argocd
 spec:
   project: default
-  # multi-source: 이 레포(overlay) + ml 레포(model-version ConfigMap)를 같은 production 네임스페이스로 합쳐서 배포.
-  # ml 레포 커밋만으로 반영됨(이 레포에 PR 필요 없음) — 재시작은 base/backend/deployment.yaml의
-  # reloader.stakater.com/auto 어노테이션 + Reloader 컨트롤러가 자동으로 처리(infra/ansible에서 설치).
-  sources:
-    - repoURL: https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4.git
-      targetRevision: main
-      path: infra/k8s/overlays/backend-production
-    - repoURL: https://github.com/wownae-ct/health-ml.git
-      targetRevision: main
-      path: k8s/model-version
+  source:
+    repoURL: https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4.git
+    targetRevision: main
+    path: infra/k8s/overlays/backend-production
   destination:
     server: https://kubernetes.default.svc
     namespace: production
