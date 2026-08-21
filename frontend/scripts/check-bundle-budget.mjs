@@ -36,12 +36,21 @@ const SOURCE_DIRECTORY = join(ROOT, "src");
  * 조용히 올리면 이 게이트는 의미를 잃는다.
  */
 const BUDGETS = [
-  // measured 는 2026-08-21 (C5) 기준선. 한도를 정할 때의 75,223 에서 실측이 멀어져 갱신했다 — 이 값이
-  // 실측과 어긋나 있으면 "측정값과 함께 올린다" 규범이 이미 깨진 것이다.
-  { key: "jsGzip", limit: 92_000, measured: 75_858, label: "JS 합계 (gzip)" },
-  // 청크가 1개인 지금은 jsGzip 과 같은 값이다. 코드 스플리팅이 들어오면 둘이 갈라지고 그때 의미가 생긴다 — 미리 둔다.
-  { key: "jsChunkGzip", limit: 92_000, measured: 75_858, label: "최대 단일 JS 청크 (gzip)" },
-  { key: "cssGzip", limit: 6_000, measured: 3_728, label: "CSS (gzip, @font-face 제외)" },
+  // ── 2026-08-22 재설정 (ADR 0005 라우터 도입 · 코드 스플리팅) ───────────────────────────────
+  // 분할이 들어오면서 두 JS 지표가 **처음으로 갈라졌다.** 그래서 둘의 역할도 갈린다.
+  //
+  //   jsChunkGzip = 초기 청크 = **사용자가 실제로 기다리는 바이트**  ← 조이는 쪽
+  //   jsGzip      = 전 청크 합 = 앱 전체 크기 가드(의존성 폭증 감지)  ← 한 번에 전송되지 않는다
+  //
+  // 합계 한도 92,000 은 청크가 1개였을 때 "초기 청크 한도"와 같은 값이었다. 분할된 지금 그 값을
+  // 합계에 그대로 적용하면 **화면을 lazy 로 잘 나눌수록 게이트에 걸리는** 뒤집힌 유인이 생긴다.
+  // 그래서 합계는 실측 기준으로 다시 잡고, 정작 중요한 초기 청크 한도는 **올리지 않았다.**
+  { key: "jsGzip", limit: 112_000, measured: 108_099, label: "JS 합계 (gzip)" },
+  // ⚠️ 한도를 올리지 않은 것이 이 커밋의 요점이다 — 라우터 코어(+28.1 kB)가 들어왔는데도
+  //    Base UI 를 제 청크로 돌려보내(package.json `sideEffects`) 기준선 76,837 → 88,847 로 막았다.
+  //    여유가 3,153 B 뿐이므로 **첫 화면(S2 대시보드)을 구현하면 이 게이트가 먼저 걸린다.** 의도한 마찰이다.
+  { key: "jsChunkGzip", limit: 92_000, measured: 88_847, label: "최대 단일 JS 청크 (gzip)" },
+  { key: "cssGzip", limit: 6_000, measured: 3_904, label: "CSS (gzip, @font-face 제외)" },
   // 폰트는 unicode-range 로 분할돼 전량 전송되지 않으므로 이 값은 전송량이 아니라 **배포 크기** 가드다.
   // 잡으려는 사고: variable/split(2.3 MB) 대신 static/split(8.8 MB)이나 static/complete(4.7 MB)를
   // 실수로 import 하는 것. 폰트 패치 릴리스가 몇 KB 늘어난 것만으로 빌드를 깨지 않도록 여유를 둔다.

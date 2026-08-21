@@ -5,7 +5,16 @@ export { Button, type ButtonProps, type ButtonVariant } from "./Button";
 export { Card, type CardProps } from "./Card";
 export { ErrorBoundary, type ErrorBoundaryProps } from "./ErrorBoundary";
 export { Money, type MoneyProps } from "./Money";
-export { Page, type PageProps } from "./Page";
+export { Page, PAGE_CONTENT_ID, type PageProps } from "./Page";
 export { Progress, type ProgressProps } from "./Progress";
 export { Tabs, type TabsRootProps } from "./Tabs";
-export { IconCheck, IconChevronDown, IconInfo, type IconProps } from "./icons";
+export {
+  IconCalendar,
+  IconChart,
+  IconCheck,
+  IconChevronDown,
+  IconHome,
+  IconInfo,
+  IconWallet,
+  type IconProps,
+} from "./icons";

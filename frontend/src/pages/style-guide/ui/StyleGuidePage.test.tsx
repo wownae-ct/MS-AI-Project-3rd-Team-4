@@ -12,11 +12,13 @@ import userEvent from "@testing-library/user-event";
 import { StyleGuidePage } from "./StyleGuidePage";
 
 describe("스타일가이드 골격", () => {
-  it("제목과 본문 건너뛰기 링크를 제공한다", () => {
+  // 스킵 링크 단언은 여기 있었지만 `app/App.test.tsx` 로 **이관했다** — 지운 게 아니다.
+  // 라우터 도입(ADR 0005)으로 스킵 링크가 `Page` 에서 루트 라우트로 올라갔고(layout.md §6),
+  // 계약의 소재지가 옮겨졌으면 그것을 지키는 테스트도 함께 옮긴다. 화면 하나에 묶어 두면
+  // "그 화면에서만" 보장되고 정작 온보딩처럼 셸 밖 화면이 비어도 아무도 모른다.
+  it("제목을 제공한다", () => {
     render(<StyleGuidePage />);
     expect(screen.getByRole("heading", { level: 1, name: "디자인 시스템" })).toBeInTheDocument();
-    // 스킵 링크는 sr-only 라 보이지 않지만 접근성 트리에는 있어야 한다.
-    expect(screen.getByRole("link", { name: "본문으로 건너뛰기" })).toBeInTheDocument();
   });
 
   it("주요 절을 h2 로 구성한다 — 제목 위계를 건너뛰지 않는다", () => {

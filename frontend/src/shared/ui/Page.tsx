@@ -1,12 +1,22 @@
-// 화면 골격 — 모든 화면이 이걸 통해 렌더된다. 스킵 링크 · 헤더 · 콘텐츠 컬럼 · 포커스 이동을 담당한다.
+// 화면 콘텐츠 열 — 제목 헤더와 `<main>` 랜드마크를 담당한다.
 //
-// 반응형은 모바일 퍼스트다. md 부터 콘텐츠 폭과 여백을 키우고, lg 에서 2컬럼 여지를 둔다.
+// **셸은 여기 없다.** 스킵 링크 · 배경 · 최소 높이는 루트 라우트가, 내비게이션은 `AppShell` 이 맡는다
+// (docs/design/layout.md §6). 이 분리는 라우터 도입(ADR 0005)과 **같은 커밋**이어야 한다 —
+// 먼저 빼면 스킵 링크가 갈 곳이 없어 접근성 계약이 끊긴다(실제로 한 번 그렇게 깨뜨렸다).
+//
+// 반응형은 모바일 퍼스트다. 폭은 화면마다 다르므로(layout.md §2 라우트 표) `width` 로 받는다.
 //
 // 규범 준수 (docs/design/README.md): 그림자 없음. 표면 구분은 1px 헤어라인 보더로만.
-// 앱 셸(하단 탭바 · 데스크톱 사이드바)은 이 컴포넌트가 아니라 docs/design/layout.md 의 계약을 따를 AppShell 이 맡는다 — 라우터 ADR 0005 후.
 import { useEffect, useRef, type ReactNode } from "react";
 
-const CONTENT_ID = "page-content";
+/**
+ * 스킵 링크의 목적지. 루트 라우트가 이 값으로 링크를 만들고 여기가 그 대상을 렌더한다 —
+ * 두 곳에 문자열을 적으면 조용히 어긋나 링크가 아무 데도 가지 않는다.
+ */
+export const PAGE_CONTENT_ID = "page-content";
+
+/** 폭을 주지 않은 화면의 기본값. 스타일가이드처럼 라우트 표에 폭 지정이 없는 화면이 쓴다. */
+const DEFAULT_WIDTH = "max-w-lg md:max-w-2xl lg:max-w-4xl";
 
 export interface PageProps {
   title: string;
@@ -22,13 +32,23 @@ export interface PageProps {
    * 그래서 화면 전환으로 들어왔을 때만 켠다. 최초 진입에는 끈다(문서 제목과 중복 낭독이 된다).
    */
   focusOnMount?: boolean;
+  /**
+   * 콘텐츠 열 폭 — layout.md §2 라우트 표가 화면마다 정한다(타임라인 640 · 예산 720 · 온보딩 430).
+   *
+   * ⚠️ **Tailwind 클래스 리터럴로만** 넘긴다. `` `max-w-[${n}px]` `` 처럼 조립하면 스캐너가 찾지 못해
+   * 유틸리티가 생성되지 않고 **빌드는 성공한 채 폭만 사라진다**(CLAUDE.md §5.1).
+   */
+  width?: string;
 }
 
-const SKIP_LINK =
-  "sr-only rounded-sm border border-line bg-surface px-4 py-2 text-sm font-bold text-ink " +
-  "focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-10";
-
-export function Page({ title, subtitle, actions, children, focusOnMount = false }: PageProps) {
+export function Page({
+  title,
+  subtitle,
+  actions,
+  children,
+  focusOnMount = false,
+  width = DEFAULT_WIDTH,
+}: PageProps) {
   const titleRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
@@ -36,26 +56,20 @@ export function Page({ title, subtitle, actions, children, focusOnMount = false 
   }, [focusOnMount]);
 
   return (
-    <div className="min-h-dvh bg-bg">
-      <a href={`#${CONTENT_ID}`} className={SKIP_LINK}>
-        본문으로 건너뛰기
-      </a>
+    <div className={`mx-auto flex w-full flex-col gap-5 px-4 py-6 md:px-6 md:py-8 ${width}`}>
+      <header className="flex items-start justify-between gap-4">
+        <div className="flex min-w-0 flex-col gap-1">
+          <h1 ref={titleRef} tabIndex={-1} className="text-xl font-bold text-ink outline-none md:text-2xl">
+            {title}
+          </h1>
+          {subtitle !== undefined && <p className="text-sm text-ink-soft">{subtitle}</p>}
+        </div>
+        {actions}
+      </header>
 
-      <div className="mx-auto flex w-full max-w-lg flex-col gap-5 px-4 py-6 md:max-w-2xl md:px-6 md:py-8 lg:max-w-4xl">
-        <header className="flex items-start justify-between gap-4">
-          <div className="flex min-w-0 flex-col gap-1">
-            <h1 ref={titleRef} tabIndex={-1} className="text-xl font-bold text-ink outline-none md:text-2xl">
-              {title}
-            </h1>
-            {subtitle !== undefined && <p className="text-sm text-ink-soft">{subtitle}</p>}
-          </div>
-          {actions}
-        </header>
-
-        <main id={CONTENT_ID} className="flex flex-col gap-5">
-          {children}
-        </main>
-      </div>
+      <main id={PAGE_CONTENT_ID} className="flex flex-col gap-5">
+        {children}
+      </main>
     </div>
   );
 }
