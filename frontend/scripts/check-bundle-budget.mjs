@@ -48,7 +48,11 @@ const BUDGETS = [
 const CSS_NORMS = [
   {
     label: "그림자 금지 — DESIGN.md 「The Flat-By-Default Rule」",
-    pattern: /box-shadow\s*:\s*(?!none\b)[^;}]+/gu,
+    // 부정 전방탐색을 콜론 **바로 뒤**에 두고 공백을 그 안에서 소비한다.
+    // `\s*(?!none\b)` 로 쓰면 `\s*` 가 백트래킹하며 전방탐색을 우회해
+    // `box-shadow: none`(공백 있음)을 오탐한다 — 실측 확인.
+    // 지금 통과하는 것은 lightningcss 가 공백을 지워 주기 때문이라, 최소화 설정에 우연히 기대고 있었다.
+    pattern: /box-shadow\s*:(?!\s*none\b)[^;}]+/gu,
     hint: "표면 구분은 1px 헤어라인 보더(border-line)로만 한다.",
   },
   {

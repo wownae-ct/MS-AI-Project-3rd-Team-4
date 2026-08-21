@@ -6,7 +6,9 @@
 // Base UI 가 담당하는 것: role="tablist"/"tab"/"tabpanel", aria-selected·aria-controls 동기화,
 // 로빙 tabindex, 화살표 키 순환. 손으로 만들면 조용히 틀리는 영역이라 외부화했다.
 //
-// 활성 상태를 색으로만 알리지 않는다 — 굵기와 하단 보더를 함께 바꾼다(WCAG 1.4.1 「색만으로 전달 금지」).
+// 활성 상태를 색조 차이로만 알리지 않는다 — **하단 보더가 없다가 생긴다**(WCAG 1.4.1 「색만으로 전달 금지」).
+// 선의 유무는 색을 구분하지 못해도 지각되므로 비색상 단서가 된다.
+// 굵기는 단서가 아니다 — `font-bold` 가 아래 베이스에 있어 **모든 탭이 같은 굵기**다.
 import { Tabs as BaseTabs } from "@base-ui/react/tabs";
 import type { ReactNode } from "react";
 
