@@ -1,0 +1,86 @@
+// 예산 도넛 + 범례 (시각 스펙: docs/mockups/s2-dashboard.html:158-182).
+//
+// **왜 라이브러리를 쓰지 않는가** — 3계열 단일 도넛은 `conic-gradient` 한 줄이면 된다.
+// 차트 라이브러리는 초기 청크 여유(3 kB 대)를 통째로 먹는다(inventory.md 도 「자작」으로 적었다).
+//
+// **왜 클래스가 아니라 인라인 스타일인가** — 비율이 데이터에서 나오므로 `w-[25%]` 같은 조립
+// 클래스로는 쓸 수 없다. Tailwind 스캐너는 소스를 평문으로 읽어 런타임 조립을 찾지 못하고,
+// **빌드는 성공한 채 스타일만 사라진다**(CLAUDE.md §5.1). 인라인 스타일은 스캐너와 무관하다.
+// 색은 hex 가 아니라 `var(--color-*)` 로 참조한다 — 규범 게이트가 보는 팔레트 안에 머무른다.
+//
+// **접근성** — 도넛은 색으로만 3계열을 구분한다. 그래서 범례가 **라벨과 금액을 텍스트로** 함께
+// 낸다(WCAG 1.4.1). 이 대비책이 사라지지 않도록 `DashboardPage.test.tsx` 가 고정한다.
+// 범례 점의 테두리는 `ink-soft` 다 — `잔여` 의 채움색이 `line`(1.28:1)이라 테두리가 없으면
+// 흰 표면에서 점 자체가 보이지 않는다(a11y.md §3 「경계가 유일한 식별 수단」).
+import { Money } from "@/shared/ui";
+import type { BudgetSummary } from "../model/sample-data";
+
+interface Series {
+  label: string;
+  /** 팔레트 토큰 참조. hex 를 직접 쓰지 않는다(D8). */
+  color: string;
+  amount: (summary: BudgetSummary) => number;
+}
+
+const SERIES: readonly Series[] = [
+  { label: "집행", color: "var(--color-primary)", amount: (s) => s.paid },
+  { label: "계획(미지급)", color: "var(--color-ink-soft)", amount: (s) => s.planned },
+  { label: "잔여", color: "var(--color-line)", amount: (s) => s.remaining },
+];
+
+export interface BudgetDonutProps {
+  summary: BudgetSummary;
+}
+
+export function BudgetDonut({ summary }: BudgetDonutProps) {
+  const { total, paid, planned } = summary;
+
+  // total 이 0 이면 나눗셈이 NaN 이 되고 conic-gradient 가 통째로 무효가 된다(조용히 배경이 사라진다).
+  const safeTotal = total > 0 ? total : 1;
+  const paidEnd = (paid / safeTotal) * 100;
+  const plannedEnd = ((paid + planned) / safeTotal) * 100;
+
+  // ⚠️ 변수 이름에 **Tailwind 유틸리티와 같은 단어**를 쓰지 말 것. 스캐너는 소스를 평문으로 읽어
+  // 식별자든 주석이든 가리지 않고 후보로 삼는다 — D9 가 금지한 「테두리 강조」 유틸리티와 같은
+  // 이름을 붙였다가 그 커스텀 속성이 산출 CSS 에 실렸고, 빌드 규범 게이트와 T3 유령 후보 테스트가
+  // **동시에** 잡았다. 고치면서 경고 주석에 그 단어를 그대로 적었다가 **한 번 더** 잡혔다.
+  // CLAUDE.md §5.9 「산문이 유틸리티를 만든다」의 실제 사례다 — 이 주석이 그 증거다.
+  const donutGradient =
+    `conic-gradient(` +
+    `var(--color-primary) 0 ${paidEnd}%,` +
+    `var(--color-ink-soft) ${paidEnd}% ${plannedEnd}%,` +
+    `var(--color-line) ${plannedEnd}% 100%)`;
+
+  return (
+    <div className="flex items-center gap-5">
+      {/* 도넛 테두리 자체는 장식이다 — 같은 정보를 옆 범례가 텍스트로 낸다. 가운데 라벨만 의미를 갖는다.
+          ⚠️ 지름이 목업(112px)보다 크다. 목업의 캡션은 `.6rem`(9.6px)인데 **우리 타입 스케일의 하한은
+          `text-xs`(12px)** 다 — 스케일을 지키면 같은 구멍(80px)에는 들어가지 않는다. 실제로 112px 로
+          만들었다가 브라우저에서 글자가 원 밖으로 넘쳤다(구멍 80px, 내용 84px).
+          임의 폰트 크기를 만드는 대신 **원을 키웠다**: 128px · 링 12px → 구멍 104px.
+          가로 패딩도 뺐다 — `px-2` 가 가용폭을 64px 로 깎아 넘침을 키우고 있었다. */}
+      <div className="relative size-32 shrink-0 rounded-pill" style={{ background: donutGradient }}>
+        <div className="absolute inset-3 flex flex-col items-center justify-center gap-px rounded-pill bg-surface text-center">
+          <Money value={paid} className="text-sm leading-tight" />
+          <span className="text-xs leading-tight whitespace-nowrap text-ink-soft">
+            총 <Money value={total} className="text-xs" />
+          </span>
+        </div>
+      </div>
+
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        {SERIES.map((series) => (
+          <div key={series.label} className="flex items-center gap-2 text-sm">
+            <span
+              aria-hidden
+              className="size-2.5 shrink-0 rounded-pill border border-ink-soft"
+              style={{ background: series.color }}
+            />
+            <span className="min-w-0 flex-1 text-ink-soft">{series.label}</span>
+            <Money value={series.amount(summary)} className="text-sm whitespace-nowrap" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
