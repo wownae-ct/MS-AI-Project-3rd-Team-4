@@ -125,7 +125,23 @@ export const routeTree = rootRoute.addChildren([
   onboardingRoute,
 ]);
 
-export const router = createRouter({ routeTree });
+// `defaultPreload: 'intent'` — 호버·터치·포커스 시점에 그 라우트의 청크를 미리 받는다.
+//
+// **왜 필요한가 (실측 근거)**: lazy 청크는 `dist/index.html` 에 `modulepreload` 가 없어
+// 브라우저가 `index.js` 를 **실행해 라우터가 매칭한 뒤에야** 존재를 안다. 실측 워터폴에서
+// `/style-guide` 는 index.js 종료 20 ms → 라우트 청크 시작 45 ms 로 **왕복 1회가 통째로 직렬화**됐고,
+// 폰트(첫 방문 전송의 81%)가 그 뒤로 밀렸다. 탭 이동도 같은 대가를 매번 치른다.
+//
+// **왜 지금 켜도 안전한가**: preload 기계는 `Link` 가 무조건 참조하므로 **이미 번들에 실려 있다**
+// (배포본 index.js 에 `defaultPreload`·`preloadRoute`·`intent` 문자열 확인). 옵션은 그 코드를
+// 쓰게 할 뿐 새 코드를 들이지 않는다. 'intent' 는 호버/터치/포커스에서만 트리거되므로
+// **초기 로드에는 아무 영향이 없다** — ADR 0005 R7(LCP·CLS) 측정을 오염시키지 않는다.
+//
+// ⚠️ 이것은 `defaultPendingComponent` 의 대체가 아니다. 호버 없이 바로 탭하거나 딥링크로 들어오면
+// 여전히 대기 구간이 남고, 그동안 화면은 바뀌지 않는다(펜딩 컴포넌트가 없으면 TanStack 은
+// 펜딩 타이머를 시작조차 하지 않고 Suspense 경계도 만들지 않는다 — router-core/load-matches.ts).
+// 로딩 상태의 **디자인 근거가 docs/design/layout.md §9 에 0건**이라 여기서 지어내지 않는다.
+export const router = createRouter({ routeTree, defaultPreload: "intent" });
 
 // 라우트 타입을 전역에 등록한다 — 이게 있어야 `<Link to="…">` 와 `params` 가 **컴파일 타임에** 검증된다.
 // ADR 0005 가 28 kB 를 지불하고 산 것이 정확히 이 검사이므로, 이 선언이 사라지면 결정의 근거가 사라진다.
