@@ -93,6 +93,17 @@ const VARIANT: Record<ButtonVariant, string> = {
 
 ## 게이트
 
-`npm run build` 끝의 [`scripts/check-bundle-budget.mjs`](../../../scripts/check-bundle-budget.mjs) 가 번들 예산과 함께 **규범 2(그림자)·9(다크모드)를 산출 CSS 에서 직접 검사**한다 — 그림자(값이 `none` 이 아닌 `box-shadow`)와 `prefers-color-scheme` 가 들어오면 빌드가 exit 1 로 죽는다. 위반 주입으로 실제로 잡히는 것을 확인했다.
+`npm run build` 끝의 [`scripts/check-bundle-budget.mjs`](../../../scripts/check-bundle-budget.mjs) 가 번들 예산과 함께 규범을 **산출 CSS 와 소스 양쪽에서** 검사한다. 검사 본체는 순수 모듈 [`scripts/lib/css-norms.mjs`](../../../scripts/lib/css-norms.mjs)(`lightningcss` 파서)와 [`scripts/lib/source-norms.mjs`](../../../scripts/lib/source-norms.mjs)(`file:line`)이고, 설계는 [namespaces.md](../../../docs/design/namespaces.md) 「게이트 — 정규식이 아니라 파서로」.
 
-⚠️ **현행 게이트의 사각지대** — `text-shadow` · `drop-shadow`(커스텀 속성으로 나감) · `ring-<color>`(커스텀 속성만) · 임의값 색 · 토큰 밖 라운드는 **아직 못 잡는다.** 파서 기반으로 다시 만드는 설계가 [namespaces.md](../../../docs/design/namespaces.md) 「게이트 — 정규식이 아니라 파서로」에 확정돼 있고 [implementation-plan.md](../../../docs/design/implementation-plan.md) C3 이 적용한다. 적용 전까지 위 규범 3·5 는 **의도**이지 강제가 아니다.
+| 잡는 것 | 어디서 | 규범 |
+|---|---|---|
+| `box-shadow`·`text-shadow` 값이 `none` 이 아닌 것 · 어떤 값에든 `drop-shadow(` · `--tw-shadow*`·`--tw-ring*`·`--tw-drop-shadow*`·`--tw-text-shadow*` 가 초기값 이외 | 산출 CSS | 2 · 5 |
+| `theme.css` 팔레트 밖 색 (투명 제외) | 산출 CSS | 3 |
+| `border-radius` 가 `--radius-*` 토큰·`0` 이외 | 산출 CSS | 형태 |
+| `prefers-color-scheme` | 산출 CSS | 9 |
+| `theme.css` 의 필수 `-*: initial` 6종 누락 | `theme.css` | 폐기 유지 |
+| 색 임의값(`bg-[#…]` 류) · `ring-*` · 그림자 유틸리티 토큰 | 소스 `src/**/*.{ts,tsx}` (주석 포함 — 스캐너가 주석도 읽는다) | 3 · 5 · 2 |
+
+**주입 시험으로 실제로 잡히는 것을 확인했다** — 폐기 전 `shadow-md` · `drop-shadow-md` · `ring-primary` · `bg-[#77354F]` 주입 → 전부 exit 1 + 셀렉터·`file:line:col` 출력 · 제거 후 통과. `--radius-*: initial` 삭제 → exit 1. 픽스처 40건이 `npm test` 에서 상시 돈다.
+
+**알려진 한계** (매 실행 출력) — `dist/assets/` 비재귀 · `dist/index.html` 인라인 `<style>` 미검사 · 팔레트 색을 임의값으로 하드코딩(`bg-[#8b3f63]`)하면 산출 CSS 검사는 통과한다(같은 색이라 무해하지만 토큰 우회 — 소스 검사가 잡는다). **우회 플래그는 없다.** 새 색·새 라운드는 [decisions.md](../../../docs/design/decisions.md) → `theme.css` 순서로 넣으면 화이트리스트가 자동으로 따라온다.

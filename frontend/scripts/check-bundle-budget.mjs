@@ -36,9 +36,12 @@ const SOURCE_DIRECTORY = join(ROOT, "src");
  * 조용히 올리면 이 게이트는 의미를 잃는다.
  */
 const BUDGETS = [
-  { key: "jsGzip", limit: 92_000, measured: 75_223, label: "JS 합계 (gzip)" },
-  { key: "jsChunkGzip", limit: 92_000, measured: 75_223, label: "최대 단일 JS 청크 (gzip)" },
-  { key: "cssGzip", limit: 6_000, measured: 3_683, label: "CSS (gzip, @font-face 제외)" },
+  // measured 는 2026-08-21 (C5) 기준선. 한도를 정할 때의 75,223 에서 실측이 멀어져 갱신했다 — 이 값이
+  // 실측과 어긋나 있으면 "측정값과 함께 올린다" 규범이 이미 깨진 것이다.
+  { key: "jsGzip", limit: 92_000, measured: 75_858, label: "JS 합계 (gzip)" },
+  // 청크가 1개인 지금은 jsGzip 과 같은 값이다. 코드 스플리팅이 들어오면 둘이 갈라지고 그때 의미가 생긴다 — 미리 둔다.
+  { key: "jsChunkGzip", limit: 92_000, measured: 75_858, label: "최대 단일 JS 청크 (gzip)" },
+  { key: "cssGzip", limit: 6_000, measured: 3_728, label: "CSS (gzip, @font-face 제외)" },
   // 폰트는 unicode-range 로 분할돼 전량 전송되지 않으므로 이 값은 전송량이 아니라 **배포 크기** 가드다.
   // 잡으려는 사고: variable/split(2.3 MB) 대신 static/split(8.8 MB)이나 static/complete(4.7 MB)를
   // 실수로 import 하는 것. 폰트 패치 릴리스가 몇 KB 늘어난 것만으로 빌드를 깨지 않도록 여유를 둔다.
@@ -46,12 +49,20 @@ const BUDGETS = [
 ];
 
 const NORM_LABELS = {
+  retirement: "폐기 유지 — theme.css 의 필수 `-*: initial` 선언 6종",
   shadow: "그림자·링 금지 — 「The Flat-By-Default Rule」 · D9 · D10",
   color: "팔레트 밖 색 금지 — 「The One Accent Rule」 · D8",
   radius: "라운드 토큰 밖 금지 — D1",
   dark: "다크모드 금지 — 라이트 전용",
   ring: "ring-* 금지 — D9",
 };
+
+/**
+ * 폐기 유지 검사 — 재발 방지. 폐기했더라도 나중에 누가 `initial` 줄을 지우면 Tailwind 기본이 조용히
+ * 되살아난다(라운드 8단계 · 그림자 22토큰 · 팔레트 288색). 그 상태를 사람이 기억하게 두지 않고 빌드가 지킨다.
+ * 이 목록을 고치려면 docs/design/namespaces.md 를 먼저 고친다 — 순서는 폐기 선언 먼저, 이 목록 나중.
+ */
+const REQUIRED_RETIREMENTS = ["--color", "--radius", "--shadow", "--drop-shadow", "--inset-shadow", "--text-shadow"];
 
 const FONT_EXTENSIONS = new Set([".woff2", ".woff", ".ttf", ".otf"]);
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx"]);
@@ -174,6 +185,16 @@ for (const budget of BUDGETS) {
 // ── 규범 검사 — 예산과 별개로, 금지된 것이 산출물과 소스에 들어왔는지 본다 ──────────────────────
 
 const violations = [];
+for (const namespace of REQUIRED_RETIREMENTS) {
+  if (!theme.retired.has(namespace)) {
+    violations.push({
+      norm: "retirement",
+      where: relative(ROOT, THEME_PATH).replaceAll("\\", "/"),
+      value: `${namespace}-*: initial; 이 없다 — Tailwind 기본 ${namespace} 토큰이 되살아난다`,
+    });
+  }
+}
+
 const cssStats = { declarations: 0, colors: 0, radiusDeclarations: 0, shadowCustomProperties: 0 };
 for (const sheet of assets.stylesheet) {
   const result = checkCssNorms(sheet.bytes.toString("utf8"), {
@@ -193,7 +214,7 @@ for (const path of walkSources(SOURCE_DIRECTORY)) {
 
 console.log("규범 (산출 CSS + 소스)");
 console.log(
-  `  검사  팔레트 ${theme.paletteSize}색 + 투명 1 · 라운드 토큰 ${theme.radii.names.size}종 · 선언 ${cssStats.declarations}개(색 ${cssStats.colors} · 라운드 ${cssStats.radiusDeclarations} · 그림자/링 커스텀 속성 ${cssStats.shadowCustomProperties}) · 소스 ${sourceFiles}파일`,
+  `  검사  팔레트 ${theme.paletteSize}색 + 투명 1 · 라운드 토큰 ${theme.radii.names.size}종 · 폐기 ${theme.retired.size}/${REQUIRED_RETIREMENTS.length}종 · 선언 ${cssStats.declarations}개(색 ${cssStats.colors} · 라운드 ${cssStats.radiusDeclarations} · 그림자/링 커스텀 속성 ${cssStats.shadowCustomProperties}) · 소스 ${sourceFiles}파일`,
 );
 for (const [norm, label] of Object.entries(NORM_LABELS)) {
   const violated = violations.some((violation) => violation.norm === norm);
