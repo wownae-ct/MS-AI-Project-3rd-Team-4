@@ -1,3 +1,10 @@
+# Ingress란?
+# Service(ClusterIP)는 클러스터 "안"에서만 접근 가능하다 — 인터넷에서 우리 도메인으로 들어온
+# 요청을 실제로 받아서 올바른 Service로 넘겨주는 "정문 경비원"이 Ingress다. 이 파일은 "이
+# 도메인(host)으로 오는 요청은 backend Service(80번 포트)로 보내라"는 라우팅 규칙 하나를
+# 정의한다. 실제로 이 규칙을 처리하는 건 클러스터에 설치된 NGINX Ingress Controller(별도
+# 컴포넌트, infra/k8s/ingress-nginx/README.md) — 이 YAML은 그 컨트롤러에게 주는 "설정값"일 뿐,
+# Ingress 자체가 트래픽을 처리하는 프로그램은 아니다.
 # 도메인: AKS/Azure LoadBalancer 자동생성 DNS 라벨(infra/k8s/ingress-nginx/README.md 참고).
 # TLS: cert-manager가 letsencrypt-nginx ClusterIssuer로 자동 발급(infra/k8s/cert-manager/README.md).
 apiVersion: networking.k8s.io/v1
@@ -5,21 +12,29 @@ kind: Ingress
 metadata:
   name: backend
   annotations:
+    # cert-manager가 이 Ingress를 감시하다가, host가 가리키는 도메인 앞으로 Let's Encrypt에
+    # 자동으로 인증서를 요청·발급·갱신해준다(90일마다 자동 갱신, 사람이 손댈 필요 없음).
     cert-manager.io/cluster-issuer: letsencrypt-nginx
 spec:
-  ingressClassName: nginx
-  tls:
+  ingressClassName: nginx # 클러스터에 여러 Ingress 컨트롤러가 있을 수 있는데, 그중 "nginx"라는
+      # 이름으로 설치된 걸 쓰겠다는 지정(이 클러스터엔 NGINX 하나뿐).
+  tls: # HTTPS 설정 — cert-manager가 여기 적힌 host용 인증서를 발급해서 secretName에 저장한다.
     - hosts:
-        - aicoach-production.koreacentral.cloudapp.azure.com
-      secretName: backend-production-tls
+        - merrymap-production.koreacentral.cloudapp.azure.com
+      secretName: backend-production-tls # 발급된 인증서(공개키+개인키)가 저장되는 K8s Secret
+          # 이름 — cert-manager가 자동으로 만들고 채운다, 사람이 직접 만들 필요 없음.
   rules:
-    - host: "aicoach-production.koreacentral.cloudapp.azure.com"
+    - host: "merrymap-production.koreacentral.cloudapp.azure.com" # 이 도메인으로 들어온
+          # 요청만 아래 규칙에 매칭된다. 다른 Host 헤더로 오는 요청(예: 인그레스 컨트롤러 헬스
+          # 체크가 쓰는 맨 IP 요청)은 이 규칙에 안 걸려서 ingress-nginx 기본 백엔드가
+          # 처리한다(보통 404).
       http:
         paths:
-          - path: /
+          - path: / # 이 경로 아래 전부(Prefix)를 매칭 — 이 도메인으로 온 모든 요청을 통째로
+                # backend Service로 넘긴다는 뜻(경로별로 다른 서비스로 나누지 않음).
             pathType: Prefix
             backend:
               service:
-                name: backend
+                name: backend # 목적지 Service 이름 — service.yaml에서 정의한 바로 그 Service.
                 port:
                   number: 80
