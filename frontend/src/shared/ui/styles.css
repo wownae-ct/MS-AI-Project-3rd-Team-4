@@ -1,0 +1,72 @@
+/* 앱의 유일한 CSS 진입점 — src/app/main.tsx 가 이 파일 하나만 import 한다.
+ * CSS 는 사이드이펙트라 index.ts 로 재수출할 수 없다 (layers.md §4.2).
+ *
+ * source(none) 을 쓰는 이유 —
+ *   Tailwind 의 자동 소스 탐지 기준점은 "현재 작업 디렉터리"다(공식 문서).
+ *   CWD 에 의존하면 실행 위치가 달라졌을 때 클래스가 조용히 생성되지 않는다. 빌드는 성공한다.
+ *   그래서 이 파일 기준 상대 경로로 못 박는다. 새 스캔 대상이 생기면 여기 @source 를 추가한다.
+ */
+@import "tailwindcss" source(none);
+
+/* Wanted Sans Variable — variable/split 판을 쓴다 (ADR 0003 §2.4).
+ *   split = unicode-range 서브셋 92개 조각. 브라우저가 실제 쓰는 글자 조각만 내려받는다.
+ *   complete(단일 1.29 MB)를 쓰면 한 글자만 써도 전량 다운로드가 된다.
+ * font-display: swap 은 패키지 CSS 기본값이다 — LCP 에 유리하고 CLS 에 불리하다.
+ * CLS 실측이 0.08(경보선)을 넘으면 폴백 메트릭 오버라이드를 추가한다. 측정 전에 최적화하지 않는다. */
+@import "wanted-sans/fonts/webfonts/variable/split/WantedSansVariable.css";
+
+@import "./theme.css";
+
+@source "../../"; /* → src/ */
+@source "../../../index.html"; /* → frontend/index.html */
+
+@layer base {
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+
+    /* Base UI 요구사항 — iOS Safari 26+ (공식 quick-start) */
+    position: relative;
+  }
+
+  /* Base UI 요구사항 — 향후 Dialog·Toast 포털이 body 직속에 붙는다.
+     #root 에 스태킹 컨텍스트를 만들어 두지 않으면 z-index 가 조용히 어긋난다. */
+  #root {
+    isolation: isolate;
+  }
+
+  /* 한국어 조판 — 어절 중간에서 줄이 끊기는 것을 막는다.
+     본문 전체에 걸면 좁은 화면에서 오버플로가 나므로 제목·버튼·라벨 같은 UI 텍스트에만 적용하고,
+     overflow-wrap 으로 긴 URL·숫자열이 컨테이너를 밀어내는 경우를 받아낸다. */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  button,
+  label,
+  th {
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
+
+  /* 포커스 가시성 — PRODUCT.md 「명확한 포커스 표시」.
+     도입 전에는 CSS 전체에 :focus-visible 이 0건이었고 포커스 링이 UA 기본값에 의존했다.
+     primary 는 surface 대비 7.03 / bg 대비 6.51 / line 대비 5.50 이라 어디에 놓여도 보인다. */
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  /* 접근성 — 애니메이션 민감 사용자 */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

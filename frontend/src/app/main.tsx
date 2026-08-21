@@ -1,8 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { ErrorBoundary } from "@/shared/ui";
-import "@/shared/ui/tokens.css";
-import "@/shared/ui/components.css";
+import "@/shared/ui/styles.css";
 import App from "./App";
 
 // 마운트 지점이 없으면 여기서 원인을 말하고 멈춘다.
