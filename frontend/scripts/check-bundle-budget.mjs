@@ -1,4 +1,4 @@
-// 번들 예산 게이트 — `npm run build` 체인의 마지막 단계.
+// 번들 예산 + 디자인 규범 게이트 — `npm run build` 체인의 마지막 단계.
 //
 // 왜 Vite 플러그인이 아니라 별도 스크립트인가
 //   플러그인으로 넣으면 gzip 계산에 node:zlib 타입이 필요해 @types/node 와 tsconfig 프로젝트 분리가
@@ -12,16 +12,23 @@
 //   폰트가 예산을 다 먹어 정작 감시해야 할 JS·유틸리티 CSS 증가를 감지하지 못한다.
 //   같은 이유로 CSS 는 @font-face 블록을 빼고 잰다 — 화면이 늘어도 그 부분은 그대로다.
 //
-// 왜 속성 이름이 아니라 값을 보는가 (ADR 0003 §검증 스크립트의 함정)
-//   `grep box-shadow` 는 Preflight 의 `:-moz-ui-invalid{box-shadow:none}` 에 걸린다. 그림자를
-//   **제거하는** 코드인데 위반으로 잡힌다. 그래서 규범 검사는 값까지 확인한다.
+// 규범 검사는 이 파일이 아니라 lib/ 의 순수 모듈이 한다 — 테스트 가능해야 회귀를 막는다.
+//   lib/css-norms.mjs    산출 CSS (lightningcss 파서) — 그림자·링·팔레트 밖 색·라운드·다크모드
+//   lib/source-norms.mjs 소스 (file:line) — 색 임의값·ring·그림자 유틸리티 토큰
+//   설계와 근거: docs/design/namespaces.md 「게이트 — 정규식이 아니라 파서로」 · ADR 0006
+//   여기는 dist 와 src 를 읽어 둘을 호출하고 결과를 출력하는 오케스트레이터다.
 
 import { gzipSync } from "node:zlib";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
+import { checkCssNorms, normalizeHex } from "./lib/css-norms.mjs";
+import { checkSourceNorms } from "./lib/source-norms.mjs";
 
 // 실행 위치에 의존하지 않는다 — CWD 기준으로 잡으면 다른 디렉터리에서 부를 때 조용히 빗나간다.
-const ASSETS_DIRECTORY = resolve(import.meta.dirname, "..", "dist", "assets");
+const ROOT = resolve(import.meta.dirname, "..");
+const ASSETS_DIRECTORY = join(ROOT, "dist", "assets");
+const THEME_PATH = join(ROOT, "src", "shared", "ui", "theme.css");
+const SOURCE_DIRECTORY = join(ROOT, "src");
 
 /**
  * 상한값은 추측이 아니라 실측 + 여유분이다. 옆의 「측정」이 이 값을 정할 때의 실제 크기다.
@@ -38,31 +45,16 @@ const BUDGETS = [
   { key: "fontRaw", limit: 2_600_000, measured: 2_281_860, label: "폰트 파일 합계 (raw)" },
 ];
 
-/**
- * 규범(docs/design/)이 금지한 것이 산출물에 실제로 없는지 본다.
- * 규범을 문서로만 두면 지키는 것이 사람뿐이다 — 이 저장소의 나머지 게이트와 같은 수준으로 올린다.
- *
- * **속성 이름이 아니라 값까지 본다.** `grep box-shadow` 로 검사하면 Preflight 의
- * `:-moz-ui-invalid{box-shadow:none}` 에 걸리는데, 그건 그림자를 **제거하는** 코드다 (ADR 0003).
- */
-const CSS_NORMS = [
-  {
-    label: "그림자 금지 — 「The Flat-By-Default Rule」 (docs/design/README.md)",
-    // 부정 전방탐색을 콜론 **바로 뒤**에 두고 공백을 그 안에서 소비한다.
-    // `\s*(?!none\b)` 로 쓰면 `\s*` 가 백트래킹하며 전방탐색을 우회해
-    // `box-shadow: none`(공백 있음)을 오탐한다 — 실측 확인.
-    // 지금 통과하는 것은 lightningcss 가 공백을 지워 주기 때문이라, 최소화 설정에 우연히 기대고 있었다.
-    pattern: /box-shadow\s*:(?!\s*none\b)[^;}]+/gu,
-    hint: "표면 구분은 1px 헤어라인 보더(border-line)로만 한다.",
-  },
-  {
-    label: "다크모드 금지 — 라이트 전용 (docs/design/README.md 「현행 규범 요약」)",
-    pattern: /prefers-color-scheme/gu,
-    hint: "색은 theme.css 의 단일 팔레트만 쓴다. 다크가 필요해지면 docs/design/decisions.md 에 결정을 먼저 쓴다.",
-  },
-];
+const NORM_LABELS = {
+  shadow: "그림자·링 금지 — 「The Flat-By-Default Rule」 · D9 · D10",
+  color: "팔레트 밖 색 금지 — 「The One Accent Rule」 · D8",
+  radius: "라운드 토큰 밖 금지 — D1",
+  dark: "다크모드 금지 — 라이트 전용",
+  ring: "ring-* 금지 — D9",
+};
 
 const FONT_EXTENSIONS = new Set([".woff2", ".woff", ".ttf", ".otf"]);
+const SOURCE_EXTENSIONS = new Set([".ts", ".tsx"]);
 const FONT_FACE_PATTERN = /@font-face\s*\{[^}]*\}/gu;
 
 function formatBytes(value) {
@@ -72,6 +64,35 @@ function formatBytes(value) {
 function extensionOf(name) {
   const dot = name.lastIndexOf(".");
   return dot === -1 ? "" : name.slice(dot).toLowerCase();
+}
+
+/**
+ * theme.css 에서 화이트리스트를 읽는다. 목록을 스크립트에 손으로 두면 토큰과 조용히 어긋난다 —
+ * 이 저장소가 별칭·Node 버전에서 거부해 온 이중 출처 패턴이다.
+ * 주석을 먼저 걷어낸다 — 주석 안의 예시 hex 가 화이트리스트에 섞이면 게이트가 조용히 약해진다.
+ */
+function readTheme() {
+  const text = readFileSync(THEME_PATH, "utf8").replaceAll(/\/\*[\s\S]*?\*\//gu, "");
+
+  const palette = new Set();
+  for (const [, hex] of text.matchAll(/--color-[\w-]+\s*:\s*(#[0-9a-fA-F]{3,8})\s*;/gu)) {
+    palette.add(normalizeHex(hex));
+  }
+  if (palette.size === 0) {
+    throw new Error(`theme.css 에서 --color-* 를 하나도 읽지 못했다 — 경로나 형식이 바뀌었다: ${THEME_PATH}`);
+  }
+  const paletteSize = palette.size;
+  palette.add("transparent"); // Preflight 의 #0000. 색 지정이 아니다.
+
+  const radii = { names: new Set(), values: new Set() };
+  for (const [, name, value] of text.matchAll(/(--radius-[\w-]+)\s*:\s*([^;]+);/gu)) {
+    radii.names.add(name);
+    radii.values.add(value.trim());
+  }
+
+  const retired = new Set([...text.matchAll(/(--[a-z-]+)-\*\s*:\s*initial/gu)].map((m) => m[1]));
+
+  return { palette, paletteSize, radii, retired };
 }
 
 function collectAssets() {
@@ -103,6 +124,14 @@ function collectAssets() {
   return assets;
 }
 
+function* walkSources(directory) {
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) yield* walkSources(path);
+    else if (SOURCE_EXTENSIONS.has(extensionOf(entry.name))) yield path;
+  }
+}
+
 function measure(assets) {
   const chunkSizes = assets.javascript.map((asset) => gzipSync(asset.bytes, { level: 9 }).length);
   const jsGzip = chunkSizes.reduce((sum, size) => sum + size, 0);
@@ -120,6 +149,9 @@ function measure(assets) {
   return { jsGzip, jsChunkGzip, cssGzip, fontRaw };
 }
 
+// ── 실행 ───────────────────────────────────────────────────────────────────────────────────────
+
+const theme = readTheme();
 const assets = collectAssets();
 const actual = measure(assets);
 
@@ -139,24 +171,48 @@ for (const budget of BUDGETS) {
   if (over) breaches.push({ budget, value });
 }
 
-// 규범 검사 — 예산과 별개로, 금지된 것이 산출물에 들어왔는지 본다.
-const normViolations = [];
+// ── 규범 검사 — 예산과 별개로, 금지된 것이 산출물과 소스에 들어왔는지 본다 ──────────────────────
+
+const violations = [];
+const cssStats = { declarations: 0, colors: 0, radiusDeclarations: 0, shadowCustomProperties: 0 };
 for (const sheet of assets.stylesheet) {
-  const text = sheet.bytes.toString("utf8");
-  for (const norm of CSS_NORMS) {
-    const hits = text.match(norm.pattern);
-    if (hits) normViolations.push({ norm, sample: hits[0].slice(0, 80), count: hits.length });
-  }
-}
-for (const norm of CSS_NORMS) {
-  const violated = normViolations.some((violation) => violation.norm === norm);
-  console.log(`  ${violated ? "위반" : "통과"}  ${norm.label}`);
+  const result = checkCssNorms(sheet.bytes.toString("utf8"), {
+    filename: sheet.name,
+    palette: theme.palette,
+    radii: theme.radii,
+  });
+  violations.push(...result.violations);
+  for (const key of Object.keys(cssStats)) cssStats[key] += result.stats[key];
 }
 
-if (normViolations.length > 0) {
-  const lines = ["", "산출 CSS 가 디자인 규범을 어겼다.", ""];
-  for (const { norm, sample, count } of normViolations) {
-    lines.push(`  ${norm.label}`, `    ${count}건 — 예: ${sample}`, `    조치: ${norm.hint}`, "");
+let sourceFiles = 0;
+for (const path of walkSources(SOURCE_DIRECTORY)) {
+  sourceFiles += 1;
+  violations.push(...checkSourceNorms(readFileSync(path, "utf8"), relative(ROOT, path).replaceAll("\\", "/")));
+}
+
+console.log("규범 (산출 CSS + 소스)");
+console.log(
+  `  검사  팔레트 ${theme.paletteSize}색 + 투명 1 · 라운드 토큰 ${theme.radii.names.size}종 · 선언 ${cssStats.declarations}개(색 ${cssStats.colors} · 라운드 ${cssStats.radiusDeclarations} · 그림자/링 커스텀 속성 ${cssStats.shadowCustomProperties}) · 소스 ${sourceFiles}파일`,
+);
+for (const [norm, label] of Object.entries(NORM_LABELS)) {
+  const violated = violations.some((violation) => violation.norm === norm);
+  console.log(`  ${violated ? "위반" : "통과"}  ${label}`);
+}
+// 한계를 숨기지 않는다 — 「막았다」고 적고 안 막히는 것이 이 저장소가 반복해 겪은 사고 클래스다.
+console.log(
+  "  한계  dist/assets/ 비재귀 · dist/index.html 인라인 <style> 미검사 · 팔레트 색의 임의값 하드코딩(bg-[#8b3f63])은 산출 CSS 검사 통과(소스 검사가 잡는다)",
+);
+
+if (violations.length > 0) {
+  const lines = ["", "디자인 규범 위반이 있다.", ""];
+  for (const [norm, label] of Object.entries(NORM_LABELS)) {
+    const hits = violations.filter((violation) => violation.norm === norm);
+    if (hits.length === 0) continue;
+    lines.push(`  ${label} — ${hits.length}건`);
+    for (const hit of hits.slice(0, 12)) lines.push(`    ${hit.where}`, `      ${hit.value}`);
+    if (hits.length > 12) lines.push(`    … 외 ${hits.length - 12}건`);
+    lines.push("");
   }
   lines.push("규범을 바꾸려면 docs/design/decisions.md 를 먼저 갱신한다. 여기서 예외를 만들지 않는다.");
   console.error(lines.join("\n"));
