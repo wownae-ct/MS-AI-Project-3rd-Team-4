@@ -1,6 +1,8 @@
 /// <reference types="vite/client" />
 
-// 프론트 환경변수 타입의 단일 출처. 값을 읽는 곳은 src/shared/config/env.ts 하나다.
+// 프론트 환경변수 타입의 단일 출처.
+// 값을 읽는 코드는 현재 없다 — 전송 계층이 src 초기화 때 삭제됐다(docs/architecture/toolchain.md §6.3).
+// 다시 세울 때 이 선언을 그대로 받아 부재를 명시적으로 다룬다. 조용한 폴백을 두지 않는다.
 //
 // 주의 1 — 이 파일에 `import` 문을 넣지 말 것.
 //   공식 문서: "If the ImportMetaEnv augmentation does not work, make sure you do not have

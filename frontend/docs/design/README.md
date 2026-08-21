@@ -1,0 +1,100 @@
+# design — 디자인 규범
+
+> **최종 갱신** 2026-08-21 · **문서 소유** 프론트 담당
+>
+> ⚠️ **이 폴더의 「제안」 항목은 아직 코드에 적용되지 않았다.** 각 문서가 **현행**과 **제안(미적용)** 을
+> 항목마다 표시한다. 표시 없이 규범을 서술하지 않는다 — 이 저장소는 *"막았다고 적었지만 실제로는 안 막힌"*
+> 상태로 여러 번 손해를 봤고, 그 재발을 막는 것이 이 폴더의 존재 이유 중 하나다([namespaces.md](namespaces.md)).
+
+## 이 폴더가 무엇인가
+
+**프론트엔드 디자인 규범의 SSOT.** 색·서체·형태·접근성·레이아웃의 값과 그 근거가 여기 있다.
+
+값의 **소재지**는 `src/shared/ui/theme.css`(Tailwind `@theme`)이고, **왜 그 값인지**가 여기다.
+값을 바꿀 때는 [decisions.md](decisions.md)를 먼저 고치고 `theme.css`를 맞춘다. 반대 순서로 하지 않는다.
+
+### 자립 원칙
+
+**이 폴더의 문서는 `frontend/` 밖을 참조하지 않는다.** 다른 브랜치의 파일, 저장소 루트 파일, git 히스토리의
+문서를 규범의 근거로 인용하지 않는다. 프론트엔드 브랜치에서 열 수 없거나 고칠 수 없는 것에 규범을 의존시키면
+그 규범은 유지될 수 없다.
+
+외부 **기술 문서**(W3C·MDN·WHATWG·Tailwind·Base UI·KRDS·npm 레지스트리)는 근거로 적극 인용하고, **URL과
+확인 등급**을 함께 적는다.
+
+## 문서 색인
+
+| 문서 | 내용 |
+|---|---|
+| [decisions.md](decisions.md) | 규범 결정 D1~D10 — 맥락 · 대안 · 결정 · 적용 지점 · 되돌림 비용 |
+| [a11y.md](a11y.md) | 접근성 정책 — 터치 타겟 · 글자 크기 · 대비. 표준 원문과 **근거 등급** |
+| [namespaces.md](namespaces.md) | Tailwind 네임스페이스 폐기 감사 — **「덮어쓰기」와 「폐기」는 다르다** |
+| [layout.md](layout.md) | 앱 셸 계약 · 라우트 표 · 내비게이션 접근성 · 화면별 폭 |
+| [inventory.md](inventory.md) | 6화면 UI 패턴 → Base UI 매핑 · 번들 비용 · 구현 함정 |
+| [implementation-plan.md](implementation-plan.md) | 구현 순서(커밋 단위)와 검증 절차 |
+| [../mockups/README.md](../mockups/README.md) | 화면 스펙의 출처와 한계 |
+
+관련 결정 기록: [ADR 0006](../adr/0006-디자인-규범의-ssot를-프론트엔드-안에-둔다.md) (상태: **제안**)
+
+## 현행 규범 요약
+
+**현재 코드에 실제로 적용돼 있는 것만** 적는다. 제안은 [decisions.md](decisions.md)에 있다.
+
+### 색 — 7색 (`theme.css`)
+
+| 토큰 | 값 | 용도 |
+|---|---|---|
+| `--color-primary` | `#8B3F63` | 배지 · 주요 액션 · 강조 텍스트 · 진행률 채움 |
+| `--color-primary-soft` | `#F1DEE7` | 배지 배경 등 옅은 면 |
+| `--color-ink` | `#1D1B19` | 본문 · 헤드라인 |
+| `--color-ink-soft` | `#726B65` | 보조 텍스트 · 캡션 · 비활성 라벨 |
+| `--color-bg` | `#F7F6F4` | 페이지 배경 |
+| `--color-surface` | `#FFFFFF` | 카드 등 표면 |
+| `--color-line` | `#E7E3DE` | 카드 보더 · 구분선 · 진행률 트랙 |
+
+- **The One Accent Rule** — 베리 플럼은 배지 · 주요 버튼 · 강조 텍스트 · 진행률 채움에만. **배경 워시나 큰 면적 채우기로 쓰지 않는다.** 희소성이 곧 그 색의 힘이다.
+- **The No-Pink-Cliché Rule** — "웨딩 = 밝은 핑크 + 세리프 + 그라디언트" 조합을 쓰지 않는다. 베리 플럼은 채도를 낮춘 와인 톤이지 밝은 핑크가 아니다.
+- **상태 색(성공 · 경고 · 위험)이 없다.** 지어내지 않는다 → [D6](decisions.md#d6-상태-색을-도입하지-않는다)
+- ⚠️ **`--color-*: initial`은 임의값을 막지 못한다.** `bg-[#77354F]`는 그대로 컴파일된다 → [D8](decisions.md#d8-팔레트-밖-색-서술을-사실에-맞게-고치고-게이트로-강제한다)
+
+### 형태
+
+| 토큰 | 값 |
+|---|---|
+| `--radius-sm` | `8px` |
+| `--radius-md` | `10px` |
+| `--radius-pill` | `999px` |
+
+- **The Flat-By-Default Rule** — 그림자를 쓰지 않는다. 표면 구분은 **1px 헤어라인 보더**(`border-line`)로만. 호버도 그림자가 아니라 보더/배경의 옅은 변화로.
+- ⚠️ **위 3개는 "정의된 것"이지 "전부"가 아니다.** Tailwind 기본 `--radius-*` 8단계가 살아 있어 `rounded-2xl`(16px)·`rounded-4xl`(32px)도 생성된다 → [namespaces.md](namespaces.md) · [D1](decisions.md#d1-라운드를-4단계로-고정한다)
+- ⚠️ **"그림자 토큰을 두지 않는다"도 마찬가지다.** 기본 그림자 토큰 22개가 살아 있다 → [D10](decisions.md#d10-그림자-네임스페이스를-폐기하고-게이트를-3속성으로-넓힌다)
+
+### 서체
+
+`--font-sans: "Wanted Sans Variable", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif`
+
+- **Wanted Sans Variable self-host** (OFL-1.1). `variable/split` 판 — `unicode-range` 92조각이라 쓰인 글자 조각만 전송된다
+- 하나의 가변 폰트로 **무게만 바꿔 위계를 만든다**
+- 금액은 항상 `tabular-nums` + 700 — `Money` 컴포넌트가 강제한다
+- `preload`를 쓰지 않는다 · `@font-face` 메트릭 오버라이드를 넣지 않는다 (근거: `../architecture/toolchain.md` §8.2)
+
+### 타이포 · 접근성
+
+| 역할 | 값 |
+|---|---|
+| 주 본문 | `text-base` 16px + `text-ink` |
+| 보조 문구 | `text-sm` 14px + `text-ink-soft` |
+| 캡션 · 라벨 | `text-xs` 12px + `text-ink-soft` |
+| 입력 필드 | **16px 미만 금지** |
+| 행간 (CJK) | 1.5~1.6 |
+| 최소 터치 타겟 | 44px (`min-h-tap`) |
+
+수치의 출처와 **근거 등급**은 [a11y.md](a11y.md). 요약하면 — **44px은 WCAG AA가 아니라 AAA다.**
+
+## 갱신 규칙
+
+1. **값을 바꿀 때는 [decisions.md](decisions.md)를 먼저 고치고 `theme.css`를 맞춘다.** 반대로 하면 값의 출처가 코드가 되어 근거가 사라진다.
+2. **「제안」과 「현행」 표시를 반드시 유지한다.** 적용되지 않은 것을 규범처럼 적지 않는다.
+3. **구조로 강제했다고 쓰려면 위반을 주입해 실제로 막히는 것을 확인한 뒤에 쓴다.** 확인 전에는 "의도"라고 쓴다.
+4. 외부 기술 문서를 인용할 때는 **URL과 확인 등급**(1차 공식 / 2차 자료 / 미확인)을 함께 적는다.
+5. 새 문서는 이 색인과 [../README.md](../README.md)에 추가한다.

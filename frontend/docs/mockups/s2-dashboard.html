@@ -1,0 +1,290 @@
+<!-- 출처: claude.ai/design 프로젝트 "HTML 기반 UI 초안 구성" 의 uploads/ 사본.
+     같은 프로젝트의 "메리맵 프로토타입.dc.html" 이 더 최신이다 — 하단 탭바 4개와 데스크톱(1160px) 레이아웃은
+     그쪽에만 있고 이 파일에는 없다. 화면 단위 시각 참조로만 쓸 것.
+     저장소에 넣으면서 임베드돼 있던 base64 woff2 2개를 걷어내고 캔버스 원본과 같은 Wanted Sans v1.0.3 CDN 로 바꿨다.
+     그 외 마크업·스타일은 한 글자도 손대지 않았다. -->
+<title>메리맵 대시보드</title>
+<style>
+  @import url("https://cdn.jsdelivr.net/gh/wanteddev/wanted-sans@v1.0.3/packages/wanted-sans/fonts/webfonts/variable/complete/WantedSansVariable.min.css");
+
+
+  /* Tokens — mirrors ../DESIGN.md / ../design/tokens.css. This screen is a
+     deliberately single-theme (light-only) design: dark mode is explicitly
+     out of scope per PRODUCT.md, so every color below is painted directly
+     rather than branched by prefers-color-scheme. */
+  :root{
+    --color-primary:#8B3F63;
+    --color-primary-soft:#F1DEE7;
+    --color-ink:#1D1B19;
+    --color-ink-soft:#726B65;
+    --color-bg:#F7F6F4;
+    --color-surface:#FFFFFF;
+    --color-line:#E7E3DE;
+    --page-canvas:#EDEAE6;
+    --radius-sm:8px;
+    --radius-md:10px;
+    --radius-pill:999px;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{ background:var(--page-canvas); }
+  body{
+    margin:0; color:var(--color-ink);
+    font-family:'Wanted Sans Variable','Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+    line-height:1.5; -webkit-font-smoothing:antialiased;
+    display:flex; justify-content:center; padding:40px 16px 64px;
+  }
+  a{ color:inherit; }
+
+  .canvas-note{
+    position:fixed; top:18px; left:50%; transform:translateX(-50%);
+    font-size:.72rem; color:var(--color-ink-soft); text-align:center;
+    letter-spacing:.02em;
+  }
+
+  .device{
+    width:390px; max-width:100%; background:var(--color-ink);
+    border-radius:40px; padding:10px; margin-top:26px;
+  }
+  .device-screen{
+    background:var(--color-bg); border-radius:32px; overflow:hidden;
+    min-height:760px; display:flex; flex-direction:column;
+  }
+
+  .screen-inner{ padding:22px 18px 32px; display:flex; flex-direction:column; gap:20px; }
+
+  .brand{ display:flex; align-items:center; gap:7px; }
+  .brand-dot{ width:9px; height:9px; border-radius:50%; background:var(--color-primary); flex:none; }
+  .brand-name{ font-size:.92rem; font-weight:700; letter-spacing:-.01em; }
+
+  .hero{ display:flex; flex-direction:column; gap:2px; }
+  .hero-dday{ font-size:2.1rem; font-weight:700; letter-spacing:-.02em; }
+  .hero-date{ font-size:.82rem; color:var(--color-ink-soft); }
+
+  .card{
+    background:var(--color-surface); border:1px solid var(--color-line);
+    border-radius:16px; padding:18px 16px;
+  }
+  .card-title{ font-size:.92rem; font-weight:700; margin:0 0 14px; }
+
+  /* Budget donut */
+  .budget-row{ display:flex; align-items:center; gap:20px; }
+  .donut{
+    --p-paid:8.4%; --p-planned:89.3%;
+    width:112px; height:112px; border-radius:50%; flex:none; position:relative;
+    background:conic-gradient(
+      var(--color-primary) 0% var(--p-paid),
+      var(--color-ink-soft) var(--p-paid) calc(var(--p-paid) + var(--p-planned)),
+      var(--color-line) calc(var(--p-paid) + var(--p-planned)) 100%
+    );
+  }
+  .donut::after{
+    content:""; position:absolute; inset:16px; border-radius:50%; background:var(--color-surface);
+  }
+  .donut-label{
+    position:absolute; inset:16px; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center; gap:1px;
+  }
+  .donut-amount{ font-size:.86rem; font-weight:700; font-variant-numeric:tabular-nums; line-height:1.2; }
+  .donut-caption{ font-size:.6rem; color:var(--color-ink-soft); line-height:1.3; }
+
+  .legend{ display:flex; flex-direction:column; gap:9px; flex:1; min-width:0; }
+  .legend-row{ display:flex; align-items:center; gap:8px; font-size:.78rem; }
+  .legend-dot{ width:9px; height:9px; border-radius:50%; flex:none; border:1px solid var(--color-ink-soft); }
+  .legend-label{ color:var(--color-ink-soft); flex:1; }
+  .legend-amount{ font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
+
+  /* Upcoming payments */
+  .pay-row{
+    display:flex; align-items:center; gap:12px; padding:11px 0;
+    border-bottom:1px solid var(--color-line);
+  }
+  .pay-row:last-child{ border-bottom:none; padding-bottom:0; }
+  .pay-row:first-child{ padding-top:0; }
+  .pay-dday{
+    flex:none; font-size:.72rem; font-weight:700; color:var(--color-primary);
+    background:var(--color-primary-soft); border-radius:var(--radius-pill);
+    padding:4px 9px; font-variant-numeric:tabular-nums;
+  }
+  .pay-info{ flex:1; min-width:0; }
+  .pay-item{ font-size:.86rem; font-weight:700; margin:0 0 2px; }
+  .pay-meta{
+    font-size:.72rem; color:var(--color-ink-soft); margin:0;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .pay-amount{
+    flex:none; font-size:.84rem; font-weight:700; font-variant-numeric:tabular-nums;
+  }
+
+  /* Category list */
+  .cat-row{ padding:12px 0; border-bottom:1px solid var(--color-line); }
+  .cat-row:last-child{ border-bottom:none; padding-bottom:0; }
+  .cat-row:first-child{ padding-top:0; }
+  .cat-top{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px; }
+  .cat-name-group{ display:flex; align-items:center; gap:6px; min-width:0; }
+  .cat-name{ font-size:.86rem; font-weight:700; white-space:nowrap; }
+  .cat-badge{
+    font-size:.62rem; font-weight:700; letter-spacing:.03em; color:var(--color-primary);
+    background:var(--color-primary-soft); border-radius:var(--radius-pill); padding:2px 8px;
+    flex:none;
+  }
+  .cat-amount{ font-size:.78rem; color:var(--color-ink-soft); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .cat-amount b{ color:var(--color-ink); font-weight:700; }
+  .bar-track{ height:5px; border-radius:var(--radius-pill); background:var(--color-line); overflow:hidden; margin-bottom:6px; }
+  .bar-fill{ height:100%; border-radius:var(--radius-pill); background:var(--color-primary); }
+  .cat-checklist{ font-size:.72rem; color:var(--color-ink-soft); }
+
+  .cat-row.no-cost .cat-top{ margin-bottom:0; }
+</style>
+
+<p class="canvas-note">S2 · 대시보드 — 데이터는 예시(합성)입니다</p>
+
+<div class="device">
+  <div class="device-screen">
+    <div class="screen-inner">
+
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <span class="brand-name">메리맵</span>
+      </div>
+
+      <div class="hero">
+        <p class="hero-dday">D-198</p>
+        <p class="hero-date">2027년 3월 6일 결혼식</p>
+      </div>
+
+      <div class="card">
+        <p class="card-title">예산 현황</p>
+        <div class="budget-row">
+          <div class="donut">
+            <div class="donut-label">
+              <span class="donut-amount">3,800,000원</span>
+              <span class="donut-caption">45,000,000원 중<br>집행</span>
+            </div>
+          </div>
+          <div class="legend">
+            <div class="legend-row">
+              <span class="legend-dot" style="background:var(--color-primary)"></span>
+              <span class="legend-label">집행</span>
+              <span class="legend-amount">3,800,000원</span>
+            </div>
+            <div class="legend-row">
+              <span class="legend-dot" style="background:var(--color-ink-soft)"></span>
+              <span class="legend-label">계획(미지급)</span>
+              <span class="legend-amount">40,200,000원</span>
+            </div>
+            <div class="legend-row">
+              <span class="legend-dot" style="background:var(--color-line)"></span>
+              <span class="legend-label">잔여</span>
+              <span class="legend-amount">1,000,000원</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="card-title">다가오는 납부</p>
+
+        <div class="pay-row">
+          <span class="pay-dday">D-12</span>
+          <div class="pay-info">
+            <p class="pay-item">그레이스웨딩홀 중도금</p>
+            <p class="pay-meta">예식장 · 2026-09-01</p>
+          </div>
+          <span class="pay-amount">4,200,000원</span>
+        </div>
+
+        <div class="pay-row">
+          <span class="pay-dday">D-20</span>
+          <div class="pay-info">
+            <p class="pay-item">아이린 스드메 촬영 잔금</p>
+            <p class="pay-meta">스드메 · 2026-09-09</p>
+          </div>
+          <span class="pay-amount">1,300,000원</span>
+        </div>
+
+        <div class="pay-row">
+          <span class="pay-dday">D-27</span>
+          <div class="pay-info">
+            <p class="pay-item">한아름 인쇄사 청첩장 인쇄비</p>
+            <p class="pay-meta">청첩장·답례품 · 2026-09-16</p>
+          </div>
+          <span class="pay-amount">320,000원</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="card-title">카테고리별 예산</p>
+
+        <div class="cat-row no-cost">
+          <div class="cat-top">
+            <div class="cat-name-group"><span class="cat-name">상견례</span></div>
+          </div>
+          <p class="cat-checklist">체크리스트 3/5</p>
+        </div>
+
+        <div class="cat-row">
+          <div class="cat-top">
+            <div class="cat-name-group">
+              <span class="cat-name">예식장</span>
+              <span class="cat-badge">FOCUS</span>
+            </div>
+            <span class="cat-amount"><b>3,000,000</b> / 12,000,000원</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill" style="width:25%"></div></div>
+          <p class="cat-checklist">체크리스트 10/25</p>
+        </div>
+
+        <div class="cat-row">
+          <div class="cat-top">
+            <div class="cat-name-group">
+              <span class="cat-name">스드메</span>
+              <span class="cat-badge">FOCUS</span>
+            </div>
+            <span class="cat-amount"><b>800,000</b> / 8,000,000원</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill" style="width:10%"></div></div>
+          <p class="cat-checklist">체크리스트 9/35</p>
+        </div>
+
+        <div class="cat-row">
+          <div class="cat-top">
+            <div class="cat-name-group"><span class="cat-name">예물·예단</span></div>
+            <span class="cat-amount"><b>0</b> / 6,000,000원</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill" style="width:0%"></div></div>
+          <p class="cat-checklist">체크리스트 1/5</p>
+        </div>
+
+        <div class="cat-row">
+          <div class="cat-top">
+            <div class="cat-name-group"><span class="cat-name">혼수</span></div>
+            <span class="cat-amount"><b>0</b> / 10,000,000원</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill" style="width:0%"></div></div>
+          <p class="cat-checklist">체크리스트 0/5</p>
+        </div>
+
+        <div class="cat-row">
+          <div class="cat-top">
+            <div class="cat-name-group"><span class="cat-name">청첩장·답례품</span></div>
+            <span class="cat-amount"><b>0</b> / 1,500,000원</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill" style="width:0%"></div></div>
+          <p class="cat-checklist">체크리스트 0/5</p>
+        </div>
+
+        <div class="cat-row">
+          <div class="cat-top">
+            <div class="cat-name-group"><span class="cat-name">신혼여행</span></div>
+            <span class="cat-amount"><b>0</b> / 6,500,000원</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill" style="width:0%"></div></div>
+          <p class="cat-checklist">체크리스트 1/5</p>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+</div>
