@@ -6,7 +6,7 @@
  * **값을 이 파일에서 발명하지 않는다.**
  *
  * hex 를 그대로 쓰는 이유 — 규범 문서가 hex 로 정의한다. oklch 로 옮기면 표기가 SSOT 와 달라져
- * 대조가 어려워진다. 색이 7개로 고정돼 있고 팔레트를 생성·조작하지 않으므로 변환의 이득이 없다.
+ * 대조가 어려워진다. 색이 8개(7색 + 호버 1)로 고정돼 있고 팔레트를 생성·조작하지 않으므로 변환의 이득이 없다.
  * 그리고 빌드 게이트가 이 파일의 hex 를 읽어 화이트리스트로 쓴다 — 표기를 바꾸면 게이트 파서도 바꾼다.
  *
  * @theme 에 선언한 변수는 CSS 변수인 동시에 유틸리티 클래스를 만든다
@@ -27,6 +27,9 @@
      화면 전체 면적의 일부에만 등장한다 — **배경 워시로 쓰지 않는다.** (D2 가 면적 등급을 정한다) */
   --color-primary: #8b3f63;
   --color-primary-soft: #f1dee7; /* 배지 등 옅은 배경용 */
+  /* 호버 — D4. brightness 필터(요소 전체 밝기 조작, 방향도 반대)가 아니라 더 짙은 배경으로.
+     surface 대비 8.73:1 (WCAG 상대휘도 계산). 유일한 용처는 primary 버튼의 enabled:hover / enabled:active. */
+  --color-primary-hover: #77354f;
 
   /* Neutral — 거의 무채색 */
   --color-ink: #1d1b19; /* 본문 텍스트, 헤드라인 */
@@ -67,12 +70,16 @@
    * 위 base(16px) 단계가 그 공백을 메운 것이며, KRDS 의 "본문 최소 16px" 권고와 일치한다
    * (docs/design/a11y.md §2.1). */
 
-  /* Shape — 규범이 정한 값이 Tailwind 기본(4/6/8px)과 다르다. 규범이 이긴다.
-     이 저장소에서 rounded-md 는 10px 이다 (shared/ui/README.md 에 기록).
-     ⚠️ 아래 3개는 「덮어쓰기」다 — Tailwind 기본 --radius-* 8단계(xs~4xl)가 아직 살아 있어
-     rounded-2xl(16px)·rounded-4xl(32px)도 생성된다. 4단계로 고정하는 폐기는 D1 (미적용). */
+  /* Shape — 4단계로 **폐기 후 재정의**한다 (D1).
+     「덮어쓰기」와 「폐기」는 다르다 — sm·md 만 덮어쓰면 Tailwind 기본 --radius-* 8단계(xs~4xl)가 그대로 살아
+     rounded-2xl(16px)·rounded-4xl(32px)도 생성됐다(실측). 아래 initial 한 줄이 8단계를 전부 지우고,
+     rounded-full(calc(infinity*1px))도 함께 사라진다(compile() 실측). rounded-none(0)은 남지만 토큰 밖 값이 아니다.
+     이 저장소에서 rounded-md 는 10px 이다. 16px 은 카드 — 목업이 카드류에 일관되게 쓰는 값.
+     이 줄이 사라지면 게이트의 폐기 유지 검사(REQUIRED_RETIREMENTS)가 빌드를 실패시킨다. */
+  --radius-*: initial;
   --radius-sm: 8px;
   --radius-md: 10px;
+  --radius-lg: 16px; /* 카드 */
   --radius-pill: 999px;
 
   /* 최소 터치 타겟 44px — WCAG AAA 2.5.5 + Apple HIG 44pt + KRDS 터치 44px 의 수렴
@@ -80,10 +87,17 @@
      --spacing 스케일 위에 이름을 붙여 의도를 남긴다 (min-h-tap · h-tap · w-tap). */
   --spacing-tap: 2.75rem;
 
-  /* 그림자 토큰을 **추가하지** 않는다 — 「The Flat-By-Default Rule」 (docs/design/README.md).
-     ⚠️ 「두지 않는다」는 「폐기했다」가 아니다 — Tailwind 기본 그림자 토큰 22개(shadow 8 ·
-     drop-shadow 6 · inset-shadow 3 · text-shadow 5)가 아직 살아 있다. 폐기는 D10 (미적용).
-     표면 구분은 전부 1px 헤어라인 보더(--color-line)로만 한다. */
+  /* 그림자 — 네 계열을 **폐기**한다 (D10). 「The Flat-By-Default Rule」 (docs/design/README.md).
+     토큰을 「두지 않는」 것만으로는 Tailwind 기본 22개(shadow 8 · drop-shadow 6 · inset-shadow 3 ·
+     text-shadow 5)가 살아 있었다. 아래 4줄이면 네 계열 유틸리티가 전부 생성되지 않는다(compile() 실측).
+     ⚠️ ring-* 은 이 폐기가 못 막는다 — 별개 네임스페이스다. 그건 빌드 게이트가 커스텀 속성
+     (--tw-ring-shadow · --tw-ring-color …)까지 봐서 잡는다. 링은 outline-* 로 (D9).
+     표면 구분은 전부 1px 헤어라인 보더(--color-line)로만 한다.
+     이 줄들이 사라지면 게이트의 폐기 유지 검사가 빌드를 실패시킨다. */
+  --shadow-*: initial;
+  --drop-shadow-*: initial;
+  --inset-shadow-*: initial;
+  --text-shadow-*: initial;
 }
 
 /* spacing 은 Tailwind 기본(--spacing: 0.25rem)을 그대로 쓴다.

@@ -40,7 +40,7 @@
 
 **현재 코드에 실제로 적용돼 있는 것만** 적는다. 제안은 [decisions.md](decisions.md)에 있다.
 
-### 색 — 7색 (`theme.css`)
+### 색 — 7색 + 호버 1 (`theme.css`)
 
 | 토큰 | 값 | 용도 |
 |---|---|---|
@@ -51,6 +51,7 @@
 | `--color-bg` | `#F7F6F4` | 페이지 배경 |
 | `--color-surface` | `#FFFFFF` | 카드 등 표면 |
 | `--color-line` | `#E7E3DE` | 카드 보더 · 구분선 · 진행률 트랙 |
+| `--color-primary-hover` | `#77354F` | primary 버튼 hover/active 배경 **만** (D4 · 2026-08-21 적용). surface 대비 8.73 |
 
 - **The One Accent Rule** — 베리 플럼은 배지 · 주요 버튼 · 강조 텍스트 · 진행률 채움에만. **배경 워시나 큰 면적 채우기로 쓰지 않는다.** 희소성이 곧 그 색의 힘이다.
 - **The No-Pink-Cliché Rule** — "웨딩 = 밝은 핑크 + 세리프 + 그라디언트" 조합을 쓰지 않는다. 베리 플럼은 채도를 낮춘 와인 톤이지 밝은 핑크가 아니다.
@@ -59,16 +60,18 @@
 
 ### 형태
 
-| 토큰 | 값 |
-|---|---|
-| `--radius-sm` | `8px` |
-| `--radius-md` | `10px` |
-| `--radius-pill` | `999px` |
+| 토큰 | 값 | 용도 |
+|---|---|---|
+| `--radius-sm` | `8px` | 배지 아닌 작은 컨트롤 · ghost 버튼 |
+| `--radius-md` | `10px` | 버튼 · 입력 |
+| `--radius-lg` | `16px` | 카드 (D1 · 2026-08-21 적용) |
+| `--radius-pill` | `999px` | 배지 · 진행률 · 세그먼트 |
 
 - **The Flat-By-Default Rule** — 그림자를 쓰지 않는다. 표면 구분은 **1px 헤어라인 보더**(`border-line`)로만. 호버도 그림자가 아니라 보더/배경의 옅은 변화로.
-- ⚠️ **위 3개는 "정의된 것"이지 "전부"가 아니다.** Tailwind 기본 `--radius-*` 8단계가 살아 있어 `rounded-2xl`(16px)·`rounded-4xl`(32px)도 생성된다 → [namespaces.md](namespaces.md) · [D1](decisions.md#d1-라운드를-4단계로-고정한다)
-- ⚠️ **"그림자 토큰을 두지 않는다"도 마찬가지다.** 기본 그림자 토큰 22개가 살아 있다 → [D10](decisions.md#d10-그림자-네임스페이스를-폐기하고-게이트를-파서로-다시-만든다)
-- ⚠️ **`ring-*`는 어떤 네임스페이스 폐기로도 막히지 않는다**(컴파일 실측). 게이트가 커스텀 속성까지 봐야 닫힌다 → [D9](decisions.md#d9-ring--를-금지어로-둔다) · [namespaces.md](namespaces.md)
+- **위 4단계가 전부다.** `--radius-*: initial` 로 Tailwind 기본 8단계를 **폐기**했다(2026-08-21). `rounded-2xl`·`rounded-full` 은 생성되지 않는다(컴파일 실측). `rounded-none`(0)은 남지만 토큰 밖 값이 아니다 → [D1](decisions.md#d1-라운드를-4단계로-고정한다)
+- **그림자 토큰은 폐기됐다.** `--shadow-*` · `--drop-shadow-*` · `--inset-shadow-*` · `--text-shadow-*` 전부 `initial`(2026-08-21). 기본 22개가 생성되지 않는다 → [D10](decisions.md#d10-그림자-네임스페이스를-폐기하고-게이트를-파서로-다시-만든다)
+- ⚠️ **`ring-*`는 어떤 네임스페이스 폐기로도 막히지 않는다**(컴파일 실측). 빌드 게이트가 커스텀 속성(`--tw-ring-*`)까지 봐서 잡는다 → [D9](decisions.md#d9-ring--를-금지어로-둔다) · [namespaces.md](namespaces.md)
+- **폐기 상태는 빌드가 지킨다** — `theme.css` 에서 `initial` 줄이 하나라도 사라지면 게이트의 유지 검사가 빌드를 실패시킨다 (C5 적용 후)
 
 ### 서체
 
