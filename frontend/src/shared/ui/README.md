@@ -23,9 +23,10 @@ CSS 는 사이드이펙트라 `index.ts` 로 재수출할 수 없다 — 그래�
 |---|---|---|---|
 | primary | `#8B3F63` | `text-primary` `bg-primary` `border-primary` | 베리 플럼 |
 | primary-soft | `#F1DEE7` | `bg-primary-soft` | 배지 배경 |
+| primary-hover | `#77354F` | `enabled:hover:bg-primary-hover` | primary 버튼 hover/active **만** (D4) |
 | ink / ink-soft | `#1D1B19` / `#726B65` | `text-ink` `text-ink-soft` | 본문 / 보조 |
 | bg / surface / line | `#F7F6F4` / `#FFFFFF` / `#E7E3DE` | `bg-surface` `border-line` | `bg` 는 base 레이어가 `body` 에 1회 적용 |
-| 라운드 sm / md / pill | `8` / `10` / `999px` | `rounded-sm` `rounded-md` `rounded-pill` | ⚠️ **Tailwind 기본(4/6/8px)을 덮어썼다.** 이 저장소에서 `rounded-md` 는 10px 이다. 기본 8단계 폐기는 D1 — 적용 시 이 행도 갱신 |
+| 라운드 sm / md / lg / pill | `8` / `10` / `16` / `999px` | `rounded-sm` `rounded-md` `rounded-lg` `rounded-pill` | **4단계가 전부다** — `--radius-*: initial` 로 Tailwind 기본 8단계를 폐기했다(D1). `rounded-2xl`·`rounded-full` 은 생성되지 않는다. 이 저장소에서 `rounded-md` 는 10px, `rounded-lg` 는 16px(카드) |
 | spacing xs~xl | `4/8/16/20/24px` | Tailwind 기본 `--spacing`(4px) 배수 | 정확히 표현된다 → **별도 토큰을 만들지 않았다**. ⚠️ 이 칸에 유틸리티명을 나열하지 않는다 — 스캐너가 읽어 유틸리티를 만든다(아래 「산문이 유틸리티를 만든다」) |
 | 터치 타겟 44px | — | `min-h-tap` | **WCAG AAA 2.5.5 + Apple HIG 44pt + KRDS 터치 44px 의 수렴.** WCAG **AA** 최저선은 24px(2.5.8). 근거 등급은 [a11y.md](../../../docs/design/a11y.md) §1 |
 | 주 본문 (읽는 글) | — | `text-base`(16px) + `text-ink` | **원 디자인 문서의 공백을 메운 단계.** KRDS "본문 최소 16px" 권고와 일치 |
