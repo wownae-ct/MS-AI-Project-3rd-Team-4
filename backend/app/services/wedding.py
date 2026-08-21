@@ -55,8 +55,12 @@ async def create_wedding(session: AsyncSession, payload: WeddingCreate) -> Weddi
         sdm_priority=payload.sdm_priority,
     )
     session.add(wedding)
-    await session.flush()  # wedding.id 채번(아직 커밋은 안 함)
+    # 아직 commit(진짜 저장)은 안 하고 flush만 해서 wedding.id를 미리 받는다 — 바로 아래에서
+    # 만드는 WeddingCategory/UserMilestone 행들이 이 id를 외래키로 가리켜야 하기 때문.
+    await session.flush()
 
+    # 부작용 ①: 카테고리 7개(예식장/스드메/상견례 등) 전부 이 웨딩용으로 한 벌씩 만들어준다.
+    # 처음엔 전부 "켜짐(is_active=True)", 예산 0원 상태로 시작 — 사용자가 나중에 #6으로 조정.
     categories = (await session.execute(select(Category))).scalars().all()
     for category in categories:
         session.add(
@@ -69,11 +73,17 @@ async def create_wedding(session: AsyncSession, payload: WeddingCreate) -> Weddi
             )
         )
 
+    # 부작용 ②·③: 마일스톤 템플릿(전 카테고리 공통, 예: "상견례 잡기") 55개를 이 웨딩 전용
+    # 일정(user_milestones)으로 전부 복사한다. target_date는 "결혼식으로부터 며칠 전"이라는
+    # 템플릿의 상대 오프셋(dday_offset_days)을 실제 결혼 날짜에 더해서 계산.
     completed_category_ids = {c.id for c in categories if c.code in payload.completed_categories}
     today = datetime.now(UTC).date()
     templates = (await session.execute(select(MilestoneTemplate))).scalars().all()
     for template in templates:
         target_date = wedding_date + timedelta(days=template.dday_offset_days)
+        # 온보딩에서 "이미 준비 끝냈다"고 체크한 카테고리(completed_category_ids)라면, 그 카테고리
+        # 마일스톤 중 "원래 기한이 오늘보다 이미 지난 것"만 미리 DONE으로 만들어준다 — 카테고리를
+        # 통째로 완료 처리하는 게 아니라, "이미 지났어야 할 일정만 골라서" 사후 소급 체크하는 것.
         already_done = template.category_id in completed_category_ids and target_date < today
         session.add(
             UserMilestone(

@@ -70,6 +70,8 @@ async def list_chat_messages(session: AsyncSession, session_id: UUID) -> list[Ch
 
 
 def _sse(event: str, data: BaseModel) -> str:
+    """SSE(Server-Sent Events) 한 줄을 만든다 — 브라우저가 이 정해진 포맷(event: 이름\\ndata:
+    JSON\\n\\n)을 그대로 실시간 이벤트로 받아준다."""
     return f"event: {event}\ndata: {data.model_dump_json()}\n\n"
 
 
@@ -97,6 +99,10 @@ async def stream_chat_response(
         config = {"configurable": {"session": session, "settings": settings}}
 
         final_state: ChatState = initial_state
+        # 그래프(retrieve→generate→verify)를 실시간으로 순회한다. 두 종류의 조각이 섞여서 나온다:
+        #   - "custom": generate_node가 writer()로 흘려보낸 토큰 하나 → 곧바로 SSE로 전달(진짜 실시간)
+        #   - "values": 노드가 하나 끝날 때마다의 "전체 상태 스냅샷" → 계속 덮어써서 마지막 것만 남김
+        #     (retrieve 끝나면 context 채워진 스냅샷, verify 끝나면 verdict까지 채워진 스냅샷 순으로 옴)
         async for mode, chunk in _GRAPH.astream(
             initial_state, config, stream_mode=["custom", "values"]
         ):
@@ -105,6 +111,7 @@ async def stream_chat_response(
             else:
                 final_state = chunk
 
+        # 루프가 끝난 시점엔 final_state에 검색 근거(context)·최종 답변·검증 결과가 전부 들어있다.
         citations = [
             CitationOut(
                 chunk_id=c.chunk_id,

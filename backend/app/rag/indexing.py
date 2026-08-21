@@ -39,6 +39,8 @@ async def _embed_all(
     달라 오프셋 계산이 틀리면 A 문서 청크에 B 문서 임베딩이 조용히 섞이는 버그가 생길 수
     있어(backend/old/rag/index/assemble.py와 동일한 이유), 개수 불일치를 명시적으로 검증한다."""
     client = get_azure_openai_client(settings)
+    # 문서 8개, 청크 140개를 전부 한 줄로 펼쳐서 "한 번에" 임베딩 API를 호출한다 — 문서마다
+    # 따로따로 API를 부르면 요청 횟수가 늘어 느리고 비용도 더 든다(배치 처리).
     all_texts = [chunk.content for doc in documents for chunk in doc.chunks]
     all_embeddings = await embed_texts(
         client, all_texts, settings.azure_openai_embedding_deployment
@@ -48,6 +50,9 @@ async def _embed_all(
             f"임베딩 개수 불일치: 청크 {len(all_texts)}개인데 임베딩 {len(all_embeddings)}개 반환됨"
         )
 
+    # API가 돌려준 건 순서만 유지된 "한 줄 목록"이라, 다시 "문서별 묶음"으로 잘라 담아야 한다.
+    # 문서 A가 청크 5개, 문서 B가 청크 3개라면 앞 5개는 A 것, 그다음 3개는 B 것 — offset을
+    # 잘못 계산하면 A 청크에 B 임베딩이 조용히 섞여버리는 버그가 생긴다(위 docstring 참고).
     per_document: list[list[list[float]]] = []
     offset = 0
     for doc in documents:
@@ -101,6 +106,8 @@ async def _replace_all(
 
 
 async def reindex() -> None:
+    """이 CronJob 전체의 진입점 — 매일 새벽 자동 실행된다. 코퍼스 JSON을 읽고(load_corpus) →
+    전부 임베딩하고(_embed_all) → DB를 통째로 갈아끼운다(_replace_all), 딱 3단계."""
     settings = get_settings()
     documents = load_corpus(Path(settings.rag_corpus_path))
     embeddings_by_doc = await _embed_all(documents, settings)

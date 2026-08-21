@@ -51,6 +51,8 @@ _VERIFY_PROMPT_TEMPLATE = """아래는 사용자 질문에 대한 답변과, 답
 
 
 def build_context_block(chunks: list[RetrievedChunk]) -> str:
+    """검색으로 찾아온 청크 5개를 "[참고 자료 1] ... [참고 자료 2] ..." 형태의 텍스트 한 덩어리로
+    붙인다 — AI에게는 이게 "이 안에서만 답을 찾으라"고 건네주는 참고서 역할을 한다."""
     blocks = [
         f"[참고 자료 {i}] (출처: {c.title}, 등급: {SOURCE_TIER_LABELS.get(c.source_tier, c.source_tier)})\n{c.content}"
         for i, c in enumerate(chunks, start=1)
@@ -61,6 +63,8 @@ def build_context_block(chunks: list[RetrievedChunk]) -> str:
 def build_chat_messages(
     category_code: str, chunks: list[RetrievedChunk], query: str
 ) -> list[dict[str, str]]:
+    """OpenAI API가 요구하는 형식(system 역할 1개 + user 역할 1개)으로 프롬프트를 조립한다.
+    system엔 "지켜야 할 규칙"(위 6개 항목), user엔 "참고 자료 + 실제 질문"을 담는다."""
     return [
         {"role": "system", "content": _SYSTEM_PROMPT_TEMPLATE.format(category_code=category_code)},
         {
@@ -75,6 +79,10 @@ def build_chat_messages(
 async def verify_answer(
     client: AsyncAzureOpenAI, settings: Settings, chunks: list[RetrievedChunk], answer: str
 ) -> tuple[str, str]:
+    """답변을 쓴 것과 별개의 LLM 호출로, "이 답변이 방금 준 근거 자료로 실제 뒷받침되는가?"를
+    다시 채점시킨다 — 같은 모델이라도 답변을 쓸 때와 검증할 때 역할을 분리해서, 스스로 지어낸
+    내용에 스스로 속지 않고 어느 정도 걸러낼 수 있게 한다. response_format으로 JSON만 답하게
+    강제해서("SUPPORTED"/"WEAK"/"GENERAL" + 이유) 파싱이 항상 안전하다."""
     response = await client.chat.completions.create(
         model=settings.azure_openai_chat_deployment,
         response_format={"type": "json_object"},
