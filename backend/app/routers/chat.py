@@ -75,9 +75,9 @@ async def send_chat_message(
     payload: ChatMessageCreate,
     session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> StreamingResponse:
-    chat_session = await get_chat_session(session, session_id)
+    await get_chat_session(session, session_id)  # 존재하지 않으면 스트림 시작 전 404
     return StreamingResponse(
-        stream_chat_response(session, chat_session, payload),
+        stream_chat_response(session_id, payload),
         media_type="text/event-stream",
         headers={"X-Accel-Buffering": "no"},
     )
