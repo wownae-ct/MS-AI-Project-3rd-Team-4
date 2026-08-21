@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
+    "@tanstack/react-router": "1.170.31",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
