@@ -125,6 +125,12 @@ describe("라운드 — 토큰 또는 0 만", () => {
   it("rounded-full 의 calc(infinity * 1px) 는 위반이다", () => {
     expect(norms(".a{border-radius:calc(infinity * 1px)}")).toContain("radius");
   });
+  it("최소화된 산출물에서는 infinity 가 3.40282e38px 로 나온다 — 그것도 위반이다 (실제 dist 에서 잡힌 형태)", () => {
+    const { violations } = run(".rounded-full{border-radius:3.40282e38px}");
+    expect(violations.map((v) => v.norm)).toEqual(["radius"]);
+    // 8개 모서리 원자가 같은 값이면 한 번만 보고한다.
+    expect(violations[0].value.split("3.402820018375656e+38px").length - 1).toBe(1);
+  });
   it("퍼센트는 위반이다", () => {
     expect(norms(".a{border-radius:50%}")).toContain("radius");
   });

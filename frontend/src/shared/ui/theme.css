@@ -72,8 +72,10 @@
 
   /* Shape — 4단계로 **폐기 후 재정의**한다 (D1).
      「덮어쓰기」와 「폐기」는 다르다 — sm·md 만 덮어쓰면 Tailwind 기본 --radius-* 8단계(xs~4xl)가 그대로 살아
-     rounded-2xl(16px)·rounded-4xl(32px)도 생성됐다(실측). 아래 initial 한 줄이 8단계를 전부 지우고,
-     rounded-full(calc(infinity*1px))도 함께 사라진다(compile() 실측). rounded-none(0)은 남지만 토큰 밖 값이 아니다.
+     rounded-2xl(16px)·rounded-4xl(32px)도 생성됐다(실측). 아래 initial 한 줄이 8단계를 전부 지운다.
+     ⚠️ rounded-full(calc(infinity*1px))과 rounded-none(0)은 staticValues 라 폐기와 무관하게 살아남는다
+     (compile() 실측 — 폐기 계약 테스트가 고정). none 은 토큰 밖 값이 아니고, full 은 빌드 게이트가 ∞px 로 잡는다.
+     원형은 rounded-pill 로.
      이 저장소에서 rounded-md 는 10px 이다. 16px 은 카드 — 목업이 카드류에 일관되게 쓰는 값.
      이 줄이 사라지면 게이트의 폐기 유지 검사(REQUIRED_RETIREMENTS)가 빌드를 실패시킨다. */
   --radius-*: initial;
