@@ -80,7 +80,9 @@ export function ProgressSection() {
         <Progress value={0.8} label="사용량" />
         <Progress label="불러오는 중" />
         <p className="text-sm text-ink-soft">
-          값을 주지 않으면 불확정 상태가 됩니다 — 값을 모를 때 0%로 그리지 않습니다.
+          값을 주지 않으면 불확정 상태가 됩니다. 값을 <span className="font-bold">단정하지 않는</span> 부분
+          막대로 그립니다 — 0%도 100%도 아닙니다. 스크린리더에는{" "}
+          <code className="font-bold">aria-valuenow</code> 를 생략해 같은 사실을 전합니다.
         </p>
       </Card>
     </Section>

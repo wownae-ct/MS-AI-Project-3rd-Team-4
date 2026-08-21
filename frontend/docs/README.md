@@ -10,6 +10,8 @@
 | 폴더 | 역할 |
 |---|---|
 | [architecture/](architecture/README.md) | 적용 설계 요약과 세부 문서 진입점 |
+| [design/](design/README.md) | 디자인 규범 — 색 · 서체 · 형태 · 접근성 · 레이아웃의 값과 근거 |
+| [mockups/](mockups/README.md) | 화면 스펙 S1~S6 (정적 사본) |
 | [adr/](adr/README.md) | 아키텍처 결정 기록 진입점 |
 
 ### architecture/ — 적용 설계
@@ -22,6 +24,28 @@
 | [architecture/toolchain.md](architecture/toolchain.md) | 런타임(Node 24 고정) · TypeScript 7 단독 채택 · 의존성 스펙 · 빌드/타입 설정 · CI 게이트 · 환경변수 |
 | [architecture/layers.md](architecture/layers.md) | FSD 레이어 규범 · 현재 배치 진단 · 경로 별칭 설계 · oxlint 경계 강제 설계와 검증 기록 |
 
+### design/ — 디자인 규범
+
+값의 **소재지**는 `src/shared/ui/theme.css`이고, **왜 그 값인지**가 여기다. 이 문서군은 `frontend/` 밖을 규범의 근거로 참조하지 않는다.
+
+> ⚠️ **「제안」 표시가 붙은 항목은 아직 코드에 적용되지 않았다.** 각 문서가 **현행**과 **제안(미적용)** 을 항목마다 구분한다.
+
+| 문서 | 내용 |
+|---|---|
+| [design/README.md](design/README.md) | 진입점 · 현행 규범 요약 · 갱신 규칙 |
+| [design/decisions.md](design/decisions.md) | 규범 결정 D1~D10 — 맥락 · 대안 · 결정 · 되돌림 비용 |
+| [design/a11y.md](design/a11y.md) | 접근성 정책 — 터치 타겟 · 글자 크기 · 대비. 표준 원문과 **근거 등급** |
+| [design/namespaces.md](design/namespaces.md) | Tailwind 네임스페이스 폐기 감사 — **「덮어쓰기」와 「폐기」는 다르다** |
+| [design/layout.md](design/layout.md) | 앱 셸 계약 · 라우트 표 · 내비게이션 접근성 · 화면별 폭 |
+| [design/inventory.md](design/inventory.md) | 6화면 UI 패턴 → Base UI 매핑 · 번들 비용 · 구현 함정 |
+| [design/implementation-plan.md](design/implementation-plan.md) | 구현 순서(커밋 단위)와 검증 절차 |
+
+### mockups/ — 화면 스펙
+
+| 문서 | 내용 |
+|---|---|
+| [mockups/README.md](mockups/README.md) | 출처 · 가공 내역 · **이 사본에 없는 것**(탭바 · 데스크톱) · 목업이 답하지 않는 것 |
+
 ### adr/ — 아키텍처 결정 기록
 
 | 문서 | 내용 |
@@ -32,6 +56,8 @@
 | [adr/0002-typescript-7을-단독으로-채택한다.md](adr/0002-typescript-7을-단독으로-채택한다.md) | TypeScript 7 단독 채택 + Node 24 고정 — **승인·적용 완료** |
 | [adr/0003-스타일링-엔진으로-tailwind-css-v4를-채택한다.md](adr/0003-스타일링-엔진으로-tailwind-css-v4를-채택한다.md) | Tailwind CSS v4 채택 + DESIGN.md 토큰을 @theme로 이관 — **승인·적용 완료** |
 | [adr/0004-접근성-프리미티브로-base-ui를-채택한다.md](adr/0004-접근성-프리미티브로-base-ui를-채택한다.md) | 접근성 프리미티브로 Base UI 채택(Tabs·Progress) — **승인·적용 완료** |
+| 0005 | 라우터 선택 — **예약**(`src/app/App.tsx`가 참조). 미작성 |
+| [adr/0006-디자인-규범의-ssot를-프론트엔드-안에-둔다.md](adr/0006-디자인-규범의-ssot를-프론트엔드-안에-둔다.md) | 디자인 규범 SSOT를 프론트엔드 안에 두고 네임스페이스 폐기·빌드 게이트로 강제 — **제안** |
 
 ## 적용 로드맵
 
@@ -62,11 +88,19 @@ ADR 0001·0002 승인(2026-08-20)에 따른 실행 순서다. **각 항목은 �
 |---|---|
 | 왜 이 툴체인인가 · 버전을 올려도 되나 | [architecture/toolchain.md](architecture/toolchain.md) |
 | 파일을 어디에 둘까 · import가 왜 막히나 | [architecture/layers.md](architecture/layers.md) |
+| 이 색을 써도 되나 · 라운드는 몇인가 | [design/README.md](design/README.md) |
+| 왜 그 값인가 · 바꾸려면 | [design/decisions.md](design/decisions.md) |
+| 글자 크기 · 터치 타겟 · 대비 기준 | [design/a11y.md](design/a11y.md) |
+| 어떤 화면을 만드나 | [mockups/README.md](mockups/README.md) |
 | 이 결정이 어떻게 나왔나 · 뒤집으려면 | [adr/](adr/README.md) |
 
-## 기술 스펙 원문
+## 기술 스펙의 소재지 (2026-08-21 갱신)
 
-`docs/frontend_architecture_v3.7.md`(저장소 루트의 `docs/`)가 기술 스펙 원문이지만 **`.gitignore` 대상이라 커밋되지 않는다.** 따라서 팀이 공유해야 하는 값과 근거는 위 architecture 문서가 **발췌해 자립적으로 기록**한다. 실측 결과 설계서를 고쳐야 하는 항목은 [toolchain.md §7](architecture/toolchain.md#7-설계서-개정-사항)에 표로 모아 두었다.
+**기술 스펙의 규범은 [architecture/toolchain.md](architecture/toolchain.md)다.**
+
+한때 저장소 루트 `docs/`의 설계서(`frontend_architecture_v3.7.md`)가 원문이었으나 **레거시가 되어 백업 경로로 옮겨졌다.** 애초에 `.gitignore` 대상이라 커밋되지 않았고, 그래서 architecture 문서가 팀 공유에 필요한 값과 근거를 **발췌해 자립적으로 기록**해 왔다 — 그 기록이 이제 유일한 규범이다.
+
+설계서와 다르게 정하거나 정정한 항목은 [toolchain.md §7](architecture/toolchain.md#7-설계서-개정-사항)에 남아 있다. 그 표는 이제 개정 요청이 아니라 **왜 지금 값이 이 값인지에 대한 근거**로 읽는다.
 
 ## 갱신 규칙
 

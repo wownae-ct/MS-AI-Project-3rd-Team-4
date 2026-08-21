@@ -1,0 +1,173 @@
+<!-- 출처: claude.ai/design 프로젝트 "HTML 기반 UI 초안 구성" 의 uploads/ 사본.
+     같은 프로젝트의 "메리맵 프로토타입.dc.html" 이 더 최신이다 — 하단 탭바 4개와 데스크톱(1160px) 레이아웃은
+     그쪽에만 있고 이 파일에는 없다. 화면 단위 시각 참조로만 쓸 것.
+     저장소에 넣으면서 임베드돼 있던 base64 woff2 2개를 걷어내고 캔버스 원본과 같은 Wanted Sans v1.0.3 CDN 로 바꿨다.
+     그 외 마크업·스타일은 한 글자도 손대지 않았다. -->
+<title>메리맵 타임라인</title>
+<style>
+  @import url("https://cdn.jsdelivr.net/gh/wanteddev/wanted-sans@v1.0.3/packages/wanted-sans/fonts/webfonts/variable/complete/WantedSansVariable.min.css");
+
+
+  :root{
+    --color-primary:#8B3F63; --color-primary-soft:#F1DEE7;
+    --color-ink:#1D1B19; --color-ink-soft:#726B65;
+    --color-bg:#F7F6F4; --color-surface:#FFFFFF; --color-line:#E7E3DE;
+    --page-canvas:#EDEAE6; --radius-sm:8px; --radius-md:10px; --radius-pill:999px;
+  }
+  *{box-sizing:border-box;}
+  html,body{ background:var(--page-canvas); }
+  body{
+    margin:0; color:var(--color-ink);
+    font-family:'Wanted Sans Variable','Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+    line-height:1.5; -webkit-font-smoothing:antialiased;
+    display:flex; justify-content:center; padding:40px 16px 64px;
+  }
+  button{ font-family:inherit; }
+  .canvas-note{ position:fixed; top:18px; left:50%; transform:translateX(-50%); font-size:.72rem; color:var(--color-ink-soft); text-align:center; }
+
+  .device{ width:390px; max-width:100%; background:var(--color-ink); border-radius:40px; padding:10px; margin-top:26px; }
+  .device-screen{ background:var(--color-bg); border-radius:32px; overflow:hidden; min-height:800px; display:flex; flex-direction:column; }
+  .screen-inner{ padding:20px 18px 32px; display:flex; flex-direction:column; gap:18px; }
+
+  .s4-title{ font-size:1.1rem; font-weight:700; }
+  .s4-sub{ font-size:.78rem; color:var(--color-ink-soft); margin:2px 0 0; }
+
+  .timeline{ position:relative; padding-left:16px; }
+  .timeline::before{ content:""; position:absolute; left:3px; top:4px; bottom:4px; width:1px; background:var(--color-line); }
+
+  .phase-group{ margin-bottom:20px; }
+  .phase-group:last-child{ margin-bottom:0; }
+  .phase-label{
+    position:relative; font-size:.7rem; font-weight:700; letter-spacing:.04em; color:var(--color-ink-soft);
+    text-transform:uppercase; margin:0 0 10px;
+  }
+  .phase-label::before{
+    content:""; position:absolute; left:-16px; top:3px; width:7px; height:7px; border-radius:50%;
+    background:var(--color-ink-soft);
+  }
+
+  .m-row{ display:flex; align-items:flex-start; gap:10px; padding:9px 0; }
+  .m-check{
+    flex:none; width:19px; height:19px; border-radius:50%; margin-top:1px;
+    border:1px solid var(--color-line); background:var(--color-surface);
+    display:flex; align-items:center; justify-content:center; font-size:.62rem; color:#fff;
+  }
+  .m-check.done{ background:var(--color-primary); border-color:var(--color-primary); }
+  .m-main{ flex:1; min-width:0; }
+  .m-top{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:2px; }
+  .m-cat{ font-size:.62rem; color:var(--color-ink-soft); border:1px solid var(--color-line); border-radius:var(--radius-pill); padding:1px 7px; flex:none; }
+  .m-title{ font-size:.84rem; font-weight:700; }
+  .m-title.done{ color:var(--color-ink-soft); text-decoration:line-through; }
+  .m-date{ font-size:.72rem; color:var(--color-ink-soft); }
+  .m-overdue{ display:flex; align-items:center; gap:4px; font-size:.7rem; font-weight:700; color:var(--color-ink); margin-top:3px; }
+  .m-overdue .flag{ width:14px; height:14px; border-radius:50%; border:1.3px solid var(--color-ink); display:flex; align-items:center; justify-content:center; font-size:.6rem; flex:none; }
+  .m-action{ flex:none; font-size:.7rem; font-weight:700; color:var(--color-primary); background:none; border:1px solid var(--color-primary); border-radius:var(--radius-pill); padding:4px 10px; margin-top:2px; cursor:pointer; }
+</style>
+
+<p class="canvas-note">S4 · 타임라인 — 데이터는 예시(합성)입니다</p>
+
+<div class="device">
+  <div class="device-screen">
+    <div class="screen-inner">
+      <div>
+        <p class="s4-title">타임라인</p>
+        <p class="s4-sub">D-12개월부터 결혼식 당일까지, 비활성 카테고리는 제외됩니다</p>
+      </div>
+
+      <div class="timeline">
+
+        <div class="phase-group">
+          <p class="phase-label">D-12개월 · 2026-03-06</p>
+          <div class="m-row">
+            <span class="m-check done">✓</span>
+            <div class="m-main">
+              <div class="m-top"><span class="m-cat">예식장</span></div>
+              <span class="m-title done">예식장 계약</span>
+            </div>
+          </div>
+          <div class="m-row">
+            <span class="m-check"></span>
+            <div class="m-main">
+              <div class="m-top"><span class="m-cat">스드메</span><span class="m-date">2026-03-06</span></div>
+              <span class="m-title">스드메 업체 리스트업</span>
+              <div class="m-overdue"><span class="flag">!</span>기한 지남</div>
+            </div>
+            <button class="m-action" type="button">완료</button>
+          </div>
+        </div>
+
+        <div class="phase-group">
+          <p class="phase-label">D-9개월 · 2026-06-06</p>
+          <div class="m-row">
+            <span class="m-check done">✓</span>
+            <div class="m-main">
+              <div class="m-top"><span class="m-cat">스드메</span></div>
+              <span class="m-title done">드레스 투어 예약</span>
+            </div>
+          </div>
+          <div class="m-row">
+            <span class="m-check"></span>
+            <div class="m-main">
+              <div class="m-top"><span class="m-cat">혼수</span><span class="m-date">2026-06-06</span></div>
+              <span class="m-title">혼수 품목 리스트 작성</span>
+              <div class="m-overdue"><span class="flag">!</span>기한 지남</div>
+            </div>
+            <button class="m-action" type="button">완료</button>
+          </div>
+        </div>
+
+        <div class="phase-group">
+          <p class="phase-label">D-6개월 · 2026-09-06</p>
+          <div class="m-row">
+            <span class="m-check"></span>
+            <div class="m-main">
+              <div class="m-top"><span class="m-cat">예식장</span><span class="m-date">2026-09-06</span></div>
+              <span class="m-title">좌석 배치 초안 제출</span>
+            </div>
+          </div>
+          <div class="m-row">
+            <span class="m-check"></span>
+            <div class="m-main">
+              <div class="m-top"><span class="m-cat">청첩장·답례품</span><span class="m-date">2026-09-06</span></div>
+              <span class="m-title">청첩장 디자인 시안 확정</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="phase-group">
+          <p class="phase-label">D-3개월 · 2026-12-06</p>
+          <div class="m-row">
+            <span class="m-check"></span>
+            <div class="m-main">
+              <div class="m-top"><span class="m-cat">신혼여행</span><span class="m-date">2026-12-06</span></div>
+              <span class="m-title">신혼여행지 예약</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="phase-group">
+          <p class="phase-label">D-1개월 · 2027-02-06</p>
+          <div class="m-row">
+            <span class="m-check"></span>
+            <div class="m-main">
+              <div class="m-top"><span class="m-cat">예식장</span><span class="m-date">2027-02-06</span></div>
+              <span class="m-title">최종 하객 수 통보</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="phase-group">
+          <p class="phase-label">D-Day · 2027-03-06</p>
+          <div class="m-row">
+            <span class="m-check"></span>
+            <div class="m-main">
+              <div class="m-top"><span class="m-cat">예식장</span><span class="m-date">2027-03-06</span></div>
+              <span class="m-title">결혼식</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>

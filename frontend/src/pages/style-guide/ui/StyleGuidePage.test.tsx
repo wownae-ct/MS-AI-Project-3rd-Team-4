@@ -47,6 +47,22 @@ describe("진행률", () => {
     expect(loading).not.toHaveAttribute("aria-valuenow");
   });
 
+  // 회귀 방지 — 한때 불확정 막대가 **100% 채워진 완료 상태와 똑같이** 그려졌다.
+  // Base UI 가 값이 없으면 인라인 width 를 설정하지 않아 width:auto 가 트랙 전체로 계산됐다.
+  //
+  // data-indeterminate 는 클래스명이 아니라 Base UI 가 내보내는 **상태 속성**이다(role·aria 와 같은 계약).
+  // 다만 jsdom 은 레이아웃을 계산하지 않으므로 "폭이 100%가 아니다"는 여기서 검증할 수 없다 —
+  // 이 단언이 고정하는 것은 **상태가 DOM 에 드러나 CSS 가 두 경우를 구분할 수 있다**는 것까지다.
+  // 실제 폭은 산출 CSS 에 `[data-indeterminate]{width:…}` 규칙이 생성되는 것으로 확인한다.
+  it("불확정 막대는 완료 막대와 DOM 에서 구분된다", () => {
+    render(<StyleGuidePage />);
+    const loading = screen.getByRole("progressbar", { name: "불러오는 중" });
+    const done = screen.getByRole("progressbar", { name: "사용량" });
+
+    expect(loading.querySelector("[data-indeterminate]")).not.toBeNull();
+    expect(done.querySelector("[data-indeterminate]")).toBeNull();
+  });
+
   it("값을 주면 백분율로 알린다", () => {
     render(<StyleGuidePage />);
     expect(screen.getByRole("progressbar", { name: "작업 진행률" })).toHaveAttribute(

@@ -309,9 +309,11 @@ $ npx depcruise src --exclude "^src"
 
 **③ 포크 PR에서 `VITE_API_BASE`가 비어 온다.** GitHub 공식 문서: *"With the exception of `GITHUB_TOKEN`, secrets are not passed to the runner when a workflow is triggered from a forked repository."* — [Using secrets in GitHub Actions](https://docs.github.com/en/actions/security-for-github-actions/security-guides/using-secrets-in-github-actions).
 
-이 워크플로는 `pull_request`에 트리거되고 빌드 스텝에서 `VITE_API_BASE: ${{ secrets.VITE_API_BASE }}`를 넣는다. 포크에서 온 PR에서는 이 값이 비어 오는데, 코드의 `?? ""` 폴백 때문에 **빌드가 성공하고 상대 경로 번들이 SWA 프리뷰로 배포된다.** 실패 신호가 어디에도 없다.
+이 워크플로는 `pull_request`에 트리거되고 빌드 스텝에서 `VITE_API_BASE: ${{ secrets.VITE_API_BASE }}`를 넣는다. 포크에서 온 PR에서는 이 값이 **비어 온다.**
 
-→ 근본 해결은 §6.3이다. 값 부재가 드러나는 처리로 바꾸면 이 경로도 함께 막힌다. 그 전까지는 **포크 PR 프리뷰의 API 호출이 동작하지 않는다는 것을 알고 있어야 한다.**
+**지금은 소비자가 없어 증상이 나타나지 않는다**(§6.3 — 전송 계층이 삭제됐다). 그래서 이 항목은 **잠재 위험**이며, 값을 읽는 코드가 다시 생기는 순간 되살아난다. 과거에는 `?? ""` 폴백 때문에 빌드가 성공하고 상대 경로 번들이 SWA 프리뷰로 배포됐다 — 실패 신호가 어디에도 없었다.
+
+→ 근본 해결은 §6.3이다. 값 부재가 드러나는 처리로 전송 계층을 세우면 이 경로도 함께 막힌다.
 
 ---
 
@@ -368,8 +370,8 @@ ZDEV[true]ZPROD[false]ZMODE[production]
 
 | 변수 | 상태 |
 |---|---|
-| `VITE_API_BASE` | **유일한 프론트 변수.** `src/shared/api/client.ts:3` · `answers.ts:5`가 읽고, `src/vite-env.d.ts:4`가 선언하고, `.github/workflows/frontend-ci.yml:54`가 주입한다 |
-| `VITE_WS_BASE` | **죽은 선언.** `src/vite-env.d.ts:5`에 있으나 **읽는 코드가 없다.** 추가 대상이 아니라 제거 대상 |
+| `VITE_API_BASE` | **유일한 프론트 변수.** `src/vite-env.d.ts:21`이 선언하고 `.github/workflows/frontend-ci.yml`이 주입한다. **읽는 코드는 현재 없다** — 전송 계층이 `src` 초기화 때 삭제됐다(§6.3) |
+| `VITE_WS_BASE` | **제거 완료.** 대응 코드 없는 선언이라 지웠다 — 현재 `ImportMetaEnv`에 없다 |
 
 Vite 규칙 — `VITE_` 접두 변수만 클라이언트에 노출되고(`envPrefix` 기본값), `.env`는 `envDir`(기본: `vite.config.ts`가 있는 프로젝트 루트)에서 로드되며, 값은 **빌드타임에 정적 치환**된다. 로드 우선순위는 ① 실행 시점 환경변수 → ② `.env.[mode]`(+`.local`) → ③ `.env`(+`.local`). 개인 로컬 값은 `.env.local`에 두며, 이 저장소 `.gitignore`의 `.env.*` 패턴에 이미 걸려 커밋되지 않는다. — [Env and Mode](https://vite.dev/guide/env-and-mode) · [Shared Options](https://vite.dev/config/shared-options.html)
 
@@ -391,17 +393,17 @@ Vite 규칙 — `VITE_` 접두 변수만 클라이언트에 노출되고(`envPre
 
 ### 6.3 진짜 문제는 값이 아니라 폴백이다
 
-`client.ts:3`과 `answers.ts:5`가 `import.meta.env.VITE_API_BASE ?? ""`로 폴백한다. 그 결과:
+> ⚠️ **휴면 상태다 (2026-08-21 정정).** 이 절이 서술하던 결함은 **코드가 사라져 현재 존재하지 않는다.** 아래는 **전송 계층을 다시 세울 때 반복하지 않기 위한 기록**이다.
+>
+> 과거 `shared/api/client.ts`·`answers.ts`가 `import.meta.env.VITE_API_BASE ?? ""`로 폴백했다. 두 파일은 `src` 초기화(주제 전환) 때 삭제됐고, `src/shared/`에는 현재 `ui/`만 있다. `import.meta.env`를 읽는 코드는 **0건**이다.
 
-**미설정과 "동일 오리진을 의도함"이 구분되지 않는다.** 값이 없으면 모든 요청이 상대 경로로 나가고 **에러가 어디에도 나지 않는다.**
-
-이 폴백이 지금 두 곳에서 위험하다.
+**왜 폴백이 위험했나** — 미설정과 "동일 오리진을 의도함"이 구분되지 않는다. 값이 없으면 모든 요청이 상대 경로로 나가고 **에러가 어디에도 나지 않는다.** 두 경로에서 드러난다.
 
 **① 백엔드가 붙은 뒤 값 주입을 잊어도 배포가 성공한다.** 빌드도 CI도 통과하고, 런타임에 404가 날 뿐이다. 원인이 환경변수라는 단서가 없다.
 
-**② 포크 PR 빌드가 조용히 깨진다.** GitHub 공식 문서: *"With the exception of `GITHUB_TOKEN`, secrets are not passed to the runner when a workflow is triggered from a forked repository."* — [Using secrets in GitHub Actions](https://docs.github.com/en/actions/security-for-github-actions/security-guides/using-secrets-in-github-actions). `frontend-ci.yml`은 `pull_request`에 트리거되므로 포크에서 온 PR에서는 `secrets.VITE_API_BASE`가 **비어 온다.** 폴백 때문에 빌드는 성공하고, 상대 경로 번들이 SWA 프리뷰로 배포된다.
+**② 포크 PR 빌드가 조용히 깨진다.** GitHub 공식 문서: *"With the exception of `GITHUB_TOKEN`, secrets are not passed to the runner when a workflow is triggered from a forked repository."* — [Using secrets in GitHub Actions](https://docs.github.com/en/actions/security-for-github-actions/security-guides/using-secrets-in-github-actions). `frontend-ci.yml`은 `pull_request`에 트리거되므로 포크에서 온 PR에서는 `secrets.VITE_API_BASE`가 **비어 온다.** 폴백이 있으면 빌드는 성공하고, 상대 경로 번들이 SWA 프리뷰로 배포된다.
 
-> **개선 항목 (우선순위 높음)** — 값 부재가 드러나는 처리로 바꾼다. 방향은 두 가지다: 빌드 시점에 검증해 **실패시키거나**, 폴백을 없애고 타입을 `VITE_API_BASE?: string`으로 정직하게 바꾼 뒤 호출부에서 부재를 명시적으로 다루는 것. 어느 쪽이든 **지금처럼 조용히 넘어가지는 않게 한다.**
+> **전송 계층을 다시 세울 때의 조건** — `?? ""` 같은 조용한 폴백을 두지 않는다. 빌드 시점에 검증해 **실패시키거나**, 부재를 호출부에서 **명시적으로 다룬다.** 타입 쪽은 이미 정직하다 — `vite-env.d.ts:21`이 `VITE_API_BASE?: string`(optional)이라 부재가 타입에 드러난다.
 
 ### 6.4 보안 성격 — secret이 아니라 환경별 설정값이다
 
@@ -415,16 +417,18 @@ Vite 공식 경고: *"VITE_\* variables should **not** contain sensitive informa
 
 - **`src/vite-env.d.ts`의 `ImportMetaEnv`를 단일 출처로 삼는다.** 프론트 환경변수를 추가·변경할 때 여기서 시작하고, CI 주입 이름과 일치하는지 같은 PR에서 확인한다.
 - **`vite-env.d.ts`에 `import` 문을 넣지 않는다.** 공식 문서 경고: *"If the `ImportMetaEnv` augmentation does not work, make sure you do not have any `import` statements in `vite-env.d.ts`."* 현재는 없다 — 이 상태를 유지 조건으로 못박아 둔다.
-- **미사용 선언을 남기지 않는다.** 선언은 계약이다. 대응 없는 선언(`VITE_WS_BASE`)은 지운다.
-- **타입과 런타임 가정을 일치시킨다.** 지금 `VITE_API_BASE`는 non-optional로 선언돼 있는데 코드는 폴백을 쓴다 — 둘 중 하나가 거짓이다. §6.3의 개선과 함께 정리한다.
+- **미사용 선언을 남기지 않는다.** 선언은 계약이다. 대응 없는 선언(`VITE_WS_BASE`)은 **제거했다** — 현재 `ImportMetaEnv`에는 `VITE_API_BASE` 하나뿐이다.
+- **타입과 런타임 가정을 일치시킨다.** ✅ **해소** — `vite-env.d.ts:21`이 `readonly VITE_API_BASE?: string`(optional)이다. 타입이 런타임보다 낙관적이면 그 자체가 결함이므로, 값을 읽는 코드가 다시 생기면 이 optional 을 그대로 받아 부재를 명시적으로 다룬다.
 
-> `frontend/.env.example`은 프론트 전용이 아니라 **프로젝트 공용** 파일이며, 현재 프론트 변수를 담고 있지 않다(빈 변수 정리, 2026-08-20). 그 대가는 **발견 가능성**이다 — 새로 클론한 사람이 `VITE_API_BASE`의 존재를 알 방법이 이 문서뿐이다. 다시 기재할지는 열려 있고, 기재하지 않는 동안은 **이 절이 프론트 변수의 기재 책임을 진다.** Azure/Key Vault/PostgreSQL/AKS/SWA/Log Analytics 절은 백엔드·인프라 소관이므로 다루지 않는다.
+> `frontend/.env.example`은 프론트 전용이 아니라 **프로젝트 공용** 파일이며, **`VITE_API_BASE=` 를 담고 있다**(line 2, 빈 값). 즉 새로 클론한 사람이 변수의 존재는 그 파일에서 알 수 있고, **의미와 주입 경로는 이 절이 책임진다.** Azure/Key Vault/PostgreSQL/AKS/SWA/Log Analytics 절은 백엔드·인프라 소관이므로 다루지 않는다.
 
 ---
 
 ## 7. 설계서 개정 사항
 
-`docs/frontend_architecture_v3.7.md`를 검토·실측한 결과 아래 항목을 다르게 정하거나 정정했다. **설계서 갱신 시 이 표를 반영한다.**
+과거 설계서(루트 `docs/`의 `frontend_architecture_v3.7.md`)를 검토·실측한 결과 아래 항목을 다르게 정하거나 정정했다.
+
+> **그 설계서는 레거시가 되어 백업 경로로 옮겨졌다 (2026-08-21).** 따라서 이 표는 더 이상 «설계서에 반영할 개정 요청»이 아니라 **«지금 값이 왜 이 값인지»에 대한 근거 기록**이다. 기술 스펙의 규범은 이 문서다.
 
 | # | 설계서 | 이 문서 | 사유 |
 |---|---|---|---|
