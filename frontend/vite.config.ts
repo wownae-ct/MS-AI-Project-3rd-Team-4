@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 
 /**
  * 프로덕션 빌드가 개발 시맨틱으로 도는 것을 막는다.
@@ -49,15 +50,31 @@ function assertProductionBuild(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), assertProductionBuild()],
+  plugins: [
+    react(),
+    // optimize: false — lightningcss 를 두 번 돌리지 않기 위해서다 (ADR 0003 §결정 4).
+    //
+    // Vite 8 은 build.cssMinify 기본값이 lightningcss 이고, build.cssTarget(기본값 = build.target)이
+    // css.lightningcss.targets 보다 우선한다. Tailwind 의 vite 플러그인도 자체 lightningcss 로 최적화하는데,
+    // 그쪽은 Tailwind 자신의 하한(Chrome 111 / Safari 16.4 / Firefox 128)을 쓴다.
+    // 그대로 두면 다운레벨 타깃이 두 곳으로 갈린다 — 이 저장소가 별칭·Node 버전에서 거부해 온 패턴이다.
+    // Tailwind 쪽을 끄면 타깃의 단일 출처가 아래 build.target 하나로 유지된다.
+    tailwindcss({ optimize: false }),
+    assertProductionBuild(),
+  ],
   resolve: {
     // tsconfig.app.json의 paths("@/*")를 그대로 쓴다 — 별칭 정의를 두 곳에 두지 않기 위해서다.
     // 수동 alias는 절대 경로가 필요해 node:url 의존을 부르는데, 그 대가를 치를 이유가 없다.
     tsconfigPaths: true,
   },
   build: {
-    // 지원 매트릭스(정책 상속) — Chromium 111 하한 명시 배열.
-    // Vite 기본값('baseline-widely-available')은 Firefox·Safari 포함이라 위임 금지.
+    // 지원 매트릭스 — Chromium 111 하한 명시 배열.
+    // Vite 기본값('baseline-widely-available')은 타깃이 암묵적으로 바뀌므로 위임하지 않는다.
+    //
+    // ⚠️ 이 값은 **이전 주제에서 상속된 것이고 현재 제품 기준으로 재검토되지 않았다.**
+    //    Safari 를 뺀 근거가 지금은 남아 있지 않다 — 지원 범위 결정은 화면 스펙과 함께 확정한다.
+    //    포함하기로 하면 "safari16.4" 를 더한다(Tailwind v4 의 하한과 정확히 일치).
+    //    그때 입력 필드 16px 규칙(shared/ui/README.md)이 선택이 아니라 필수가 된다.
     target: ["chrome111", "edge111"],
   },
   test: {
