@@ -51,8 +51,8 @@
 | **C8** | **스타일가이드 + 테스트 동시 수정** — `ShapeSection` · D6 닫힘 · D2 열림 · NonGoals 확장(`ring-*` · 그림자 4계열 · 산문 함정) · 단언 내용화 + 신규 2건 | `pages/style-guide/**` · `StyleGuidePage.test.tsx` | V1 · V12 | ✅ (V12 눈 확인은 `npm run preview -- --host 127.0.0.1`) |
 
 > **C6 의 폐기 계약 테스트가 문서 오류를 하나 잡았다** — `rounded-full` 은 `staticValues` 라 `--radius-*: initial` 로 **사라지지 않는다.** 초판·ADR·namespaces 가 「사라진다」고 적었던 것은 그 전 실험의 셀렉터 판독 버그였다. 테스트·문서 6곳을 정정했고, `full` 은 라운드 값 게이트가 `∞px` 로 잡는다. **이것이 테스트를 모듈과 함께 두는 이유다.**
-| **C9** | `docs/architecture/` 정정 — `toolchain.md` 부록·§5.3·§4 · `layers.md` 「E」 참조·설정 골격 | `docs/architecture/*.md` | 문서 | |
-| **C10** | `frontend/README.md` 재작성 | `README.md` | 문서 | |
+| **C9** | `docs/architecture/` 정정 — `toolchain.md` §1 기준선(30 files · 68 tests · 게이트 출력값) · §4 의존성 표(lock 실측, `lightningcss`·`oxide` 추가, `zustand` 제거) · §5.3 「적용 완료」 · §7 vite 8.2.1 · 부록 재실측(2건 해소, 캐시 헤더 1건 잔존) · `layers.md` 7종/297 · 「E」 정리 | `docs/architecture/*.md` | 문서 | ✅ |
+| **C10** | `frontend/README.md` 재작성 — 실제 트리 · 게이트 · 스타일 함정 2건 · 루트 README 커밋 금지 | `README.md` | 문서 | ✅ |
 
 **C2b·C2c·C3는 한 묶음이다.** 서술만 고치고 게이트를 안 넣으면 규범이 다시 사람 손에 맡겨지고, 게이트만 넣고 서술을 두면 문서가 계속 틀린 말을 한다.
 

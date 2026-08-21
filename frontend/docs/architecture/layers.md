@@ -128,7 +128,7 @@ resolve: { tsconfigPaths: true }   // vite.config.ts
 
 > **범위를 의도적으로 넓히지 않았다.** 이 단계의 목적은 depcruise 9규칙과의 **동등성 증명**이다. 새 규칙을 함께 넣으면 검출 차이가 "기존 위반 때문인지 새 규칙 때문인지" 구분되지 않아 제거 판단이 흐려진다.
 >
-> 그래서 **shared 세그먼트 공개 API 강제는 넣지 않았다.** 기존 depcruise 규칙도 `features|entities|pages`의 슬라이스 캡슐화만 강제하고 shared는 다루지 않는다. 게다가 `src/app/main.tsx`가 `@/shared/ui/styles.css`를 직접 import하는데, CSS는 `index.ts`로 재수출할 수 없어(사이드이펙트가 항상 실행된다) 깊은 경로가 정당하다. 강제하려면 `.css`를 제외하는 정규식이 필요한데, 그 복잡도는 동등성 증명이 끝난 뒤에 따로 판단한다. **후속 개선 항목.**
+> 그래서 **shared 세그먼트 공개 API 강제는 넣지 않았다.** 기존 depcruise 규칙도 `features|entities|pages`의 슬라이스 캡슐화만 강제하고 shared는 다루지 않는다. 게다가 `src/app/main.tsx`가 `@/shared/ui/styles.css`를 직접 import하는데, CSS는 `index.ts`로 재수출할 수 없어(사이드이펙트가 항상 실행된다) 깊은 경로가 정당하다. 강제하려면 `.css`를 제외하는 정규식이 필요한데, 그 복잡도는 동등성 증명이 끝난 뒤에 따로 판단한다. **후속 개선 항목 — 미해결.** (ADR 0003 이 이것을 「미해결 항목 E」로 참조한다. 부록의 A~D 와는 다른 번호 체계라 혼동되는데, 지금은 **이 문단이 유일한 정본**이다. oxlint 의 `no-restricted-imports` 는 Rust 정규식이라 lookahead 를 못 쓴다 — `.css` 예외는 `regex` 가 아니라 별도 `group` 으로 풀어야 한다.)
 
 #### CSS 파일의 배치 — 경계 규칙 밖에 있다
 
@@ -173,8 +173,8 @@ CSS는 `index.ts` 배럴로 재수출할 수 없다. import 자체가 사이드�
 
 ```jsonc
 {
-  // 기본 활성 4종을 반드시 다시 적는다 — plugins 는 대체다 (§4.5)
-  "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "react"],
+  // 기본 활성 4종을 반드시 다시 적는다 — plugins 는 대체다 (§4.5). jsx-a11y 는 ADR 0003 수반 작업으로 추가됨 (7종 = 297 rules)
+  "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "react", "jsx-a11y"],
   "rules": {
     "import/no-cycle": "error",
     // 어느 override 에도 걸리지 않는 파일(예: src 바로 아래)용 공통 패턴
@@ -230,7 +230,8 @@ oxlint 자체는 JSONC 주석을 완전히 지원한다. 실측(2026-08-21): 여
 > |---|---|
 > | 미지정 (기본값) | 97 |
 > | `["import", "react"]` | **80** ← 기본값 소실 |
-> | `["eslint", "typescript", "unicorn", "oxc", "import", "react"]` | **119** |
+> | `["eslint", "typescript", "unicorn", "oxc", "import", "react"]` | **119** (당시 oxlint 버전 기준) |
+> | 위 6종 + `jsx-a11y` — **현행** (`.oxlintrc.json`, oxlint 1.78.0, `categories` 4종 `error`) | **297** |
 >
 > 규칙을 **늘리려다 30여 개를 끄는** 사고가 나기 쉬운 자리다. 진단이 0건이면 아무 신호도 없어 알아채기 어렵다.
 > **플러그인을 건드릴 때는 `--format=json`의 `number_of_rules`를 함께 확인한다.**
@@ -373,4 +374,4 @@ const res = await fetch(`${API_BASE}${path}`, {
 | `app/store/practice-store.ts` | 전이별 최소 변경 · `reset` 전 필드 복원 · 구독 해제 |
 | `pages/*` 3종 | **실패를 드러내는 배너**(오디오 차단·Wake Lock 강등·서버 미연동)와 버튼 배선 |
 
-스토어 테스트를 쓰다가 **호출부 결함이 하나 드러났다** — 아래 E.
+스토어 테스트를 쓰다가 **호출부 결함이 하나 드러났다** — 「E」로 적으려던 항목인데 **작성되지 않았다.** 그 사이 주제 전환(커밋 `1cd815a`, src 초기화)으로 스토어·호출부 코드가 전부 사라져 결함도 함께 없어졌다. 이 부록 A~D 의 대상 코드(`shared/api` · `app/store` · `pages/*`) 역시 현재 트리에 **없다** — 여기 남은 것은 「무엇을 왜 고쳤는가」의 기록이지 현행 설명이 아니다. 전송 계층·스토어를 다시 세울 때 같은 결함 클래스(헤더 병합 순서 · 폴백 삼킴 · 바운더리 범위)를 반복하지 않기 위해 둔다.
