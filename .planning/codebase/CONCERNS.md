@@ -6,15 +6,15 @@
 
 ## Tech Debt
 
-**커밋되지 않은 대규모 삭제 상태 (작업 트리):**
-- 이슈: `git status` 기준으로 `frontend/src/entities/**`(question·answer·practice-session·coach-feedback·report 전체), `frontend/src/features/entry-guard/**`, `frontend/src/pages/{feedback,practice-session,report}/**`, `frontend/src/shared/api/**`, `frontend/src/shared/config/**`, `frontend/src/shared/lib/**`, `frontend/src/app/store/practice-store.ts`(+테스트)가 삭제 상태로 스테이징되어 있으나 커밋되지 않았다. 동시에 `frontend/src/shared/ui/Badge.tsx`·`Card.tsx`·`Money.tsx`·`Page.tsx`·`Tabs.tsx`·`styles.css`·`theme.css`·`frontend/src/pages/style-guide/**`·`frontend/scripts/**`가 untracked 상태로 새로 존재한다.
-- 파일: `git status` 출력 전체(약 50개 파일), 특히 `frontend/src/app/App.tsx`
-- 영향: 삭제·추가가 하나의 커밋 경계 없이 뒤섞여 있어 리뷰 단위가 없다. 이 상태에서 `git checkout .`·`git clean -fd`·`git stash` 계열 명령을 실수로 실행하면 새로 추가된 untracked 파일(예: `Badge.tsx`, `scripts/`)이 손실된다.
-- 근거: 커밋 이력에도 이미 2회의 대규모 폴더 재구성/레거시 제거가 있었다(`0d5462d`, `4f273b9` — `git log --oneline -20`). 현재 진행 중인 것은 그 다음 규모의 구조 전환이며, 이번엔 커밋 경계가 아직 없다.
-- 조치: 삭제분과 추가분을 논리 단위로 나눠 커밋한다.
+**대규모 구조 전환이 단일 커밋에 몰려 있고, 그 구조를 전제로 한 참조가 남아 있음:**
+- 이슈: `frontend/src/entities/**`(question·answer·practice-session·coach-feedback·report 전체), `frontend/src/features/entry-guard/**`, `frontend/src/pages/{feedback,practice-session,report}/**`, `frontend/src/shared/api/**`, `frontend/src/shared/config/**`, `frontend/src/shared/lib/**`, `frontend/src/app/store/practice-store.ts`(+테스트)가 커밋 `1cd815a`에서 일괄 삭제되고, 같은 커밋에서 `frontend/src/shared/ui/*`(Badge·Card·Money·Page·Tabs·styles.css·theme.css)·`frontend/src/pages/style-guide/**`·`frontend/scripts/**`가 추가됐다. 삭제와 추가가 한 커밋에 섞여 있다(69 파일 · +1052 / −2341).
+- 파일: `git show --stat 1cd815a`
+- 영향: 코드 자체는 커밋 경계 안에 들어왔으나, 리뷰 단위가 커서 회귀를 추적하기 어렵다. 그리고 삭제된 구조를 전제로 쓰인 참조가 남아 있다 — `frontend/src/vite-env.d.ts:3`의 주석이 아직 삭제된 `src/shared/config/env.ts`를 "값을 읽는 유일한 곳"으로 지목하고, 그 결과 `ImportMetaEnv.VITE_API_BASE` 선언에 현재 소비처가 없다. 문서 쪽 잔존은 아래 "아키텍처 문서" 항목 참고.
+- 근거: 커밋 이력에 이미 2회의 대규모 폴더 재구성/레거시 제거가 있었다(`0d5462d`, `4f273b9` — `git log --oneline -20`). `1cd815a`는 그 다음 규모의 전환이다.
+- 조치: 남은 참조를 정리한다(`vite-env.d.ts` 주석·미소비 타입 선언, 아키텍처 문서). 다음 대규모 전환에서는 삭제분과 추가분을 논리 단위로 나눠 커밋한다.
 
 **`.oxlintrc.json`에 존재하지 않는 경로용 오버라이드 잔존:**
-- 이슈: `frontend/.oxlintrc.json`의 `overrides`에 `"files": ["src/entities/**"]`, `"files": ["src/features/**"]` 규칙 블록이 남아 있으나, 현재 `frontend/src/`에는 `entities/`·`features/` 디렉터리 자체가 존재하지 않는다(위 삭제로 완전히 사라짐).
+- 이슈: `frontend/.oxlintrc.json`의 `overrides`에 `"files": ["src/entities/**"]`, `"files": ["src/features/**"]` 규칙 블록이 남아 있으나, 현재 `frontend/src/`에는 `entities/`·`features/` 디렉터리 자체가 존재하지 않는다(커밋 `1cd815a`에서 삭제됨).
 - 파일: `frontend/.oxlintrc.json`
 - 영향: 지금은 매치 대상이 없어 무해하지만, 두 레이어를 다시 만들 때 이 오버라이드가 실제로 유효한지(문법 오류·규칙 누락) 검증 없이 "이미 있으니 동작하겠지"라고 오신할 위험이 있다. CLAUDE.md류 문서가 이미 경고하는 "overrides는 top-level 규칙을 대체하며 새 override마다 공통 패턴을 반복 기입해야 하는" 함정과 겹친다.
 - 조치: 레이어 재도입 시 `--format=json`의 `number_of_rules`로 실제 반영을 재확인한다.
@@ -69,9 +69,9 @@
 
 **`VITE_*` 빌드타임 노출:**
 - 리스크: `VITE_` 접두 환경변수는 정의상 번들에 정적으로 박혀 클라이언트에 공개된다.
-- 파일: `frontend/src/shared/config/env.ts`(현재 작업 트리에서는 삭제 대상으로 스테이징돼 있음 — 위 "커밋되지 않은 대규모 삭제" 항목 참고)
-- 현재 완화: 진입점이 한 곳으로 좁혀져 있었다는 설계 의도는 `frontend/docs/architecture/toolchain.md`에 남아 있으나, 해당 구현 파일 자체가 지금 작업 트리 삭제 대상이라 현재 시점 코드로는 재확인 불가.
-- 조치 필요: 삭제가 커밋되면(§Tech Debt) 이 완화가 어떤 형태로 대체됐는지 재확인해야 한다.
+- 파일: `frontend/src/vite-env.d.ts:21`(`VITE_API_BASE` 타입 선언). 과거 유일한 읽기 지점이던 `frontend/src/shared/config/env.ts`는 커밋 `1cd815a`에서 삭제됐다 — 위 Tech Debt 첫 항목 참고.
+- 현재 상태: `frontend/src/`에 `import.meta.env`를 읽는 코드가 남아 있지 않아 지금 이 순간 노출되는 값은 없다. 진입점을 한 곳으로 좁혔던 설계 의도는 `frontend/docs/architecture/toolchain.md`에만 남아 있고 구현체는 없다.
+- 조치 필요: 환경변수를 다시 도입할 때 읽기 지점을 한 곳으로 좁히는 규약을 복원한다(`git show f23d27a:frontend/src/shared/config/env.ts`로 이전 구현 확인 가능). 그때까지 `vite-env.d.ts`의 선언은 소비처 없는 상태다.
 
 **위험 API 패턴 미발견:**
 - `frontend/src/` 전역에 `dangerouslySetInnerHTML`·`eval(`·`document.write`·`target="_blank"` 매치 0건 (grep 확인). 코드 규모가 작아(20개 소스 파일) 이 결과의 신뢰 구간도 그만큼 좁다.
@@ -136,7 +136,7 @@
 - 우선순위: 중간 — 코드베이스가 초기 단계라 절대량은 적지만, 비율 자체가 낮다.
 
 **`ErrorBoundary` 테스트 회귀:**
-- 이슈: `frontend/src/shared/ui/ErrorBoundary.test.tsx`가 삭제 스테이징돼 있는 반면 `frontend/src/shared/ui/ErrorBoundary.tsx`(61행, `componentDidCatch`·`getDerivedStateFromError`·재시도 로직 포함)는 수정 상태로 남아 유지된다.
+- 이슈: `frontend/src/shared/ui/ErrorBoundary.test.tsx`는 커밋 `1cd815a`에서 삭제된 반면 `frontend/src/shared/ui/ErrorBoundary.tsx`(61행, `componentDidCatch`·`getDerivedStateFromError`·재시도 로직 포함)는 남아 유지된다 — 구현만 남고 테스트가 사라진 회귀다.
 - 파일: `frontend/src/shared/ui/ErrorBoundary.tsx`
 - 리스크: 렌더 중 예외를 잡는 핵심 안전장치인데 자동 테스트가 없어, 리팩터링 중 회귀가 나도 4게이트 중 `test` 단계에서 잡히지 않는다.
 - 우선순위: 높음.

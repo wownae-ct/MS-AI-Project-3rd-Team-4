@@ -30,7 +30,7 @@
 (설정상 선언은 있으나 실제 디렉터리가 없는 레이어)
   · `src/entities/**` — `.oxlintrc.json`에 override 존재, 실제 디렉터리 없음
   · `src/features/**` — 〃
-  · `app/store/`, `shared/api/`, `shared/config/` — 과거 존재했으나 현재 git 워킹트리에서 삭제됨(§부록)
+  · `app/store/`, `shared/api/`, `shared/config/` — 과거 존재했으나 커밋 `1cd815a`에서 삭제됨(§부록)
 ```
 
 ## 컴포넌트 책임
@@ -87,7 +87,7 @@
 4. `StyleGuidePage`가 `Page` 프리미티브 안에 섹션 컴포넌트들(`ColorSection`·`TypographySection`·`MoneySection`·`ButtonSection`·`BadgeSection`·`ProgressSection`·`TabsSection`·`SurfaceSection`·`FocusSection`·`NonGoalsSection`)을 순서대로 배치 (`frontend/src/pages/style-guide/ui/StyleGuidePage.tsx:21-38`)
 5. 각 섹션 컴포넌트가 `shared/ui`의 프리미티브(`Badge`·`Button`·`Card`·`Money`·`Progress`·`Tabs`·아이콘)를 조합 (`frontend/src/pages/style-guide/ui/sections/*.tsx`)
 
-**상태 관리:** 위 흐름에는 컴포넌트 로컬 상태(`useState`/`useRef`, 예: `Page.tsx`의 포커스 이동용 `useRef`) 외에 별도 전역 상태 저장소가 없다. `zustand`는 `frontend/package.json`의 `dependencies`/`devDependencies` 어디에도 없음(확인됨) — CLAUDE.md·과거 커밋이 언급하는 `app/store/practice-store.ts`(Zustand)는 `git status`상 삭제(D) 상태이며 현재 트리에 없다.
+**상태 관리:** 위 흐름에는 컴포넌트 로컬 상태(`useState`/`useRef`, 예: `Page.tsx`의 포커스 이동용 `useRef`) 외에 별도 전역 상태 저장소가 없다. `zustand`는 `frontend/package.json`의 `dependencies`/`devDependencies` 어디에도 없음(확인됨) — CLAUDE.md·과거 커밋이 언급하는 `app/store/practice-store.ts`(Zustand)는 커밋 `1cd815a`에서 삭제됐고 현재 트리에 없다.
 
 ### 라우팅
 
@@ -95,7 +95,7 @@
 
 ### API / 네트워크 계층
 
-**없음.** `frontend/src/shared/api/`(`client.ts`·`health.ts`) 및 각 엔티티의 `api/` 세그먼트는 `git status`상 전부 삭제(D)됐고 현재 `frontend/src/` 트리에 존재하지 않는다(`find frontend/src -type f` 결과에 없음). `fetch` 호출 코드가 현재 트리에 없다.
+**없음.** `frontend/src/shared/api/`(`client.ts`·`health.ts`) 및 각 엔티티의 `api/` 세그먼트는 커밋 `1cd815a`에서 전부 삭제됐고 현재 `frontend/src/` 트리에 존재하지 않는다(`find frontend/src -type f` 결과에 없음). `fetch` 호출 코드가 현재 트리에 없다.
 
 ## 주요 추상화
 
@@ -216,7 +216,7 @@
 |---|---|
 | `vite-env.d.ts` 주석 | "값을 읽는 곳은 `src/shared/config/env.ts` 하나다"라고 명시하나(`frontend/src/vite-env.d.ts:3`), 해당 파일은 존재하지 않는다. `frontend/docs/README.md:51`이 로드맵 8번 항목에서 "10에서 `shared/config/` 삭제"를 명시적으로 기록해 두었다 — 주석이 삭제 전 상태로 남아 있다. |
 | `App.tsx` 주석의 "ADR 0005" | 향후 라우터 도입 결정 문서로 언급되나(`frontend/src/app/App.tsx:11`), `frontend/docs/adr/`에 `0005` 파일이 없다(확인되지 않음 — 아직 작성 전일 수 있다). |
-| `git status`상 삭제(D)된 구조 | `frontend/src/app/store/practice-store.ts`, `frontend/src/entities/{answer,coach-feedback,practice-session,question,report}/`, `frontend/src/features/entry-guard/`, `frontend/src/pages/{feedback,practice-session,report}/`, `frontend/src/shared/api/`, `frontend/src/shared/config/` 전부가 삭제 상태이며 현재 워킹트리에 없다. CLAUDE.md·과거 커밋 메시지가 이 구조를 현재형으로 서술하는 경우가 있으나, 실제 트리 기준으로는 미존재. |
+| 커밋 `1cd815a`에서 삭제된 구조 | `frontend/src/app/store/practice-store.ts`, `frontend/src/entities/{answer,coach-feedback,practice-session,question,report}/`, `frontend/src/features/entry-guard/`, `frontend/src/pages/{feedback,practice-session,report}/`, `frontend/src/shared/api/`, `frontend/src/shared/config/` 전부가 삭제됐고 현재 트리에 없다. CLAUDE.md·과거 커밋 메시지가 이 구조를 현재형으로 서술하는 경우가 있으나, 실제 트리 기준으로는 미존재. |
 
 ---
 
