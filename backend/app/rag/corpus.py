@@ -76,14 +76,33 @@ def parse_document(path: Path) -> ParsedDocument:
     )
 
 
+def _visible_json_files(directory: Path) -> list[Path]:
+    """directory 바로 아래(한 단계만)의 숨김 아님 *.json 파일만 반환한다."""
+    return sorted(
+        p for p in directory.iterdir() if not p.name.startswith(".") and p.suffix == ".json"
+    )
+
+
 def load_corpus(root: Path) -> list[ParsedDocument]:
-    """root(data/rag_corpus/) 아래 *.json 전체를 재귀적으로 파싱한다. 깊이를 가리지 않는 이유:
-    로컬 저장소는 <DATASET_CODE>/<문서명>.json(2단계, 10_RAG_data_catalog.md가 정한 레이아웃)이지만,
-    rag-reindex CronJob의 K8s ConfigMap 볼륨 마운트는 여러 파일을 담아도 디렉터리 구조 없이
-    평평하게(1단계) 풀린다(infra/k8s/base/rag-cronjob/kustomization.yaml) — 두 환경 모두에서
-    같은 코드가 동작해야 하므로 `glob("*/*.json")`이 아니라 `rglob("*.json")`을 쓴다. 파일명이
-    겹치지 않는 한 평평/중첩 어느 쪽이든 안전하다."""
-    paths = sorted(root.rglob("*.json"))
+    """root(data/rag_corpus/) 아래 *.json을 파싱한다. 로컬 저장소는
+    <DATASET_CODE>/<문서명>.json(2단계, 10_RAG_data_catalog.md가 정한 레이아웃)이지만,
+    rag-reindex CronJob의 K8s ConfigMap 볼륨 마운트는 디렉터리 구조 없이 평평하게(1단계) 풀린다
+    (infra/k8s/base/rag-cronjob/kustomization.yaml) — 두 환경 모두에서 같은 코드가 동작해야
+    하므로 두 깊이(0단계·1단계)를 명시적으로 합친다.
+
+    `rglob("*.json")`(임의 깊이 재귀), `glob("*.json")`/`glob("*/*.json")` 둘 다 여기서 안 쓴다 —
+    K8s ConfigMap 볼륨은 실제로는 `<mount>/..<타임스탬프>/`라는 숨김 디렉터리에 진짜 파일을 두고
+    `<mount>/<파일명>`은 그곳을 가리키는 심볼릭 링크(그리고 `<mount>/..data`라는 숨김 심볼릭
+    링크도 같은 곳을 가리킴)만 만드는데(원자적 갱신을 위한 kubelet 표준 구현), `pathlib`의
+    `*`는 점(.)으로 시작하는 이름도 그대로 매칭해버려서(셸 글롭과 달리 숨김 파일을 안 걸러냄,
+    실측 확인) `rglob`도 `glob("*/*.json")`도 이 숨김 디렉터리까지 파고들어가 같은 파일을 여러
+    경로에서 중복 발견한다 — 실제 staging에서 문서 8개/청크 140개가 16개(rglob)~24개(glob 조합)로
+    부풀려지는 버그로 재현됨. `Path.iterdir()`로 직접 순회하며 이름이 `.`으로 시작하는 항목을
+    명시적으로 걸러내는 방식만 두 환경 모두에서 정확히 8개를 찾는다(로컬 시뮬레이션 검증 완료)."""
+    paths = _visible_json_files(root)
+    for entry in sorted(root.iterdir()):
+        if entry.is_dir() and not entry.name.startswith("."):
+            paths.extend(_visible_json_files(entry))
     if not paths:
         raise ValueError(f"{root}: RAG 코퍼스 JSON 파일을 찾지 못함")
     return [parse_document(p) for p in paths]
