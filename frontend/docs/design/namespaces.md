@@ -47,7 +47,7 @@
 | `--text-*` | 31 | 미폐기 · `--text-*--line-height` 6개만 덮어씀 | **유지** | 크기는 Tailwind 기본을 쓰되 **역할별 용처를 문서로 못 박은 것**이 원래 설계다. 폐기하면 `text-sm` 등이 전부 사라진다 |
 | `--font-*` | 12 | 미폐기 · `--font-sans` 덮어씀 | **유지** | `font-serif`가 남지만 서체는 코드가 아니라 규범으로 통제한다. 폐기 시 Preflight의 mono 처리(`--default-mono-font-family`)와 얽힐 여지가 있어 이득 대비 위험이 크다 |
 | `--spacing` | 1 | 미폐기 (기본 `0.25rem`) | **유지** | 4px 그리드가 Tailwind 기본 spacing 배수로 정확히 표현된다 — 토큰을 이중으로 두지 않기로 이미 결정 |
-| `--breakpoint-*` | 5 | 미폐기 | **유지** | 정한 값이 없다. 지어내지 않는다 |
+| `--breakpoint-*` | 5 | 미폐기 | **유지** | 제품 스펙이 값을 정하지 않았고 [ADR 0003](../adr/0003-스타일링-엔진으로-tailwind-css-v4를-채택한다.md) §3 이 「Tailwind 기본 유지」로 **결정했다** — 따라서 **기본값이 곧 유효값이다.** 실사용 2개: `md` 48rem(**768px**) = 셸 모바일↔데스크톱 전환(`AppShell.tsx`) · `lg` 64rem(**1024px**) = `Page` 기본 폭 3단계(`Page.tsx`). 「정한 값이 없다」로 읽고 새 값을 넣지 말 것 |
 | `--container-*` | 13 | 미폐기 | **유지** | 컨테이너 쿼리 단계. 규범 충돌 없음 |
 | `--blur-*` `--animate-*` `--ease-*` `--perspective-*` `--tracking-*` `--leading-*` `--aspect-*` `--inset-*` `--default-*` `--max-*` | — | 미폐기 | **유지** | 규범이 금지하는 표현이 아니다 |
 
