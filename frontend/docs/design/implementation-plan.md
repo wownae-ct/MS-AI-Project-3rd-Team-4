@@ -43,7 +43,7 @@
 | **C2** | **규범·설계 문서 정정** — 정규식 오인용 삭제 · 줄번호 앵커 → 인용문 앵커 · 목업 실측표를 정적 사본 기준으로 재실측 + 출처 등급 · D5↔D8 충돌 명시 · 되돌림 비용 보강 · Slider 자기모순 · 없는 파일/절 참조 · KWCAG 등급 · 예산 수치 기준 시점 · 이 문서 자체 | `docs/design/*.md` · `docs/mockups/README.md` | 문서 · 앵커 검사 | ✅ |
 | **C2b** | **코드 안 서술 정정 7곳 + 규약 2건 + SSOT 이관** — 「유틸리티가 생성되지 않는다」 4곳 · 「첫 두 가지」 · 44px 근거 · iOS 확대 등급 · `ring-*` 전면 금지 · 그림자 4계열 · `DESIGN.md`/`PRODUCT.md` 참조 → `docs/design/` (+ `design/README.md`에 「컴포넌트 스펙」·「범위 밖」 절 신설 — 코드 주석이 가리킬 자리) | `shared/ui/README.md` · `theme.css` · `styles.css` · 프리미티브 주석 · `FoundationSection` · `SystemSection` · `check-bundle-budget.mjs` 주석 | V1 | ✅ (C2c와 한 커밋) |
 | **C2c** | **산문이 유틸리티를 만드는 경로 차단** — 주석·표의 bare `rounded` → 실제 클래스명 · `p-5 p-6` 제거 · `@source not "../../**/*.md"` | `Badge.tsx` · `Button.tsx` · `shared/ui/README.md` · `styles.css` | V1 · **V5** | ✅ |
-| **C3** | **게이트를 파서로 — 순수 모듈 분리 + `lightningcss` 명시 + 금지 게이트 3종 + 소스측 검사** | `scripts/lib/css-norms.mjs` · `scripts/lib/source-norms.mjs` · `check-bundle-budget.mjs` · `package.json` | V1 · V3 · **V4** | |
+| **C3** | **게이트를 파서로 — 순수 모듈 분리 + `lightningcss` 명시 + 금지 게이트 3종 + 소스측 검사** (+ T1 픽스처 40건을 같은 커밋에 — 모듈과 함께 태어나야 회귀를 막는다) | `scripts/lib/css-norms.mjs` · `scripts/lib/source-norms.mjs` · `scripts/lib/__tests__/` · `check-bundle-budget.mjs` · `package.json` | V1 · V3 · **V4** | ✅ V3 오탐 0 · V4 4종 전부 exit 1 + `file:line` |
 | **C4** | **네임스페이스 폐기 + 토큰** — `--radius-*` · 그림자 4계열 폐기, `--radius-lg` · `--color-primary-hover` 추가 | `theme.css` | V1 · V3 | |
 | **C5** | **유지 검사 + 예산 기준선 복구** — `REQUIRED_RETIREMENTS` 6종 · `BUDGETS.measured` 실측 갱신 | `check-bundle-budget.mjs` | V1 · **V6** · V9 | |
 | **C6** | **게이트 자동 검증** — 체커 픽스처 · 폐기 계약(`compile()`) · 유령 유틸리티 | `scripts/lib/__tests__/*.test.mjs` · vitest 설정 | V1 | |

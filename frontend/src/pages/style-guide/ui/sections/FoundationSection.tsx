@@ -40,7 +40,9 @@ export function ColorSection() {
       <Rule>
         Tailwind 기본 팔레트를 <code className="font-bold">--color-*: initial</code> 로 폐기했습니다. 위
         7색 밖의 <span className="font-bold">명명 유틸리티</span>(<code>bg-red-500</code> 류)는 없습니다.
-        단 임의값(<code>bg-[#77354F]</code>)은 테마와 무관하게 그대로 컴파일되므로 —
+        {/* 예시 토큰을 쪼개 쓴다 — 붙여 쓰면 Tailwind 스캐너가 이 문장에서 진짜 유틸리티를 만들고(실측: 게이트가 잡았다)
+            산출 CSS 에 팔레트 밖 색이 들어간다. 설명하는 문장이 설명하는 사고를 일으키는 셈이다. */}
+        단 임의값(<code>{["bg-[#", "77354F]"].join("")}</code>)은 테마와 무관하게 그대로 컴파일되므로 —
         <span className="font-bold">빌드 게이트가 산출 CSS 의 색을 <code>theme.css</code> 와 대조해
         막습니다.</span> 막았다고 적은 것이 아니라 실제로 막힙니다.
       </Rule>
