@@ -43,6 +43,45 @@ export function SurfaceSection() {
   );
 }
 
+// 라운드 4단계 — 클래스 문자열을 정적으로 둔다 (런타임 조립은 스캐너가 찾지 못한다).
+const RADII: readonly { name: string; px: string; box: string; use: string }[] = [
+  { name: "sm", px: "8px", box: "rounded-sm", use: "작은 컨트롤 · ghost 버튼" },
+  { name: "md", px: "10px", box: "rounded-md", use: "버튼 · 입력" },
+  { name: "lg", px: "16px", box: "rounded-lg", use: "카드" },
+  { name: "pill", px: "999px", box: "rounded-pill", use: "배지 · 진행률 · 세그먼트" },
+];
+
+export function ShapeSection() {
+  return (
+    <Section title="형태" hint="라운드는 4단계뿐입니다. 기본 스케일은 폐기했습니다.">
+      <Card>
+        <ul className="grid gap-3 @sm:grid-cols-2 @lg:grid-cols-4">
+          {RADII.map((radius) => (
+            <li key={radius.name} className="flex items-center gap-3">
+              <span className={`size-12 shrink-0 border border-ink-soft bg-surface ${radius.box}`} />
+              <span className="flex min-w-0 flex-col">
+                <span className="text-sm font-bold text-ink">
+                  {radius.name} <span className="font-normal text-ink-soft tabular-nums">{radius.px}</span>
+                </span>
+                <span className="text-xs text-ink-soft">{radius.use}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </Card>
+      <Rule>
+        Tailwind 기본 라운드 8단계(2px~32px)는 <code className="font-bold">--radius-*: initial</code> 로{" "}
+        <span className="font-bold">폐기</span>했습니다 — 덮어쓰기가 아니라 폐기라서 그 단계들은 유틸리티 자체가
+        생성되지 않습니다. 폐기가 못 막는{" "}
+        {/* 토큰을 쪼개 쓴다 — 붙여 쓰면 스캐너가 이 문장에서 유틸리티를 만들고 게이트가 ∞px 로 잡는다(실측: 잡혔다). */}
+        <code className="font-bold">{["rounded-", "full"].join("")}</code>(무한 반지름)과 임의값은 빌드 게이트가
+        산출 CSS 의 <code className="font-bold">border-radius</code> 값을 토큰과 대조해 막습니다. 원형이 필요하면{" "}
+        <code className="font-bold">rounded-pill</code> 입니다.
+      </Rule>
+    </Section>
+  );
+}
+
 export function FocusSection() {
   return (
     <Section title="포커스" hint="키보드만으로 이 화면을 끝까지 통과할 수 있어야 합니다.">
@@ -75,11 +114,19 @@ export function NonGoalsSection() {
             <span className="font-bold">다크모드</span> — 스코프 밖입니다(라이트 전용).
           </li>
           <li>
-            <span className="font-bold">그림자</span> — The Flat-By-Default Rule.
+            <span className="font-bold">그림자</span> — The Flat-By-Default Rule. 네 계열(box · drop · text ·
+            inset) 전부 — 토큰 네임스페이스를 폐기해 유틸리티가 생성되지 않고, 임의값·수기 CSS 는 게이트가
+            값으로 잡습니다.
+          </li>
+          <li>
+            <span className="font-bold">링 유틸리티(<code>ring-*</code>)</span> — 그림자로 컴파일되고 어떤
+            폐기로도 막히지 않습니다. 링은 <code className="font-bold">outline-*</code> 로 냅니다. 게이트가
+            소스 토큰과 산출 커스텀 속성을 모두 잡습니다.
           </li>
           <li>
             <span className="font-bold">런타임 조립 클래스명</span> — Tailwind 가 찾지 못해 스타일이 조용히
-            빠집니다. 변이는 정적 룩업 객체로만 씁니다.
+            빠집니다. 변이는 정적 룩업 객체로만 씁니다. 반대로 <span className="font-bold">주석과 문서의
+            단어도 유틸리티가 됩니다</span> — 스캐너는 주석을 구분하지 않습니다.
           </li>
           <li>
             <span className="font-bold">팔레트 밖 색</span> — 명명 유틸리티는 없고, 임의값 우회로는 빌드
@@ -88,8 +135,9 @@ export function NonGoalsSection() {
         </ul>
       </Card>
       <Rule>
-        다크모드 · 그림자 · 팔레트 밖 색은 <code className="font-bold">npm run build</code> 가 산출 CSS 에서
-        직접 검사합니다. 들어오면 빌드가 실패합니다 — 문서로만 두지 않았습니다.
+        위 항목은 전부 <code className="font-bold">npm run build</code> 가 산출 CSS 와 소스에서 직접
+        검사합니다. 들어오면 빌드가 실패하고 어느 파일 몇 번째 줄인지 알려 줍니다 — 문서로만 두지 않았고,
+        주입 시험으로 실제로 잡히는 것을 확인했습니다.
       </Rule>
     </Section>
   );
