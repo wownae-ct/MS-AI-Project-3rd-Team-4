@@ -8,4 +8,4 @@ export { Money, type MoneyProps } from "./Money";
 export { Page, type PageProps } from "./Page";
 export { Progress, type ProgressProps } from "./Progress";
 export { Tabs, type TabsRootProps } from "./Tabs";
-export { IconCheck, IconChevronDown, IconInfo } from "./icons";
+export { IconCheck, IconChevronDown, IconInfo, type IconProps } from "./icons";

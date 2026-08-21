@@ -7,17 +7,19 @@
 // 규범 준수 사항 (docs/design/README.md 「현행 규범 요약」 · 컴포넌트 스펙)
 //   · 그림자 없음 — 표면 구분은 1px 헤어라인 보더로만 (The Flat-By-Default Rule)
 //   · 베리 플럼은 primary 에만 — ghost 는 텍스트 색으로만 쓴다 (The One Accent Rule)
-//   · hover 상태는 「열린 결정」으로 남아 있다 — 현행 brightness 는 잠정값. D4 가 #77354F 배경 전환을
-//     제안했고 적용 시 이 파일의 VARIANT·BASE 가 바뀐다 (docs/design/decisions.md D4).
+//   · hover 는 더 짙은 배경(primary-hover #77354F)으로 — D4. brightness 필터는 방향이 반대(밝아짐)였고
+//     요소 전체(자식 포함)의 밝기를 조작하는 것이라 "배경의 옅은 변화" 규범과도 어긋났다.
+//   · 모든 hover 는 `enabled:` 뒤에 둔다 — disabled 상태에서 hover 가 살아 있던 문제를 3변이 전부 같은 방식으로 막는다.
+//     `disabled:hover:…` 로 되돌리는 상쇄 방식은 변이 정렬 순서에 의존해 취약하다.
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost";
 
 const VARIANT: Record<ButtonVariant, string> = {
-  primary: "border-transparent bg-primary text-surface hover:brightness-110 active:brightness-95",
-  secondary: "border-line bg-surface text-ink hover:border-ink-soft hover:bg-bg",
+  primary: "border-transparent bg-primary text-surface enabled:hover:bg-primary-hover enabled:active:bg-primary-hover",
+  secondary: "border-line bg-surface text-ink enabled:hover:border-ink-soft enabled:hover:bg-bg",
   // 컴포넌트 스펙 button-ghost: 배경 투명 · 글자 primary · 모서리 rounded-sm · padding 5px 11px
-  ghost: "border-transparent bg-transparent text-primary hover:bg-primary-soft",
+  ghost: "border-transparent bg-transparent text-primary enabled:hover:bg-primary-soft",
 };
 
 const SHAPE: Record<ButtonVariant, string> = {
@@ -30,8 +32,8 @@ const SHAPE: Record<ButtonVariant, string> = {
 
 const BASE =
   "inline-flex min-h-tap cursor-pointer items-center justify-center gap-2 border text-sm font-bold " +
-  "transition-[background-color,border-color,filter] duration-150 " +
-  "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:brightness-100";
+  "transition-[background-color,border-color] duration-150 " +
+  "disabled:cursor-not-allowed disabled:opacity-50";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
