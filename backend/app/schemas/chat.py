@@ -23,7 +23,8 @@ class CitationOut(BaseModel):
     chunk_id: int
     title: str
     source_tier: SourceTier
-    source_url: str
+    # 팀 자체 저작 콘텐츠(DS6_CHECK 등)는 원문 출처 URL이 없다 — nullable(2026-08-21 실제 데이터로 확인).
+    source_url: str | None
 
 
 class VerificationOut(BaseModel):
