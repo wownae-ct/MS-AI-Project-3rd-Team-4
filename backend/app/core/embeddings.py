@@ -1,5 +1,7 @@
-"""Azure OpenAI 임베딩 클라이언트. app/rag/indexing.py(오프라인 색인)와 app/rag/retrieval.py
-(런타임 하이브리드 검색) 둘 다 여기서 클라이언트/함수를 가져다 쓴다(DRY)."""
+"""Azure OpenAI 클라이언트 + 임베딩 헬퍼. app/rag/indexing.py(오프라인 색인), app/rag/retrieval.py
+(런타임 하이브리드 검색), app/rag/graph.py(채팅 생성·근거검증) 전부 여기서 클라이언트/함수를
+가져다 쓴다(DRY) — 임베딩용/채팅용 Azure OpenAI 배포가 같은 리소스 아래 있어 클라이언트 생성
+로직 자체는 공유해도 된다(infra/bicep/modules/openai.bicep)."""
 
 from azure.identity import get_bearer_token_provider
 from openai import AsyncAzureOpenAI
@@ -11,7 +13,7 @@ AAD_OPENAI_SCOPE = "https://cognitiveservices.azure.com/.default"
 EMBEDDING_BATCH_SIZE = 16
 
 
-def get_embedding_client(settings: Settings) -> AsyncAzureOpenAI:
+def get_azure_openai_client(settings: Settings) -> AsyncAzureOpenAI:
     token_provider = get_bearer_token_provider(get_credential(), AAD_OPENAI_SCOPE)
     return AsyncAzureOpenAI(
         azure_endpoint=settings.azure_openai_endpoint,
