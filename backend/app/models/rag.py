@@ -74,7 +74,10 @@ class RagChunk(Base):
     category_codes: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
     item_type: Mapped[str | None] = mapped_column(Text)
     source_url: Mapped[str | None] = mapped_column(Text)
+    # content를 "의미 좌표"로 바꾼 숫자 1536개 — retrieval.py의 벡터 검색이 여기서 거리를 잰다.
     embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM))
+    # content에서 자동으로 만들어지는 "검색용 단어 색인" — 직접 값을 넣는 게 아니라 Postgres가
+    # INSERT/UPDATE 때마다 content를 보고 알아서 채운다(Computed). retrieval.py의 단어 검색이 씀.
     tsv: Mapped[str] = mapped_column(
         TSVECTOR, Computed("to_tsvector('simple', content)", persisted=True)
     )
