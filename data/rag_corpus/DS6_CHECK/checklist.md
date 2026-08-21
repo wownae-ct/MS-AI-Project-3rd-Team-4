@@ -1,8 +1,8 @@
 ---
 dataset_code: DS6_CHECK
-title: 웨딩레이더 자체 체크리스트 — 계약 전 확인사항 85항목
+title: 메리맵 자체 체크리스트 — 계약 전 확인사항 85항목
 source_tier: CONSENSUS
-source_org: 웨딩레이더 팀
+source_org: 메리맵 팀
 source_url:
 published_at: 2026-08-21
 license_note: 팀 자체 저작물. VENUE 10개+SDM 14개 CONTRACT_TERM 항목(총 24개)과 SDM EXTRA_COST 1개는 공정위 표준약관(DS3_FTC, 법령·고시류로 저작권법 §7①에 따라 원저작권 보호 대상 아님) 조문 내용을 근거로 삼아 새로 작성했다 — checklist_items 테이블에서는 이 25개 항목이 개별 행 source_tier=OFFICIAL로 표기되지만(docs/wedding/ing/ds6-checklist-seed-data-prep.md 참고), rag_chunks 테이블에는 청크별 source_tier 컬럼 자체가 없어(04_DB_spec.md (12) 참고, source_tier는 rag_documents 컬럼) 이 문서 전체가 단일 source_tier(CONSENSUS)로 색인된다 — 체크리스트 문구 자체는 팀이 재구성한 것이라 문서 단위로는 CONSENSUS가 정확하다. 나머지 항목은 결혼서비스 업계 실무 통념을 팀이 직접 문장으로 저작했다. 노션 참고자료(data-collection-2026-08-21.md §3)는 카테고리 구조·항목 배분 비율만 참고했고 문장은 그대로 옮기지 않았다.

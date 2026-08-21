@@ -3,7 +3,7 @@
 #   1) `uv pip install ... || true` — 의존성 설치가 실패해도 이미지가 만들어졌다.
 #   2) uv.lock을 쓰지 않아 CI(`uv sync --locked`)와 이미지의 의존성 버전이 갈릴 수 있었다.
 #   3) root로 실행했다.
-# (예전엔 rag/가 app/ 밖의 별도 최상위 패키지라 COPY가 하나 더 필요했지만, 웨딩레이더
+# (예전엔 rag/가 app/ 밖의 별도 최상위 패키지라 COPY가 하나 더 필요했지만, 메리맵
 #  피벗에서 app/rag/로 옮겨졌으므로 `COPY app ./app` 하나로 충분하다.)
 
 FROM python:3.12-slim AS builder
