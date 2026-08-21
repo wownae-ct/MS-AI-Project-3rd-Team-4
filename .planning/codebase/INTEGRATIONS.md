@@ -8,7 +8,7 @@
 
 `frontend/src/` 전체를 대상으로 `fetch(`, `EventSource`, `WebSocket`, `axios`, `import.meta.env` 문자열을 검색한 결과, 실제 네트워크 호출 코드는 **0건**이다(직접 실행한 grep 확인, 2026-08-21). 유일하게 걸리는 것은 `frontend/src/vite-env.d.ts:21`의 타입 선언 `readonly VITE_API_BASE?: string;` 하나이며, 이를 소비하는 코드는 현재 트리에 없다.
 
-`git status`(2026-08-21) 기준으로 아래 경로들이 워킹트리에서 unstaged 삭제 상태다(마지막 커밋에는 있었으나 현재 디스크에는 없음):
+아래 경로들은 커밋 `1cd815a`(`feat(frontend)!: src 초기화 + 디자인 시스템 구현`)에서 삭제됐다. 워킹트리에도 HEAD에도 없다:
 `frontend/src/shared/api/client.ts`, `frontend/src/shared/api/health.ts`, `frontend/src/shared/api/index.ts`, `frontend/src/shared/config/env.ts`, `frontend/src/shared/config/browser.ts`, `frontend/src/entities/answer/api/index.ts`, `frontend/src/entities/practice-session/api/index.ts`, `frontend/src/entities/question/api/index.ts`, `frontend/src/entities/report/api/index.ts` 등. 즉 이전에는 이 경로들에 백엔드 호출 클라이언트 코드가 있었지만, 2026-08-21 기준 실제 파일로는 존재하지 않는다.
 
 `frontend/src/app/App.tsx`의 주석은 현재 화면이 "임시 상태"이며 스타일가이드 한 화면만 렌더한다고 명시한다(도메인 상세는 매핑 범위 밖).
@@ -17,7 +17,7 @@
 
 **백엔드 API:**
 - 코드 수준 연동 없음(위 요약 참고).
-- `frontend/docs/architecture/toolchain.md` §6.1은 과거 시점 기준으로 `VITE_API_BASE`를 `src/shared/api/client.ts:3`와 `answers.ts:5`가 읽었다고 기록하지만, 두 경로 모두 현재 워킹트리에 존재하지 않는다(위 삭제 목록).
+- `frontend/docs/architecture/toolchain.md` §6.1은 과거 시점 기준으로 `VITE_API_BASE`를 `src/shared/api/client.ts:3`와 `answers.ts:5`가 읽었다고 기록하지만, 두 경로 모두 현재 존재하지 않는다(위 삭제 목록 — 커밋 `1cd815a`).
 - `frontend/src/vite-env.d.ts`의 타입 선언만 남아 있고 소비처가 없는 상태 — `frontend/docs/architecture/toolchain.md` §6.5는 `VITE_WS_BASE`(과거에 선언됐던 또 다른 죽은 변수, 현재 `vite-env.d.ts`에는 없음)를 "대응 없는 선언은 지운다"는 원칙으로 언급한다.
 
 **향후 계획을 시사하는 설정(현재 코드로 구현되지 않음):**
