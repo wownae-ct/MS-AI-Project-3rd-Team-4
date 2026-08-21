@@ -1,0 +1,62 @@
+---
+dataset_code: DS8_UGC
+title: 예비부부 개인 후기 (Threads, 2026-08 수집)
+source_tier: CONSENSUS
+source_org: null
+source_url: null
+published_at: 2026-08-21
+license_note: 개인 SNS(Threads) 예비부부 계정의 실제 경험 후기를 사실관계만 재구성(원문 비복사). 업체·플래너 소속 계정 7건은 사전 제외. source_url은 청크별로 개별 재검색 결과를 기재(document 레벨 공통 URL 없음). 1건(chunk_index 0)은 원문 URL을 재검색으로 복구하지 못해 "원문 URL 미보존, 사실관계만 재작성 후 사례 요약만 보유" 상태로 남김 — 새로운 리서치가 아니라 지난 세션의 문서 정리 누락이었음을 밝혀둔다. case_type(GOOD/BAD)은 rag_chunks 컬럼이 아니라 F10 큐레이션 참고용 태그이며, DS8_UGC 자체는 F10(vendor_case_examples)과 별개로 RAG 검색 대상이다.
+category_codes: [VENUE, SDM]
+---
+
+<!-- chunk_index: 0, item_type: PREP, category_code: VENUE, case_type: GOOD, source_url: null -->
+## 웨딩홀 3곳 하루 투어 후 비교 계약
+하루 만에 웨딩홀 3곳을 투어하며 비교 후 계약한 사례. 드레스·메이크업샵과의 인접 여부, 부모님 전용 식사 공간 유무, 본식 1시간 전 가족사진 촬영 시간 확보 여부를 계약 전에 미리 확인해두면 예식 당일 동선이 훨씬 수월해진다.
+
+---
+
+<!-- chunk_index: 1, item_type: CONTRACT_TERM, category_code: VENUE, case_type: BAD, source_url: https://www.threads.com/@about_record/post/DPDhhvgkdBm -->
+## 희망 시간대 미확인으로 계약 무산
+당일계약 혜택과 견적 조건은 만족스러웠으나, 원하는 예식 시간대가 이미 마감돼 있어 계약이 성사되지 못한 사례. 조건이 아무리 좋아도 희망 예식 시간대의 여유부터 먼저 확인해야 헛걸음을 피할 수 있다.
+
+---
+
+<!-- chunk_index: 2, item_type: PREP, category_code: VENUE, case_type: GOOD, source_url: https://www.threads.com/@wedding_yunnn/post/DDeB2gtTvXS -->
+## 주차·동선 우선 11곳 투어 후 예산 재검토
+주차 편의와 동선을 최우선 기준으로 웨딩홀 11곳을 투어한 사례. 비수기 대관료와 식대를 합산한 견적(200명 기준 약 1,800만원)을 확인한 뒤, 예산을 재검토하기 위해 가계약을 보류했다.
+
+---
+
+<!-- chunk_index: 3, item_type: PREP, category_code: VENUE, case_type: GOOD, source_url: https://www.threads.com/@dongdong_wedding/post/DThmBroD3R7 -->
+## 잔여타임 예약으로 유리한 조건 확보
+인기 시간대가 아닌 잔여타임을 예약해 대관료·식대 조건이 더 유리했던 사례. 세부조건까지 확인한 뒤 견적을 공유했다. (원문 상세 수치는 스레드 본문 외 외부 링크에 있어 재검증 확신도는 중간 수준.)
+
+---
+
+<!-- chunk_index: 4, item_type: CONTRACT_TERM, category_code: VENUE, case_type: GOOD, source_url: https://www.threads.com/@wedding_receipt_/post/DFq10clT_kP -->
+## 계약금과 잔금을 처음부터 구분 기록
+웨딩홀 계약금과 예식 당일 결제할 잔금을 처음부터 구분해 별도로 기록·관리한 사례. 계약금만 먼저 지급하고 잔금은 예식 당일 처리 대상으로 명확히 구분해두면 정산 시 혼동을 줄일 수 있다.
+
+---
+
+<!-- chunk_index: 5, item_type: PREP, category_code: SDM, case_type: GOOD, source_url: https://www.threads.com/@wedding_eunho/post/DG2-HmWBuhT -->
+## 드레스투어 셀프 메이크업 및 직원과의 사전 조율
+드레스투어 당일 샵 메이크업을 받지 못해도 평소보다 눈 화장을 진하게 하는 것만으로 무리 없었던 사례. 계약과 관련해 고민되는 사항을 직원에게 솔직히 말하면 상당 부분 조율이 가능했다.
+
+---
+
+<!-- chunk_index: 6, item_type: EXTRA_COST, category_code: SDM, case_type: GOOD, source_url: https://www.threads.com/@haim_couple/post/DQnRcU6E_w0 -->
+## 예약 경로별 투어비·피팅비 혜택 차이
+웨딩 플랫폼을 경유해 3곳 이상 예약하면 투어비 환급·피팅비 지원(최대 10만원)을 받을 수 있고, 이미 정한 샵이라면 '지정가봉' 제도로 투어비 자체가 면제될 수 있다는 사실을 확인한 사례.
+
+---
+
+<!-- chunk_index: 7, item_type: EXTRA_COST, category_code: SDM, case_type: BAD, source_url: https://www.threads.com/@soon_log_sil/post/DIYRWa4zR9U -->
+## 드레스 기본 가격대 사전 미확인
+기본 드레스 가격이 100만원을 훌쩍 넘는다는 사실을 사전에 확인하지 않아 예산 계획이 흔들렸던 사례. 다만 100만원 이하 샵도 비교해보면 대안이 존재한다.
+
+---
+
+<!-- chunk_index: 8, item_type: EXTRA_COST, category_code: SDM, case_type: GOOD, source_url: https://www.threads.com/@soon_log_sil/post/DFu10Y2TSYN -->
+## 가성비 드레스샵 피팅비·벌 수 비교
+가성비 드레스샵들의 피팅비(1~5만원)와 드레스 벌 수 제한을 샵별로 미리 비교 정리해 투어 계획에 활용한 사례.

@@ -16,7 +16,9 @@ dependencies = [
     "azure-keyvault-secrets>=4.8",
     "openai>=1.40",
     "langgraph>=0.2",
+    "langchain-core>=1.0",
     "tiktoken>=0.7",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]

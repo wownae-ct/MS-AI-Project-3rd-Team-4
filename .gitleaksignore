@@ -3,3 +3,9 @@
 # 표시다: 값은 파일에서 제거됐고(595a12f) 히스토리에만 남아 있으며, 무력화 절차는
 # infra/시크릿-회전.md 참고. 회전이 완료되면 이 항목은 더 이상 위험이 아니다.
 7f285e0c0ff7afe4a6d1bb6be8ab0c73aeebaca9:infra/구현-요약.md:korean-plaintext-credential:89
+
+# 오탐 — RAG 코퍼스 원본 아카이브(data/raw/, 손대지 않는 원문 보존 원칙)에 들어있는 제3자
+# 뉴스 사이트(Businesskorea)의 카카오 공유 위젯 JS SDK 키. 이 키는 WeddingRadar 시크릿이
+# 아니라 그 웹페이지 소스에 원래부터 공개 삽입돼 있던 클라이언트 키다(카카오 JS SDK는
+# 도메인 제한으로 보호되는 공개 키가 원래 설계).
+data/raw/DS5_DUO/businesskorea_264825.html:generic-api-key:697
