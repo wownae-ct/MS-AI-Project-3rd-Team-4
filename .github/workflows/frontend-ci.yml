@@ -33,11 +33,13 @@ jobs:
             run:
                 working-directory: frontend
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
 
-            - uses: actions/setup-node@v4
+            - uses: actions/setup-node@v7
               with:
-                  node-version: "20"
+                  # undici(8.0.3+, jsdom 30이 끌어옴)가 worker_threads.markAsUncloneable를 요구하는데
+                  # 이 API는 Node 22.10+/23+에만 있음 — Node 20은 이미 undici 8.x 지원 대상도 아님
+                  node-version: "24"
 
             # 린트/테스트 게이트 — 통과 못하면 빌드/배포 안 함
             - name: Install & lint

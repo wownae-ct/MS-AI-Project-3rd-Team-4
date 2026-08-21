@@ -8,13 +8,8 @@
 #     kubeconfig 컨텍스트가 이미 잡혀있을 것
 #   - kubectl, helm 이 PATH에 있을 것 (podman은 여기 관여 없음 — 백엔드 이미지 로컬 빌드용으로 별도 사용)
 #   - cd infra/ansible && ansible-galaxy collection install -r requirements.yml
-#   - infra/.env 값(LETSENCRYPT_EMAIL/GITHUB_PAT/IMAGE_UPDATER_IDENTITY_CLIENT_ID/AKS_KUBE_CONTEXT/ML_REPO_URL) 채우고
+#   - infra/.env 값(LETSENCRYPT_EMAIL/GITHUB_PAT/IMAGE_UPDATER_IDENTITY_CLIENT_ID/AKS_KUBE_CONTEXT) 채우고
 #     `set -a && source ../.env && set +a` 로 환경변수 로드 후 실행
-#
-# 모델 버전(model-version ConfigMap)은 이 레포가 아니라 ml 레포가 소스다 — infra/k8s/apps/backend-*.yaml,
-# rag-cronjob-*.yaml이 ArgoCD multi-source로 ml 레포의 k8s/model-version/ 경로를 직접 바라본다. ml팀이 새
-# 모델을 export할 때마다 자기 레포에 바로 커밋하면 되고(이 레포에 PR 불필요), Reloader가 ConfigMap 변경을
-# 감지해서 backend Deployment를 자동 재시작시킨다(수동 kubectl rollout restart 불필요).
 #
 # 실행: cd infra/ansible && ansible-playbook playbooks/bootstrap-cluster.yml
 #
@@ -29,17 +24,14 @@
       argocd_namespace: argocd
       ingress_namespace: ingress-nginx
       cert_manager_namespace: cert-manager
-      production_dns_label: aicoach-production
+      production_dns_label: merrymap-production
       image_updater_sa_name: argocd-image-updater-controller
       github_repo_url: https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4.git
       repo_secret_name: repo-ms-ai-project-3rd-team-4
-      ml_repo_secret_name: repo-ml
-      reloader_namespace: reloader
       letsencrypt_email: "{{ lookup('env', 'LETSENCRYPT_EMAIL') }}"
       github_pat: "{{ lookup('env', 'GITHUB_PAT') }}"
       image_updater_identity_client_id: "{{ lookup('env', 'IMAGE_UPDATER_IDENTITY_CLIENT_ID') }}"
       expected_kube_context: "{{ lookup('env', 'AKS_KUBE_CONTEXT') }}"
-      ml_repo_url: "{{ lookup('env', 'ML_REPO_URL') }}"
       acr_login_server: "{{ lookup('env', 'ACR_LOGIN_SERVER') }}"
 
   tasks:
@@ -49,14 +41,11 @@
                 - letsencrypt_email | length > 0
                 - github_pat | length > 0
                 - image_updater_identity_client_id | length > 0
-                - ml_repo_url | length > 0
                 - acr_login_server | length > 0
             fail_msg: >-
-                infra/.env의 LETSENCRYPT_EMAIL / GITHUB_PAT / IMAGE_UPDATER_IDENTITY_CLIENT_ID / ML_REPO_URL /
+                infra/.env의 LETSENCRYPT_EMAIL / GITHUB_PAT / IMAGE_UPDATER_IDENTITY_CLIENT_ID /
                 ACR_LOGIN_SERVER를 채우고
-                `set -a && source ../.env && set +a` 로 로드한 뒤 다시 실행하세요. ML_REPO_URL을 채워도
-                infra/k8s/apps/{backend,rag-cronjob}-*.yaml의 <ML_REPO_URL> 자리표시자는 별도로 PR 필요(git 소스라
-                플레이북이 직접 못 고침).
+                `set -a && source ../.env && set +a` 로 로드한 뒤 다시 실행하세요.
 
       - name: 현재 kubectl 컨텍스트 확인
         command: kubectl config current-context
@@ -154,19 +143,6 @@
                   | from_yaml
                 }}
 
-      # ---------- Reloader (ConfigMap 변경 시 Deployment 자동 재시작 — model-version 흐름에 필요) ----------
-      - name: stakater Helm 레포 등록
-        kubernetes.core.helm_repository:
-            name: stakater
-            repo_url: https://stakater.github.io/stakater-charts
-
-      - name: Reloader 설치
-        kubernetes.core.helm:
-            name: reloader
-            chart_ref: stakater/reloader
-            release_namespace: "{{ reloader_namespace }}"
-            create_namespace: true
-
       # ---------- ArgoCD (infra/k8s/argocd/README.md) ----------
       - name: argocd 네임스페이스 생성
         kubernetes.core.k8s:
@@ -206,24 +182,6 @@
                 stringData:
                     type: git
                     url: "{{ github_repo_url }}"
-                    username: wownae-ct
-                    password: "{{ github_pat }}"
-        no_log: true
-
-      - name: ml 레포 접근용 Secret 적용 (model-version multi-source가 이 레포를 직접 바라봄 — GITHUB_PAT 재사용)
-        kubernetes.core.k8s:
-            state: present
-            definition:
-                apiVersion: v1
-                kind: Secret
-                metadata:
-                    name: "{{ ml_repo_secret_name }}"
-                    namespace: "{{ argocd_namespace }}"
-                    labels:
-                        argocd.argoproj.io/secret-type: repository
-                stringData:
-                    type: git
-                    url: "{{ ml_repo_url }}"
                     username: wownae-ct
                     password: "{{ github_pat }}"
         no_log: true
@@ -312,7 +270,7 @@
             src: ../../k8s/root-app.yaml
 
       # ---------- 검증 (배포된 컴포넌트/리소스 상태 확인) ----------
-      - name: Helm 릴리스 목록 확인 (ingress-nginx/cert-manager/reloader)
+      - name: Helm 릴리스 목록 확인 (ingress-nginx/cert-manager)
         command: helm list -A
         register: helm_releases
         changed_when: false
@@ -323,7 +281,6 @@
             - "{{ ingress_namespace }}"
             - "{{ cert_manager_namespace }}"
             - "{{ argocd_namespace }}"
-            - "{{ reloader_namespace }}"
         register: pod_health_checks
         changed_when: false
         failed_when: false
