@@ -4,10 +4,11 @@
 // `btn--${variant}` 처럼 런타임에 조립한 클래스명은 찾지 못하고, 그 유틸리티는 생성되지 않는다.
 // 빌드는 성공하고 화면만 무스타일이 된다 (ADR 0003 §결과). 전체 클래스 문자열이 소스에 그대로 있어야 한다.
 //
-// DESIGN.md 준수 사항
+// 규범 준수 사항 (docs/design/README.md 「현행 규범 요약」 · 컴포넌트 스펙)
 //   · 그림자 없음 — 표면 구분은 1px 헤어라인 보더로만 (The Flat-By-Default Rule)
 //   · 베리 플럼은 primary 에만 — ghost 는 텍스트 색으로만 쓴다 (The One Accent Rule)
-//   · hover 상태는 DESIGN.md 가 "열린 결정"으로 남겼다. 그림자 대신 보더/배경의 옅은 변화로 표현한다.
+//   · hover 상태는 「열린 결정」으로 남아 있다 — 현행 brightness 는 잠정값. D4 가 #77354F 배경 전환을
+//     제안했고 적용 시 이 파일의 VARIANT·BASE 가 바뀐다 (docs/design/decisions.md D4).
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost";
@@ -15,14 +16,14 @@ export type ButtonVariant = "primary" | "secondary" | "ghost";
 const VARIANT: Record<ButtonVariant, string> = {
   primary: "border-transparent bg-primary text-surface hover:brightness-110 active:brightness-95",
   secondary: "border-line bg-surface text-ink hover:border-ink-soft hover:bg-bg",
-  // DESIGN.md components.button-ghost: 배경 투명 · 글자 primary · rounded sm · padding 5px 11px
+  // 컴포넌트 스펙 button-ghost: 배경 투명 · 글자 primary · 모서리 rounded-sm · padding 5px 11px
   ghost: "border-transparent bg-transparent text-primary hover:bg-primary-soft",
 };
 
 const SHAPE: Record<ButtonVariant, string> = {
   primary: "rounded-md px-4",
   secondary: "rounded-md px-4",
-  // 11px 는 DESIGN.md 가 명시한 값이라 4px 그리드를 벗어나더라도 그대로 옮긴다.
+  // 11px 는 원 디자인 문서가 명시한 값이라 4px 그리드를 벗어나더라도 그대로 옮긴다.
   // 세로 padding(5px)은 min-h-tap 이 대신한다 — ghost 는 배경이 투명이라 hit area 를 키워도 보이지 않는다.
   ghost: "rounded-sm px-[11px]",
 };

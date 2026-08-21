@@ -2,7 +2,8 @@
 //
 // 반응형은 모바일 퍼스트다. md 부터 콘텐츠 폭과 여백을 키우고, lg 에서 2컬럼 여지를 둔다.
 //
-// DESIGN.md 준수: 그림자 없음. 표면 구분은 1px 헤어라인 보더로만.
+// 규범 준수 (docs/design/README.md): 그림자 없음. 표면 구분은 1px 헤어라인 보더로만.
+// 앱 셸(하단 탭바 · 데스크톱 사이드바)은 이 컴포넌트가 아니라 docs/design/layout.md 의 계약을 따를 AppShell 이 맡는다 — 라우터 ADR 0005 후.
 import { useEffect, useRef, type ReactNode } from "react";
 
 const CONTENT_ID = "page-content";

@@ -1,25 +1,30 @@
-/* 디자인 토큰 — ADR 0003.
+/* 디자인 토큰 — ADR 0003 (툴체인) · ADR 0006 (SSOT 배치).
  *
- * SSOT 는 이 파일이 아니라 DESIGN.md 다(커밋 558a463, `git show 558a463:DESIGN.md`).
- * 여기는 그 값을 Tailwind @theme 로 옮긴 구현체다. 톤·색을 바꿀 땐 DESIGN.md 를 먼저 고치고
- * 여기를 그 값과 동일하게 맞춘다. **값을 이 파일에서 발명하지 않는다.**
+ * SSOT 는 이 파일이 아니라 docs/design/ 이다 — 값의 근거와 결정은 docs/design/decisions.md,
+ * 현행 규범 요약은 docs/design/README.md. 여기는 그 값을 Tailwind @theme 로 옮긴 구현체다.
+ * 톤·색·형태를 바꿀 땐 decisions.md 를 먼저 고치고 여기를 그 값과 동일하게 맞춘다.
+ * **값을 이 파일에서 발명하지 않는다.**
  *
- * hex 를 그대로 쓰는 이유 — DESIGN.md 가 hex 로 정의한다. oklch 로 옮기면 표기가 SSOT 와 달라져
+ * hex 를 그대로 쓰는 이유 — 규범 문서가 hex 로 정의한다. oklch 로 옮기면 표기가 SSOT 와 달라져
  * 대조가 어려워진다. 색이 7개로 고정돼 있고 팔레트를 생성·조작하지 않으므로 변환의 이득이 없다.
+ * 그리고 빌드 게이트가 이 파일의 hex 를 읽어 화이트리스트로 쓴다 — 표기를 바꾸면 게이트 파서도 바꾼다.
  *
  * @theme 에 선언한 변수는 CSS 변수인 동시에 유틸리티 클래스를 만든다
  * (--color-primary → bg-primary · text-primary · border-primary).
- * 그래서 여기 없는 색은 유틸리티도 없다 — 그것이 DESIGN.md 「The One Accent Rule」의 강제 방식이다.
+ * 여기 없는 색은 **명명 유틸리티**가 없다(bg-red-500 류). 단 임의값 bg-[#hex] 는 테마를 거치지
+ * 않고 그대로 컴파일되므로 — Tailwind 에 이를 끄는 설정이 없다 — 「The One Accent Rule」의
+ * 실제 강제는 이 파일이 아니라 빌드 게이트(scripts/check-bundle-budget.mjs)가 한다. D8.
  */
 
 @theme {
   /* 기본 팔레트(22색 × 11단계)를 폐기한다.
-     이 줄이 없으면 bg-red-500 같은 팔레트 밖 색이 그냥 통과한다. ADR 0003 §결정 1. */
+     이 줄이 없으면 bg-red-500 같은 팔레트 밖 색이 그냥 통과한다. ADR 0003 §결정 1.
+     이 줄이 사라지면 게이트의 폐기 유지 검사(REQUIRED_RETIREMENTS)가 빌드를 실패시킨다. */
   --color-*: initial;
 
   /* Primary — 베리 플럼.
-     디자인 문서: 배지 · 주요 액션(버튼/링크) · 강조 텍스트 · 진행률 바 채움색.
-     화면 전체 면적의 일부에만 등장한다 — **배경 워시로 쓰지 않는다.** */
+     규범: 배지 · 주요 액션(버튼/링크) · 강조 텍스트 · 진행률 바 채움색.
+     화면 전체 면적의 일부에만 등장한다 — **배경 워시로 쓰지 않는다.** (D2 가 면적 등급을 정한다) */
   --color-primary: #8b3f63;
   --color-primary-soft: #f1dee7; /* 배지 등 옅은 배경용 */
 
@@ -30,17 +35,18 @@
   --color-surface: #ffffff; /* 카드 등 표면 */
   --color-line: #e7e3de; /* 카드 보더, 구분선, 진행률 바 트랙 */
 
-  /* semantic color(성공/경고/위험)는 디자인 문서가 확정하지 않았다.
-     지어내지 않는다. 필요해지면 디자인 문서를 먼저 갱신하고 여기로 옮긴다. */
+  /* semantic color(성공/경고/위험)는 도입하지 않기로 닫았다 — D6 (docs/design/decisions.md).
+     6화면 목업이 색 없이 전 상태를 표현했다. 상태는 보더 · 배경 톤 · 텍스트 · 형태로.
+     지어내지 않는다. 필요해지면 D6 을 폐기하는 결정을 먼저 쓰고 여기로 옮긴다. */
 
   /* Typography — Wanted Sans Variable.
-     DESIGN.md 가 Pretendard 를 "브랜드 식별력이 떨어진다"는 이유로 명시 기각했다.
+     원 디자인 문서가 Pretendard 를 "브랜드 식별력이 떨어진다"는 이유로 명시 기각했다.
      Apple SD Gothic Neo 는 iOS 전용이라 임베드 불가 — 폴백으로만 둔다.
      Tailwind 기본 --font-sans 에는 한글 폴백이 없으므로 반드시 덮어쓴다. */
   --font-sans: "Wanted Sans Variable", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
 
   /* 행간 — CJK 는 글자당 정보 밀도가 높아 라틴보다 넉넉해야 한다.
-     DESIGN.md: Headline line-height 1.4 / Body line-height 1.6.
+     규범: Headline line-height 1.4 / Body line-height 1.6 (docs/design/README.md 「타이포」).
      Tailwind 기본(text-sm 이 약 1.43)을 그대로 두면 한국어 본문이 답답해진다.
      KRDS 도 "줄 간격은 최소 150% 이상"을 권고한다. */
   --text-xs--line-height: 1.5;
@@ -53,29 +59,35 @@
   /* 크기 스케일은 Tailwind 기본을 그대로 쓰되, **역할별 용처를 못 박는다.**
    *
    *   text-base(16px) + text-ink       주 본문 — 읽는 글
-   *   text-sm  (14px) + text-ink-soft  보조 문구 — DESIGN.md 의 Body(~0.86rem)가 이 자리다
+   *   text-sm  (14px) + text-ink-soft  보조 문구 — 원 디자인 문서의 Body(~0.86rem)가 이 자리다
    *   text-xs  (12px) + text-ink-soft  캡션·라벨 (짧은 것만)
-   *   입력 필드는 16px 미만으로 두지 않는다 (근거는 shared/ui/README.md)
+   *   입력 필드는 16px 미만으로 두지 않는다 (근거 등급은 docs/design/a11y.md §2)
    *
-   * DESIGN.md 는 Body 를 "설명 텍스트, 보조 문구"로 정의했고 **주 본문 크기는 정의하지 않았다.**
-   * 위 base(16px) 단계가 그 공백을 메운 것이며, KRDS 의 "본문 최소 16px" 권고와 일치한다.
-   * DESIGN.md 에 이 한 단계를 추가하는 것은 디자인 오너의 몫이다. */
+   * 원 디자인 문서는 Body 를 "설명 텍스트, 보조 문구"로 정의했고 **주 본문 크기는 정의하지 않았다.**
+   * 위 base(16px) 단계가 그 공백을 메운 것이며, KRDS 의 "본문 최소 16px" 권고와 일치한다
+   * (docs/design/a11y.md §2.1). */
 
-  /* Shape — DESIGN.md 가 정한 값이 Tailwind 기본(4/6/8px)과 다르다. DESIGN.md 가 이긴다.
-     이 저장소에서 rounded-md 는 10px 이다 (shared/ui/README.md 에 기록). */
+  /* Shape — 규범이 정한 값이 Tailwind 기본(4/6/8px)과 다르다. 규범이 이긴다.
+     이 저장소에서 rounded-md 는 10px 이다 (shared/ui/README.md 에 기록).
+     ⚠️ 아래 3개는 「덮어쓰기」다 — Tailwind 기본 --radius-* 8단계(xs~4xl)가 아직 살아 있어
+     rounded-2xl(16px)·rounded-4xl(32px)도 생성된다. 4단계로 고정하는 폐기는 D1 (미적용). */
   --radius-sm: 8px;
   --radius-md: 10px;
   --radius-pill: 999px;
 
-  /* 최소 터치 타겟 44px — 제품 문서의 접근성 기준.
+  /* 최소 터치 타겟 44px — WCAG AAA 2.5.5 + Apple HIG 44pt + KRDS 터치 44px 의 수렴
+     (AA 최저선은 24px — docs/design/a11y.md §1).
      --spacing 스케일 위에 이름을 붙여 의도를 남긴다 (min-h-tap · h-tap · w-tap). */
   --spacing-tap: 2.75rem;
 
-  /* 그림자 토큰을 두지 않는다 — DESIGN.md 「The Flat-By-Default Rule」.
+  /* 그림자 토큰을 **추가하지** 않는다 — 「The Flat-By-Default Rule」 (docs/design/README.md).
+     ⚠️ 「두지 않는다」는 「폐기했다」가 아니다 — Tailwind 기본 그림자 토큰 22개(shadow 8 ·
+     drop-shadow 6 · inset-shadow 3 · text-shadow 5)가 아직 살아 있다. 폐기는 D10 (미적용).
      표면 구분은 전부 1px 헤어라인 보더(--color-line)로만 한다. */
 }
 
 /* spacing 은 Tailwind 기본(--spacing: 0.25rem)을 그대로 쓴다.
-   DESIGN.md 의 xs/sm/md/lg/xl(4/8/16/20/24px)이 전부 4px 그리드 위라 아래로 정확히 표현된다:
-     xs=1  sm=2  md=4  lg=5  xl=6   (p-1 · gap-2 · px-4 …)
-   토큰을 이중으로 두면 값의 출처가 갈린다 — 이 저장소가 별칭·Node 버전에서 거부해 온 패턴이다. */
+   규범의 xs/sm/md/lg/xl(4/8/16/20/24px)이 전부 4px 그리드 위라 기본 배수로 정확히 표현된다
+   (xs=1 · sm=2 · md=4 · lg=5 · xl=6). 토큰을 이중으로 두면 값의 출처가 갈린다 —
+   이 저장소가 별칭·Node 버전에서 거부해 온 패턴이다.
+   ⚠️ 이 주석에 유틸리티명을 나열하지 않는다 — 스캐너가 주석도 읽어 유틸리티를 만든다. */

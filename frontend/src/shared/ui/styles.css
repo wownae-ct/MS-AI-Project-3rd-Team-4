@@ -19,6 +19,11 @@
 
 @source "../../"; /* → src/ */
 @source "../../../index.html"; /* → frontend/index.html */
+/* 마크다운은 스캔하지 않는다 — Tailwind 는 파일을 파싱하지 않고 평문으로 훑으므로(공식) 문서 표의
+ * "p-5 p-6" 같은 단어도 유틸리티가 된다. 실제로 아무도 안 쓰는 .p-5 .p-6 과 토큰 밖 4px 인 .rounded 가
+ * 산출 CSS 에 들어가 있었다 (docs/design/namespaces.md 「산문이 유틸리티를 만든다」).
+ * 주석 안의 단어는 여기서 못 막는다 — 그건 라운드 값 게이트가 잡는다. */
+@source not "../../**/*.md";
 
 @layer base {
   body {
@@ -52,9 +57,11 @@
     overflow-wrap: anywhere;
   }
 
-  /* 포커스 가시성 — PRODUCT.md 「명확한 포커스 표시」.
+  /* 포커스 가시성 — docs/design/a11y.md §4 「포커스 링」.
      도입 전에는 CSS 전체에 :focus-visible 이 0건이었고 포커스 링이 UA 기본값에 의존했다.
-     primary 는 surface 대비 7.03 / bg 대비 6.51 / line 대비 5.50 이라 어디에 놓여도 보인다. */
+     primary 는 surface 대비 7.03 / bg 대비 6.51 / line 대비 5.50 이라 어디에 놓여도 보인다.
+     ring-* 이 아니라 outline 인 이유 — ring 은 box-shadow / --tw-ring-color 로 컴파일돼 그림자 게이트와
+     충돌하고 어떤 네임스페이스 폐기로도 막히지 않는다 (D9). 링은 항상 outline 으로 낸다. */
   :focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: 2px;

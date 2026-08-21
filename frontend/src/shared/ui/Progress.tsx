@@ -1,4 +1,4 @@
-// 진행률 바 — DESIGN.md: 트랙은 {colors.line}, 채움은 {colors.primary}.
+// 진행률 바 — 컴포넌트 스펙 (docs/design/README.md): 트랙은 line, 채움은 primary. 불확정 표현은 D11.
 //
 // Base UI 로 감싼 이유(ADR 0004): role="progressbar" 와 aria-valuemin/max/now 를 라이브러리가
 // 값과 동기화해 설정한다. 우리 JSX 에 role 속성이 남지 않으므로 jsx-a11y/prefer-tag-over-role 도 걸리지 않는다.

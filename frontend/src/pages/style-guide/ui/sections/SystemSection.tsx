@@ -82,13 +82,14 @@ export function NonGoalsSection() {
             빠집니다. 변이는 정적 룩업 객체로만 씁니다.
           </li>
           <li>
-            <span className="font-bold">팔레트 밖 색</span> — 유틸리티 자체가 생성되지 않습니다.
+            <span className="font-bold">팔레트 밖 색</span> — 명명 유틸리티는 없고, 임의값 우회로는 빌드
+            게이트가 막습니다.
           </li>
         </ul>
       </Card>
       <Rule>
-        위 첫 두 가지는 <code className="font-bold">npm run build</code> 가 산출 CSS 에서 직접 검사합니다.
-        들어오면 빌드가 실패합니다 — 문서로만 두지 않았습니다.
+        다크모드 · 그림자 · 팔레트 밖 색은 <code className="font-bold">npm run build</code> 가 산출 CSS 에서
+        직접 검사합니다. 들어오면 빌드가 실패합니다 — 문서로만 두지 않았습니다.
       </Rule>
     </Section>
   );
