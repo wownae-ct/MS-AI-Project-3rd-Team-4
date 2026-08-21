@@ -77,10 +77,13 @@ def parse_document(path: Path) -> ParsedDocument:
 
 
 def load_corpus(root: Path) -> list[ParsedDocument]:
-    """root(data/rag_corpus/) 아래 <DATASET_CODE>/*.json 전체를 파싱한다. 하위 디렉터리 1단계
-    구조만 지원 — 10_RAG_data_catalog.md가 정한 레이아웃과 일치(DS1_PRICE·DS7_TIMELINE은 RAG
-    코퍼스 대상이 아니라 애초에 여기 디렉터리가 없다)."""
-    paths = sorted(root.glob("*/*.json"))
+    """root(data/rag_corpus/) 아래 *.json 전체를 재귀적으로 파싱한다. 깊이를 가리지 않는 이유:
+    로컬 저장소는 <DATASET_CODE>/<문서명>.json(2단계, 10_RAG_data_catalog.md가 정한 레이아웃)이지만,
+    rag-reindex CronJob의 K8s ConfigMap 볼륨 마운트는 여러 파일을 담아도 디렉터리 구조 없이
+    평평하게(1단계) 풀린다(infra/k8s/base/rag-cronjob/kustomization.yaml) — 두 환경 모두에서
+    같은 코드가 동작해야 하므로 `glob("*/*.json")`이 아니라 `rglob("*.json")`을 쓴다. 파일명이
+    겹치지 않는 한 평평/중첩 어느 쪽이든 안전하다."""
+    paths = sorted(root.rglob("*.json"))
     if not paths:
         raise ValueError(f"{root}: RAG 코퍼스 JSON 파일을 찾지 못함")
     return [parse_document(p) for p in paths]
