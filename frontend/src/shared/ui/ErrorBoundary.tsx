@@ -5,9 +5,12 @@
 //
 // 잡히지 '않는' 것에 주의: 이벤트 핸들러·비동기 콜백·SSR에서 던진 예외는 바운더리를 통과한다.
 // 그런 경로는 각자 try/catch 로 다뤄야 한다 — 바운더리가 있다고 안전하다고 오해하지 말 것.
+//
+// 안내 문구에 semantic color(위험/경고)를 쓰지 않는다 — DESIGN.md 가 상태 색을 아직 정하지 않았다.
+// 지어내지 않고 중립 표면 + 1px 보더로 표현한다.
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { Banner } from "./Banner";
 import { Button } from "./Button";
+import { Page } from "./Page";
 
 export interface ErrorBoundaryProps {
   children: ReactNode;
@@ -45,13 +48,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     if (this.props.fallback) return this.props.fallback(error, this.reset);
 
     return (
-      <main className="page">
-        <h1 className="page__title">문제가 발생했습니다</h1>
-        <Banner variant="danger">
+      <Page title="문제가 발생했습니다">
+        <div role="alert" className="rounded-md border border-line bg-surface p-4 text-base text-ink">
           화면을 그리는 중 오류가 생겼습니다. 다시 시도해도 같은 문제가 반복되면 새로고침해 주세요.
-        </Banner>
-        <Button onClick={this.reset}>다시 시도</Button>
-      </main>
+        </div>
+        <Button block onClick={this.reset}>
+          다시 시도
+        </Button>
+      </Page>
     );
   }
 }
