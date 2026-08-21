@@ -1,17 +1,27 @@
 # frontend
 
-React 19 + TypeScript 7 + Vite 8 SPA.
+React 19 + TypeScript 7 + Vite 8 + Tailwind CSS v4 + Base UI. 메리맵(MerryMap — 웨딩 예산·타임라인·상담) 프론트엔드.
 
-설계 문서는 [`docs/`](docs/README.md)에 있다 — 툴체인 결정은 [`docs/architecture/toolchain.md`](docs/architecture/toolchain.md), 레이어 구조와 경계 강제는 [`docs/architecture/layers.md`](docs/architecture/layers.md).
+**지금 `src` 에는 제품 화면이 없고 디자인 시스템 기반 + 스타일가이드 1화면만 있다.** 미완성이 아니라 의도한 상태다 — 화면 6개의 시각 스펙은 [`docs/mockups/`](docs/mockups/README.md)에 도착해 있고, 앱 셸·라우트 계약은 [`docs/design/layout.md`](docs/design/layout.md)에 있으며, 라우터 선택(ADR 0005)이 선행한다.
+
+문서 지도는 [`docs/README.md`](docs/README.md). 자주 찾는 것:
+
+| 필요 | 문서 |
+|---|---|
+| 색 · 서체 · 형태 · 접근성 규범과 근거 (SSOT) | [`docs/design/`](docs/design/README.md) — 결정은 [decisions.md](docs/design/decisions.md) |
+| 토큰 → 유틸리티 매핑 · 코드 규약 · 게이트 | [`src/shared/ui/README.md`](src/shared/ui/README.md) |
+| 툴체인 결정 · 버전 · CI 게이트 · 실측 기준선 | [`docs/architecture/toolchain.md`](docs/architecture/toolchain.md) |
+| 레이어 · 별칭 · 경계 강제 | [`docs/architecture/layers.md`](docs/architecture/layers.md) |
+| 왜 이렇게 정했나 | [`docs/adr/`](docs/adr/README.md) |
 
 ## 시작하기
 
 ```bash
-npm ci        # 최초 1회 (lockfileVersion 3)
+npm ci        # 최초 1회. engine-strict=true 라 Node 하한(^24.15.0) 미달이면 여기서 실패한다 — 의도된 동작
 npm run dev   # 개발 서버
 ```
 
-**Node 버전은 [`.nvmrc`](.nvmrc)가 단일 출처다** (`24.19.0`). 하한은 `package.json`의 `engines`(`^24.15.0`)이며 근거는 `jsdom`의 요구사항이다 — 자세한 내용은 toolchain 문서 §2.
+**Node 버전은 [`.nvmrc`](.nvmrc)가 단일 출처다** (`24.19.0`). 하한은 `package.json`의 `engines`(`^24.15.0`)이며 근거는 `jsdom`의 요구사항이다 — [toolchain §2](docs/architecture/toolchain.md#2-런타임--node-24-단일화).
 
 > `nvm-windows`는 `.nvmrc`를 읽지 못하므로 버전을 직접 지정해야 한다(`nvm use 24.19.0`). `fnm`은 읽는다. CI는 `node-version-file`로 자동 참조한다.
 
@@ -21,27 +31,34 @@ npm run dev   # 개발 서버
 |---|---|
 | `npm run dev` | 개발 서버 |
 | `npm run typecheck` | `tsc -b` — 타입 검사만 |
-| `npm run lint` | `oxlint --deny-warnings .` — 코드 품질 + **FSD 레이어 경계 강제** |
-| `npm test` | `vitest run` |
-| `npm run build` | `tsc -b && vite build` |
-| `npm run preview` | 빌드 산출물 서빙 |
+| `npm run lint` | `oxlint --deny-warnings .` — 코드 품질 + **FSD 레이어 경계 강제** + 접근성(jsx-a11y) |
+| `npm test` | `vitest run` — 화면 테스트 + **게이트 픽스처**(`scripts/lib/__tests__/`) |
+| `npm run build` | `tsc -b && vite build && node scripts/check-bundle-budget.mjs` — 마지막 단계가 **번들 예산 + 디자인 규범 게이트**다 |
+| `npm run preview -- --host 127.0.0.1` | 빌드 산출물 서빙. **`--host` 필수** — 기본은 `[::1]`만 listen 해서 `127.0.0.1`로는 연결이 거부된다 |
 
 **검증 게이트는 4개다** — `typecheck → lint → test → build`. 커밋 전 전부 돌린다. CI도 같은 순서로 실행한다.
+
+### `build` 끝의 게이트가 막는 것
+
+[`scripts/check-bundle-budget.mjs`](scripts/check-bundle-budget.mjs)가 산출물을 디스크에서 읽어 검사한다. 예산(JS gzip · 최대 청크 · CSS gzip(@font-face 제외) · 폰트 raw)과 **디자인 규범** — 그림자·링, 팔레트 밖 색, 토큰 밖 라운드, 다크모드, `theme.css` 폐기 선언 유지, 그리고 소스의 색 임의값·`ring-*`·그림자 토큰(`file:line`). 검사 본체는 [`scripts/lib/`](scripts/lib/)의 순수 모듈이고 픽스처가 `npm test`에서 돈다. 상세는 [`src/shared/ui/README.md` 「게이트」](src/shared/ui/README.md#게이트).
+
+위반이면 exit 1 이고 **우회 플래그가 없다.** 새 색·라운드가 필요하면 [decisions.md](docs/design/decisions.md) → `theme.css` 순서로 넣으면 화이트리스트가 자동으로 따라온다.
 
 ## 구조 — Feature-Sliced Design
 
 ```
 src/
-  app/        진입점 · 화면 조립 · 전역 스토어(store/)
-  pages/      feedback · practice-session · report
-  features/   entry-guard — 진입 판정과 안내 화면
-  entities/   answer · coach-feedback · practice-session · question
+  app/          App.tsx(스타일가이드 렌더 — 라우터 도입 전 임시) · main.tsx
+  pages/
+    style-guide/  디자인 시스템 라이브 문서 — 토큰·프리미티브·규범이 실제로 동작하는지 눈으로 검증하는 실체
   shared/
-    api/      REST 클라이언트 (전송 계층 — 도메인을 모른다)
-    config/   환경변수 단일 진입점(env.ts) · 브라우저 판정 상수
-    lib/      wake-lock · audio-unlock
-    ui/       디자인 토큰 · 공용 컴포넌트
+    ui/           styles.css(유일한 CSS 진입점) · theme.css(@theme 토큰) · Page · Card · Button · Badge · Money · Progress · Tabs · ErrorBoundary · icons
+scripts/
+  check-bundle-budget.mjs   build 끝 게이트 (오케스트레이터)
+  lib/                       css-norms.mjs · source-norms.mjs (순수 모듈) · __tests__/
 ```
+
+`features/` · `entities/` 는 **도메인이 없는 지금 만들지 않는다** — FSD 는 레이어를 선택적으로 둔다. 해당 린트 override 는 매칭 대상이 없을 뿐 무해하다. `shared/api` · `shared/config` · `shared/lib` 는 주제 전환으로 삭제됐다(백엔드 미착수).
 
 **import 규칙 두 가지만 기억하면 된다:**
 
@@ -50,14 +67,19 @@ src/
 
 둘 다 `npm run lint`가 강제한다. 위반하면 어떤 규칙에 왜 걸렸는지 메시지에 나온다. 설계 근거는 [layers 문서 §4](docs/architecture/layers.md#4-경계-강제-설계).
 
+## 스타일 — 알아야 할 함정 둘
+
+- **런타임 조립 클래스명 금지.** Tailwind 는 소스를 파싱하지 않고 평문으로 훑는다(공식). `` `btn--${variant}` `` 는 찾지 못하고 유틸리티가 생성되지 않는다 — 빌드는 성공하고 화면만 깨진다. 변이는 정적 룩업 `Record` 로만.
+- **반대로, 주석과 문서의 단어도 유틸리티가 된다.** README 표의 `p-5 p-6` 과 주석의 bare `rounded` 가 실제로 산출 CSS 에 들어갔었다. `styles.css` 가 `.md` 를 스캔에서 빼고, 라운드 값 게이트가 토큰 밖 `border-radius` 를 잡는다. 그래도 `.tsx` 안에서 예시 토큰(`bg-[#…]`, `rounded-full`)을 쓸 때는 **쪼개 쓴다** — 붙여 쓰면 스캐너가 만들고 게이트가 막는다.
+
 ## 환경변수
 
-프론트가 읽는 변수는 **`VITE_API_BASE` 하나뿐**이고, 읽는 지점은 [`src/shared/config/env.ts`](src/shared/config/env.ts) 한 곳이다.
+프론트가 선언한 변수는 **`VITE_API_BASE` 하나뿐**이고 **지금은 읽는 코드가 없다** — 전송 계층이 주제 전환으로 삭제됐고 백엔드 호스트도 미확정이다. 다시 세울 때 `?? ""` 같은 조용한 폴백을 두지 않는다. [toolchain §6](docs/architecture/toolchain.md#6-환경변수).
 
-값 형식은 **오리진만, 끝 슬래시 없이**. 빌드타임에 정적 치환되므로 값을 바꾸면 재빌드가 필요하다. `VITE_*` 값은 **번들에 그대로 박혀 공개되므로 비밀을 넣지 않는다.** 자세한 내용은 [toolchain 문서 §6](docs/architecture/toolchain.md#6-환경변수).
+`.env` 에 `NODE_ENV=development` 한 줄이 있으면 프로덕션 빌드가 개발 시맨틱으로 돈다 — `vite.config.ts` 의 `assert-production-build` 게이트가 exit 1 로 막는다. **지우지 말 것.**
 
 ## 브랜치
 
 `feature/frontend` → PR → `frontend` → PR → `main`. `frontend`·`main` 직접 push 금지.
 
-`frontend` 대상 PR은 `frontend/ · docs/ · .github/` 밖 파일을 건드리면 path-guard 워크플로우가 CI를 실패시킨다.
+`frontend` 대상 PR은 `frontend/ · docs/ · .github/` 밖 파일을 건드리면 path-guard 워크플로우가 CI를 실패시킨다. **저장소 루트 `README.md` 도 그 밖이다** — 이 브랜치에서 커밋하지 않는다.
