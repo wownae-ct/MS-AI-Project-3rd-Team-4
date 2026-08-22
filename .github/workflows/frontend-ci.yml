@@ -65,9 +65,9 @@ jobs:
               env:
                   VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
               run: |
-                  # 포크에서 온 PR에는 secret이 전달되지 않는다(GitHub 사양). 값이 비면 코드의 `?? ""`
-                  # 폴백 때문에 상대 경로 번들이 조용히 만들어지므로 최소한 눈에 보이게 한다.
-                  # 근본 해결은 toolchain.md §6.3 (값 부재를 드러내는 처리) — 백엔드 호스트 확정 후.
+                  # 포크에서 온 PR에는 secret이 전달되지 않는다(GitHub 사양). 지금은 이 값을 **읽는 코드가 없다**
+                  # (전송 계층이 주제 전환으로 삭제됨 — toolchain.md §6.3). 경고를 남겨 두는 이유는 전송 계층이
+                  # 돌아왔을 때 `?? ""` 같은 조용한 폴백을 다시 들이지 않도록 부재를 눈에 보이게 하기 위해서다.
                   if [ -z "$VITE_API_BASE" ]; then
                     echo "::warning::VITE_API_BASE가 비어 있다 — 포크 PR이거나 시크릿 미설정. API 호출이 상대 경로로 나간다."
                   fi

@@ -15,20 +15,23 @@
 // 규범 검사는 이 파일이 아니라 lib/ 의 순수 모듈이 한다 — 테스트 가능해야 회귀를 막는다.
 //   lib/css-norms.mjs    산출 CSS (lightningcss 파서) — 그림자·링·팔레트 밖 색·라운드·다크모드
 //   lib/source-norms.mjs 소스 (file:line) — 색 임의값·ring·그림자 유틸리티 토큰
+//   lib/deploy-config.mjs 배포 설정 — dist/staticwebapp.config.json 존재 + SPA 폴백·캐시·CSP 최소 계약 (CLAUDE.md §6-H)
 //   설계와 근거: docs/design/namespaces.md 「게이트 — 정규식이 아니라 파서로」 · ADR 0006
 //   여기는 dist 와 src 를 읽어 둘을 호출하고 결과를 출력하는 오케스트레이터다.
 
 import { gzipSync } from "node:zlib";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { checkCssNorms, normalizeHex } from "./lib/css-norms.mjs";
 import { checkSourceNorms } from "./lib/source-norms.mjs";
+import { checkDeployConfig } from "./lib/deploy-config.mjs";
 
 // 실행 위치에 의존하지 않는다 — CWD 기준으로 잡으면 다른 디렉터리에서 부를 때 조용히 빗나간다.
 const ROOT = resolve(import.meta.dirname, "..");
 const ASSETS_DIRECTORY = join(ROOT, "dist", "assets");
 const THEME_PATH = join(ROOT, "src", "shared", "ui", "theme.css");
 const SOURCE_DIRECTORY = join(ROOT, "src");
+const DEPLOY_CONFIG_PATH = join(ROOT, "dist", "staticwebapp.config.json");
 
 /**
  * 상한값은 추측이 아니라 실측 + 여유분이다. 옆의 「측정」이 이 값을 정할 때의 실제 크기다.
@@ -240,6 +243,13 @@ for (const [norm, label] of Object.entries(NORM_LABELS)) {
   const violated = violations.some((violation) => violation.norm === norm);
   console.log(`  ${violated ? "위반" : "통과"}  ${label}`);
 }
+
+// ── 배포 설정 — 라우터 딥링크가 프로덕션에서만 404 가 되는 경로를 여기서 막는다 (CLAUDE.md §6-H) ───
+
+const deploy = checkDeployConfig(existsSync(DEPLOY_CONFIG_PATH) ? readFileSync(DEPLOY_CONFIG_PATH, "utf8") : null);
+console.log("배포 설정 (dist/staticwebapp.config.json)");
+console.log(`  ${deploy.ok ? "통과" : "위반"}  SPA 폴백(/index.html · /assets/* 제외) · /assets/* immutable 캐시 · HTML no-cache · CSP 인라인 style 허용`);
+
 // 한계를 숨기지 않는다 — 「막았다」고 적고 안 막히는 것이 이 저장소가 반복해 겪은 사고 클래스다.
 console.log(
   "  한계  dist/assets/ 비재귀 · dist/index.html 인라인 <style> 미검사 · 팔레트 색의 임의값 하드코딩(bg-[#8b3f63])은 산출 CSS 검사 통과(소스 검사가 잡는다)",
@@ -257,6 +267,20 @@ if (violations.length > 0) {
   }
   lines.push("규범을 바꾸려면 docs/design/decisions.md 를 먼저 갱신한다. 여기서 예외를 만들지 않는다.");
   console.error(lines.join("\n"));
+  process.exitCode = 1;
+}
+
+if (!deploy.ok) {
+  console.error(
+    [
+      "",
+      "배포 설정이 계약을 만족하지 않는다 — 이대로 배포하면 라우터 URL 이 서버에서 깨진다.",
+      "",
+      ...deploy.problems.map((problem) => `  ${problem}`),
+      "",
+      "원본은 public/staticwebapp.config.json 이다(Vite 가 dist 루트로 복사한다). 게이트 계약은 scripts/lib/deploy-config.mjs.",
+    ].join("\n"),
+  );
   process.exitCode = 1;
 }
 
