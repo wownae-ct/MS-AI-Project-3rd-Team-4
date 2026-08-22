@@ -81,7 +81,7 @@ scripts/
 
 ## 환경변수
 
-프론트가 선언한 변수는 **`VITE_API_BASE` 하나뿐**이고 **지금은 읽는 코드가 없다** — 전송 계층이 주제 전환으로 삭제됐고 백엔드 호스트도 미확정이다. 다시 세울 때 `?? ""` 같은 조용한 폴백을 두지 않는다. [toolchain §6](docs/architecture/toolchain.md#6-환경변수).
+프론트가 선언한 변수는 **`VITE_API_BASE` 하나뿐**이고 **지금은 읽는 코드가 없다** — 전송 계층이 주제 전환으로 삭제됐다. **백엔드 호스트는 2026-08-22 확정됐다** — `https://20-249-52-148.nip.io`(잠정 · nip.io · Let's Encrypt), 헬스 `GET /api/v1/health`, CORS 는 `http://localhost:5173` 과 SWA 오리진만. 도달·CORS 실측표와 함정 2건(**`http://` 를 넣으면 브라우저에서만 조용히 실패** · dev 서버는 `localhost` 로만)은 [toolchain §6.2](docs/architecture/toolchain.md#6-환경변수). 다시 세울 때 `?? ""` 같은 조용한 폴백을 두지 않는다. [toolchain §6](docs/architecture/toolchain.md#6-환경변수).
 
 `.env` 에 `NODE_ENV=development` 한 줄이 있으면 프로덕션 빌드가 개발 시맨틱으로 돈다 — `vite.config.ts` 의 `assert-production-build` 게이트가 exit 1 로 막는다. **지우지 말 것.**
 
