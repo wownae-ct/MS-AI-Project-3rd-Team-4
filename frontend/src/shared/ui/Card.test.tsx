@@ -29,6 +29,31 @@ describe("Card 타이틀 슬롯", () => {
     expect(screen.queryByRole("heading")).not.toBeInTheDocument();
   });
 
+  // 부제 슬롯 — 시각 스펙 s5:101-102. 목업 전수 확인 결과 카드 부제를 쓰는 화면은 이것 하나뿐이라,
+  // 슬롯을 두는 근거가 "지금 쓰는 곳이 있다" 하나에 걸려 있다. 그 근거가 사라지면 이 테스트도 함께 지운다.
+  it("subtitle 은 제목이 아니라 문단으로 낸다 — 제목 탐색을 두 배로 늘리지 않는다", () => {
+    render(
+      <Card title="다음에 확인하면 좋아요" subtitle="기한이 가까운 순으로 5개만 골랐어요">
+        내용
+      </Card>,
+    );
+
+    expect(screen.getByText("기한이 가까운 순으로 5개만 골랐어요").tagName).toBe("P");
+    expect(screen.getAllByRole("heading")).toHaveLength(1);
+  });
+
+  // 부제를 주지 않았을 때 **빈 문단이 생기지 않는 것**을 고정한다 — 빈 <p> 는 스크린리더에서
+  // 침묵 항목이 되고 여백만 남긴다.
+  //
+  // ⚠️ RTL 이 돌려주는 렌더 루트를 구조 분해해 쓰지 않는다. 그 이름이 Tailwind 유틸리티와 같아서
+  // **스캐너가 소스에서 읽어 실제로 유틸리티 6규칙을 산출 CSS 에 만든다**(실측: 이 파일에서 그렇게
+  // 만들었고 선언 수가 378 → 385 로 늘었다). CLAUDE.md §5.9 — 식별자도 산문과 똑같이 취급된다.
+  // jsdom 은 RTL 의 렌더 루트를 document.body 에 붙이므로 document 로 질의하면 같은 것을 본다.
+  it("subtitle 이 없으면 문단을 만들지 않는다", () => {
+    render(<Card title="예산">45,000,000원</Card>);
+
+    expect(document.querySelectorAll("p")).toHaveLength(0);
+  });
   it("title 이 있어도 children 은 그대로 렌더한다", () => {
     render(<Card title="예산 요약">45,000,000원</Card>);
 
