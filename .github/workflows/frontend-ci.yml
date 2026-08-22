@@ -26,6 +26,13 @@ jobs:
     build_and_deploy:
         if: github.event_name != 'pull_request' || github.event.action != 'closed'
         runs-on: ubuntu-latest
+        # 실측 총 소요는 약 90초다(2026-08-20 실행). 기본값은 360분이라 매달린 작업 하나가 6시간을 태운다.
+        timeout-minutes: 15
+        # 같은 PR 에 연속 푸시가 오면 앞 실행을 취소한다 — 프리뷰 슬롯 하나에 배포가 겹치는 것을 막고
+        # 러너 분을 아낀다. frontend 브랜치 배포는 event_name 이 push 라 이 식이 false 가 되어 절대 취소되지 않는다.
+        concurrency:
+            group: frontend-ci-${{ github.event.pull_request.number || github.ref }}
+            cancel-in-progress: ${{ github.event_name == 'pull_request' }}
         permissions:
             contents: read
             pull-requests: write # PR 프리뷰 배포 상태 코멘트에 필요
@@ -33,9 +40,13 @@ jobs:
             run:
                 working-directory: frontend
         steps:
-            - uses: actions/checkout@v4
+            # 액션 런타임을 node24 로 — Node 20 런타임은 2026-06-16 이후 강제 상향 상태이고 2026 가을에 제거된다.
+            # main·backend 는 3d2f781 이 이미 @v7 로 올렸고, 그 커밋이 "프론트 담당자가 feature/frontend 에
+            # 같은 2줄 수정을 해야 효과가 생긴다"고 이 사본의 수정을 넘겼다. 아래 node-version 과는 별개 축이다
+            # (그건 앱을 빌드할 Node 이고, 이건 액션 자체가 실행되는 런타임이다).
+            - uses: actions/checkout@v7
 
-            - uses: actions/setup-node@v4
+            - uses: actions/setup-node@v7
               with:
                   # 버전은 frontend/.nvmrc가 단일 출처 — 로컬과 CI가 갈라지지 않게 값을 중복하지 않는다.
                   # 하한 근거: jsdom 30.0.1 engines = ^22.22.2 || ^24.15.0 || >=26.0.0 (전 의존성 중 최협)
@@ -86,6 +97,7 @@ jobs:
     close_pull_request:
         if: github.event_name == 'pull_request' && github.event.action == 'closed'
         runs-on: ubuntu-latest
+        timeout-minutes: 5
         permissions:
             contents: read
         steps:
