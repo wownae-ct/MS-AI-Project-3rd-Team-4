@@ -1,6 +1,6 @@
 # frontend/docs — 프론트엔드 구현 문서
 
-> **최종 갱신** 2026-08-21
+> **최종 갱신** 2026-08-22 (S5 구현 · D2 종결 · 배포 설정 게이트 신설 반영)
 >
 > ✅ 이 폴더는 커밋된다 (`!frontend/docs/` 예외). 여기 두는 문서는 팀 전체에 공유되는 공개 문서다 —
 > 로컬 메모·시크릿·개인 기록은 두지 않는다.
@@ -33,7 +33,7 @@
 | 문서 | 내용 |
 |---|---|
 | [design/README.md](design/README.md) | 진입점 · 현행 규범 요약 · 갱신 규칙 |
-| [design/decisions.md](design/decisions.md) | 규범 결정 D1~D10 — 맥락 · 대안 · 결정 · 되돌림 비용 |
+| [design/decisions.md](design/decisions.md) | 규범 결정 D1~D11 — 맥락 · 대안 · 결정 · 되돌림 비용 |
 | [design/a11y.md](design/a11y.md) | 접근성 정책 — 터치 타겟 · 글자 크기 · 대비. 표준 원문과 **근거 등급** |
 | [design/namespaces.md](design/namespaces.md) | Tailwind 네임스페이스 폐기 감사 — **「덮어쓰기」와 「폐기」는 다르다** |
 | [design/layout.md](design/layout.md) | 앱 셸 계약 · 라우트 표 · 내비게이션 접근성 · 화면별 폭 |
@@ -56,7 +56,7 @@
 | [adr/0002-typescript-7을-단독으로-채택한다.md](adr/0002-typescript-7을-단독으로-채택한다.md) | TypeScript 7 단독 채택 + Node 24 고정 — **승인·적용 완료** |
 | [adr/0003-스타일링-엔진으로-tailwind-css-v4를-채택한다.md](adr/0003-스타일링-엔진으로-tailwind-css-v4를-채택한다.md) | Tailwind CSS v4 채택 + DESIGN.md 토큰을 @theme로 이관 — **승인·적용 완료** |
 | [adr/0004-접근성-프리미티브로-base-ui를-채택한다.md](adr/0004-접근성-프리미티브로-base-ui를-채택한다.md) | 접근성 프리미티브로 Base UI 채택(Tabs·Progress) — **승인·적용 완료** |
-| [adr/0005-라우터로-tanstack-router를-채택한다.md](adr/0005-라우터로-tanstack-router를-채택한다.md) | 라우터 TanStack Router 채택 + 라우트 단위 코드 분할 — **제안**(승인 조건 R1~R7 측정 대기) |
+| [adr/0005-라우터로-tanstack-router를-채택한다.md](adr/0005-라우터로-tanstack-router를-채택한다.md) | 라우터 TanStack Router 채택 + 라우트 단위 코드 분할 — **제안**(R1~R6 충족 · **R7만 미충족** — Slow 4G 콜드 캐시 실측 대기) |
 | [adr/0006-디자인-규범의-ssot를-프론트엔드-안에-둔다.md](adr/0006-디자인-규범의-ssot를-프론트엔드-안에-둔다.md) | 디자인 규범 SSOT를 프론트엔드 안에 두고 네임스페이스 폐기·빌드 게이트로 강제 — **승인** |
 
 ## 적용 로드맵
