@@ -14,6 +14,7 @@
 import { resolve } from "node:path";
 import { Scanner } from "@tailwindcss/oxide";
 import { describe, expect, it } from "vitest";
+import { generated } from "./tailwind-probe.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..", "..", "..");
 
@@ -46,5 +47,51 @@ describe("스캐너 후보에 유령이 없다", () => {
     expect(candidates.has("rounded-sm")).toBe(true);
     expect(candidates.has("bg-primary")).toBe(true);
     expect(candidates.has("min-h-tap")).toBe(true);
+  });
+});
+
+// ── 이름 있는 유령이 아니라 **모든** bare 유령을 막는다 ─────────────────────────────────
+//
+// 위 세 단언은 **이미 당한 이름**(p-5 · rounded · ring…)만 본다. 그래서 처음 보는 유령은
+// 조용히 통과한다 — 실제로 그랬다: Card.test.tsx 가 RTL 렌더 루트를
+// `const { container } = …` 로 구조 분해하자 그 **식별자**가 후보가 되어 산출 CSS 에
+// .container 6규칙이 생겼다(선언 378 → 385). 빌드 게이트는 규범 위반(색·라운드·그림자·
+// 링·다크)만 보므로 잡지 못했고, 위 목록에도 없어서 여기서도 통과했다.
+//
+// 뒤집는다 — **bare 후보 중 CSS 를 만드는 것 전체**를 화이트리스트로 고정한다.
+// 소스의 bare 후보는 242개지만 그중 진짜 유틸리티는 10개뿐이라(budget · honeymoon 같은
+// 영단어는 컴파일되지 않는다) 유지 비용이 거의 없다. 새 단어가 하나라도 늘면 여기서 실패한다.
+//
+// **실패했다면**: 그 이름을 소스에서 없애거나(대개 그게 맞다 — 식별자를 바꾼다),
+// 진짜로 쓰는 유틸리티면 사유와 함께 아래 표에 추가한다.
+const EXPECTED_BARE_UTILITIES = {
+  // ① 실제로 className 에 쓰는 것
+  absolute: "AppShell 스킵 링크 · BudgetDonut 가운데 라벨",
+  border: "1px 헤어라인 — 표면 구분의 유일한 수단",
+  fixed: "AppShell 모바일 하단 탭바",
+  flex: "레이아웃 전반",
+  grid: "대시보드·리포트 카드 열",
+  hidden: "AppShell 보조 메뉴 (hidden md:block)",
+  relative: "BudgetDonut 도넛 래퍼",
+  truncate: "PaymentRow 카테고리명 말줄임",
+  // ② 피할 수 없는 식별자 충돌 — 클래스로는 쓰지 않는데 그 단어가 소스에 있어 생성된다.
+  //    각 25 B 남짓이라 이름을 비트는 값어치가 없다고 판단해 받아들인다.
+  block: "Button 의 block prop 이름 — 구현은 w-full 이고 이 클래스는 쓰지 않는다",
+  static: "ErrorBoundary 의 static getDerivedStateFromError — JS 키워드라 피할 수 없다",
+};
+
+describe("bare 후보 중 CSS 를 만드는 것은 화이트리스트뿐이다", () => {
+  it("새 bare 유틸리티가 조용히 늘지 않는다", async () => {
+    const bare = [...candidates].filter((c) => /^[a-z][a-z0-9]*$/u.test(c)).toSorted();
+    const compiled = await generated(bare);
+    expect(bare.filter((c) => compiled[c])).toEqual(Object.keys(EXPECTED_BARE_UTILITIES).toSorted());
+  });
+
+  it("프로브가 돌고 있다는 대조군 — 영단어는 컴파일되지 않는다", async () => {
+    // budget·honeymoon 은 이 저장소의 도메인 단어라 후보에 있지만 유틸리티가 아니다.
+    // container 는 방금 막은 유령이다 — 유틸리티는 맞지만 소스에 있으면 안 된다.
+    const got = await generated(["budget", "honeymoon", "container"]);
+    expect(got).toEqual({ budget: false, honeymoon: false, container: true });
+    expect(candidates.has("container")).toBe(false);
   });
 });

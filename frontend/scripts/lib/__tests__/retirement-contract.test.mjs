@@ -6,38 +6,10 @@
 // 어느 날 Tailwind 업그레이드로 ring 이 --shadow-* 네임스페이스에 묶이거나 임의값이 테마를 조회하게 되면
 // 여기서 먼저 깨지고, 그때 namespaces.md 의 표와 게이트 범위를 다시 정한다.
 //
-// tailwindcss 의 compile() 은 웹 문서에 없는 준내부 API 다. tailwindcss 가 정확 핀(4.3.3)이라 업그레이드가 의도적이고,
-// API 가 바뀌면 이 테스트가 실패해 드러난다 — 조용히 통과하지 않는다. 그래서 쓴다.
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { compile } from "tailwindcss";
+// 컴파일 프로브는 ghost-candidates 와 공유한다(./tailwind-probe.mjs) — 두 테스트가 같은 질문을 서로 다른
+// 목적으로 하므로 헬퍼를 각자 두면 둘이 갈린다. compile() 이 준내부 API 인 사정과 compiler 재사용 금지도 거기 적었다.
 import { describe, expect, it } from "vitest";
-
-const ROOT = resolve(import.meta.dirname, "..", "..", "..");
-const TAILWIND = resolve(ROOT, "node_modules", "tailwindcss");
-const THEME = readFileSync(resolve(ROOT, "src", "shared", "ui", "theme.css"), "utf8");
-
-function loadStylesheet(id, base) {
-  const path = id === "tailwindcss" ? resolve(TAILWIND, "index.css") : resolve(base, id);
-  return { path, base: dirname(path), content: readFileSync(path, "utf8") };
-}
-
-/** 후보 목록을 실제 theme.css 로 컴파일하고, 각 후보가 규칙을 만들었는지 돌려준다. */
-async function generated(candidates) {
-  const compiler = await compile(`@import "tailwindcss" source(none);\n${THEME}`, {
-    base: resolve(ROOT, "src", "shared", "ui"),
-    loadStylesheet,
-    onDependency() {},
-  });
-  const css = compiler.build(candidates);
-  const result = {};
-  for (const candidate of candidates) {
-    // 셀렉터는 이스케이프돼 나온다(`.bg-\[\#77354F\]`). 이스케이프를 벗겨 비교한다.
-    const escaped = candidate.replaceAll(/[\\[\]#:/.%]/gu, (ch) => `\\${ch}`);
-    result[candidate] = css.includes(`.${escaped}{`) || css.includes(`.${escaped} {`);
-  }
-  return result;
-}
+import { generated } from "./tailwind-probe.mjs";
 
 describe("폐기로 사라지는 것 — D1 · D10", () => {
   it("라운드 기본 8단계가 생성되지 않는다", async () => {
