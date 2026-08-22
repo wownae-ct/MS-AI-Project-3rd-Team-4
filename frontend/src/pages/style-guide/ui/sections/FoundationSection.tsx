@@ -1,6 +1,6 @@
 // 파운데이션 — 색과 타이포그래피. 디자인 문서가 SSOT 이고 여기는 그 표시다.
 import { Card } from "@/shared/ui";
-import { OpenDecision, Rule, Section } from "../doc-parts";
+import { Rule, Section } from "../doc-parts";
 
 // 클래스 문자열을 정적으로 둔다 — 런타임 조립은 Tailwind 가 찾지 못한다 (ADR 0003).
 // 대비비는 WCAG 상대휘도로 계산한 값이다(추정치가 아니다).
@@ -52,11 +52,13 @@ export function ColorSection() {
         표현했습니다. 색만으로 정보를 전달하지 않는다는 WCAG 1.4.1 에도 유리합니다. 진짜로 색 없이는 안 되는
         화면이 나오면 그때 이 결정을 폐기하고 새로 정합니다.
       </Rule>
-      <OpenDecision>
-        primary 면 채움의 <span className="font-bold">면적 등급</span> — 버튼 · 배지 · 활성 pill 같은 작은
-        면은 허용하고, S5 리포트의 카드 전면 채움(화면의 약 1/4)은 기각을 권고했습니다. 디자인 판단을
-        기다립니다. 승인되면 규범으로, 기각되면 대안(surface 카드 + primary 제목)으로 확정합니다.
-      </OpenDecision>
+      <Rule>
+        primary 면 채움은 <span className="font-bold">면적으로 등급</span>이 갈립니다 — 버튼 · 배지 ·
+        진행률 채움 · 활성 pill 같은 작은 면과 <code>primary-soft</code> 선택 카드는 허용합니다. 반면{" "}
+        <span className="font-bold">카드 전면 채움은 하지 않습니다</span> — 화면의 약 1/4 을 자주색으로
+        덮는 S5 리포트의 카드가 그 경계였고, 열린 결정이었다가 닫았습니다(D2). 그 카드는
+        <code>surface</code> 면 + <code>primary</code> 제목 + 헤어라인 보더 행으로 확정했습니다.
+      </Rule>
     </Section>
   );
 }

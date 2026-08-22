@@ -116,12 +116,14 @@ describe("규범 표시", () => {
     render(<StyleGuidePage />);
     expect(screen.getAllByText("열린 결정").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/지원 브라우저 범위가 확정되지 않았습니다/u)).toBeInTheDocument();
-    expect(screen.getByText(/디자인 판단을 기다립니다/u)).toBeInTheDocument(); // D2
   });
 
-  it("닫은 결정은 규범으로 표시한다 — 상태 색은 도입하지 않는다 (D6)", () => {
+  it("닫은 결정은 규범으로 표시한다 — 상태 색(D6) · primary 면적(D2)", () => {
     render(<StyleGuidePage />);
     expect(screen.getByText(/상태 색\(성공 · 경고 · 위험\)은 도입하지 않습니다/u)).toBeInTheDocument();
+    // D2 는 2026-08-22 에 닫혔다. 「열린 결정」 쪽에 있던 단언을 여기로 옮긴 것이라, 문구가
+    // 어느 쪽에도 없으면 이 단언이 실패한다 — 규범이 조용히 사라지지 않는다.
+    expect(screen.getByText(/카드 전면 채움은 하지 않습니다/u)).toBeInTheDocument();
   });
 
   it("지금 쓰지 않기로 한 것을 명시한다", () => {
