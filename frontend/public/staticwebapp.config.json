@@ -1,0 +1,24 @@
+{
+  "__WHY_HERE__": "Vite 는 public/ 을 dist/ 루트로 그대로 복사한다. SWA 공식 문서 — 'if there's a build step, you must ensure the build step outputs the file to the root of the output_location' (learn.microsoft.com/azure/static-web-apps/configuration#file-location). 빌드 산출물 게이트(scripts/check-bundle-budget.mjs → lib/deploy-config.mjs)가 dist/staticwebapp.config.json 의 존재와 핵심 키를 검사한다.",
+
+  "__CSP_NOTE__": "실제로 쓰는 것만 남긴다 — 축소가 곧 보안 개선이다. 2026-08-22 실측: src 에서 import.meta.env 를 읽는 코드 0건 · 전송 계층 없음 → connect-src 는 'self' 뿐이다(template 의 __API_HOST__ 는 전송 계층이 돌아올 때 함께 넣는다 — 그때 이 키와 toolchain.md §6 을 같이 본다). style-src 'unsafe-inline' 은 Base UI Progress 의 인라인 style 속성(width) 때문에 필요하다. font-src 는 self-host 라 default-src 로 충분하다. 이 정책을 <meta http-equiv> 로 dist 에 주입해 브라우저에서 위반 0건을 확인했다(frame-ancestors 는 meta 에서 무시되므로 그 항목만 미검증).",
+
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": ["/assets/*"]
+  },
+
+  "routes": [
+    {
+      "route": "/assets/*",
+      "headers": {
+        "Cache-Control": "public, max-age=31536000, immutable"
+      }
+    }
+  ],
+
+  "globalHeaders": {
+    "Cache-Control": "no-cache",
+    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; object-src 'none'"
+  }
+}

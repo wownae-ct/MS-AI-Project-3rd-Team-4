@@ -1,14 +1,25 @@
-// 아이콘 — 인라인 SVG (외부 아이콘 CDN 금지 — §6.2 self-hosting 원칙 준용, README 방침).
-// 색은 currentColor로 상위 텍스트 색을 따른다. 장식용이므로 기본 aria-hidden.
+// 아이콘 — 인라인 SVG (외부 아이콘 CDN 금지 — self-hosting 원칙, shared/ui/README 방침).
+// 색은 currentColor 로 상위 텍스트 색을 따른다. 장식용이므로 기본 aria-hidden —
+// 의미를 전달해야 하는 자리라면 아이콘이 아니라 텍스트로 말한다.
+//
+// 추가 규칙: 쓸 곳이 확정되지 않은 아이콘을 미리 만들지 않는다. 필요해지면 같은 파일에 추가한다.
+// 20개를 넘어가면 lucide-react 도입을 재검토한다(ADR 0004).
+// Home·Calendar·Wallet·Chart 는 하단 탭바 4개(홈·타임라인·예산·리포트)의 용처가 확정돼 추가했다
+// (docs/design/layout.md §3). 아이콘만으로는 뜻이 전달되지 않으므로 **라벨을 항상 함께 표시한다** — NNG Icon Usability.
 
-interface IconProps {
+// 최소로만 연다 — 쓰는 화면이 없다. size 와 className 뿐이고 aria-* 는 받지 않는다(장식용 고정).
+// 의미를 전달하는 아이콘이 실제로 필요해지는 날, 그 아이콘만 별도 props 로 연다 (docs/design/inventory.md §7).
+export interface IconProps {
   size?: number;
+  /** 색·여백 보정용. 크기는 size 로 — className 의 w-/h- 가 width/height 속성과 싸우면 읽기 어렵다. */
+  className?: string;
 }
 
-function base(size: number | undefined) {
+function base({ size, className }: IconProps) {
   return {
     width: size ?? 20,
     height: size ?? 20,
+    className,
     viewBox: "0 0 24 24",
     fill: "none",
     stroke: "currentColor",
@@ -19,66 +30,68 @@ function base(size: number | undefined) {
   };
 }
 
-export function IconWarning({ size }: IconProps) {
+export function IconCheck(props: IconProps) {
   return (
-    <svg {...base(size)}>
-      <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
-      <line x1="12" y1="9" x2="12" y2="13" />
-      <line x1="12" y1="17" x2="12.01" y2="17" />
-    </svg>
-  );
-}
-
-export function IconExternalLink({ size }: IconProps) {
-  return (
-    <svg {...base(size)}>
-      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-      <polyline points="15 3 21 3 21 9" />
-      <line x1="10" y1="14" x2="21" y2="3" />
-    </svg>
-  );
-}
-
-export function IconCopy({ size }: IconProps) {
-  return (
-    <svg {...base(size)}>
-      <rect x="9" y="9" width="13" height="13" rx="2" />
-      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-    </svg>
-  );
-}
-
-export function IconRefresh({ size }: IconProps) {
-  return (
-    <svg {...base(size)}>
-      <polyline points="23 4 23 10 17 10" />
-      <path d="M20.5 15a9 9 0 1 1-2.1-9.4L23 10" />
-    </svg>
-  );
-}
-
-export function IconScreenLock({ size }: IconProps) {
-  return (
-    <svg {...base(size)}>
-      <rect x="5" y="2" width="14" height="20" rx="2" />
-      <line x1="12" y1="18" x2="12.01" y2="18" />
-    </svg>
-  );
-}
-
-export function IconAudio({ size }: IconProps) {
-  return (
-    <svg {...base(size)}>
-      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-      <path d="M15.5 8.5a5 5 0 0 1 0 7" />
-    </svg>
-  );
-}
-
-export function IconCheck({ size }: IconProps) {
-  return (
-    <svg {...base(size)}>
+    <svg {...base(props)}>
       <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
+export function IconInfo(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="16" x2="12" y2="12" />
+      <line x1="12" y1="8" x2="12.01" y2="8" />
+    </svg>
+  );
+}
+
+export function IconChevronDown(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
+export function IconHome(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M3 10.5 12 3l9 7.5" />
+      <path d="M5 9.5V21h14V9.5" />
+    </svg>
+  );
+}
+
+export function IconCalendar(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <line x1="3" y1="10" x2="21" y2="10" />
+      <line x1="8" y1="3" x2="8" y2="7" />
+      <line x1="16" y1="3" x2="16" y2="7" />
+    </svg>
+  );
+}
+
+export function IconWallet(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <rect x="3" y="6" width="18" height="13" rx="2" />
+      <path d="M3 10h18" />
+      <circle cx="17" cy="14.5" r="1.2" />
+    </svg>
+  );
+}
+
+export function IconChart(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <line x1="4" y1="20" x2="20" y2="20" />
+      <rect x="6" y="12" width="3.5" height="6" />
+      <rect x="12" y="8" width="3.5" height="10" />
     </svg>
   );
 }
