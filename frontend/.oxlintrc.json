@@ -1,3 +1,153 @@
 {
-  "ignorePatterns": ["old/**", "dist/**", "node_modules/**"]
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "react", "jsx-a11y"],
+
+  "ignorePatterns": ["dist/**", "node_modules/**"],
+  "categories": {
+    "correctness": "error",
+    "perf": "error",
+    "suspicious": "error",
+    "pedantic": "error"
+  },
+
+  "rules": {
+    "import/no-cycle": "error",
+    "react/react-in-jsx-scope": "off",
+    "import/no-unassigned-import": "off",
+    "eslint/no-inline-comments": "off",
+    "eslint/max-lines-per-function": "off",
+    "eslint/max-lines": ["error", { "skipComments": true }],
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["@/{entities,features,pages}/*/**"],
+            "message": "슬라이스 밖에서는 루트 index만 import한다 — 내부 파일 직접 참조 금지 (public API 우회)"
+          },
+          {
+            "regex": "^\\.\\.(/\\.\\.)*/(app|pages|features|entities|shared)(/|$)",
+            "message": "슬라이스를 넘는 상대 경로 금지 — @/ 별칭을 쓸 것 (별칭 규약이 경계 검사의 전제다)"
+          }
+        ]
+      }
+    ]
+  },
+
+  "overrides": [
+    {
+      "files": ["**/*.test.ts", "**/*.test.tsx"],
+      "rules": { "eslint/require-await": "off" }
+    },
+    {
+      "files": ["src/shared/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@/{entities,features,pages}/*/**"],
+                "message": "슬라이스 밖에서는 루트 index만 import한다"
+              },
+              {
+                "regex": "^\\.\\.(/\\.\\.)*/(app|pages|features|entities|shared)(/|$)",
+                "message": "슬라이스를 넘는 상대 경로 금지 — @/ 별칭을 쓸 것"
+              },
+              {
+                "group": [
+                  "@/app", "@/app/**",
+                  "@/pages", "@/pages/**",
+                  "@/features", "@/features/**",
+                  "@/entities", "@/entities/**"
+                ],
+                "message": "shared는 최하층이다 — 상위 레이어를 import할 수 없다"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/entities/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@/{entities,features,pages}/*/**"],
+                "message": "슬라이스 밖에서는 루트 index만 import한다"
+              },
+              {
+                "regex": "^\\.\\.(/\\.\\.)*/(app|pages|features|entities|shared)(/|$)",
+                "message": "슬라이스를 넘는 상대 경로 금지 — @/ 별칭을 쓸 것"
+              },
+              {
+                "group": [
+                  "@/app", "@/app/**",
+                  "@/pages", "@/pages/**",
+                  "@/features", "@/features/**",
+                  "@/entities", "@/entities/**"
+                ],
+                "message": "entities는 상위 레이어와 다른 entity 슬라이스를 import할 수 없다"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/features/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@/{entities,features,pages}/*/**"],
+                "message": "슬라이스 밖에서는 루트 index만 import한다"
+              },
+              {
+                "regex": "^\\.\\.(/\\.\\.)*/(app|pages|features|entities|shared)(/|$)",
+                "message": "슬라이스를 넘는 상대 경로 금지 — @/ 별칭을 쓸 것"
+              },
+              {
+                "group": [
+                  "@/app", "@/app/**",
+                  "@/pages", "@/pages/**",
+                  "@/features", "@/features/**"
+                ],
+                "message": "features는 상위 레이어와 다른 feature를 import할 수 없다 — feature 간 조립은 app·pages 담당"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/pages/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@/{entities,features,pages}/*/**"],
+                "message": "슬라이스 밖에서는 루트 index만 import한다"
+              },
+              {
+                "regex": "^\\.\\.(/\\.\\.)*/(app|pages|features|entities|shared)(/|$)",
+                "message": "슬라이스를 넘는 상대 경로 금지 — @/ 별칭을 쓸 것"
+              },
+              {
+                "group": ["@/app", "@/app/**", "@/pages", "@/pages/**"],
+                "message": "pages는 app과 다른 page를 import할 수 없다 — 스토어 값은 app이 props로 하향 주입한다"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }
