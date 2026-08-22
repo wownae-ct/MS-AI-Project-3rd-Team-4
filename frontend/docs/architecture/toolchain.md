@@ -389,18 +389,46 @@ ZDEV[true]ZPROD[false]ZMODE[production]
 
 | 변수 | 상태 |
 |---|---|
-| `VITE_API_BASE` | **유일한 프론트 변수.** `src/vite-env.d.ts:21`이 선언하고 `.github/workflows/frontend-ci.yml`이 주입한다. **읽는 코드는 현재 없다** — 전송 계층이 `src` 초기화 때 삭제됐다(§6.3) |
+| `VITE_API_BASE` | **유일한 프론트 변수.** `src/vite-env.d.ts:23`이 선언하고 `.github/workflows/frontend-ci.yml`이 주입한다. **읽는 코드는 현재 없다** — 전송 계층이 `src` 초기화 때 삭제됐다(§6.3). **값은 2026-08-22 확정됐다**(§6.2) |
 | `VITE_WS_BASE` | **제거 완료.** 대응 코드 없는 선언이라 지웠다 — 현재 `ImportMetaEnv`에 없다 |
 
 Vite 규칙 — `VITE_` 접두 변수만 클라이언트에 노출되고(`envPrefix` 기본값), `.env`는 `envDir`(기본: `vite.config.ts`가 있는 프로젝트 루트)에서 로드되며, 값은 **빌드타임에 정적 치환**된다. 로드 우선순위는 ① 실행 시점 환경변수 → ② `.env.[mode]`(+`.local`) → ③ `.env`(+`.local`). 개인 로컬 값은 `.env.local`에 두며, 이 저장소 `.gitignore`의 `.env.*` 패턴에 이미 걸려 커밋되지 않는다. — [Env and Mode](https://vite.dev/guide/env-and-mode) · [Shared Options](https://vite.dev/config/shared-options.html)
 
-**값 형식은 오리진만, 끝 슬래시 없이**다. 코드가 `${API_BASE}${path}`로 이어붙이고 `path`가 전부 `/api/v1/…`·`/healthz`로 시작하기 때문이다. 슬래시를 붙이면 `//api/v1/…`이 된다.
+**값 형식은 `https://` 오리진만, 끝 슬래시 없이**다. 코드가 `${API_BASE}${path}`로 이어붙이고 `path`가 전부 `/api/v1/…`로 시작하기 때문이다(헬스도 `/api/v1/health` — 옛 프론트 `health.ts` 의 `/healthz` 는 **현 백엔드에 없다**, §6.2). 슬래시를 붙이면 `//api/v1/…`이 되고, **스킴이 `http://` 면 브라우저에서만 조용히 실패한다**(§6.2 함정 ①).
 
-### 6.2 현재 상태 — 붙일 백엔드가 아직 없다 (2026-08-20)
+### 6.2 백엔드 호스트 확정 + 연동 실측 (2026-08-22) — 2026-08-20 까지는 「붙일 백엔드가 없다」였다
 
-**따라서 `VITE_API_BASE`에 넣을 값이 지금은 존재하지 않는다.** 선언만 두고 값은 비워 둔다. 값이 정해지는 시점은 백엔드 호스트가 확정될 때다.
+**호스트 = `https://20-249-52-148.nip.io`** — AKS nginx 인그레스 · `20.249.52.148` 의 nip.io 와일드카드 DNS · Let's Encrypt 인증서(`CN=20-249-52-148.nip.io`). `VITE_API_BASE` 에는 **이 값을 끝 슬래시 없이** 넣는다. 로컬 `.env` 에 들어 있고(2026-08-22 확인 — `.env.local` 은 없다), GitHub secret `VITE_API_BASE` 는 **값 재열람이 안 되므로** `https://` 임을 의심하면 덮어써서 보장한다.
 
-값이 정해진 뒤의 확인 경로 — 그때 다시 조사하지 않도록 미리 적어 둔다:
+⚠️ **잠정 호스트다.** nip.io 는 IP 가 곧 이름이라 인그레스 IP 가 바뀌면 값도 바뀐다. 인증서는 **2026-08-21 발급 · 2026-11-19 만료**(자동 갱신 여부는 백엔드·인프라 소관). 바뀌면 이 절 · `.env` · GitHub secret · `public/staticwebapp.config.json` 의 `connect-src` 를 **함께** 고친다.
+
+**백엔드 계약** (`origin/backend` `86fad89`, `backend/app/main.py` · `routers/health.py`): 모든 라우터가 `/api/v1` 프리픽스 · 헬스 `GET /api/v1/health → {"status":"ok"}` · CORS `allow_origins=["http://localhost:5173"]` + `allow_origin_regex`(SWA `polite-island-0bb189700(-<id>)?.7.azurestaticapps.net`) · 에러 바디 `{"error":{"code","message"}}` · 인증 없음.
+
+#### 실측표 (2026-08-22, 이 PC → 인그레스)
+
+| 프로브 | 결과 |
+|---|---|
+| `curl http://…/api/v1/health` | **308 Permanent Redirect** → `https://…` (nginx). **이 308 응답에는 `Access-Control-Allow-Origin` 이 없다** |
+| `curl https://…/api/v1/health` | **200** `{"status":"ok"}` · 27 ms · `Strict-Transport-Security: max-age=31536000; includeSubDomains` · 인증서 검증 통과(`-k` 불필요) |
+| 프리플라이트 `OPTIONS` + `Origin: http://localhost:5173` + `Access-Control-Request-Headers: content-type` | 200 · `allow-origin: http://localhost:5173` · `allow-methods: DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT` · `allow-headers: content-type` · `max-age: 600` |
+| `Origin: http://127.0.0.1:5173` | **ACAO 없음** — 의도된 차단(함정 ②) |
+| `Origin: https://polite-island-0bb189700.7.azurestaticapps.net` | ACAO 있음 — 운영 오리진은 이미 열려 있다 |
+| 브라우저(`npm run dev` → `http://localhost:5173` 에서 `fetch`) · **`https://` 베이스** — 단순 GET · 프리플라이트 GET(`Content-Type: application/json`) · POST JSON | **200 · 200 · 405**(`Method Not Allowed` = CORS 통과 + 엔드포인트 도달 증거) |
+| 같은 곳 · **`http://` 베이스** — 단순 GET · 프리플라이트 GET | **둘 다 `TypeError: Failed to fetch`** |
+
+#### 함정 ① — `http://` 를 넣으면 `curl` 은 되고 브라우저만 조용히 실패한다
+
+브라우저는 CORS 모드에서 **리다이렉트 응답도 CORS 검사를 통과해야** 하는데 nginx 의 308 에는 ACAO 가 없어 **단순 요청도** 네트워크 오류가 된다. 프리플라이트는 **리다이렉트 자체가 오류**다 — CORS-preflight fetch 는 ok status 만 허용한다([Fetch Standard §4.8](https://fetch.spec.whatwg.org/#cors-preflight-fetch)). `redirect:"manual"` 로 보내 `type:"opaqueredirect"` 가 돌아오는 것으로 **HSTS 업그레이드가 아니라 실제 308 수신**임을 확인했다. 운영(SWA = `https://`)에서는 그 전에 **혼합 콘텐츠**로 차단된다 — `fetch` 는 blockable 이다([MDN Mixed content](https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content)). **실제로 `.env` 에 `http://` 가 들어 있던 것을 이 실측으로 발견해 `https://` 로 고쳤다.** 전송 계층을 세울 때 `vite.config.ts` 게이트에 **형식 검사(`https://` + 끝 슬래시 없음)** 를 넣는 근거다 — `?? ""` 폴백(§6.3)과 같은 부류의 「빌드는 성공하고 런타임만 깨지는」 결함이다.
+
+#### 함정 ② — dev 서버는 `localhost` 로 띄운다 (`127.0.0.1` 금지)
+
+CORS 허용 오리진이 `http://localhost:5173` **정확히 하나**다. `--host 127.0.0.1` 로 열면 같은 서버인데도 차단된다(실측: ACAO 없음). Vite 기본값(`localhost`)을 바꾸지 않는다. `vite preview` 는 반대로 `127.0.0.1` 을 줘야 붙는다(§8.2 IPv6 바인딩) — preview 에서 백엔드를 호출하려면 백엔드 CORS 에 `http://127.0.0.1:4173` 추가가 **선행**돼야 한다(지금은 호출할 코드가 없어 문제가 안 된다).
+
+#### 남은 것 — 코드 쪽 두 결함 (값이 맞아도 앱은 아직 백엔드를 호출하지 않는다)
+
+① `VITE_API_BASE` 를 **읽는 코드가 0건** → §6.3 의 조건으로 전송 계층 복원(`shared/config/env.ts` · `shared/api/client.ts`+테스트 · `health.ts` 는 `/api/v1/health`). ② `public/staticwebapp.config.json` CSP 가 `connect-src 'self'` 라 **운영에서 백엔드 호출을 막는다** → `connect-src 'self' https://20-249-52-148.nip.io` + `scripts/lib/deploy-config.mjs` 게이트 갱신을 ①과 **같은 커밋**으로. 둘 다 결정 대기(CLAUDE.md §6-N).
+
+값을 다시 확인해야 할 때의 경로 — 그때 다시 조사하지 않도록 적어 둔다:
 
 | 경로 | 비고 |
 |---|---|
@@ -412,7 +440,7 @@ Vite 규칙 — `VITE_` 접두 변수만 클라이언트에 노출되고(`envPre
 
 ### 6.3 진짜 문제는 값이 아니라 폴백이다
 
-> ⚠️ **휴면 상태다 (2026-08-21 정정).** 이 절이 서술하던 결함은 **코드가 사라져 현재 존재하지 않는다.** 아래는 **전송 계층을 다시 세울 때 반복하지 않기 위한 기록**이다.
+> ⚠️ **휴면 상태다 (2026-08-21 정정).** 이 절이 서술하던 결함은 **코드가 사라져 현재 존재하지 않는다.** 아래는 **전송 계층을 다시 세울 때 반복하지 않기 위한 기록**이다. **2026-08-22 백엔드 호스트가 확정돼(§6.2) 이 조건은 「대기」에서 「다음 작업의 요구사항」이 됐다.**
 >
 > 과거 `shared/api/client.ts`·`answers.ts`가 `import.meta.env.VITE_API_BASE ?? ""`로 폴백했다. 두 파일은 `src` 초기화(주제 전환) 때 삭제됐고, `src/shared/`에는 현재 `ui/`만 있다. `import.meta.env`를 읽는 코드는 **0건**이다.
 
@@ -422,7 +450,7 @@ Vite 규칙 — `VITE_` 접두 변수만 클라이언트에 노출되고(`envPre
 
 **② 포크 PR 빌드가 조용히 깨진다.** GitHub 공식 문서: *"With the exception of `GITHUB_TOKEN`, secrets are not passed to the runner when a workflow is triggered from a forked repository."* — [Using secrets in GitHub Actions](https://docs.github.com/en/actions/security-for-github-actions/security-guides/using-secrets-in-github-actions). `frontend-ci.yml`은 `pull_request`에 트리거되므로 포크에서 온 PR에서는 `secrets.VITE_API_BASE`가 **비어 온다.** 폴백이 있으면 빌드는 성공하고, 상대 경로 번들이 SWA 프리뷰로 배포된다.
 
-> **전송 계층을 다시 세울 때의 조건** — `?? ""` 같은 조용한 폴백을 두지 않는다. 빌드 시점에 검증해 **실패시키거나**, 부재를 호출부에서 **명시적으로 다룬다.** 타입 쪽은 이미 정직하다 — `vite-env.d.ts:21`이 `VITE_API_BASE?: string`(optional)이라 부재가 타입에 드러난다.
+> **전송 계층을 다시 세울 때의 조건** — `?? ""` 같은 조용한 폴백을 두지 않는다. 빌드 시점에 검증해 **실패시키거나**, 부재를 호출부에서 **명시적으로 다룬다.** 타입 쪽은 이미 정직하다 — `vite-env.d.ts:23`이 `VITE_API_BASE?: string`(optional)이라 부재가 타입에 드러난다. **값이 있을 때의 형식도 빌드에서 검사한다** — `https://` 스킴 + 끝 슬래시 없음(§6.2 함정 ①에서 `http://` 가 실제로 들어가 있었다). 호스트 자체는 §6.2.
 
 ### 6.4 보안 성격 — secret이 아니라 환경별 설정값이다
 
@@ -437,7 +465,7 @@ Vite 공식 경고: *"VITE_\* variables should **not** contain sensitive informa
 - **`src/vite-env.d.ts`의 `ImportMetaEnv`를 단일 출처로 삼는다.** 프론트 환경변수를 추가·변경할 때 여기서 시작하고, CI 주입 이름과 일치하는지 같은 PR에서 확인한다.
 - **`vite-env.d.ts`에 `import` 문을 넣지 않는다.** 공식 문서 경고: *"If the `ImportMetaEnv` augmentation does not work, make sure you do not have any `import` statements in `vite-env.d.ts`."* 현재는 없다 — 이 상태를 유지 조건으로 못박아 둔다.
 - **미사용 선언을 남기지 않는다.** 선언은 계약이다. 대응 없는 선언(`VITE_WS_BASE`)은 **제거했다** — 현재 `ImportMetaEnv`에는 `VITE_API_BASE` 하나뿐이다.
-- **타입과 런타임 가정을 일치시킨다.** ✅ **해소** — `vite-env.d.ts:21`이 `readonly VITE_API_BASE?: string`(optional)이다. 타입이 런타임보다 낙관적이면 그 자체가 결함이므로, 값을 읽는 코드가 다시 생기면 이 optional 을 그대로 받아 부재를 명시적으로 다룬다.
+- **타입과 런타임 가정을 일치시킨다.** ✅ **해소** — `vite-env.d.ts:23`이 `readonly VITE_API_BASE?: string`(optional)이다. 타입이 런타임보다 낙관적이면 그 자체가 결함이므로, 값을 읽는 코드가 다시 생기면 이 optional 을 그대로 받아 부재를 명시적으로 다룬다.
 
 > `frontend/.env.example`은 프론트 전용이 아니라 **프로젝트 공용** 파일이며, **`VITE_API_BASE=` 를 담고 있다**(line 2, 빈 값). 즉 새로 클론한 사람이 변수의 존재는 그 파일에서 알 수 있고, **의미와 주입 경로는 이 절이 책임진다.** Azure/Key Vault/PostgreSQL/AKS/SWA/Log Analytics 절은 백엔드·인프라 소관이므로 다루지 않는다.
 
@@ -589,7 +617,7 @@ npm run preview -- --host 127.0.0.1
 | 파일 | 상태 |
 |---|---|
 | `frontend/.gitattributes` | ✅ **해소 (커밋 `2f694a1`)** — 현재 `.nvmrc`·`.npmrc` 의 `eol=lf` 2줄뿐이고, 파일 주석이 *"실제로 매칭되는 규칙만 둔다"* 를 명시한다 |
-| ~~`frontend/staticwebapp.config.template.json`~~ → **`frontend/public/staticwebapp.config.json`** | ✅ **해소 (2026-08-22)** — template 을 **산출물에 실리는 실제 파일**로 바꿨다. Vite 가 `public/` 을 `dist/` 루트로 복사하므로 SWA 공식 요건(*"build step outputs the file to the root of the output_location"*)을 빌드 체인이 자동으로 만족한다. `/assets/*` immutable 캐시 · HTML `no-cache` · SPA 폴백(`/assets/*` 제외) · CSP(`connect-src 'self'` — 읽는 코드 0건이므로 호스트 없음) 포함. **게이트** `scripts/lib/deploy-config.mjs` 가 `dist/staticwebapp.config.json` 의 존재와 계약을 빌드마다 검사한다(주입 시험 2종으로 차단 확인). CSP 는 `<meta http-equiv>` 로 dist 에 주입해 브라우저 위반 0건을 확인했다(`frame-ancestors` 만 meta 미지원으로 미검증) |
+| ~~`frontend/staticwebapp.config.template.json`~~ → **`frontend/public/staticwebapp.config.json`** | ✅ **해소 (2026-08-22)** — template 을 **산출물에 실리는 실제 파일**로 바꿨다. Vite 가 `public/` 을 `dist/` 루트로 복사하므로 SWA 공식 요건(*"build step outputs the file to the root of the output_location"*)을 빌드 체인이 자동으로 만족한다. `/assets/*` immutable 캐시 · HTML `no-cache` · SPA 폴백(`/assets/*` 제외) · CSP(`connect-src 'self'` — 읽는 코드 0건이므로 호스트 없음. **호스트는 2026-08-22 확정됐다(§6.2) — 전송 계층 복원과 같은 커밋에서 `https://20-249-52-148.nip.io` 를 추가한다**) 포함. **게이트** `scripts/lib/deploy-config.mjs` 가 `dist/staticwebapp.config.json` 의 존재와 계약을 빌드마다 검사한다(주입 시험 2종으로 차단 확인). CSP 는 `<meta http-equiv>` 로 dist 에 주입해 브라우저 위반 0건을 확인했다(`frame-ancestors` 만 meta 미지원으로 미검증) |
 | `frontend/index.html` | ⚠️ **유효** — `<title>Frontend</title>` 중립값 · `<link rel="icon">` 없음(`/favicon.ico` 404 실측). 제품명·파비콘은 디자인 오너 결정이라 여기서 정하지 않는다. `viewport-fit=cover` 는 2026-08-21 추가됨 |
 | `frontend/README.md` | ✅ **해소 (2026-08-21)** — 실제 트리(`app` · `pages/style-guide` · `shared/ui` · `scripts/lib`) 반영 · 죽은 링크 제거 · `build` 명령에 게이트 포함 · 스타일 함정 2건 |
 | `.github/workflows/frontend-ci.yml` Build 스텝 주석 | ✅ **해소 (2026-08-22)** — 삭제된 `?? ""` 폴백 언급을 사실(읽는 코드 0건 · 경고는 재도입 방지용)로 고쳤다 |
