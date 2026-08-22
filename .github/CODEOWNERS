@@ -10,3 +10,4 @@
 /.github/ @wownae-ct
 
 /frontend/ @gunnysis
+/.github/workflows/frontend-ci.yml @gunnysis
