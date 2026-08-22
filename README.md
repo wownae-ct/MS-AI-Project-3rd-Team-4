@@ -1,43 +1,33 @@
-# 메리맵 (MerryMap)
+# AI 홈트레이닝 코치 (서비스명 미정)
 
-SeSAC MS AI 엔지니어 4기 3차 프로젝트 (2인 팀). 예식장·스드메(드레스/스튜디오/메이크업) 중심으로
-예산·타임라인·계약전 체크리스트를 관리하고, 실제 사례(좋은예/나쁜예)와 공식 통계에 근거한 RAG
-상담을 받는 웨딩 준비 앱. "크로스핏 폼 코치"(웹캠 운동 코칭) → "브리프코치"(AI 화법 트레이너)에
-이은 **2차 주제 전환**(2026-08-20)으로, 인프라·협업 구조는 그대로 두고 주제만 다시 바꿨다. 현재
-설계 문서는 `docs/wedding/plan/*.md` 10종(`00_BASELINE.md`가 SSOT, 로컬 전용, git 미추적).
+SeSAC MS AI 엔지니어 4기 3차 프로젝트 (2인 팀). 웹캠 기반 실시간 자세 인식 + 멀티 에이전트 코칭 앱.
+크로스핏 + 일반 헬스 동작 데이터를 함께 다룬다. 아키텍처 기준 문서는 `docs/설계/wave0_contract.html`,
+`docs/설계/design_meeting_final_5.html` 참고.
 
-## 아키텍처 개요 (routers → services → models/rag)
+## 아키텍처 개요 (T0~T4 티어)
 
-실시간 판정이나 다단계 에이전트 파이프라인이 필요 없는, CRUD API + RAG 상담 1개 엔드포인트 위주의
-비교적 단순한 구조다.
-
-| 레이어 | 위치 | 역할 |
+| 티어 | 위치 | 역할 |
 |---|---|---|
-| Routers | `backend/app/routers/` | 23개 REST 엔드포인트(health/wedding/category/budget/vendor_case/chat/dashboard) |
-| Services | `backend/app/services/` | 비즈니스 로직 |
-| Models | `backend/app/models/` | SQLAlchemy 2.0 async, 14개 테이블 |
-| RAG | `backend/app/rag/` | indexing(오프라인 색인) / retrieval(하이브리드 검색+RRF) / graph(LangGraph 3노드: retrieve→generate→verify) |
-
-**무인증 MVP** — 로그인 없음, 시드된 단일 `weddings` 행 하나로 데모(BASELINE §0). 실서비스 전환
-시에만 인증을 재도입한다.
+| T0 | frontend | MediaPipe Pose로 관절 좌표 추출 |
+| T1 | frontend | 룰엔진 판정 + 렙 카운트 (서버 왕복 없음) |
+| T2 | backend | TCN 자세 판정 + 코칭 문장 스트리밍 (coach agent) |
+| T3 | backend | RAG + guardrail 안전 판정 (safety agent) |
+| T4 | backend worker | 세션 리포트/다음 처방 (planner agent, 비동기) |
 
 ## 폴더 구조
 
 ```
-backend/    FastAPI(app/main.py) + SQLAlchemy 2.0 async 모델(app/models/) + Alembic(alembic/)
-            + routers/services/rag. backend/old/에 브리프코치 시절 구현 아카이브(lint/test 제외)
-frontend/   React + SSE 상담 클라이언트 (Vite+React+TS) — 2026-08-20 기준 아직 브리프코치 화면
-            그대로, frontend 브랜치에서 별도 재구성 필요
-data/       RAG 코퍼스(DS1_PRICE~DS8_UGC — 참가격/소비자원 사례/표준계약서/정부정책/설문/
-            체크리스트/타임라인/UGC). data/old/에 브리프코치 화법 코퍼스 아카이브
-db/         콘텐츠 시드(seed/) + 브리프코치 시절 raw-SQL 마이그레이션 아카이브(old/) — 스키마
-            자체는 backend/app/models/ + backend/alembic/에 있음
-infra/      Bicep(Azure 리소스) + AKS 매니페스트 + ArgoCD — 이전 주제 빌드 그대로 재사용
-docs/       docs/wedding/plan/이 현재 설계 문서. 이전 주제들 설계 문서는 docs/old/에 보존(로컬 전용)
+backend/    FastAPI 게이트웨이 + 에이전트(coach/safety/planner/retriever) + RAG 인덱싱(rag/) + ONNX 추론(app/inference/)
+frontend/   React + MediaPipe(T0) + 룰엔진(T1) + WS 클라이언트
+data/       RAG 코퍼스(운동/부상 가이드 문서) — 이미지/영상 학습 데이터셋 아님
+db/         ORM(SQLAlchemy async) + 초기 시드 데이터
+infra/      Bicep(Azure 리소스) + AKS 매니페스트 + ArgoCD
+docs/       설계 문서, 제안서, 회의록
 ```
 
-> **커스텀 모델 학습 없음**: RAG는 학습이 아니라 서비스가 매 요청 호출하는 라이브 컴포넌트라 이
-> 레포(`backend/app/rag/`, `data/`)에 있다. Azure OpenAI가 chat/embedding 배포를 분리 제공한다.
+> **레포 분리**: 포즈/TCN 모델 학습(데이터셋, 노트북, 체크포인트)은 별도 **ml 레포**에서 진행한다.
+> 이 레포는 학습된 모델을 ONNX로 받아 `backend/models/`에 두고 `backend/app/inference/`에서 서빙만 한다.
+> RAG는 학습이 아니라 서비스가 매 요청 호출하는 라이브 컴포넌트라 이 레포(`backend/rag/`, `data/`)에 남겼다.
 
 ## 브랜치 전략 & 폴더 소유권
 
