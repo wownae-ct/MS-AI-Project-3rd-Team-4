@@ -155,6 +155,21 @@ function serializeSelectors(selectors) {
  *   radii   — theme.css 의 `--radius-*` 이름과 값(`8px` 등) 집합.
  * @returns {{ violations: Array<{ norm: string, where: string, value: string }>, stats: Record<string, number> }}
  */
+/**
+ * 팔레트 색의 **알파 변형**이면 그 사실을 덧붙인다. 판정은 바꾸지 않고 메시지만 늘린다.
+ *
+ * 왜 필요한가 — Tailwind 의 opacity modifier(`bg-surface/12`)는 `color-mix()` 로 나가는데
+ * srgb 폴백이 리터럴 hex 라 lightningcss 가 8자리로 접는다(`#ffffff1f`). 그러면 이 게이트는
+ * *"팔레트 밖 색 … #ffffff1f"* 라고 말한다 — 읽는 사람은 **`#ffffff` 가 팔레트에 있는데** 왜
+ * 막히는지 알 수 없다. 시끄럽지만 오해를 부르는 실패라 조용한 실패만큼 나쁘다.
+ * decisions.md D7 이 이 사정을 적어 뒀으므로 거기로 보낸다.
+ */
+function alphaHint(atom, palette) {
+  if (!/^#[0-9a-f]{8}$/iu.test(atom)) return "";
+  if (!palette.has(atom.slice(0, 7))) return "";
+  return `  (팔레트 색 ${atom.slice(0, 7)} 의 알파 변형 — 반투명은 현재 지원되지 않는다. decisions.md D7 참조)`;
+}
+
 export function checkCssNorms(cssText, { filename, palette, radii }) {
   const violations = [];
   const stats = { declarations: 0, colors: 0, radiusDeclarations: 0, shadowCustomProperties: 0 };
@@ -206,7 +221,7 @@ export function checkCssNorms(cssText, { filename, palette, radii }) {
         if (!atom.startsWith("#") && atom !== "transparent") continue;
         stats.colors += 1;
         if (atom === "transparent" || palette.has(atom)) continue;
-        report("color", rule, `${name}: ${atom}`);
+        report("color", rule, `${name}: ${atom}${alphaHint(atom, palette)}`);
       }
     }
 
