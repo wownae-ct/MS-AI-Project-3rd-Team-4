@@ -12,8 +12,8 @@
 // 낸다(WCAG 1.4.1). 이 대비책이 사라지지 않도록 `DashboardPage.test.tsx` 가 고정한다.
 // 범례 점의 테두리는 `ink-soft` 다 — `잔여` 의 채움색이 `line`(1.28:1)이라 테두리가 없으면
 // 흰 표면에서 점 자체가 보이지 않는다(a11y.md §3 「경계가 유일한 식별 수단」).
+import type { BudgetSummary } from "@/entities/wedding";
 import { Money } from "@/shared/ui";
-import type { BudgetSummary } from "../model/sample-data";
 
 interface Series {
   label: string;
@@ -25,7 +25,10 @@ interface Series {
 const SERIES: readonly Series[] = [
   { label: "집행", color: "var(--color-primary)", amount: (s) => s.paid },
   { label: "계획(미지급)", color: "var(--color-ink-soft)", amount: (s) => s.planned },
-  { label: "잔여", color: "var(--color-line)", amount: (s) => s.remaining },
+  // 「잔여」가 아니라 「미배정」이다 — 45,000,000 − 3,800,000 ≠ 1,000,000 이라 「잔여」로 적으면
+  // 숫자가 맞지 않아 보인다. 여기 도넛은 세 계열이 총액을 채우므로 문맥이 뜻을 잡아 주지만,
+  // 리포트(S5)는 계획 항목 없이 세 값만 나열해 혼자 서면 오독된다. 같은 필드에 두 이름을 두지 않는다.
+  { label: "미배정", color: "var(--color-line)", amount: (s) => s.remaining },
 ];
 
 export interface BudgetDonutProps {

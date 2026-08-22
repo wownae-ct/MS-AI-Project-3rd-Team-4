@@ -8,8 +8,8 @@
 // 5개 화면 7곳이 같은 구분선 리스트를 요구하지만(목업 인벤토리) 공용 `DividedList` 로 빼지 않았다 —
 // 반복 행을 `<ul>/<li>` 로 낼지가 아직 미정이기 때문이다(a11y.md §5 「목록 시맨틱」).
 // 지금 빼면 결정이 뒤집힐 때 7곳이 함께 바뀐다. 그때까지 파급을 이 화면 안에 가둬 둔다.
+import type { UpcomingPayment } from "@/entities/wedding";
 import { Badge, Money } from "@/shared/ui";
-import type { UpcomingPayment } from "../model/sample-data";
 
 export interface PaymentRowProps {
   payment: UpcomingPayment;
