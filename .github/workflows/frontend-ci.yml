@@ -14,12 +14,15 @@
 name: frontend-ci
 
 on:
+    # paths 에 이 워크플로 자신을 포함한다 — 없으면 이 파일을 고쳐도 CI 가 돌지 않아
+    # 변경이 검증되지 않은 채 머지된다. 모노레포에서 워크플로 파일을 paths 에 넣는 것은
+    # SWA 공식 문서의 권장 구성이다(build-configuration.md 「Monorepo support」).
     pull_request:
         types: [opened, synchronize, reopened, closed]
-        paths: ["frontend/**"]
+        paths: ["frontend/**", ".github/workflows/frontend-ci.yml"]
     push:
         branches: [frontend]
-        paths: ["frontend/**"]
+        paths: ["frontend/**", ".github/workflows/frontend-ci.yml"]
     workflow_dispatch:
 
 jobs:
