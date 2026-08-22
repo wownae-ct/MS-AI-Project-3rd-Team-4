@@ -156,11 +156,11 @@ padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
 - **v8의 자동 코드 스플리팅은 Framework 모드 전용**이다. 정적 SPA 호스팅에서는 Declarative / Data 모드 + 수동 `lazy` 조합이 현실적이다
 - `wouter`는 코드 스플리팅 내장이 없다 — `React.lazy` + `<Suspense>`를 직접 조합한다
 
-**호스팅 연동** — SPA는 서버 폴백이 필요하다. 저장소에는 **`staticwebapp.config.template.json`**(초안)만 있고 배포본 `staticwebapp.config.json`은 **아직 생성되지 않았다**(`__API_HOST__` 치환이 배포 호스트 확정을 기다린다). template에 이미 들어 있는 것:
+**호스팅 연동** — SPA는 서버 폴백이 필요하다. **`frontend/public/staticwebapp.config.json`** 이 그 파일이다(2026-08-22 — 이전의 `staticwebapp.config.template.json` 을 대체). Vite 가 `public/` 을 산출물 루트로 복사하므로 SWA 가 읽는 위치 요건을 빌드가 만족하고, `scripts/lib/deploy-config.mjs` 게이트가 빌드마다 아래 계약을 검사한다:
 ```json
 { "navigationFallback": { "rewrite": "/index.html", "exclude": ["/assets/*"] } }
 ```
-**아직 없는 것** — 자산 캐시 헤더(`/assets/*`에 `public, max-age=31536000, immutable`). 해시 파일명이라 안전하고 호스트와 무관하므로 **template 단계에서 미리 넣을 수 있다**(`../architecture/toolchain.md` 「배포 시 필요한 캐시 헤더」). 라우터 도입 시 같은 파일을 만지므로 함께 처리한다.
+자산 캐시 헤더(`/assets/*` → `public, max-age=31536000, immutable`)와 HTML `no-cache` 도 같은 파일에 있다. **배포본에서 응답 헤더를 실측하는 것**만 남았다.
 
 ## 9. 화면 스펙이 답하지 않는 것
 
