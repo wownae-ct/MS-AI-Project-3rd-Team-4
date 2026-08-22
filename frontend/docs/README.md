@@ -1,6 +1,6 @@
 # frontend/docs — 프론트엔드 구현 문서
 
-> **최종 갱신** 2026-08-22 (S5 구현 · D2 종결 · 배포 설정 게이트 신설 반영)
+> **최종 갱신** 2026-08-22 (S5 구현 · D2 종결 · 배포 설정 게이트 신설 · **CI 소유권 공지 신설** 반영)
 >
 > ✅ 이 폴더는 커밋된다 (`!frontend/docs/` 예외). 여기 두는 문서는 팀 전체에 공유되는 공개 문서다 —
 > 로컬 메모·시크릿·개인 기록은 두지 않는다.
@@ -13,6 +13,12 @@
 | [design/](design/README.md) | 디자인 규범 — 색 · 서체 · 형태 · 접근성 · 레이아웃의 값과 근거 |
 | [mockups/](mockups/README.md) | 화면 스펙 S1~S6 (정적 사본) |
 | [adr/](adr/README.md) | 아키텍처 결정 기록 진입점 |
+
+### 단독 문서
+
+| 문서 | 내용 |
+|---|---|
+| [ci-ownership-notice.md](ci-ownership-notice.md) | **인프라 담당자 대상 공지** — `.github/workflows/frontend-ci.yml` **1개 파일만** 프론트가 맡는다. 왜 그게 합리적인지의 근거 · 안 건드리는 경계 · `CODEOWNERS` 한 줄 제안 · 확인 못 한 것 |
 
 ### architecture/ — 적용 설계
 
