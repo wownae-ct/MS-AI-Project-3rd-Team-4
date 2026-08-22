@@ -92,7 +92,7 @@
 | `button-ghost` | 배경 투명 · 글자 `primary` · 모서리 `rounded-sm` · padding 5px 11px | `Button variant="ghost"` — 세로 5px 는 `min-h-tap`(44px)이 대신한다 |
 | `button` primary / secondary | primary 면 + surface 글자 / surface 면 + line 보더 + ink 글자 · `rounded-md` | `Button` — 호버는 **열린 결정**(→ [D4](decisions.md#d4-호버-색을-77354f로-확정한다)) |
 | 진행률 | 트랙 `line` · 채움 `primary` · `rounded-pill` · 높이 8px | `Progress` — 불확정 표현은 [D11](decisions.md#d11-불확정-진행률의-시각-표현) |
-| 카드 | `surface` 면 · 1px `line` 보더 · `rounded-md`(현행) · padding 16px | `Card` — 라운드 16px 전환은 [D1](decisions.md#d1-라운드를-4단계로-고정한다) |
+| 카드 | `surface` 면 · 1px `line` 보더 · `rounded-md`(현행) · padding 16px | `Card` — 라운드 16px 전환은 [D1](decisions.md#d1-라운드를-4단계로-고정한다). 슬롯 2개: `title`(→ `<h2>`) · `subtitle`(→ `<p>` · `text-xs ink-soft`) |
 
 ### 범위 밖 (현행)
 
