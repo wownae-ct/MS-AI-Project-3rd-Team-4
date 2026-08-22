@@ -33,12 +33,18 @@ export async function generated(candidates) {
     loadStylesheet,
     onDependency() {},
   });
-  const css = compiler.build(candidates);
+  // 주석을 벗긴다 — 산출 머리말 `/*! tailwindcss … https://tailwindcss.com */` 의 `.com ` 이 셀렉터 검사에
+  // 걸려 bare 후보 `com` 이 「생성됨」으로 오보된 적이 있다(2026-08-22). 셀렉터만 남기고 판정한다.
+  const css = compiler.build(candidates).replaceAll(/\/\*[\s\S]*?\*\//gu, "");
   const result = {};
   for (const candidate of candidates) {
-    // 셀렉터는 이스케이프돼 나온다(`.bg-\[\#77354F\]`). 이스케이프를 벗겨 비교한다.
-    const escaped = candidate.replaceAll(/[\\[\]#:/.%]/gu, (ch) => `\\${ch}`);
-    result[candidate] = css.includes(`.${escaped}{`) || css.includes(`.${escaped} {`);
+    // 셀렉터는 이스케이프돼 나온다(`.bg-[#77354F]` · `.@max-xs:flex-col`). 이스케이프를 벗겨 비교한다.
+    // ⚠️ `@` 도 포함한다 — 빠뜨렸을 때 컨테이너 쿼리 변이가 전부 「미생성」으로 잘못 보고됐다(2026-08-22 실측).
+    const escaped = candidate.replaceAll(/[\\[\]#:/.%@]/gu, (ch) => `\\${ch}`);
+    // 의사 클래스 변이(`last:` · `hover:`)는 셀렉터 뒤에 `:last-child` 가 붙어 `{` 로 끝나지 않는다 —
+    // `{` 만 찾으면 그 후보가 전부 「미생성」이 된다(2026-08-22 실측). 뒤따르는 문자가 `{` · 공백 · `:` 이면 생성된 것이다.
+    const pattern = new RegExp(String.raw`\.${escaped.replaceAll(/[.*+?^${}()|[\]\\]/gu, (ch) => `\\${ch}`)}(?=[\s{:])`, "u");
+    result[candidate] = pattern.test(css);
   }
   return result;
 }
