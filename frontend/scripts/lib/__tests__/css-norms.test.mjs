@@ -98,6 +98,24 @@ describe("팔레트 밖 색", () => {
   it("임의값이 낸 리터럴을 잡는다", () => {
     expect(norms(".a{background-color:#77354F}")).toContain("color");
   });
+  // 진단 품질 — 판정이 아니라 **메시지**를 고정한다.
+  //
+  // Tailwind 의 opacity modifier(bg-surface/12)는 color-mix() 로 나가는데 srgb 폴백이 리터럴 hex 라
+  // lightningcss 가 8자리로 접는다. 그러면 이 게이트는 "팔레트 밖 색 … #ffffff1f" 라고 말하고,
+  // 읽는 사람은 #ffffff 가 팔레트에 있는데 왜 막히는지 알 수 없다 — 시끄럽지만 오해를 부르는 실패다.
+  it("팔레트 색의 알파 변형은 막되, 왜 막히는지 말해 준다", () => {
+    const got = run(".a{background-color:#ffffff1f}").violations;
+
+    expect(got.map((v) => v.norm)).toEqual(["color"]);
+    expect(got[0].value).toContain("#ffffff 의 알파 변형");
+    expect(got[0].value).toContain("D7");
+  });
+  it("팔레트 밖 색의 알파 변형에는 그 힌트를 붙이지 않는다 — 사유가 다르다", () => {
+    const got = run(".a{background-color:#c9c3bc80}").violations;
+
+    expect(got.map((v) => v.norm)).toEqual(["color"]);
+    expect(got[0].value).not.toContain("알파 변형");
+  });
   it("투명(#0000 · #00000000)은 색 지정이 아니다", () => {
     expect(norms(".a{background-color:#0000}")).toEqual([]);
     expect(norms(".a{--tw-x:#00000000}")).toEqual([]);
