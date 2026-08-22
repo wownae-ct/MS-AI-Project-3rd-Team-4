@@ -579,12 +579,14 @@ npm run preview -- --host 127.0.0.1
 | 파일 | 상태 |
 |---|---|
 | `frontend/.gitattributes` | ✅ **해소 (커밋 `2f694a1`)** — 현재 `.nvmrc`·`.npmrc` 의 `eol=lf` 2줄뿐이고, 파일 주석이 *"실제로 매칭되는 규칙만 둔다"* 를 명시한다 |
-| `frontend/staticwebapp.config.template.json` | ⚠️ **절반 해소 (커밋 `4da671c`)** — 라우트·MIME 매핑은 없고 CSP 는 실측(2026-08-20) 기준으로 축소됐다(`wss:` · `worker-src` · `blob:` · `wasm-unsafe-eval` 제거, 사유가 `__CSP_NOTE__` 에 기록됨). **남은 것 하나 — `/assets/*` 캐시 헤더가 아직 없다**(아래 절). 호스트와 무관한 값이라 template 단계에서 미리 넣을 수 있다 — 별도 PR |
+| ~~`frontend/staticwebapp.config.template.json`~~ → **`frontend/public/staticwebapp.config.json`** | ✅ **해소 (2026-08-22)** — template 을 **산출물에 실리는 실제 파일**로 바꿨다. Vite 가 `public/` 을 `dist/` 루트로 복사하므로 SWA 공식 요건(*"build step outputs the file to the root of the output_location"*)을 빌드 체인이 자동으로 만족한다. `/assets/*` immutable 캐시 · HTML `no-cache` · SPA 폴백(`/assets/*` 제외) · CSP(`connect-src 'self'` — 읽는 코드 0건이므로 호스트 없음) 포함. **게이트** `scripts/lib/deploy-config.mjs` 가 `dist/staticwebapp.config.json` 의 존재와 계약을 빌드마다 검사한다(주입 시험 2종으로 차단 확인). CSP 는 `<meta http-equiv>` 로 dist 에 주입해 브라우저 위반 0건을 확인했다(`frame-ancestors` 만 meta 미지원으로 미검증) |
 | `frontend/index.html` | ⚠️ **유효** — `<title>Frontend</title>` 중립값 · `<link rel="icon">` 없음(`/favicon.ico` 404 실측). 제품명·파비콘은 디자인 오너 결정이라 여기서 정하지 않는다. `viewport-fit=cover` 는 2026-08-21 추가됨 |
 | `frontend/README.md` | ✅ **해소 (2026-08-21)** — 실제 트리(`app` · `pages/style-guide` · `shared/ui` · `scripts/lib`) 반영 · 죽은 링크 제거 · `build` 명령에 게이트 포함 · 스타일 함정 2건 |
-| `.github/workflows/frontend-ci.yml` Build 스텝 주석 | ⚠️ **낡음(무해)** — 삭제된 `?? ""` 폴백 코드를 언급한다. 전송 계층을 다시 세울 때 함께 고친다(§6.3) |
+| `.github/workflows/frontend-ci.yml` Build 스텝 주석 | ✅ **해소 (2026-08-22)** — 삭제된 `?? ""` 폴백 언급을 사실(읽는 코드 0건 · 경고는 재도입 방지용)로 고쳤다 |
 
 ### 배포 시 필요한 캐시 헤더 (§8.2 HAR 에서 발견)
+
+> ✅ **2026-08-22 반영됨** — 아래 두 값이 `frontend/public/staticwebapp.config.json` 에 들어갔고 `deploy-config.mjs` 게이트가 빠지면 빌드를 실패시킨다. **배포본에서 응답 헤더를 실제로 확인하는 일**은 여전히 남아 있다(설정 파일을 고친 사실은 동작 증거가 아니다).
 
 측정 B 의 응답 헤더가 전부 **`Cache-Control: no-cache`** 였다. `vite preview` 의 기본값이라 로컬에서는 무해하지만, 그대로 배포되면 **재방문마다 409 KB 의 폰트를 조건부 요청으로 재검증**한다.
 
