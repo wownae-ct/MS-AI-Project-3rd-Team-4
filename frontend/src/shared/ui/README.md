@@ -64,7 +64,7 @@ CSS 는 사이드이펙트라 `index.ts` 로 재수출할 수 없다 — 그래�
 
 **`font-display: swap` 은 패키지 CSS 기본값이며 그대로 둔다.** LCP 에 유리하고 CLS 에 불리한 교환인데, **실측으로 이 교환이 유리한 쪽임이 확인됐다.**
 
-`Slow 4G` + 콜드 캐시에서 폴백이 1.17 초 표시된 뒤 3파에 걸쳐 교체됐는데도 **CLS 0.01**(경보선 0.08 의 1/8), **LCP 1.29 s** 였다. `theme.css` 가 `--text-*--line-height` 를 명시해 둔 덕에 폰트 교체가 줄 높이를 바꾸지 못하기 때문이다.
+`Slow 4G` + 콜드 캐시에서 폴백이 1.17 초 표시된 뒤 3파에 걸쳐 교체됐는데도 **CLS 0.01**(경보선 0.08 의 1/8), **LCP 1.29 s** 였다. ⚠️ **이 측정은 라우터 도입(2026-08-22) 이전**이고 스타일가이드 1화면 기준이다 — 초기 JS 가 그 뒤로 늘었으므로 LCP 는 낙관적인 값이다(재측정은 ADR 0005 R7). `theme.css` 가 `--text-*--line-height` 를 명시해 둔 덕에 폰트 교체가 줄 높이를 바꾸지 못하기 때문이다.
 
 → **`@font-face` 메트릭 오버라이드(`size-adjust` 등)를 넣지 않는다.** 계산해 둔 값과 전체 근거는 `docs/architecture/toolchain.md` §8.2. **서체·폴백·레이아웃이 바뀌면 다시 잰다** — 위 값은 스타일가이드 1화면 기준이다.
 
@@ -103,7 +103,9 @@ const VARIANT: Record<ButtonVariant, string> = {
 | `prefers-color-scheme` | 산출 CSS | 9 |
 | `theme.css` 의 필수 `-*: initial` 6종 누락 | `theme.css` | 폐기 유지 |
 | 색 임의값(`bg-[#…]` 류) · `ring-*` · 그림자 유틸리티 토큰 | 소스 `src/**/*.{ts,tsx}` (주석 포함 — 스캐너가 주석도 읽는다) | 3 · 5 · 2 |
+| **bare 유령 유틸리티** — 소스의 단어 하나가 실제 유틸리티가 되는 것(식별자 포함). 컴파일되는 bare 후보 전체를 화이트리스트로 고정한다 | `npm test` (`ghost-candidates.test.mjs`) | 「산문이 유틸리티를 만든다」 |
+| **배포 설정** — `dist/staticwebapp.config.json` 의 SPA 폴백 · 자산 immutable 캐시 · HTML `no-cache` · CSP 인라인 style 허용 | 빌드 산출물 (`lib/deploy-config.mjs`) | 라우터 딥링크 계약 |
 
-**주입 시험으로 실제로 잡히는 것을 확인했다** — 폐기 전 `shadow-md` · `drop-shadow-md` · `ring-primary` · `bg-[#77354F]` 주입 → 전부 exit 1 + 셀렉터·`file:line:col` 출력 · 제거 후 통과. `--radius-*: initial` 삭제 → exit 1. 픽스처 40건이 `npm test` 에서 상시 돈다.
+**주입 시험으로 실제로 잡히는 것을 확인했다** — 폐기 전 `shadow-md` · `drop-shadow-md` · `ring-primary` · `bg-[#77354F]` 주입 → 전부 exit 1 + 셀렉터·`file:line:col` 출력 · 제거 후 통과. `--radius-*: initial` 삭제 → exit 1. 팔레트 색의 **알파 변형**(`bg-surface/12` → `#ffffff1f`)도 막히며, 그 경우 진단이 사유와 [D7](../../../docs/design/decisions.md#d7-반투명은-토큰-없이-opacity-modifier로-쓴다) 참조를 덧붙인다. 픽스처 **43건**이 `npm test` 에서 상시 돈다.
 
 **알려진 한계** (매 실행 출력) — `dist/assets/` 비재귀 · `dist/index.html` 인라인 `<style>` 미검사 · 팔레트 색을 임의값으로 하드코딩(`bg-[#8b3f63]`)하면 산출 CSS 검사는 통과한다(같은 색이라 무해하지만 토큰 우회 — 소스 검사가 잡는다). **우회 플래그는 없다.** 새 색·새 라운드는 [decisions.md](../../../docs/design/decisions.md) → `theme.css` 순서로 넣으면 화이트리스트가 자동으로 따라온다.

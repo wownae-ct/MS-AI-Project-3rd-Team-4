@@ -1,6 +1,6 @@
 # design — 디자인 규범
 
-> **최종 갱신** 2026-08-21 · **문서 소유** 프론트 담당
+> **최종 갱신** 2026-08-22 (D2 종결 · `Card` 부제 슬롯 · 컴포넌트 스펙 2건 정정) · **문서 소유** 프론트 담당
 >
 > ⚠️ **이 폴더의 「제안」 항목은 아직 코드에 적용되지 않았다.** 각 문서가 **현행**과 **제안(미적용)** 을
 > 항목마다 표시한다. 표시 없이 규범을 서술하지 않는다 — 이 저장소는 *"막았다고 적었지만 실제로는 안 막힌"*
@@ -53,7 +53,7 @@
 | `--color-line` | `#E7E3DE` | 카드 보더 · 구분선 · 진행률 트랙 |
 | `--color-primary-hover` | `#77354F` | primary 버튼 hover/active 배경 **만** (D4 · 2026-08-21 적용). surface 대비 8.73 |
 
-- **The One Accent Rule** — 베리 플럼은 배지 · 주요 버튼 · 강조 텍스트 · 진행률 채움에만. **배경 워시나 큰 면적 채우기로 쓰지 않는다.** 희소성이 곧 그 색의 힘이다.
+- **The One Accent Rule** — 베리 플럼은 배지 · 주요 버튼 · 강조 텍스트 · 진행률 채움에만. **배경 워시나 큰 면적 채우기로 쓰지 않는다.** 희소성이 곧 그 색의 힘이다. 「큰 면적」의 경계는 [D2](decisions.md#d2-primary-면-채움을-면적으로-등급-분리한다)가 정한다 — 카드 전면 채움은 **기각**(2026-08-22 종결).
 - **The No-Pink-Cliché Rule** — "웨딩 = 밝은 핑크 + 세리프 + 그라디언트" 조합을 쓰지 않는다. 베리 플럼은 채도를 낮춘 와인 톤이지 밝은 핑크가 아니다.
 - **상태 색(성공 · 경고 · 위험)이 없다.** 지어내지 않는다 → [D6](decisions.md#d6-상태-색을-도입하지-않는다)
 - ⚠️ **`--color-*: initial`은 임의값을 막지 못한다.** `bg-[#77354F]`는 그대로 컴파일된다 → [D8](decisions.md#d8-팔레트-밖-색-서술을-사실에-맞게-고치고-게이트로-강제한다)
@@ -71,7 +71,7 @@
 - **위 4단계가 전부다.** `--radius-*: initial` 로 Tailwind 기본 8단계를 **폐기**했다(2026-08-21). `rounded-2xl` 류는 생성되지 않는다(컴파일 실측). ⚠️ **`rounded-full`(∞px)과 `rounded-none`(0)은 `staticValues` 라 폐기와 무관하게 살아남는다** — `none` 은 토큰 밖 값이 아니고, `full` 은 빌드 게이트가 `border-radius` 값으로 잡는다. 원형은 `rounded-pill`. 이 사실은 폐기 계약 테스트가 처음 잡았다(그 전 실험 기록은 틀렸었다) → [D1](decisions.md#d1-라운드를-4단계로-고정한다)
 - **그림자 토큰은 폐기됐다.** `--shadow-*` · `--drop-shadow-*` · `--inset-shadow-*` · `--text-shadow-*` 전부 `initial`(2026-08-21). 기본 22개가 생성되지 않는다 → [D10](decisions.md#d10-그림자-네임스페이스를-폐기하고-게이트를-파서로-다시-만든다)
 - ⚠️ **`ring-*`는 어떤 네임스페이스 폐기로도 막히지 않는다**(컴파일 실측). 빌드 게이트가 커스텀 속성(`--tw-ring-*`)까지 봐서 잡는다 → [D9](decisions.md#d9-ring--를-금지어로-둔다) · [namespaces.md](namespaces.md)
-- **폐기 상태는 빌드가 지킨다** — `theme.css` 에서 `initial` 줄이 하나라도 사라지면 게이트의 유지 검사가 빌드를 실패시킨다 (C5 적용 후)
+- **폐기 상태는 빌드가 지킨다** — `theme.css` 에서 `initial` 줄이 하나라도 사라지면 게이트의 유지 검사가 빌드를 실패시킨다(적용 완료 · 주입 시험으로 확인)
 
 ### 서체
 
@@ -90,13 +90,14 @@
 |---|---|---|
 | `badge-focus` | 배경 `primary-soft` · 글자 `primary` · 모서리 `rounded-pill` · 12px 700 | `Badge` — 변이 없음(규범이 정의한 배지가 하나뿐) |
 | `button-ghost` | 배경 투명 · 글자 `primary` · 모서리 `rounded-sm` · padding 5px 11px | `Button variant="ghost"` — 세로 5px 는 `min-h-tap`(44px)이 대신한다 |
-| `button` primary / secondary | primary 면 + surface 글자 / surface 면 + line 보더 + ink 글자 · `rounded-md` | `Button` — 호버는 **열린 결정**(→ [D4](decisions.md#d4-호버-색을-77354f로-확정한다)) |
+| `button` primary / secondary | primary 면 + surface 글자 / surface 면 + line 보더 + ink 글자 · `rounded-md` | `Button` — 호버 **적용 완료**([D4](decisions.md#d4-호버-색을-77354f로-확정한다)): `enabled:hover:bg-primary-hover`. `enabled:` 를 붙여 비활성 상태에서 호버가 살아나지 않게 한다 |
 | 진행률 | 트랙 `line` · 채움 `primary` · `rounded-pill` · 높이 8px | `Progress` — 불확정 표현은 [D11](decisions.md#d11-불확정-진행률의-시각-표현) |
-| 카드 | `surface` 면 · 1px `line` 보더 · `rounded-md`(현행) · padding 16px | `Card` — 라운드 16px 전환은 [D1](decisions.md#d1-라운드를-4단계로-고정한다). 슬롯 2개: `title`(→ `<h2>`) · `subtitle`(→ `<p>` · `text-xs ink-soft`) |
+| 카드 | `surface` 면 · 1px `line` 보더 · **`rounded-lg`(16px)** · padding 16px | `Card` — 라운드 16px **전환 완료**([D1](decisions.md#d1-라운드를-4단계로-고정한다)). 슬롯 2개: `title`(→ `<h2>`) · `subtitle`(→ `<p>` · `text-xs ink-soft`) |
 
 ### 범위 밖 (현행)
 
 - **다크모드 없음** — 라이트 전용. 빌드 게이트가 `prefers-color-scheme` 을 산출 CSS 에서 막는다.
+- **반투명 색 없음** — opacity modifier(`bg-surface/12`)는 `color-mix()` 의 srgb 폴백이 8자리 hex 로 접혀 **팔레트 게이트에 막힌다**(주입 시험). 수요가 0이라 열지 않았다 → [D7](decisions.md#d7-반투명은-토큰-없이-opacity-modifier로-쓴다). 요소 불투명도 `opacity-*` 는 색이 아니므로 무관하다.
 
 ### 타이포 · 접근성
 

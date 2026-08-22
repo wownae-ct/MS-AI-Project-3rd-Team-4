@@ -231,7 +231,7 @@ TS 7의 홍보 문구는 빌드 8~12배 향상이다. **이 저장소에서는 �
 
 ## 4. 의존성 스펙
 
-기준일 **2026-08-21** — `package-lock.json` 실측(lockfileVersion 3). 「채택」은 lock 에 설치된 버전이다. 별도 표기가 없으면 캐럿 범위 + lock 고정.
+기준일 **2026-08-22** — `package-lock.json` 실측(lockfileVersion 3). 「채택」은 lock 에 설치된 버전이다. 별도 표기가 없으면 캐럿 범위 + lock 고정.
 
 | 패키지 | 채택 (lock) | 선언 | 비고 |
 |---|---|---|---|
@@ -244,12 +244,13 @@ TS 7의 홍보 문구는 빌드 8~12배 향상이다. **이 저장소에서는 �
 | `@tailwindcss/oxide` | **4.3.3** | **정확 핀** | `@tailwindcss/vite` 의 전이 의존이지만 유령 후보 테스트가 스캐너를 직접 쓰므로 명시. **tailwindcss 와 함께 올린다** |
 | `lightningcss` | 1.33.0 | `^1.33.0` | 디자인 규범 게이트의 CSS 파서. `vite` 가 선언한 전이 의존(같은 범위)이지만 암묵적으로 쓰지 않고 명시 |
 | `@base-ui/react` | **1.7.0** | **정확 핀** | ADR 0004. 패키지명은 `@base-ui/react` (`@base-ui-components/*` 아님) |
+| `@tanstack/react-router` | **1.170.31** | **정확 핀** | [ADR 0005](../adr/0005-라우터로-tanstack-router를-채택한다.md)(상태 **제안**). 전이로 `@tanstack/router-core` 1.171.26 · `@tanstack/history` 1.162.1 이 함께 온다 — **둘은 직접 import 하지 않으므로 명시하지 않는다.** 정확 핀인 이유: 코어 28.3 kB(gzip)가 초기 청크에 얹히므로 마이너 업그레이드도 예산 게이트를 지나야 한다 |
 | `wanted-sans` | **1.0.3** | **정확 핀** | 폰트 self-host. `variable/split` 92조각 |
 | `vitest` | 4.1.10 | `^4.1.10` | |
 | `oxlint` | 1.78.0 | `^1.78.0` | 297 rules (plugins 7종) |
 | `jsdom` | 30.0.1 | `^` | **Node 하한 결정 패키지** (§2.1) |
 | `@testing-library/react` / `jest-dom` / `user-event` | 16.3.2 / 7.0.1 / 14.6.5 | `^` / `^` / **정확** | |
-| ~~`zustand`~~ | **제거됨** (2026-08-21, src 초기화 `1cd815a`) | | 스토어가 필요한 화면이 없다. 라우터·상태는 ADR 0005 이후 |
+| ~~`zustand`~~ | **제거됨** (2026-08-21, src 초기화 `1cd815a`) | | 스토어가 필요한 화면이 없다. 라우터는 2026-08-22 에 들어왔지만(위) **상태 관리는 여전히 없다** — 화면 데이터는 `entities/wedding` 의 합성 상수를 직접 읽는다 |
 | ~~`dependency-cruiser`~~ | **제거됨** (2026-08-20) | | §3.1 · [ADR 0001](../adr/0001-경계-강제를-oxlint로-일원화한다.md) |
 
 **정확 버전 고정은 `npm i -E`** — `npm i pkg@x.y.z`는 캐럿이 붙어 기록된다.
