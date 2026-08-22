@@ -15,8 +15,8 @@
 //   · 카테고리 → S3 상세 진입: layout.md §1 은 "카테고리 상세는 홈에서 진입하는 하위 화면"이라 하지만
 //     목업에 어떤 진입 어포던스도 없다(커서·호버·chevron 0건). S3 착수 때 함께 정한다.
 //   · 데스크톱 상단바(제목·D-Day·주요 액션, layout.md §4): 미구현이라 D-Day 히어로를 모든 폭에서 낸다.
+import { BUDGET, CATEGORY_BUDGETS, UPCOMING_PAYMENTS, WEDDING } from "@/entities/wedding";
 import { Card, Page } from "@/shared/ui";
-import { BUDGET, CATEGORY_BUDGETS, UPCOMING_PAYMENTS, WEDDING } from "../model/sample-data";
 import { BudgetDonut } from "./BudgetDonut";
 import { CategoryRow } from "./CategoryRow";
 import { PaymentRow } from "./PaymentRow";

@@ -28,7 +28,7 @@ describe("예산 도넛 — 색만으로 전달하지 않는다", () => {
 
     expect(screen.getByText("집행")).toBeInTheDocument();
     expect(screen.getByText("계획(미지급)")).toBeInTheDocument();
-    expect(screen.getByText("잔여")).toBeInTheDocument();
+    expect(screen.getByText("미배정")).toBeInTheDocument();
   });
 });
 

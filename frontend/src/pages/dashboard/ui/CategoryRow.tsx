@@ -8,8 +8,8 @@
 // 규범은 *"금액은 항상 tabular-nums + 700"*(docs/design/README.md) 이고 ADR 0006 상 규범이 목업을
 // 이긴다. 그래서 둘 다 굵은 `ink` 로 두고 **집행액만 한 단계 크게** 해 위계를 만든다 —
 // 규범이 제약하지 않는 축(크기)을 쓴 것이다.
+import type { CategoryBudget } from "@/entities/wedding";
 import { Badge, Money, Progress } from "@/shared/ui";
-import type { CategoryBudget } from "../model/sample-data";
 
 export interface CategoryRowProps {
   category: CategoryBudget;
