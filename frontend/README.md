@@ -48,17 +48,24 @@ npm run dev   # 개발 서버
 
 ```
 src/
-  app/          App.tsx(스타일가이드 렌더 — 라우터 도입 전 임시) · main.tsx
+  app/          App.tsx(RouterProvider) · main.tsx · router/router.tsx(코드 기반 라우트 트리 · lazy 분할) · ui/AppShell.tsx(탭바↔사이드바)
   pages/
+    dashboard/    ✅ S2 — 첫 화면이라 정적 import(초기 청크)
+    report/       ✅ S5 — lazy. 예산 3분할은 카드 폭에 따라 컨테이너 쿼리로 적층된다
+    category · timeline · budget · onboarding — 스캐폴드(라우트·셸 배선만)
     style-guide/  디자인 시스템 라이브 문서 — 토큰·프리미티브·규범이 실제로 동작하는지 눈으로 검증하는 실체
+  entities/
+    wedding/      도메인 타입 + 합성 데이터의 단일 출처 — 목업 6개 중 5개가 같은 값을 본다. 전송 계층이 붙으면 데이터 파일만 사라진다
   shared/
     ui/           styles.css(유일한 CSS 진입점) · theme.css(@theme 토큰) · Page · Card · Button · Badge · Money · Progress · Tabs · ErrorBoundary · icons
+public/
+  staticwebapp.config.json  SWA 가 읽는 배포 설정 — Vite 가 dist/ 루트로 복사한다(SPA 폴백 · 자산 캐시 · CSP)
 scripts/
-  check-bundle-budget.mjs   build 끝 게이트 (오케스트레이터)
-  lib/                       css-norms.mjs · source-norms.mjs (순수 모듈) · __tests__/
+  check-bundle-budget.mjs   build 끝 게이트 (오케스트레이터 — 예산 · 규범 · 폐기 유지 · 배포 설정)
+  lib/                       css-norms · source-norms · deploy-config (순수 모듈) · __tests__/(픽스처 · 폐기 계약 · 유령 후보 · 배포 설정)
 ```
 
-`features/` · `entities/` 는 **도메인이 없는 지금 만들지 않는다** — FSD 는 레이어를 선택적으로 둔다. 해당 린트 override 는 매칭 대상이 없을 뿐 무해하다. `shared/api` · `shared/config` · `shared/lib` 는 주제 전환으로 삭제됐다(백엔드 미착수).
+`features/` 는 **아직 만들지 않는다** — FSD 는 레이어를 선택적으로 둔다. `entities/wedding` 은 2026-08-22 에 생겼다(두 번째 화면이 같은 데이터를 보게 되면서 조건이 충족됐다 — `.oxlintrc.json` 이 `pages → pages` import 를 막으므로 데이터를 화면 슬라이스에 둘 수 없다). `shared/api` · `shared/config` · `shared/lib` 는 주제 전환으로 삭제됐다(백엔드 미착수).
 
 **import 규칙 두 가지만 기억하면 된다:**
 
