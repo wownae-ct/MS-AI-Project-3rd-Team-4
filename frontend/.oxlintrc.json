@@ -16,6 +16,7 @@
     "import/no-unassigned-import": "off",
     "eslint/no-inline-comments": "off",
     "eslint/max-lines-per-function": "off",
+    "eslint/max-lines": ["error", { "skipComments": true }],
     "no-restricted-imports": [
       "error",
       {
