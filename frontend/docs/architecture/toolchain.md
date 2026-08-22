@@ -283,10 +283,13 @@ TS 7의 홍보 문구는 빌드 8~12배 향상이다. **이 저장소에서는 �
 
 `.github/workflows/frontend-ci.yml` 실물 기준 — `install → typecheck → lint → test → build → SWA 배포`. 아래 표는 **무엇을 왜 그렇게 했는지**의 기록이다(한때 「할 일」로 적혀 있었으나 전부 적용됐다 — §1 기준선과 어긋나 있던 것을 정정).
 
-> ⚠️ **이 파일의 소유자는 프론트가 아니다.** `.github/` 는 CODEOWNERS 상 인프라 담당 관할이다.
-> `path-guard` 는 `.github/` 를 허용하므로 **CI 가 막아 주지 않는다** — 막는 것은 리뷰어 지정뿐이다.
-> 여기를 고쳤으면 **인프라 담당에게 알린다.** 그리고 워크플로는 **브랜치별 사본으로 돈다** —
-> `main` 의 사본을 고쳐도 `frontend` 라인 실행에는 반영되지 않는다(그 반대도 마찬가지).
+> ⚠️ **`.github/workflows/` 중 이 파일 하나만 프론트 소유다** (2026-08-22 확정).
+> `CODEOWNERS` 에 `/.github/workflows/frontend-ci.yml @gunnysis` 가 있고, **마지막으로 매칭되는 패턴이 이긴다**(GitHub 공식).
+> 앞줄의 `/.github/ @wownae-ct` 는 `backend-ci` · `gitleaks` · `infra-deploy` · `path-guard` 에 그대로 유지된다 — **그 4개는 건드리지 않는다.**
+> `path-guard` 는 `.github/` 전체를 허용하므로 **CI 가 경계를 막아 주지 않는다** — 실제 방어선은 이 CODEOWNERS 줄뿐이다.
+>
+> 그리고 워크플로는 **브랜치별 사본으로 돈다.** `main` 의 사본을 고쳐도 `frontend` 라인 실행에는 반영되지 않는다(그 반대도 마찬가지).
+> 실제로 그래서 `main`·`backend` 가 `@v7` 인 동안 **정작 실행되는 `frontend` 사본이 `@v4` 로 남아 있었다** — 소유자가 없어 사본이 갈린 사고다.
 
 | 조치 | 상태 | 내용 |
 |---|---|---|
