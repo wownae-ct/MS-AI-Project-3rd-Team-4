@@ -213,12 +213,12 @@ class TestDashboardSmoke:
 
 
 class TestOAuthSmoke:
-    """소셜 로그인(구글/네이버, 00_BASELINE.md §0-2 Should) — 실 IdP 토큰교환/유저정보 조회는
-    실 크레덴셜이 있어야 해서(비용은 없지만 CI/로컬 dev 크레덴셜 미보유) 자동 스모크 대상이
-    아니다(app/services/oauth.py의 find_or_create_social_user 계정 연동 로직은
-    tests/test_oauth_service.py가 실DB로 직접 검증). 여기서는 IdP 호출 전 단계(로그인 리다이렉트
-    조립, 콜백의 state 검증)만 확인한다 — httpx AsyncClient는 기본이 follow_redirects=False라
-    307 응답 자체를 그대로 받을 수 있다."""
+    """소셜 로그인(구글/네이버/카카오/애플, 00_BASELINE.md §0-2 Should + 15_post_v4_scope_
+    promotion.md §P1) — 실 IdP 토큰교환/유저정보 조회는 실 크레덴셜이 있어야 해서(비용은 없지만
+    CI/로컬 dev 크레덴셜 미보유) 자동 스모크 대상이 아니다(app/services/oauth.py의
+    find_or_create_social_user 계정 연동 로직은 tests/test_oauth_service.py가 실DB로 직접
+    검증). 여기서는 IdP 호출 전 단계(로그인 리다이렉트 조립, 콜백의 state 검증)만 확인한다 —
+    httpx AsyncClient는 기본이 follow_redirects=False라 307 응답 자체를 그대로 받을 수 있다."""
 
     async def test_login_redirects_to_google_authorize_endpoint(self, client):
         response = await client.get("/auth/google/login")
@@ -233,8 +233,26 @@ class TestOAuthSmoke:
         assert response.status_code == 307
         assert response.headers["location"].startswith("https://nid.naver.com/")
 
-    async def test_login_unsupported_provider_returns_404(self, client):
+    async def test_login_redirects_to_kakao_authorize_endpoint(self, client):
         response = await client.get("/auth/kakao/login")
+
+        assert response.status_code == 307
+        assert response.headers["location"].startswith("https://kauth.kakao.com/")
+        assert "wr_oauth_state" in response.cookies
+
+    async def test_login_redirects_to_apple_authorize_endpoint(self, client):
+        """애플만 client_secret이 매 요청 서명되는 JWT라(app/core/oauth_providers.py::
+        build_apple_client_secret), CI의 APPLE_PRIVATE_KEY(테스트 전용 EC 키, backend-ci.yml)로
+        실제 서명이 되는지까지 이 한 요청으로 같이 검증된다 — 서명이 실패하면 500이 난다."""
+        response = await client.get("/auth/apple/login")
+
+        assert response.status_code == 307
+        assert response.headers["location"].startswith("https://appleid.apple.com/")
+        assert "response_mode=form_post" in response.headers["location"]
+        assert "wr_oauth_state" in response.cookies
+
+    async def test_login_unsupported_provider_returns_404(self, client):
+        response = await client.get("/auth/facebook/login")
 
         assert response.status_code == 404
 
@@ -251,6 +269,30 @@ class TestOAuthSmoke:
 
         callback_response = await client.get(
             "/auth/google/callback", params={"code": "x", "state": "not-the-real-state"}
+        )
+
+        assert "oauth_error=state_mismatch" in callback_response.headers["location"]
+
+    async def test_apple_callback_is_post_not_get(self, client):
+        """애플만 response_mode=form_post라 콜백이 POST다 — GET으로 치면 404(라우트 자체가
+        없음)여야 한다."""
+        response = await client.get("/auth/apple/callback", params={"code": "x", "state": "s"})
+
+        assert response.status_code == 404
+
+    async def test_apple_callback_without_state_cookie_redirects_with_error(self, client):
+        response = await client.post("/auth/apple/callback", data={"code": "x", "state": "s"})
+
+        assert response.status_code < 400
+        assert response.headers["location"].startswith("http://localhost:5173/login")
+        assert "oauth_error=state_missing" in response.headers["location"]
+
+    async def test_apple_callback_with_mismatched_state_redirects_with_error(self, client):
+        login_response = await client.get("/auth/apple/login")
+        assert login_response.status_code == 307
+
+        callback_response = await client.post(
+            "/auth/apple/callback", data={"code": "x", "state": "not-the-real-state"}
         )
 
         assert "oauth_error=state_mismatch" in callback_response.headers["location"]

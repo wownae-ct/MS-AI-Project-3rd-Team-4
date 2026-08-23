@@ -76,14 +76,38 @@ jobs:
         env:
             DATABASE_URL: postgresql://postgres:postgres@localhost:5432/merrymap_ci
             AZURE_OPENAI_ENDPOINT: https://ci-dummy-not-called.openai.azure.com/
-            # 소셜 로그인(구글/네이버) 스모크 테스트도 실 IdP를 호출하지 않는다 — /login이
-            # 리다이렉트 URL을 조립할 때만 쓰는 값이라 더미로 충분하다.
+            # 소셜 로그인(구글/네이버/카카오/애플) 스모크 테스트도 실 IdP를 호출하지 않는다 —
+            # /login이 리다이렉트 URL을 조립할 때만 쓰는 값이라 더미로 충분하다.
             GOOGLE_CLIENT_ID: ci-dummy-google-client-id
             GOOGLE_CLIENT_SECRET: ci-dummy-google-client-secret
             NAVER_CLIENT_ID: ci-dummy-naver-client-id
             NAVER_CLIENT_SECRET: ci-dummy-naver-client-secret
+            KAKAO_CLIENT_ID: ci-dummy-kakao-client-id
+            KAKAO_CLIENT_SECRET: ci-dummy-kakao-client-secret
+            APPLE_CLIENT_ID: ci-dummy-apple-client-id
+            APPLE_TEAM_ID: ci-dummy-apple-team-id
+            APPLE_KEY_ID: ci-dummy-apple-key-id
+            # APPLE_PRIVATE_KEY는 여기 없다 — 아래 "Generate ephemeral Apple test key" 스텝이
+            # 매 실행마다 새로 만들어 $GITHUB_ENV로 주입한다(고정 PEM을 워크플로 파일에
+            # 커밋하면 gitleaks의 private-key 룰에 걸린다 — 실제로 한 번 걸려서 이 방식으로
+            # 바꿈, 테스트 전용이라도 저장소에 정적 개인키를 남기지 않는 게 맞다).
         steps:
             - uses: actions/checkout@v7
+
+            # 애플만 client_secret을 매 요청 ES256 JWT로 직접 서명하므로(build_apple_client_secret),
+            # GET /auth/apple/login 스모크 테스트조차 실제로 서명 가능한 EC(P-256) 개인키가
+            # 필요하다 — 임의 문자열이면 jwt.encode()가 즉시 실패한다. 실 애플 키가 아니라 이
+            # 실행 한 번만 쓰고 버리는 테스트 전용 키를 그때그때 생성한다(ubuntu-latest에
+            # openssl 기본 내장, 별도 설치 불필요).
+            - name: Generate ephemeral Apple test key
+              run: |
+                  openssl ecparam -genkey -name prime256v1 -noout -out /tmp/apple-test-key.pem
+                  {
+                    echo "APPLE_PRIVATE_KEY<<EOF_APPLE_TEST_KEY"
+                    cat /tmp/apple-test-key.pem
+                    echo "EOF_APPLE_TEST_KEY"
+                  } >> "$GITHUB_ENV"
+                  rm /tmp/apple-test-key.pem
 
             - name: Install uv
               uses: astral-sh/setup-uv@v10.0.1

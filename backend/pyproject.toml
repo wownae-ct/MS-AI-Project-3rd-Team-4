@@ -26,6 +26,12 @@ dependencies = [
     # 기존엔 dev extras(테스트 클라이언트 용도)에만 있었는데, 프로덕션 코드가 쓰게 되면서 승격.
     "httpx>=0.27",
     "langfuse>=4.0",
+    # 애플 소셜로그인(15_post_v4_scope_promotion.md §P1) — client_secret을 ES256으로 직접
+    # 서명(app/core/oauth_providers.py::build_apple_client_secret)하고, 애플이 돌려주는
+    # id_token(RS256)을 애플 JWKS로 검증(app/services/oauth.py)하는 데 둘 다 필요하다. msal
+    # (azure-identity 경유)의 전이 의존성으로 이미 lockfile에 있었지만, 코드가 직접 import하므로
+    # 명시적 직접 의존성으로 승격 — 향후 azure-identity가 msal을 안 쓰게 바뀌어도 안 깨지도록.
+    "pyjwt[crypto]>=2.9",
 ]
 
 [project.optional-dependencies]

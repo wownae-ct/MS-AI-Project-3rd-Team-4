@@ -1,26 +1,32 @@
 """#2-5 — 03_API_spec.md ⓪ 인증(자체 이메일/비밀번호, Must). #2-5 뒤에 이어붙인 소셜 로그인
-(구글/네이버만 — 00_BASELINE.md §0-2 Should, 카카오/애플은 이번 라운드 스코프 밖) 2개
-엔드포인트(`GET /auth/{provider}/login`, `GET /auth/{provider}/callback`)는 JSON이 아니라
-브라우저 전체 페이지 리다이렉트로 동작해 03_API_spec.md 문서화 대상인 나머지 엔드포인트들과
-호출 방식이 달라 OpenAPI 스키마에 노출하지 않는다(`include_in_schema=False`)."""
+(구글/네이버/카카오/애플 4종 — 00_BASELINE.md §0-2 Should + 15_post_v4_scope_promotion.md §P1)
+엔드포인트(`GET /auth/{provider}/login`, `GET /auth/{provider}/callback`, 애플 전용
+`POST /auth/apple/callback`)는 JSON이 아니라 브라우저 전체 페이지 리다이렉트로 동작해
+03_API_spec.md 문서화 대상인 나머지 엔드포인트들과 호출 방식이 달라 OpenAPI 스키마에 노출하지
+않는다(`include_in_schema=False`)."""
 
 import json
+from dataclasses import replace
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.db import get_session
 from app.core.errors import api_error
 from app.core.oauth_providers import (
     OAUTH_STATE_COOKIE_NAME,
     OAUTH_STATE_TTL_SECONDS,
+    OAuthProviderConfig,
+    build_apple_client_secret,
     build_authorization_url,
     build_callback_redirect_uri,
     generate_oauth_state,
     generate_pkce_pair,
     get_provider_config,
+    parse_apple_user_display_name,
 )
 from app.deps import get_current_user
 from app.models import User
@@ -43,6 +49,20 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 _OAUTH_CLIENT_CREDENTIALS = {
     "GOOGLE": lambda settings: (settings.google_client_id, settings.google_client_secret),
     "NAVER": lambda settings: (settings.naver_client_id, settings.naver_client_secret),
+    "KAKAO": lambda settings: (settings.kakao_client_id, settings.kakao_client_secret),
+    # 애플은 client_secret이 고정값이 아니라 매번 새로 서명하는 JWT다(app/core/oauth_providers.py
+    # ::build_apple_client_secret 독스트링 참고) — 나머지 3개와 같은 (client_id, client_secret)
+    # 튜플 인터페이스를 그대로 맞추기 위해 여기서 서명까지 해서 반환한다.
+    "APPLE": lambda settings: (
+        settings.apple_client_id,
+        build_apple_client_secret(
+            team_id=settings.apple_team_id,
+            client_id=settings.apple_client_id,
+            key_id=settings.apple_key_id,
+            private_key_pem=settings.apple_private_key,
+            issued_at=datetime.now(UTC),
+        ),
+    ),
 }
 
 
@@ -134,10 +154,10 @@ async def get_me(
 
 @router.get("/{provider}/login", include_in_schema=False)
 async def oauth_login(provider: str) -> RedirectResponse:
-    """구글/네이버 로그인 시작 — IdP 인가 화면으로 307 리다이렉트한다. state(+구글만 PKCE
-    code_verifier)를 짧은 httponly 쿠키에 담아 콜백까지 왕복시킨다(서버 세션 저장소가 없는
-    이 프로젝트에서 CSRF 방어를 위한 가장 단순한 방법 — Redis 등 별도 저장소 도입 금지
-    원칙과도 맞는다)."""
+    """구글/네이버/카카오/애플 로그인 시작 — IdP 인가 화면으로 307 리다이렉트한다. state(+PKCE
+    지원 프로바이더는 code_verifier도)를 짧은 httponly 쿠키에 담아 콜백까지 왕복시킨다(서버
+    세션 저장소가 없는 이 프로젝트에서 CSRF 방어를 위한 가장 단순한 방법 — Redis 등 별도
+    저장소 도입 금지 원칙과도 맞는다)."""
     config = get_provider_config(provider)
     if config is None:
         raise api_error(404, "NOT_FOUND", f"지원하지 않는 로그인 방식입니다: {provider}")
@@ -169,28 +189,29 @@ async def oauth_login(provider: str) -> RedirectResponse:
     return response
 
 
-@router.get("/{provider}/callback", include_in_schema=False)
-async def oauth_callback(
+async def _finish_oauth_callback(
+    *,
     provider: str,
+    config: OAuthProviderConfig,
+    code: str | None,
+    state: str | None,
+    error: str | None,
+    raw_state_cookie: str | None,
+    settings: Settings,
+    session: AsyncSession,
     request: Request,
-    code: str | None = None,
-    state: str | None = None,
-    error: str | None = None,
-    session: AsyncSession = Depends(get_session),  # noqa: B008
+    apple_user_field: str | None = None,
 ) -> RedirectResponse:
-    """IdP가 인가 후 되돌아오는 콜백. 이 요청은 브라우저의 최상위 페이지 이동이라(fetch/XHR이
-    아님) 실패해도 원시 JSON을 그대로 보여주면 안 되고, 항상 프론트 화면(로그인 성공 시 홈,
-    실패 시 로그인 화면 + 에러 쿼리)으로 리다이렉트한다."""
-    settings = get_settings()
-    config = get_provider_config(provider)
+    """GET(구글/네이버/카카오)과 POST(애플, `response_mode=form_post`라 콜백 자체가 다르다 —
+    app/core/oauth_providers.py 모듈 독스트링 참고) 두 콜백 핸들러가 공유하는 본문. 이 요청은
+    브라우저의 최상위 페이지 이동이라(fetch/XHR이 아님) 실패해도 원시 JSON을 그대로 보여주면
+    안 되고, 항상 프론트 화면(로그인 성공 시 홈, 실패 시 로그인 화면 + 에러 쿼리)으로
+    리다이렉트한다."""
     login_page = f"{settings.frontend_base_url}/login"
 
-    if config is None:
-        return RedirectResponse(f"{login_page}?oauth_error=unsupported_provider")
     if error is not None or code is None:
         return RedirectResponse(f"{login_page}?oauth_error=denied")
 
-    raw_state_cookie = request.cookies.get(OAUTH_STATE_COOKIE_NAME)
     if raw_state_cookie is None:
         return RedirectResponse(f"{login_page}?oauth_error=state_missing")
     try:
@@ -203,7 +224,7 @@ async def oauth_callback(
     client_id, client_secret = _OAUTH_CLIENT_CREDENTIALS[config.code](settings)
     redirect_uri = build_callback_redirect_uri(settings.oauth_backend_base_url, provider)
     try:
-        access_token = await exchange_code_for_token(
+        tokens = await exchange_code_for_token(
             config,
             code=code,
             code_verifier=state_payload.get("code_verifier"),
@@ -211,7 +232,11 @@ async def oauth_callback(
             client_id=client_id,
             client_secret=client_secret,
         )
-        profile = await fetch_oauth_profile(config, access_token)
+        profile = await fetch_oauth_profile(config, tokens, client_id=client_id)
+        if apple_user_field:
+            display_name = parse_apple_user_display_name(apple_user_field)
+            if display_name:
+                profile = replace(profile, display_name=display_name)
         user = await find_or_create_social_user(session, config.code, profile)
     except HTTPException as exc:
         # find_or_create_social_user가 던지는 EMAIL_ALREADY_EXISTS/SOCIAL_ACCOUNT_ALREADY_LINKED
@@ -242,3 +267,64 @@ async def oauth_callback(
     _set_session_cookie(response, raw_token)
     response.delete_cookie(key=OAUTH_STATE_COOKIE_NAME)
     return response
+
+
+@router.get("/{provider}/callback", include_in_schema=False)
+async def oauth_callback(
+    provider: str,
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> RedirectResponse:
+    """구글/네이버/카카오 콜백 — 셋 다 `response_mode` 기본값(query)이라 GET으로 온다. 애플은
+    `POST /auth/apple/callback`(아래) 별도 라우트를 쓴다."""
+    settings = get_settings()
+    config = get_provider_config(provider)
+    if config is None:
+        return RedirectResponse(
+            f"{settings.frontend_base_url}/login?oauth_error=unsupported_provider"
+        )
+
+    return await _finish_oauth_callback(
+        provider=provider,
+        config=config,
+        code=code,
+        state=state,
+        error=error,
+        raw_state_cookie=request.cookies.get(OAUTH_STATE_COOKIE_NAME),
+        settings=settings,
+        session=session,
+        request=request,
+    )
+
+
+@router.post("/apple/callback", include_in_schema=False)
+async def apple_oauth_callback(
+    request: Request,
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> RedirectResponse:
+    """애플 전용 콜백 — `response_mode=form_post`라 애플이 GET 쿼리가 아니라 POST
+    form-urlencoded 바디로 되돌아온다(app/core/oauth_providers.py 모듈 독스트링 참고). `user`
+    필드는 최초 로그인 1회에 한해서만 이름 정보를 담아 온다."""
+    settings = get_settings()
+    config = get_provider_config("apple")
+    form = await request.form()
+    code = form.get("code")
+    state = form.get("state")
+    error = form.get("error")
+    apple_user_field = form.get("user")
+
+    return await _finish_oauth_callback(
+        provider="apple",
+        config=config,
+        code=str(code) if code is not None else None,
+        state=str(state) if state is not None else None,
+        error=str(error) if error is not None else None,
+        raw_state_cookie=request.cookies.get(OAUTH_STATE_COOKIE_NAME),
+        settings=settings,
+        session=session,
+        request=request,
+        apple_user_field=str(apple_user_field) if apple_user_field is not None else None,
+    )
