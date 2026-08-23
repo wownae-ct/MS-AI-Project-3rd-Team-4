@@ -25,6 +25,17 @@ param googleClientSecret = readEnvironmentVariable('GOOGLE_CLIENT_SECRET', 'CHAN
 param naverClientId = readEnvironmentVariable('NAVER_CLIENT_ID', 'CHANGE_ME_LOCAL_ONLY')
 param naverClientSecret = readEnvironmentVariable('NAVER_CLIENT_SECRET', 'CHANGE_ME_LOCAL_ONLY')
 
+// 카카오·애플 소셜로그인(15_post_v4_scope_promotion.md §P1) — 위와 동일 패턴. applePrivateKey는
+// PEM 원문(여러 줄)이지만 Bicep 파라미터엔 그냥 하나의 문자열로 들어간다 — 셸/CI 쪽에서 개행
+// 이스케이프를 신경 쓸 필요는 여기 없고(readEnvironmentVariable가 원본 그대로 읽음), infra/.env
+// 로컬 파일에 저장할 때만 그 파일 형식에 맞게 처리하면 된다.
+param kakaoClientId = readEnvironmentVariable('KAKAO_CLIENT_ID', 'CHANGE_ME_LOCAL_ONLY')
+param kakaoClientSecret = readEnvironmentVariable('KAKAO_CLIENT_SECRET', 'CHANGE_ME_LOCAL_ONLY')
+param appleClientId = readEnvironmentVariable('APPLE_CLIENT_ID', 'CHANGE_ME_LOCAL_ONLY')
+param appleTeamId = readEnvironmentVariable('APPLE_TEAM_ID', 'CHANGE_ME_LOCAL_ONLY')
+param appleKeyId = readEnvironmentVariable('APPLE_KEY_ID', 'CHANGE_ME_LOCAL_ONLY')
+param applePrivateKey = readEnvironmentVariable('APPLE_PRIVATE_KEY', 'CHANGE_ME_LOCAL_ONLY')
+
 // Langfuse(14_langfuse_tracing_design.md) — 위와 동일 패턴. 주의: 이 값은 이미 라이브로 쓰이고
 // 있어서(PR #42), CHANGE_ME_LOCAL_ONLY 폴백으로 실배포하면 기존 정상 트레이싱을 깨뜨린다 —
 // 실배포 전엔 반드시 infra/.env에 실제 값을 채울 것(로컬 검증은 what-if로, 값 노출 없이 가능).
