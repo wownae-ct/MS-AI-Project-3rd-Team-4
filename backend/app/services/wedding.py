@@ -2,12 +2,17 @@
 
 timeline-task(2026-08-24)에서 timeline_items/ai_invocations 생성 + wedding_date 변경 시
 재계산을, payments-task(2026-08-24)에서 wedding_categories.paid_amount 계산과 PUT
-/wedding-categories의 BUDGET_BELOW_PAID 검증을 채웠다(아래 TODO(personalization-task)만 남음
-— 개인화 라우터 에이전트가 붙기 전까지 checklist_items는 여전히 생성되지 않는다,
-03_API_spec.md #6이 문서화한 대로 GET /checklist-items가 빈 배열을 반환하는 게 정상 동작).
+/wedding-categories의 BUDGET_BELOW_PAID 검증을, personalization-task(2026-08-24)에서
+개인화 라우터 에이전트(route→generate→validate, 13_personalization_router_agent_design.md)
+연결을 채웠다. 온보딩 시 checklist_items/timeline_items 둘 다 이제 이 에이전트를 거쳐 생성된다
+(app/services/personalization.py::run_personalization) — LLM generate가 실패/BLOCKED이면
+결정론적 카탈로그(app/core/timeline_catalog.py, app/core/checklist_catalog.py)로 자동
+폴백하므로 GET /checklist-items·/timeline-items는 온보딩 완료 즉시 항상 비어있지 않다.
 
-여전히 범위 밖이라 TODO로 남긴 것:
-  - checklist_items LLM 개인화 생성(personalization-task, 13_personalization_router_agent_design.md)."""
+field-updated-trigger-task(2026-08-24)에서 §1-2 규칙에 따른 FIELD_UPDATED 재트리거를
+update_wedding()(날짜 외 필드 변경)과 update_wedding_categories()(카테고리 온/오프)에
+연결했다 — wedding_date 단독 변경은 여전히 위 결정론적 재계산만 타고 에이전트를 부르지
+않는다(규칙 3)."""
 
 from datetime import UTC, date, datetime
 
@@ -27,7 +32,14 @@ from app.schemas.wedding import (
 )
 from app.services.benchmark import get_latest_benchmark
 from app.services.payment import get_paid_amounts_by_category
-from app.services.timeline import generate_timeline_items, recalculate_timeline_dates
+from app.services.personalization import run_personalization
+from app.services.timeline import get_active_category_codes, recalculate_timeline_dates
+
+# 13_personalization_router_agent_design.md §1-2 규칙 3: 본식일만 바뀌면 개인화 에이전트를
+# 아예 부르지 않는다(날짜 재계산은 아래에서 항상 결정론적으로 처리, 콘텐츠 재생성 판단은 불필요) —
+# route 노드가 LLM으로 "빈 도메인"을 판단하기 전에 서비스 레이어에서 먼저 걸러 LLM 호출 자체를
+# 아낀다(ONBOARDING_INITIAL이 route LLM 호출을 생략하는 것과 같은 최적화 축).
+_WEDDING_DATE_ONLY_FIELDS = frozenset({"wedding_date", "wedding_date_precision"})
 
 
 def approximate_wedding_date(today: date, wedding_date_precision: str) -> date:
@@ -119,28 +131,19 @@ async def create_wedding(
             )
         )
 
-    # ai_invocations 먼저 flush해 id를 채번 — timeline_items.generated_by_run_id가 이 id를 참조.
-    ai_invocation = AiInvocation(
-        wedding_id=wedding.id,
-        trigger="ONBOARDING_INITIAL",
-        affected_domains=["TIMELINE"],
-        status="SUCCESS",
-    )
-    session.add(ai_invocation)
-    await session.flush()
-
     # 새 웨딩은 9개 카테고리 전부 방금 is_active=True로 켰으므로 전체 집합을 active로 넘긴다.
+    # run_personalization이 ai_invocations 1행 기록 + checklist_items/timeline_items 생성(LLM
+    # SUCCESS 또는 BLOCKED/FAILED 결정론적 폴백)을 전부 처리한다 — 여기서는 flush만 하고 커밋은
+    # 아래에서 다른 온보딩 부작용과 함께 한 번에 한다.
     active_categories = {meta.code for meta in CATEGORY_META}
-    today = datetime.now(UTC).date()
-    for row in generate_timeline_items(wedding_date, active_categories, payload.done_so_far, today):
-        session.add(
-            TimelineItem(wedding_id=wedding.id, generated_by_run_id=ai_invocation.id, **row)
-        )
-
-    # TODO(personalization-task): checklist_items LLM 생성 트리거(비동기, ai_invocations 위 1행에
-    # affected_domains=["TIMELINE","CHECKLIST"]로 갱신). 개인화 라우터 에이전트
-    # (13_personalization_router_agent_design.md)가 붙기 전까지 GET /checklist-items는 빈
-    # 배열을 반환한다 — 03_API_spec.md #6이 문서화한 정상 동작.
+    await run_personalization(
+        session,
+        settings,
+        wedding,
+        active_categories,
+        trigger="ONBOARDING_INITIAL",
+        done_so_far=payload.done_so_far,
+    )
 
     await session.commit()
     await session.refresh(wedding)
@@ -148,15 +151,16 @@ async def create_wedding(
 
 
 async def update_wedding(
-    session: AsyncSession, wedding: Wedding, payload: WeddingUpdate
+    session: AsyncSession, settings: Settings, wedding: Wedding, payload: WeddingUpdate
 ) -> Wedding:
     changed = payload.model_dump(exclude_unset=True)
     for field, value in changed.items():
         setattr(wedding, field, value)
 
     # 03_API_spec.md #8 부작용: wedding_date 또는 wedding_date_precision이 바뀌면 date_overridden
-    # =false, status='TODO'인 timeline_items.target_date만 재계산 — 체크리스트 재생성을 포함한
-    # 전체 개인화 재트리거(Should)는 하지 않는다(Must 최소구현).
+    # =false, status='TODO'인 timeline_items.target_date만 재계산 — 이건 콘텐츠 판단이 아니라
+    # 산수라 개인화 에이전트를 거치지 않고 여기서 항상 결정론적으로 처리한다(설계 문서 §1 "중요한
+    # 설계 원칙 하나").
     if "wedding_date" in changed or "wedding_date_precision" in changed:
         rows = (
             await session.execute(
@@ -185,6 +189,23 @@ async def update_wedding(
                 affected_domains=["TIMELINE"],
                 status="SUCCESS",
             )
+        )
+
+    # 03_API_spec.md #8 Should 스코프: 날짜 외 필드(total_budget/taste_preference/venue_priority/
+    # sdm_priority/primary_goals 등)가 바뀌면 개인화 라우터 에이전트를 FIELD_UPDATED로 재트리거해
+    # 실제로 체크리스트/타임라인 중 뭘 다시 만들지는 route 노드의 LLM 판단에 맡긴다(13_
+    # personalization_router_agent_design.md §1-2). wedding_date만 단독으로 바뀐 경우는 위
+    # 블록에서 이미 끝났고 규칙 3("본식일만 바뀌면 아무 도메인도 선택하지 않음")이 결과가 항상
+    # 빈 도메인일 것을 보장하므로, 그 경우엔 이 LLM 호출 자체를 생략한다.
+    if changed.keys() - _WEDDING_DATE_ONLY_FIELDS:
+        active_categories = await get_active_category_codes(session, wedding.id)
+        await run_personalization(
+            session,
+            settings,
+            wedding,
+            active_categories,
+            trigger="FIELD_UPDATED",
+            changed_fields=list(changed.keys()),
         )
 
     await session.commit()
@@ -241,7 +262,7 @@ async def list_wedding_categories_out(
 
 
 async def update_wedding_categories(
-    session: AsyncSession, wedding: Wedding, payload: WeddingCategoriesUpdate
+    session: AsyncSession, settings: Settings, wedding: Wedding, payload: WeddingCategoriesUpdate
 ) -> list[WeddingCategoryOut]:
     # 03_API_spec.md §5: PUT 처리 중 갱신 직전에 재확인(TOCTOU 방지) — 같은 웨딩의 동시 PUT
     # 요청이 서로의 planned_budget 판단 근거를 덮어쓰지 못하게 잠근다.
@@ -255,6 +276,7 @@ async def update_wedding_categories(
             )
         ).scalars()
     }
+    previously_active = {code for code, row in existing_by_code.items() if row.is_active}
 
     for item in payload.categories:
         row = existing_by_code.get(item.category_code)
@@ -290,6 +312,21 @@ async def update_wedding_categories(
             f"{name_ko} 카테고리는 이미 {min_required:,}원을 지급해 그 아래로 예산을 낮출 수 없습니다.",
             category_code=category_code,
             min_required=min_required,
+        )
+
+    # 13_personalization_router_agent_design.md §1-2 규칙 1: 활성 카테고리가 바뀌면(카테고리
+    # 온/오프) 체크리스트·타임라인 둘 다 재생성 대상 — 이 규칙 자체는 결정적이라 route 노드도
+    # 항상 두 도메인 다 고를 것이지만, 실제 판단은 그래프(LLM)에 맡긴다(서비스 레이어에서
+    # 하드코딩하지 않음 — 설계 문서가 라우팅 자체를 에이전트 책임으로 둔 원칙 유지).
+    newly_active = {code for code, row in existing_by_code.items() if row.is_active}
+    if newly_active != previously_active:
+        await run_personalization(
+            session,
+            settings,
+            wedding,
+            newly_active,
+            trigger="FIELD_UPDATED",
+            changed_fields=["active_categories"],
         )
 
     await session.commit()
