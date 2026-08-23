@@ -11,12 +11,12 @@ resources:
 # 이름으로 자동 재생성하고, 같은 kustomization 안의 cronjob.yaml volumes.configMap.name 참조도
 # 자동으로 그 이름에 맞춰 치환된다.
 #
-# rag_corpus/ 하위 8개 파일은 data/rag_corpus/<DATASET_CODE>/<문서명>.json의 복사본이다(원본을
+# rag_corpus/ 하위 9개 파일은 data/rag_corpus/<DATASET_CODE>/<문서명>.json의 복사본이다(원본을
 # kustomization 루트 밖에서 참조하면 --load-restrictor LoadRestrictionsNone이 필요한데, 이건
 # 이 ArgoCD 인스턴스가 관리하는 모든 Application의 kustomize 빌드에 전역 적용되는 설정이라
 # rag-cronjob 하나 때문에 클러스터 전체 기본 보안 수준을 낮출 만큼 이 문제가 크지 않다고
 # 판단함, 2026-08-19). ConfigMap이 여러 파일을 담아도 마운트 시엔 디렉터리 구조 없이 평평하게
-# 풀리므로(각 파일의 basename이 키가 됨, 8개 전부 이름이 겹치지 않아 안전), backend/app/rag/
+# 풀리므로(각 파일의 basename이 키가 됨, 9개 전부 이름이 겹치지 않아 안전), backend/app/rag/
 # corpus.py의 load_corpus()는 로컬(중첩 디렉터리)·클러스터(평평한 디렉터리) 둘 다 동작하도록
 # glob("*/*.json")이 아니라 rglob("*.json")을 쓴다(2026-08-21). 두 경로가 벌어지지 않게 CI에서
 # diff로 검증한다(.github/workflows/backend-ci.yml의 corpus-sync-check) — 코퍼스를 고칠 땐 두
@@ -32,3 +32,4 @@ configMapGenerator:
       - rag_corpus/DS5_DUO/2026_duo_wedding_cost_survey.json
       - rag_corpus/DS6_CHECK/checklist.json
       - rag_corpus/DS8_UGC/threads_reviews_2026_08.json
+      - rag_corpus/DS8_UGC/threads_reviews_2026_08_p3.json
