@@ -33,6 +33,27 @@ param postgresDatabaseName string = 'postgres'
 @description('kubectl AAD RBAC 클러스터 관리자로 등록할 AAD 오브젝트 ID들. 이메일이 아니라 GUID 필요 —\ndev.bicepparam에서 infra/.env의 CLUSTER_ADMIN_OBJECT_IDS(쉼표구분)로 채움')
 param clusterAdminPrincipalIds array = []
 
+// 소셜 로그인(구글/네이버, 00_BASELINE.md §0-2 Should) — Google/Naver 개발자 콘솔에서 발급받은
+// 값이라 openai-endpoint처럼 배포 시점에 Azure가 정해주는 값이 아니다. postgresAdminPassword와
+// 동일한 이유로 @secure() 필수 파라미터 + dev 전용 폴백 기본값을 둔다 — az deployment group
+// create 한 번으로 Key Vault까지 채워지는 게 목표(README에 수동 az keyvault secret set 단계를
+// 남기지 않는다, infra/docs/iac.md §Key Vault 시크릿 자동화와 동일 원칙).
+@secure()
+@description('구글 OAuth 클라이언트 ID. CI에서는 secrets.GOOGLE_CLIENT_ID로 주입')
+param googleClientId string
+
+@secure()
+@description('구글 OAuth 클라이언트 시크릿. CI에서는 secrets.GOOGLE_CLIENT_SECRET로 주입')
+param googleClientSecret string
+
+@secure()
+@description('네이버 OAuth 클라이언트 ID. CI에서는 secrets.NAVER_CLIENT_ID로 주입')
+param naverClientId string
+
+@secure()
+@description('네이버 OAuth 클라이언트 시크릿. CI에서는 secrets.NAVER_CLIENT_SECRET로 주입')
+param naverClientSecret string
+
 var tags = {
   project: namePrefix
   environment: environment
@@ -80,6 +101,10 @@ module keyvault 'modules/keyvault.bicep' = {
     namePrefix: namePrefix
     tags: tags
     backendIdentityPrincipalId: aks.outputs.backendIdentityPrincipalId
+    googleClientId: googleClientId
+    googleClientSecret: googleClientSecret
+    naverClientId: naverClientId
+    naverClientSecret: naverClientSecret
   }
 }
 
