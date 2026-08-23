@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.db import get_session_factory
 from app.core.errors import api_error
+from app.core.tracing import traced_span
 from app.models import ChatMessage, ChatSession, Wedding
 from app.rag.graph import ChatState, build_graph
 from app.schemas.chat import (
@@ -108,31 +109,39 @@ async def stream_chat_response(
         config = {"configurable": {"session": session, "settings": settings}}
 
         final_state: ChatState = initial_state
-        try:
-            # 그래프(retrieve→generate→verify)를 실시간으로 순회한다. 두 종류의 조각이 섞여서
-            # 나온다:
-            #   - "custom": generate_node가 writer()로 흘려보낸 토큰 하나 → 곧바로 SSE로 전달
-            #     (진짜 실시간)
-            #   - "values": 노드가 하나 끝날 때마다의 "전체 상태 스냅샷" → 계속 덮어써서 마지막
-            #     것만 남김(retrieve 끝나면 context 채워진 스냅샷, verify 끝나면 verdict까지
-            #     채워진 스냅샷 순으로 옴)
-            async for mode, chunk in _GRAPH.astream(
-                initial_state, config, stream_mode=["custom", "values"]
-            ):
-                if mode == "custom":
-                    yield _sse("token", TokenEventData(delta=chunk["delta"]))
-                else:
-                    final_state = chunk
-        except RateLimitError as exc:
-            # 03_API_spec.md #29 "에러 시" / 05_RAG_design.md §10 — 스트림이 이미 200으로
-            # 시작해서 HTTP 상태코드를 더 못 바꾸므로 event: error로만 알린다. 사용자 메시지는
-            # 이미 커밋됐으니 그대로 두고(재시도 시 새 어시스턴트 메시지만 추가됨), 그래프 실패로
-            # 죽은 세션이 계속 열려 있지 않도록 여기서 스트림을 끝낸다.
-            yield _sse("error", ErrorEventData(code="RATE_LIMITED", message=str(exc)))
-            return
-        except Exception as exc:  # noqa: BLE001 — LLM 업스트림 실패는 종류를 가리지 않고 알려야 함
-            yield _sse("error", ErrorEventData(code="UPSTREAM_LLM_ERROR", message=str(exc)))
-            return
+        async with traced_span(
+            "chat",
+            settings=settings,
+            input=payload.content,
+            session_id=str(chat_session.id),
+        ) as trace:
+            try:
+                # 그래프(retrieve→generate→verify)를 실시간으로 순회한다. 두 종류의 조각이
+                # 섞여서 나온다:
+                #   - "custom": generate_node가 writer()로 흘려보낸 토큰 하나 → 곧바로 SSE로
+                #     전달(진짜 실시간)
+                #   - "values": 노드가 하나 끝날 때마다의 "전체 상태 스냅샷" → 계속 덮어써서
+                #     마지막 것만 남김(retrieve 끝나면 context 채워진 스냅샷, verify 끝나면
+                #     verdict까지 채워진 스냅샷 순으로 옴)
+                async for mode, chunk in _GRAPH.astream(
+                    initial_state, config, stream_mode=["custom", "values"]
+                ):
+                    if mode == "custom":
+                        yield _sse("token", TokenEventData(delta=chunk["delta"]))
+                    else:
+                        final_state = chunk
+            except RateLimitError as exc:
+                # 03_API_spec.md #29 "에러 시" / 05_RAG_design.md §10 — 스트림이 이미 200으로
+                # 시작해서 HTTP 상태코드를 더 못 바꾸므로 event: error로만 알린다. 사용자
+                # 메시지는 이미 커밋됐으니 그대로 두고(재시도 시 새 어시스턴트 메시지만
+                # 추가됨), 그래프 실패로 죽은 세션이 계속 열려 있지 않도록 여기서 스트림을
+                # 끝낸다.
+                yield _sse("error", ErrorEventData(code="RATE_LIMITED", message=str(exc)))
+                return
+            except Exception as exc:  # noqa: BLE001 — LLM 업스트림 실패는 종류를 가리지 않고 알려야 함
+                yield _sse("error", ErrorEventData(code="UPSTREAM_LLM_ERROR", message=str(exc)))
+                return
+            trace.update(output=final_state["answer"], metadata={"verdict": final_state["verdict"]})
 
         # 루프가 끝난 시점엔 final_state에 검색 근거(context)·최종 답변·검증 결과가 전부 들어있다.
         citations = [
@@ -163,6 +172,7 @@ async def stream_chat_response(
                 "reason": final_state["verification_reason"],
             },
             latency_ms=latency_ms,
+            trace_ref=trace.trace_id,
         )
         session.add(assistant_message)
         await session.commit()

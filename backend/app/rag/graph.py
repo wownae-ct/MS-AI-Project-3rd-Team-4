@@ -21,6 +21,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from app.core.config import Settings, get_settings
 from app.core.embeddings import get_azure_openai_client
+from app.core.tracing import traced_span
 from app.rag.generation import (
     NO_CONTEXT_ANSWER,
     NO_CONTEXT_REASON,
@@ -46,8 +47,9 @@ class ChatState(TypedDict):
 async def retrieve_node(state: ChatState, config: RunnableConfig) -> dict:
     session = config["configurable"]["session"]
     settings: Settings = config["configurable"].get("settings") or get_settings()
-    chunks = await retrieve(session, state["query"], state["category_code"], settings)
-    return {"context": chunks}
+    async with traced_span("chat.retrieve", settings=settings, input=state["query"]):
+        chunks = await retrieve(session, state["query"], state["category_code"], settings)
+        return {"context": chunks}
 
 
 # ② generate: 찾아온 근거만 보고 AI가 답변을 쓴다. 이 함수가 핵심 — 답변을 다 만든 뒤 한 번에
@@ -56,39 +58,43 @@ async def retrieve_node(state: ChatState, config: RunnableConfig) -> dict:
 async def generate_node(state: ChatState, config: RunnableConfig) -> dict:
     # 스트리밍 중이 아니면(배치 실행 등) writer는 그냥 아무 일도 안 하는 함수가 된다.
     writer = get_stream_writer()
-
-    if not state["context"]:
-        # 근거 자료가 0건이면 AI를 아예 호출하지 않는다 — 근거 없이 그럴듯한 답을 지어내는 걸
-        # (환각) 원천 차단하기 위한 의도적인 설계.
-        writer({"type": "token", "delta": NO_CONTEXT_ANSWER})
-        return {"answer": NO_CONTEXT_ANSWER}
-
     settings: Settings = config["configurable"].get("settings") or get_settings()
-    client = get_azure_openai_client(settings)
-    stream = await client.chat.completions.create(
-        model=settings.azure_openai_chat_deployment,
-        messages=build_chat_messages(state["category_code"], state["context"], state["query"]),
-        stream=True,  # 완성된 답변을 한 번에 안 받고, 글자 조각(delta) 단위로 하나씩 받는다
-    )
-    answer_parts: list[str] = []
-    async for event in stream:
-        delta = event.choices[0].delta.content if event.choices else None
-        if delta:
-            answer_parts.append(delta)  # 나중에 전체 답변을 조립하기 위해 계속 이어붙임
-            writer({"type": "token", "delta": delta})  # 동시에 실시간으로 클라이언트에도 흘려보냄
-    return {"answer": "".join(answer_parts)}
+
+    async with traced_span("chat.generate", settings=settings, input=state["query"]):
+        if not state["context"]:
+            # 근거 자료가 0건이면 AI를 아예 호출하지 않는다 — 근거 없이 그럴듯한 답을 지어내는 걸
+            # (환각) 원천 차단하기 위한 의도적인 설계.
+            writer({"type": "token", "delta": NO_CONTEXT_ANSWER})
+            return {"answer": NO_CONTEXT_ANSWER}
+
+        client = get_azure_openai_client(settings)
+        stream = await client.chat.completions.create(
+            model=settings.azure_openai_chat_deployment,
+            messages=build_chat_messages(state["category_code"], state["context"], state["query"]),
+            stream=True,  # 완성된 답변을 한 번에 안 받고, 글자 조각(delta) 단위로 하나씩 받는다
+        )
+        answer_parts: list[str] = []
+        async for event in stream:
+            delta = event.choices[0].delta.content if event.choices else None
+            if delta:
+                answer_parts.append(delta)  # 나중에 전체 답변을 조립하기 위해 계속 이어붙임
+                writer(
+                    {"type": "token", "delta": delta}
+                )  # 동시에 실시간으로 클라이언트에도 흘려보냄
+        return {"answer": "".join(answer_parts)}
 
 
 # ③ verify: 방금 쓴 답변이 근거 자료로 실제 뒷받침되는지 AI에게 한 번 더 물어본다("셀프 채점").
 #    근거가 없으면(0건 검색) 굳이 다시 물어볼 것도 없이 곧바로 GENERAL로 확정.
 async def verify_node(state: ChatState, config: RunnableConfig) -> dict:
-    if not state["context"]:
-        return {"verdict": "GENERAL", "verification_reason": NO_CONTEXT_REASON}
-
     settings: Settings = config["configurable"].get("settings") or get_settings()
-    client = get_azure_openai_client(settings)
-    verdict, reason = await verify_answer(client, settings, state["context"], state["answer"])
-    return {"verdict": verdict, "verification_reason": reason}
+    async with traced_span("chat.verify", settings=settings, input=state["answer"]):
+        if not state["context"]:
+            return {"verdict": "GENERAL", "verification_reason": NO_CONTEXT_REASON}
+
+        client = get_azure_openai_client(settings)
+        verdict, reason = await verify_answer(client, settings, state["context"], state["answer"])
+        return {"verdict": verdict, "verification_reason": reason}
 
 
 # 위 3개 노드를 retrieve → generate → verify 순서로 한 번씩만 실행하도록 연결한 뒤 컴파일한다

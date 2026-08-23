@@ -1,9 +1,9 @@
 """ai_invocations — 04_DB_schema.sql §C, 13_personalization_router_agent_design.md.
 
-개인화 라우터 에이전트(route→generate→validate, 채팅 그래프와 별개) 호출 감사로그. 이 세션
-범위에서는 에이전트 자체를 구현하지 않으므로 이 모델은 지금 온보딩(`ONBOARDING_INITIAL`)
-시점의 로그 1행 기록에만 쓰인다 — `route_reasoning`처럼 화면 비노출 필드는 `error_message`/
-`trace_ref`에 준하는 감사용 텍스트로, 실제 라우터 에이전트가 붙을 때 값이 채워진다.
+개인화 라우터 에이전트(route→generate→validate, 채팅 그래프와 별개) 호출 감사로그.
+`app/services/personalization.py::run_personalization()`이 ONBOARDING_INITIAL/FIELD_UPDATED
+매 호출마다 1행씩 기록한다. `trace_ref`는 14_langfuse_tracing_design.md 이후 실제 Langfuse
+trace ID로 채워진다(트레이싱 비활성 시에는 여전히 NULL).
 
 Importer: app/models/__init__.py."""
 
