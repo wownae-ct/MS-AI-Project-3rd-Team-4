@@ -40,6 +40,16 @@ class TestChatSessionsSmoke:
         assert body["category_code"] == "VENUE"
         assert body["title"] is None
 
+    async def test_create_global_session_without_category_returns_201(self, wedding_client):
+        # 12_final_prototype_mockup.html 하단 탭바의 카테고리 무관 전역 "AI상담" — category_code
+        # 생략(또는 null)이면 전역 세션으로 만들어져야 한다(2026-08-24 발견 갭 수정).
+        response = await wedding_client.post("/chat/sessions", json={})
+
+        assert response.status_code == 201
+        body = response.json()
+        assert body["category_code"] is None
+        assert body["title"] is None
+
     async def test_create_session_without_cookie_returns_401(self, client):
         response = await client.post("/chat/sessions", json={"category_code": "VENUE"})
 

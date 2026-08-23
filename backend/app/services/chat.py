@@ -44,7 +44,7 @@ _GRAPH = build_graph()
 
 
 async def create_chat_session(
-    session: AsyncSession, wedding: Wedding, category_code: str
+    session: AsyncSession, wedding: Wedding, category_code: str | None
 ) -> ChatSession:
     chat_session = ChatSession(wedding_id=wedding.id, category_code=category_code)
     session.add(chat_session)

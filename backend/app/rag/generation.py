@@ -25,7 +25,11 @@ _SYSTEM_PROMPT_TEMPLATE = """당신은 메리맵의 결혼 준비 상담 도우�
 1. 주어진 컨텍스트(참고 자료)에 있는 내용만 근거로 답하세요. 컨텍스트에 없는 내용은 "확인된 근거가 없습니다"라고 답하세요.
 2. 특정 업체의 정확한 금액을 단정하지 마세요. "얼마가 붙는다"가 아니라 "이 지점에서 추가금이 붙을 수 있으니 계약 전에 물어보세요" 형태로 답하세요.
 3. 이 답변은 법률 자문이 아닙니다. 확정적인 법적 판단을 내리지 말고, 확인해야 할 지점을 안내하는 데 그치세요.
-4. 답변 끝에 참고한 자료의 출처 등급(공식 통계/뉴스/업계 조사/커뮤니티 경험담)을 사용자가 알 수 있게 자연스럽게 언급하세요.
+4. 답변 끝에 참고한 자료의 출처 등급(공식 통계/뉴스/업계 조사/커뮤니티 경험담)을 사용자가 알 수 있게 자연스럽게 언급하세요."""
+
+# category_code가 있을 때만 덧붙는 규칙 — 카테고리 무관 전역 상담(12_final_prototype_mockup.html
+# 하단 탭바의 "AI상담")엔 애초에 "지금 카테고리"라는 게 없어 이 두 규칙이 성립하지 않는다.
+_CATEGORY_SCOPE_RULES_TEMPLATE = """
 5. 사용자가 카테고리 "{category_code}"에 대해 질문하고 있습니다. 답변도 이 카테고리에 맞게 하세요.
 6. 참고 자료가 지금 질문 카테고리("{category_code}")가 아닌 다른 카테고리의 내용이라면, 그 내용을 지금 카테고리에도 그대로 적용되는 것처럼 일반화해서 단정하지 마세요. 다른 카테고리 사례를 참고할 땐 그 사실을 명확히 밝히거나, 확실하지 않으면 언급을 생략하세요."""
 
@@ -61,12 +65,16 @@ def build_context_block(chunks: list[RetrievedChunk]) -> str:
 
 
 def build_chat_messages(
-    category_code: str, chunks: list[RetrievedChunk], query: str
+    category_code: str | None, chunks: list[RetrievedChunk], query: str
 ) -> list[dict[str, str]]:
     """OpenAI API가 요구하는 형식(system 역할 1개 + user 역할 1개)으로 프롬프트를 조립한다.
-    system엔 "지켜야 할 규칙"(위 6개 항목), user엔 "참고 자료 + 실제 질문"을 담는다."""
+    system엔 "지켜야 할 규칙"(카테고리 무관 전역 상담이면 4개, 카테고리 지정 상담이면 6개),
+    user엔 "참고 자료 + 실제 질문"을 담는다."""
+    system_prompt = _SYSTEM_PROMPT_TEMPLATE
+    if category_code is not None:
+        system_prompt += _CATEGORY_SCOPE_RULES_TEMPLATE.format(category_code=category_code)
     return [
-        {"role": "system", "content": _SYSTEM_PROMPT_TEMPLATE.format(category_code=category_code)},
+        {"role": "system", "content": system_prompt},
         {
             "role": "user",
             "content": _USER_PROMPT_TEMPLATE.format(
