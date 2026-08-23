@@ -1,0 +1,56 @@
+---
+dataset_code: DS8_UGC
+title: 예비부부 개인 후기 (Threads, 2026-08-24 2차 수집)
+source_tier: CONSENSUS
+source_org: null
+source_url: null
+published_at: 2026-08-24
+license_note: 15_post_v4_scope_promotion.md P3(DS8_UGC 코퍼스 추가 수집)에 따른 2차 수집. 1차 수집(threads_reviews_2026_08.json, 2026-08-21)과 동일한 방법(Threads 개인 예비부부 계정, 원문 비복사·사실관계만 재구성)을 재적용했다. 후보 검토 중 업체/홍보 성격이 있다고 판단해 제외한 계정 — 블로그 구독 유도형 게시물 1건(@wed.ever_), 견적 문의 유도형 홍보 게시물 1건(@jluv_v), 포인트·추천인 적립을 전면에 내세운 게시물 2건(@jinggy_couple, @jj_0808_), 특정 플래너 랜덤배정 관련 홍보성 게시물 1건(@mallangmallange), 저자가 스스로 "업계인"이라 밝힌 게시물 1건(@weddinglast, 드레스투어 촬영금지 사유 설명 — 개인 경험담이 아니라 업계 관점 콘텐츠라 제외). 사실관계를 재구성할 근거가 부족한 단순 질문형 게시물 1건(@moment_of_you__, 포항 웨딩홀 추천 요청)도 제외했다. 1차 수집분(chunk_index 0~8)과 category_codes/item_type 체계를 그대로 따른다. 이 파일은 사람이 읽기 위한 미러이며, 인덱싱은 짝을 이루는 threads_reviews_2026_08_p3.json이 대상이다.
+category_codes: [VENUE, SDM]
+---
+
+<!-- chunk_index: 0, item_type: PREP, category_code: VENUE, source_url: https://www.threads.com/@_harubit_/post/DQKEqc1E1X2 -->
+## 웨딩홀 재방문, 층별로 다른 두 홀 비교
+웨딩홀 재방문 후 층별로 다른 두 홀을 비교한 사례. 낮 예식에 어울리는 밝고 정원 느낌의 홀과, 오후 예식에 어울리는 어둡고 샹들리에가 강조된 홀이 같은 건물 안에 있어 예식 시간대에 맞는 홀을 골라야 했다. 대규모 동시주차가 가능했지만 주차 동선은 다소 좁았고, 신부대기실에서 바로 입장 가능한 구조였다.
+
+---
+
+<!-- chunk_index: 1, item_type: CONTRACT_TERM, category_code: VENUE, source_url: https://www.threads.com/@lovelyn__bella/post/DVNRSMOAXMt -->
+## 시간대 세분화와 온라인 견적 대비 가격 협상
+웨딩홀 투어 중 예식 시간대가 7개로 세분화돼 있고 점심 시간대만 다른 시간대보다 길게 운영된다는 걸 확인한 사례. 정가에서 일부 할인은 받았지만 온라인에서 미리 확인한 견적보다는 여전히 높아 추가 협상 여지가 있는지 확인이 필요했다. 홀의 시그니처 장식이 인상적이긴 해도 시간이 지나면 유행이 지나 보일 수 있다는 점도 계약 전 고려 대상이었다.
+
+---
+
+<!-- chunk_index: 2, item_type: PREP, category_code: VENUE, source_url: https://www.threads.com/@drawntolines/post/DRq_8QAkyXR -->
+## 인테리어에 반한 투어, 아직 계약 전
+인테리어(높은 천장·샹들리에·화이트 톤·생화 장식)에 강한 인상을 받아 투어 직후 바로 마음을 정할 만큼 만족했던 사례. 다만 계약은 아직 진행하지 않은 투어 단계였다 — 사진이나 후기만으로는 알기 어려운 실제 공간감·조명 분위기는 직접 투어로 확인해야 정확히 판단할 수 있다는 걸 보여준다.
+
+---
+
+<!-- chunk_index: 3, item_type: PREP, category_code: VENUE, source_url: https://www.threads.com/@lauvllo/post/DFpyYQ2T1MN -->
+## 조건은 만점, 외관 때문에 계약 포기
+대관료·식대·식사시간·동선을 전부 만족스럽게 평가했지만, 건물 외관이 예식장처럼 보이지 않는다는 이유로 계약을 포기한 사례. 내부 조건이 아무리 좋아도 건물 외관처럼 사진만으로는 확인하기 어려운 부분까지 직접 방문해 봐야 후회 없는 선택을 할 수 있다.
+
+---
+
+<!-- chunk_index: 4, item_type: PREP, category_code: VENUE, source_url: https://www.threads.com/@cherrry.unni/post/DTz2MGOk2lx -->
+## 다수 웨딩홀 투어 비교에서 드러난 공통 패턴
+여러 웨딩홀을 연달아 투어하며 한줄평을 남긴 사례에서 확인되는 공통 패턴 — 천장 높이·기둥 위치 같은 건축 구조가 공간감에 큰 영향을 주고, 가격대가 높다고 서비스 품질이 항상 비례하지는 않으며, 같은 브랜드라도 지점별로 특징이 다르게 나타난다. 미리 견적을 파악해두고 여러 곳을 비교하면 이런 차이를 판단하는 데 도움이 된다.
+
+---
+
+<!-- chunk_index: 5, item_type: CONTRACT_TERM, category_code: SDM, source_url: https://www.threads.com/@cherrry.unni/post/DUksMtCE7j6 -->
+## 본식 가봉 전 홀딩·신상 드레스 확인
+본식 드레스 가봉을 앞두고 확인해야 할 점을 정리한 사례. 원하는 드레스가 있다면 최소 한 달 반 전에는 홀딩을 요청해야 하며, 그러지 않으면 피팅조차 못 해볼 수 있다. 클래식 스타일이 아니라면 1년 전에 미리 홀딩해둔 드레스라도 최근 나온 신상 드레스를 함께 입어보는 편이 만족도가 높았다.
+
+---
+
+<!-- chunk_index: 6, item_type: EXTRA_COST, category_code: SDM, source_url: https://www.threads.com/@ohjinhaa/post/DF1w2pnREPL -->
+## 드레스투어 3곳 비용과 평일·주말 차이
+드레스투어가 꼭 필요한 과정인지 직접 겪어보고 판단한 사례. 세 곳을 투어하는 데 피팅비만 합산 약 15만원이 들었고, 평일에 방문하면 반나절이 걸려 직장인은 휴가를 써야 했다. 주말에는 인기 있거나 신상인 드레스가 이미 다른 예약으로 대여 중인 경우가 많아 선택지가 좁아졌다.
+
+---
+
+<!-- chunk_index: 7, item_type: EXTRA_COST, category_code: SDM, source_url: https://www.threads.com/@minimalism__z/post/C-kSTLUvVc7 -->
+## 표시가 100만원대, 실제로는 누적 추가금
+표시된 스드메 패키지 가격은 100만원대였지만 실제로는 여러 항목에서 추가금이 붙어 다른 동행 플래너 업체와 총액 차이가 크지 않았던 사례. 스튜디오는 원본 이미지·액자 변경·야간촬영마다, 드레스는 기본 드레스를 제외한 사실상 전 종류(색상 있는 드레스 포함)에 추가금이 붙어 최대 200만원대까지 비용이 늘어났고, 메이크업 품질도 기대에 못 미쳤으며 플래너 동행이나 부케 제공도 빠져 있었다.
