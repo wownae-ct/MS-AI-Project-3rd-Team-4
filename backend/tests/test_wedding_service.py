@@ -1,5 +1,5 @@
-"""app/services/wedding.py의 순수 로직(approximate_wedding_date) + app/schemas/wedding.py의
-WeddingCreate 검증기 — DB 없이 도는 것만."""
+"""app/services/wedding.py의 순수 로직(approximate_wedding_date, find_budget_below_paid_violation)
++ app/schemas/wedding.py의 WeddingCreate 검증기 — DB 없이 도는 것만."""
 
 from datetime import date
 from typing import ClassVar
@@ -8,7 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas.wedding import WeddingCreate
-from app.services.wedding import approximate_wedding_date
+from app.services.wedding import approximate_wedding_date, find_budget_below_paid_violation
 
 
 class TestApproximateWeddingDate:
@@ -60,3 +60,32 @@ class TestWeddingCreateValidation:
     def test_total_budget_optional_when_unsure(self):
         payload = {**self._base, "total_budget": None, "total_budget_unsure": True}
         WeddingCreate(**payload)  # 예외 없이 통과해야 함
+
+
+class TestFindBudgetBelowPaidViolation:
+    def test_no_violation_when_planned_covers_paid(self):
+        assert (
+            find_budget_below_paid_violation(
+                {"VENUE": 18_000_000, "SDM": 5_000_000}, {"VENUE": 10_000_000}
+            )
+            is None
+        )
+
+    def test_violation_when_planned_drops_below_paid(self):
+        assert find_budget_below_paid_violation({"VENUE": 8_000_000}, {"VENUE": 10_000_000}) == (
+            "VENUE",
+            10_000_000,
+        )
+
+    def test_category_with_no_payments_defaults_to_zero_paid(self):
+        assert find_budget_below_paid_violation({"GIFT": 0}, {}) is None
+
+    def test_equal_planned_and_paid_is_not_a_violation(self):
+        assert (
+            find_budget_below_paid_violation({"VENUE": 10_000_000}, {"VENUE": 10_000_000}) is None
+        )
+
+    def test_returns_first_violation_in_iteration_order(self):
+        planned = {"VENUE": 1_000_000, "SDM": 2_000_000}
+        paid = {"VENUE": 5_000_000, "SDM": 9_000_000}
+        assert find_budget_below_paid_violation(planned, paid) == ("VENUE", 5_000_000)

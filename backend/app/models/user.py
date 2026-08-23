@@ -1,11 +1,19 @@
 """users / auth_sessions — 04_DB_schema.sql, BASELINE v4.0 ① 인증 재도입.
 
+DDL은 전부 TIMESTAMPTZ인데 DateTime(timezone=True)를 명시 안 해서 SQLAlchemy가 TIMESTAMP
+WITHOUT TIME ZONE으로 캐스팅하던 버그를 2026-08-24 수정 — app/services/auth.py가
+datetime.now(UTC)(tz-aware)를 매 로그인마다 넣고 비교(get_user_by_session_token의
+AuthSession.expires_at > now)해서 asyncpg가 "can't subtract offset-naive and offset-aware
+datetimes"로 매번 죽고 있었다(dev-53 세션이 checklist_items/timeline_items/ai_invocations에서
+같은 패턴을 먼저 겪고 고친 뒤 발견해 알려줌). checklist.py/timeline.py/ai_invocation.py와
+동일한 처방.
+
 Importer: app/models/__init__.py."""
 
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -38,15 +46,15 @@ class User(Base):
     auth_provider_id: Mapped[str | None] = mapped_column(Text)
     display_name: Mapped[str | None] = mapped_column(Text)
     profile_image_url: Mapped[str | None] = mapped_column(Text)
-    email_verified_at: Mapped[datetime | None]
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="ACTIVE")
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    terms_agreed_at: Mapped[datetime | None]
+    terms_agreed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     privacy_policy_version: Mapped[str | None] = mapped_column(Text)
-    anonymized_at: Mapped[datetime | None]
-    last_login_at: Mapped[datetime | None]
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    anonymized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class AuthSession(Base):
@@ -69,8 +77,8 @@ class AuthSession(Base):
     )
     session_token_hash: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     login_method: Mapped[str] = mapped_column(Text, nullable=False)
-    issued_at: Mapped[datetime] = mapped_column(server_default=func.now())
-    expires_at: Mapped[datetime] = mapped_column(nullable=False)
-    revoked_at: Mapped[datetime | None]
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     user_agent: Mapped[str | None] = mapped_column(Text)
     ip_address: Mapped[str | None] = mapped_column(Text)
