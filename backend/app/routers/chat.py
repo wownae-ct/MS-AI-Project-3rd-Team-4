@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
-from app.deps import get_the_wedding
+from app.deps import get_current_wedding
 from app.models import ChatMessage, Wedding
 from app.schemas.chat import (
     ChatMessageCreate,
@@ -48,7 +48,7 @@ def _message_to_out(message: ChatMessage) -> ChatMessageOut:
 @router.post("/chat/sessions", response_model=ChatSessionOut, status_code=201)
 async def create_chat_session(
     payload: ChatSessionCreate,
-    wedding: Wedding = Depends(get_the_wedding),  # noqa: B008
+    wedding: Wedding = Depends(get_current_wedding),  # noqa: B008
     session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ChatSessionOut:
     chat_session = await create_chat_session_service(session, wedding, payload.category_code)
