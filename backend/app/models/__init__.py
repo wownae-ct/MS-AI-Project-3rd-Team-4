@@ -1,4 +1,4 @@
-"""SQLAlchemy 선언적 모델. 14개 테이블, docs/wedding/plan/04_DB_spec.md §7 DDL과 1:1 대응.
+"""SQLAlchemy 선언적 모델. 15개 테이블, docs/wedding/plan/04_DB_spec.md §7 DDL과 1:1 대응.
 
 alembic env.py가 `Base.metadata`를 이 모듈에서 가져와 --autogenerate에 쓴다."""
 
@@ -13,6 +13,7 @@ from app.models.ai_invocation import AiInvocation
 from app.models.benchmark import PriceBenchmark, VendorCaseExample
 from app.models.chat import ChatMessage, ChatSession
 from app.models.checklist import ChecklistItem
+from app.models.feedback import FeedbackReport
 from app.models.payment import Payment
 from app.models.rag import RagChunk, RagDocument
 from app.models.timeline import TimelineItem
@@ -26,6 +27,7 @@ __all__ = [
     "ChatMessage",
     "ChatSession",
     "ChecklistItem",
+    "FeedbackReport",
     "Payment",
     "PriceBenchmark",
     "RagChunk",
