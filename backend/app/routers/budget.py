@@ -3,8 +3,9 @@
 payments는 2026-08-24부로 app/services/payment.py를 통한 실DB 조회로 전환했다(별도 태스크,
 app/services/wedding.py의 paid_amount/BUDGET_BELOW_PAID TODO를 여는 선행 작업). `/benchmarks/
 compare`는 인증/weddings/price_benchmarks가 모두 갖춰져 마찬가지로 실DB 조회로 전환했다 —
-has_benchmark 판단은 app/routers/_mock.py의 구 7개짜리 MOCK_CATEGORIES가 아니라
-app/core/categories.py의 CATEGORY_META_BY_CODE(9개, 단일 소스)를 조회한다.
+has_benchmark 판단은 app/core/categories.py의 CATEGORY_META_BY_CODE(9개, 단일 소스)를 조회한다
+(구 7개짜리 MOCK_CATEGORIES가 있던 app/routers/_mock.py는 2026-08-24 GET /categories 실구현
+전환과 함께 삭제됨).
 
 v3.0의 `/checklists/*`(#8-9) 목 엔드포인트는 v4.0에서 완전히 다른 리소스명·구조(`/checklist-items`,
 app/routers/checklist.py, 웨딩별 실DB 행)로 대체돼 여기서 제거했다 — v4.0 API 명세서에
