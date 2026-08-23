@@ -102,14 +102,22 @@ class TestChecklistFallbackRows:
         rows = _checklist_fallback_rows({"VENUE", "SDM"})
         assert len(rows) == 24
 
-    def test_neither_active_returns_empty(self):
-        rows = _checklist_fallback_rows({"MEETING"})
+    def test_empty_active_categories_returns_empty(self):
+        rows = _checklist_fallback_rows(set())
         assert rows == []
 
     def test_fallback_rows_have_llm_origin_and_official_source_tier(self):
         rows = _checklist_fallback_rows({"VENUE"})
         assert all(r.origin == "LLM" for r in rows)
         assert all(r.source_tier == "OFFICIAL" for r in rows)
+
+    def test_mockup_category_now_covered_with_consensus_source_tier(self):
+        # 00_BASELINE.md §0-2 Should "MOCKUP 7개 카테고리 얇은 시드" — MEETING은 VENUE/SDM처럼
+        # OFFICIAL 근거가 아니라 CONSENSUS(팀 자체 정리) 5항목으로 커버된다.
+        rows = _checklist_fallback_rows({"MEETING"})
+        assert len(rows) == 5
+        assert all(r.category_code == "MEETING" for r in rows)
+        assert all(r.source_tier == "CONSENSUS" for r in rows)
 
 
 class TestTimelineRowFromDraft:
