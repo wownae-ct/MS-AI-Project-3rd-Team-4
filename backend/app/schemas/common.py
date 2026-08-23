@@ -39,7 +39,16 @@ RegionCode = Literal[
 CategoryTier = Literal["FOCUS", "MOCKUP"]
 SourceTier = Literal["OFFICIAL", "NEWS", "INDUSTRY", "CONSENSUS"]
 ItemType = Literal["CONTRACT_TERM", "EXTRA_COST", "PREP"]
-ChecklistStatus = Literal["TODO", "DOING", "DONE", "SKIP"]
+Origin = Literal["LLM", "USER"]  # checklist_items/timeline_items 공통 — "LLM"은 실시간 LLM 호출
+# 결과뿐 아니라 결정론적 폴백(타임라인 55항목 카탈로그 등)을 포함해 "사용자가 직접 추가하지
+# 않은 모든 시스템 생성 콘텐츠"를 넓게 가리킨다(13_personalization_router_agent_design.md §2).
+# HOMEWARE(혼수)는 다른 8개 카테고리와 다른 4단계 상태값을 쓴다(04_DB_schema.sql CHECK) — 어떤
+# 값이 유효한지는 category_code에 달려 있으므로, 이 Literal은 둘의 합집합이고 실제 유효성
+# 검사는 app/services/checklist.py의 category별 허용 집합으로 한다(API 레이어에서 먼저 걸러
+# 명확한 422를 주기 위해서 — 03_API_spec.md #13).
+GeneralChecklistStatus = Literal["TODO", "DOING", "SKIP", "DONE"]
+HomewareChecklistStatus = Literal["LISTED", "COMPARING", "ORDERED", "DELIVERED"]
+ChecklistStatus = GeneralChecklistStatus | HomewareChecklistStatus
 PaymentType = Literal["DEPOSIT", "INTERIM", "BALANCE", "ETC"]
 PaymentStatus = Literal["PLANNED", "PAID", "CANCELED"]
 MilestoneStatus = Literal["TODO", "DONE"]
