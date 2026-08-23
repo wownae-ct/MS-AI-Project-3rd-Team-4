@@ -9,7 +9,6 @@ from sqlalchemy import (
     BigInteger,
     CheckConstraint,
     Date,
-    ForeignKey,
     Integer,
     SmallInteger,
     Text,
@@ -58,10 +57,19 @@ class PriceBenchmark(Base):
 
 
 class VendorCaseExample(Base):
-    """[F10] 업체 사례(좋은 예/나쁜 예). 익명 합성 패턴만 — 실명/주소/연락처 금지."""
+    """[F10] 업체 사례(좋은 예/나쁜 예). 익명 합성 패턴만 — 실명/주소/연락처 금지.
+
+    category_code는 category_code ENUM 타입을 쓰지 않고 TEXT+CHECK로 남겨둔다(PriceBenchmark와
+    동일 이유는 아님) — F10은 카테고리 개수·ENUM 상태와 무관하게 VENUE/SDM 2개로 고정된 규칙
+    (06_RAG_implementation_and_copyright_review.md §3: "F10은 VENUE/SDM에만 적용, 카테고리 개수
+    변경과 무관")이라, 이 테이블이 category_code ENUM 재설계(다른 세션 진행 중)와 아예 독립적으로
+    존재할 수 있게 하기 위한 선택이다."""
 
     __tablename__ = "vendor_case_examples"
     __table_args__ = (
+        CheckConstraint(
+            "category_code IN ('VENUE','SDM')", name="ck_vendor_case_examples_category_code"
+        ),
         CheckConstraint("case_type IN ('GOOD','BAD')", name="ck_vendor_case_examples_case_type"),
         CheckConstraint(
             "source_tier IN ('OFFICIAL','NEWS','INDUSTRY','CONSENSUS')",
@@ -70,9 +78,7 @@ class VendorCaseExample(Base):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    category_id: Mapped[int] = mapped_column(
-        SmallInteger, ForeignKey("categories.id"), nullable=False, index=True
-    )
+    category_code: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     case_type: Mapped[str] = mapped_column(Text, nullable=False)
     case_label: Mapped[str] = mapped_column(Text, nullable=False)
     situation: Mapped[str] = mapped_column(Text, nullable=False)
