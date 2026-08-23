@@ -19,6 +19,7 @@ import time
 from collections.abc import AsyncIterator
 from uuid import UUID
 
+from openai import RateLimitError
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,13 +27,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.db import get_session_factory
 from app.core.errors import api_error
-from app.models import Category, ChatMessage, ChatSession, Wedding
+from app.models import ChatMessage, ChatSession, Wedding
 from app.rag.graph import ChatState, build_graph
 from app.schemas.chat import (
     ChatMessageCreate,
     CitationOut,
     CitationsEventData,
     DoneEventData,
+    ErrorEventData,
     TokenEventData,
     VerificationEventData,
 )
@@ -43,24 +45,32 @@ _GRAPH = build_graph()
 async def create_chat_session(
     session: AsyncSession, wedding: Wedding, category_code: str
 ) -> ChatSession:
-    category = (
-        await session.execute(select(Category).where(Category.code == category_code))
-    ).scalar_one()
-    chat_session = ChatSession(wedding_id=wedding.id, category_id=category.id)
+    chat_session = ChatSession(wedding_id=wedding.id, category_code=category_code)
     session.add(chat_session)
     await session.commit()
     await session.refresh(chat_session)
     return chat_session
 
 
-async def get_chat_session(session: AsyncSession, session_id: UUID) -> ChatSession:
-    chat_session = await session.get(ChatSession, session_id)
+async def get_chat_session(
+    session: AsyncSession, wedding_id: UUID, session_id: UUID
+) -> ChatSession:
+    """wedding_id를 WHERE 절에 직접 넣어 "없음"과 "남의 것"을 구조적으로 구분 못 하게 한다 —
+    둘 다 404 CHAT_SESSION_NOT_FOUND로 응답해 세션 존재 여부 자체를 노출하지 않는다
+    (03_API_spec.md §5 — 다른 사람의 리소스를 조회/수정할 방법 자체가 없어야 함)."""
+    stmt = select(ChatSession).where(
+        ChatSession.id == session_id, ChatSession.wedding_id == wedding_id
+    )
+    chat_session = (await session.execute(stmt)).scalar_one_or_none()
     if chat_session is None:
         raise api_error(404, "CHAT_SESSION_NOT_FOUND", "상담 세션을 찾을 수 없습니다.")
     return chat_session
 
 
-async def list_chat_messages(session: AsyncSession, session_id: UUID) -> list[ChatMessage]:
+async def list_chat_messages(
+    session: AsyncSession, wedding_id: UUID, session_id: UUID
+) -> list[ChatMessage]:
+    await get_chat_session(session, wedding_id, session_id)  # 소유권 확인 — 아니면 404
     result = await session.execute(
         select(ChatMessage)
         .where(ChatMessage.session_id == session_id)
@@ -76,13 +86,12 @@ def _sse(event: str, data: BaseModel) -> str:
 
 
 async def stream_chat_response(
-    chat_session_id: UUID, payload: ChatMessageCreate
+    chat_session_id: UUID, wedding_id: UUID, payload: ChatMessageCreate
 ) -> AsyncIterator[str]:
     start = time.monotonic()
 
     async with get_session_factory()() as session:
-        chat_session = await get_chat_session(session, chat_session_id)
-        category = await session.get(Category, chat_session.category_id)
+        chat_session = await get_chat_session(session, wedding_id, chat_session_id)
 
         session.add(ChatMessage(session_id=chat_session.id, role="user", content=payload.content))
         await session.commit()
@@ -90,7 +99,7 @@ async def stream_chat_response(
         settings = get_settings()
         initial_state: ChatState = {
             "query": payload.content,
-            "category_code": category.code,
+            "category_code": chat_session.category_code,
             "context": [],
             "answer": "",
             "verdict": "",
@@ -99,17 +108,31 @@ async def stream_chat_response(
         config = {"configurable": {"session": session, "settings": settings}}
 
         final_state: ChatState = initial_state
-        # 그래프(retrieve→generate→verify)를 실시간으로 순회한다. 두 종류의 조각이 섞여서 나온다:
-        #   - "custom": generate_node가 writer()로 흘려보낸 토큰 하나 → 곧바로 SSE로 전달(진짜 실시간)
-        #   - "values": 노드가 하나 끝날 때마다의 "전체 상태 스냅샷" → 계속 덮어써서 마지막 것만 남김
-        #     (retrieve 끝나면 context 채워진 스냅샷, verify 끝나면 verdict까지 채워진 스냅샷 순으로 옴)
-        async for mode, chunk in _GRAPH.astream(
-            initial_state, config, stream_mode=["custom", "values"]
-        ):
-            if mode == "custom":
-                yield _sse("token", TokenEventData(delta=chunk["delta"]))
-            else:
-                final_state = chunk
+        try:
+            # 그래프(retrieve→generate→verify)를 실시간으로 순회한다. 두 종류의 조각이 섞여서
+            # 나온다:
+            #   - "custom": generate_node가 writer()로 흘려보낸 토큰 하나 → 곧바로 SSE로 전달
+            #     (진짜 실시간)
+            #   - "values": 노드가 하나 끝날 때마다의 "전체 상태 스냅샷" → 계속 덮어써서 마지막
+            #     것만 남김(retrieve 끝나면 context 채워진 스냅샷, verify 끝나면 verdict까지
+            #     채워진 스냅샷 순으로 옴)
+            async for mode, chunk in _GRAPH.astream(
+                initial_state, config, stream_mode=["custom", "values"]
+            ):
+                if mode == "custom":
+                    yield _sse("token", TokenEventData(delta=chunk["delta"]))
+                else:
+                    final_state = chunk
+        except RateLimitError as exc:
+            # 03_API_spec.md #29 "에러 시" / 05_RAG_design.md §10 — 스트림이 이미 200으로
+            # 시작해서 HTTP 상태코드를 더 못 바꾸므로 event: error로만 알린다. 사용자 메시지는
+            # 이미 커밋됐으니 그대로 두고(재시도 시 새 어시스턴트 메시지만 추가됨), 그래프 실패로
+            # 죽은 세션이 계속 열려 있지 않도록 여기서 스트림을 끝낸다.
+            yield _sse("error", ErrorEventData(code="RATE_LIMITED", message=str(exc)))
+            return
+        except Exception as exc:  # noqa: BLE001 — LLM 업스트림 실패는 종류를 가리지 않고 알려야 함
+            yield _sse("error", ErrorEventData(code="UPSTREAM_LLM_ERROR", message=str(exc)))
+            return
 
         # 루프가 끝난 시점엔 final_state에 검색 근거(context)·최종 답변·검증 결과가 전부 들어있다.
         citations = [
