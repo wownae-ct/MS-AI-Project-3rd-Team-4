@@ -1,0 +1,48 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "메리맵 백엔드 (FastAPI + SQLAlchemy 2.0 async + RAG 상담)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "asyncpg>=0.29",
+    "sqlalchemy[asyncio]>=2.0",
+    "alembic>=1.13",
+    "pgvector>=0.3",
+    "pydantic>=2.8",
+    "pydantic-settings>=2.4",
+    "azure-identity>=1.17",
+    "azure-keyvault-secrets>=4.8",
+    "openai>=1.40",
+    "langgraph>=0.2",
+    "langchain-core>=1.0",
+    "tiktoken>=0.7",
+    "pyyaml>=6.0",
+    "openpyxl>=3.1",
+    "argon2-cffi>=23.1",
+    "email-validator>=2.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.6",
+    "httpx>=0.27",
+]
+
+[tool.ruff]
+line-length = 100
+extend-exclude = ["old"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+norecursedirs = ["old"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

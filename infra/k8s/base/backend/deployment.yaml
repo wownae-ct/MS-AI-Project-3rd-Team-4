@@ -3,7 +3,7 @@
 # 선언하는 오브젝트. 파드(Pod, 컨테이너 1개 이상을 감싸는 최소 배포 단위)가 죽으면 쿠버네티스가
 # 이 파일 내용대로 알아서 새로 띄워준다(사람이 매번 수동으로 재시작할 필요 없음) — 이게
 # Deployment의 핵심 가치. 우리 서비스(메리맵 API)는 이 파일 하나로 "떠 있는 상태"가 정의된다.
-# backend 서비스(gateway 진입점 + T2/T3/T4 에이전트가 한 프로세스에서 동작) 배포 매니페스트.
+# backend 서비스(gateway 진입점 + S3/S4/S5 에이전트가 한 프로세스에서 동작) 배포 매니페스트.
 # 컨테이너 이미지 태그는 ArgoCD Image Updater가 ACR 신규 태그 감지 시 자동으로 갱신한다(수동 편집 불필요).
 apiVersion: apps/v1
 kind: Deployment
@@ -11,10 +11,6 @@ metadata:
     name: backend
     labels:
         app: backend
-    annotations:
-        # ml 레포가 model-version ConfigMap을 바꿔도(정적 이름 유지) K8s가 알아서 재기동해주지 않는다 —
-        # Reloader가 이 어노테이션을 보고 참조 중인 ConfigMap/Secret 변경을 감지해서 롤링 재시작시킨다.
-        reloader.stakater.com/auto: "true"
 spec:
     replicas: 1 # 동시에 띄울 파드(컨테이너 묶음) 개수. 1이면 이중화가 없다는 뜻(장애 시 재시작
         # 되는 동안 잠깐 다운타임 발생) — 데모 규모라 의도적으로 1개만 유지.
@@ -35,40 +31,6 @@ spec:
             serviceAccountName: backend-sa # 이 파드가 "누구"로 행세할지(Azure AD 앱 등록과
                 # 1:1로 연결된 K8s 신원). Workload Identity가 이 이름을 보고 어떤 Azure 신원의
                 # 토큰을 발급할지 결정한다.
-            initContainers:
-                # MODEL_VERSION(ConfigMap)이 가리키는 ONNX 모델을 Blob Storage에서 받아 emptyDir에 넣는다.
-                # Workload Identity 인증 시도 이력(2026-08-14 실배포 중 확인):
-                #   1) `az login --identity` (client-id 없이) → "Multiple user assigned identities exist"
-                #      (az CLI가 노드 IMDS로 빠짐 — Workload Identity는 IMDS 방식이 아니라서 애초에 안 맞음)
-                #   2) `az login --identity --client-id "$AZURE_CLIENT_ID"` → "Identity not found"
-                #      (여전히 IMDS 경로라 이 UAMI가 노드에 물리적으로 안 붙어있어서 못 찾음)
-                # Workload Identity는 IMDS가 아니라 OIDC federated token 교환 방식이라 `--identity` 자체가
-                # 틀린 진입점이었음 — `--federated-token`(GitHub Actions OIDC↔Azure와 동일한 메커니즘)으로 전환.
-                - name: fetch-model
-                  image: mcr.microsoft.com/azure-cli:latest
-                  command:
-                      - sh
-                      - -c
-                      - |
-                          az login --service-principal \
-                            --username "$AZURE_CLIENT_ID" \
-                            --tenant "$AZURE_TENANT_ID" \
-                            --federated-token "$(cat "$AZURE_FEDERATED_TOKEN_FILE")"
-                          az storage blob download \
-                            --account-name "$STORAGE_ACCOUNT_NAME" \
-                            --container-name models \
-                            --name "$MODEL_VERSION/model.onnx" \
-                            --file /models/model.onnx \
-                            --auth-mode login
-                  envFrom:
-                      - configMapRef:
-                            name: model-version
-                  env:
-                      - name: STORAGE_ACCOUNT_NAME
-                        value: "team4hcstg"
-                  volumeMounts:
-                      - name: model-cache
-                        mountPath: /models
             containers:
                 - name: backend
                   image: team4hcacr-drascbaqe8f2gcca.azurecr.io/backend:latest # 실행할 도커
@@ -84,19 +46,32 @@ spec:
                       # 없고 별도 시크릿 저장소(Key Vault → CSI 드라이버 → K8s Secret)에서 온다.
                       - name: PORT
                         value: "8000"
+                      - name: DATABASE_URL
+                        valueFrom:
+                            secretKeyRef:
+                                name: backend-kv-secrets
+                                key: DATABASE_URL
+                      - name: DATABASE_AUTH_MODE
+                        value: "aad"
+                      - name: AZURE_OPENAI_ENDPOINT
+                        valueFrom:
+                            secretKeyRef:
+                                name: backend-kv-secrets
+                                key: AZURE_OPENAI_ENDPOINT
                   volumeMounts:
                       - name: kv-secrets
                         mountPath: /mnt/secrets
                         readOnly: true
-                      - name: model-cache
-                        mountPath: /app/backend/models
                   readinessProbe:
                       # readinessProbe = "이 파드가 지금 진짜 요청을 받아도
                       # 되는 상태인가?"를 쿠버네티스가 주기적으로 확인하는 헬스체크. 실패하면
                       # 이 파드는 Service(트래픽 분배기)에서 잠깐 빠진다(파드가 죽진 않음,
                       # 트래픽만 안 보냄) — 앱이 켜지는 중일 때 요청이 몰려서 에러 나는 걸 막아줌.
                       httpGet:
-                          path: /readyz
+                          # 앱에 /readyz가 없다 — 실제 라우트는 #1 GET /api/v1/health(03_API_spec.md
+                          # §3, backend/app/routers/health.py) 하나뿐. 옛 경로로 뒀다가 새 파드가
+                          # 계속 404로 readiness 실패해 크래시루프하는 걸 staging에서 실측 확인.
+                          path: /api/v1/health
                           port: 8000
                       initialDelaySeconds: 5
                   livenessProbe:
@@ -106,7 +81,7 @@ spec:
                       # 대비) — 경로가 잘못돼 있으면 정상 앱도 계속 재시작만 반복하는 크래시루프에
                       # 빠지므로 readinessProbe보다 잘못 설정했을 때 더 치명적이다.
                       httpGet:
-                          path: /healthz
+                          path: /api/v1/health
                           port: 8000
                       initialDelaySeconds: 10
             volumes:
@@ -122,5 +97,3 @@ spec:
                       readOnly: true
                       volumeAttributes:
                           secretProviderClass: backend-kv
-                - name: model-cache
-                  emptyDir: {}

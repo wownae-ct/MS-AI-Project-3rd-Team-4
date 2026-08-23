@@ -3,10 +3,28 @@ title = "AI 홈트레이닝 코치 gitleaks 설정"
 [extend]
 useDefault = true
 
+# 한글 문맥 평문 자격증명 탐지 (2026-08-19 추가).
+# 영문 키워드 위주인 기본 룰이 보지 못하는 한글 문맥을 보완한다.
+[[rules]]
+id = "korean-plaintext-credential"
+description = "한글 키워드(비밀번호·패스워드·암호) 근처 인용부호 안의 평문 자격증명"
+# 값에서 `/`는 제외한다(경로 참조 오탐 방지).
+regex = '''(?:비밀번호|패스워드|암호)[^`'"\r\n]{0,20}[`'"]([^`'"\s/]{8,64})[`'"]'''
+secretGroup = 1
+keywords = ["비밀번호", "패스워드", "암호"]
+
+# 순수 영단어(식별자)는 제외 — "비밀번호 인증과 병행(`authConfig`)"처럼 코드 식별자를
+# 백틱으로 감싼 문서 표기가 오탐의 나머지 절반이었다.
+[rules.allowlist]
+regexTarget = "secret"
+regexes = ['''^[A-Za-z]+$''']
+
 [allowlist]
 description = "오탐 예외"
 paths = [
-  '''\.env\.example$''',
+  # `.env.example`은 일부러 예외에서 뺐다(2026-08-19). 템플릿은 값이 비어 있어야 하므로
+  # 오탐이 날 일이 거의 없고, 반대로 여기에 실제 값이 들어가면 추적 대상 파일이라 그대로
+  # 커밋된다. 예외로 두면 gitleaks가 설계상 그걸 못 잡는다.
   '''docs/.*\.(pdf|docx|xlsx|pptx|html)$''',
   '''uv\.lock$''',
 ]

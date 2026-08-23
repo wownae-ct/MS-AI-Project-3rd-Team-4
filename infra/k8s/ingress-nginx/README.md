@@ -19,7 +19,7 @@ AGIC(Application Gateway Ingress Controller)를 썼다면 Application Gateway라
 쓰고, 두 환경을 host 기반으로 같은 컨트롤러 안에서 구분한다:
 
 - **production**: Azure LoadBalancer 자동생성 DNS 라벨(`service.beta.kubernetes.io/azure-dns-label-name`)
-  로 실도메인 구매 없이 무료 발급 — `aicoach-production.koreacentral.cloudapp.azure.com`. DNS 이름 레이블
+  로 실도메인 구매 없이 무료 발급 — `merrymap-production.koreacentral.cloudapp.azure.com`. DNS 이름 레이블
   범위는 ACR과 동일하게 **"재사용 안 함(No Reuse)"**(서브도메인 탈취 방지).
 - **staging**: 같은 컨트롤러의 **같은 공인 IP**를 `nip.io`로 재사용 — `<IP를-하이픈으로-치환>.nip.io`
   (예: IP가 `20.1.2.3`이면 `20-1-2-3.nip.io`). 별도 리소스/설정 없이 즉시 동작하고, `nip.io`도 실제
@@ -38,8 +38,17 @@ helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm repo update
 helm install ingress-nginx ingress-nginx/ingress-nginx \
   --namespace ingress-nginx --create-namespace \
-  --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-dns-label-name"=aicoach-production
+  --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-dns-label-name"=merrymap-production \
+  --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz
 ```
+
+**⚠️ `azure-load-balancer-health-probe-request-path` 어노테이션 필수(2026-08-21 실제 장애로 발견)**:
+이게 없으면 Azure LB가 nodePort의 `/`를 헬스프로브로 치는데, ingress-nginx 기본 백엔드는 매칭되는
+Host가 없는 요청에 404를 돌려줘서(정상 동작) Azure가 모든 백엔드를 영구 unhealthy로 표시한다
+(`DipAvailability`/`VipAvailability` 0%로 실측). 같은 VNet 내부 트래픽은 다른 경로를 타서 영향을
+안 받아 오래 안 들켰지만, 실제 인터넷 트래픽(Let's Encrypt HTTP-01 challenge 포함)은 조용히
+타임아웃됐다 — staging/production 둘 다 TLS 인증서가 배포 이후 한 번도 발급 성공한 적이 없었음.
+`/healthz`는 ingress-nginx가 Host 무관하게 항상 200을 돌려주는 경로라 이 문제를 해결한다.
 
 설치 후 공인 IP 확인 → staging용 `nip.io` 호스트를 만들 때 필요:
 
@@ -47,7 +56,7 @@ helm install ingress-nginx ingress-nginx/ingress-nginx \
 kubectl get svc -n ingress-nginx ingress-nginx-controller
 ```
 
-몇 분 뒤 `nslookup aicoach-production.koreacentral.cloudapp.azure.com`으로 DNS 라벨이 실제로 반영됐는지
+몇 분 뒤 `nslookup merrymap-production.koreacentral.cloudapp.azure.com`으로 DNS 라벨이 실제로 반영됐는지
 확인(**미검증 — 실배포 후 라이브 확인 필요**).
 
 ## 사용하는 곳
