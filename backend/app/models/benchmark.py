@@ -22,7 +22,11 @@ from app.models import Base
 
 
 class PriceBenchmark(Base):
-    """참가격 통계(예식장·스드메 전용). wedding_id 없음 — 결혼과 무관한 참고표."""
+    """참가격 통계. wedding_id 없음 — 결혼과 무관한 참고표.
+
+    category_code는 다른 카테고리 참조 테이블과 달리 categories ENUM을 쓰지 않고 TEXT+CHECK로
+    남겨둔다 — 'TOTAL'(F7 예산 미정 슬라이더 placeholder용 특수값)이 이 테이블에만 필요하고
+    다른 곳엔 절대 허용되면 안 되기 때문(04_ERD.md, 11_v3_to_v4_diff.md §1-5)."""
 
     __tablename__ = "price_benchmarks"
     __table_args__ = (
@@ -34,7 +38,9 @@ class PriceBenchmark(Base):
             name="uq_price_benchmarks_month_region_cat_item",
         ),
         CheckConstraint(
-            "category_code IN ('VENUE','SDM')", name="ck_price_benchmarks_category_code"
+            "category_code IN "
+            "('MEETING','VENUE','SDM','GIFT','HOMEWARE','INVITATION','HONEYMOON','HOMENEW','ETC','TOTAL')",
+            name="ck_price_benchmarks_category_code",
         ),
     )
 
@@ -42,12 +48,13 @@ class PriceBenchmark(Base):
     survey_month: Mapped[datetime] = mapped_column(Date, nullable=False)
     region_code: Mapped[str] = mapped_column(Text, nullable=False)
     category_code: Mapped[str] = mapped_column(Text, nullable=False)
-    item_code: Mapped[str] = mapped_column(Text, nullable=False)
+    item_code: Mapped[str] = mapped_column(Text, nullable=False, server_default="TOTAL")
     median_price: Mapped[int] = mapped_column(BigInteger, nullable=False)
     min_price: Mapped[int | None] = mapped_column(BigInteger)
     max_price: Mapped[int | None] = mapped_column(BigInteger)
     sample_count: Mapped[int | None] = mapped_column(Integer)
     source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    source_note: Mapped[str | None] = mapped_column(Text)
 
 
 class VendorCaseExample(Base):

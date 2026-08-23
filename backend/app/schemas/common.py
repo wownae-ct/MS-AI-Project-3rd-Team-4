@@ -5,6 +5,30 @@ from typing import Literal
 
 CategoryCode = Literal["MEETING", "VENUE", "SDM", "GIFT", "HOMEWARE", "INVITATION", "HONEYMOON"]
 BenchmarkCategoryCode = Literal["VENUE", "SDM"]  # price_benchmarks/vendor_case_examples는 이 둘만
+# price_benchmarks.region_code는 DB에 CHECK 제약이 없다(값 목록이 데이터 갱신마다 바뀔 수 있어
+# 스키마 변경 없이 확장 가능하게 일부러 안 걸어둠) — 그래도 ETL 스크립트와 조회 서비스가 같은
+# 값을 쓰도록 앱 레벨 단일 소스로 여기 정의한다. 14개는 참가격 원본(data/raw/참가격데이터)의
+# 지역별 결혼식장/결혼준비대행 시트가 다루는 세분 지역, 3개(NATIONWIDE/METRO/NON_METRO)는 같은
+# 시트에 이미 포함된 전국/수도권/비수도권 집계 행 — 특정 지역에 데이터가 없을 때 폴백용으로 쓴다.
+RegionCode = Literal[
+    "SEOUL_GANGNAM",
+    "SEOUL_OTHER",
+    "BUSAN",
+    "INCHEON",
+    "DAEGU",
+    "DAEJEON",
+    "GWANGJU",
+    "ULSAN",
+    "GYEONGGI",
+    "CHUNGCHEONG",
+    "JEOLLA",
+    "GYEONGSANG",
+    "GANGWON",
+    "JEJU",
+    "NATIONWIDE",
+    "METRO",
+    "NON_METRO",
+]
 CategoryTier = Literal["FOCUS", "MOCKUP"]
 SourceTier = Literal["OFFICIAL", "NEWS", "INDUSTRY", "CONSENSUS"]
 ItemType = Literal["CONTRACT_TERM", "EXTRA_COST", "PREP"]
