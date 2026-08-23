@@ -1,10 +1,10 @@
 """FastAPI 앱을 실제 서버 기동 없이 ASGI로 직접 두드리는 스모크 테스트 공용 픽스처.
 
 09_backend_implementation_plan.md §4/§6 DoD: "TestClient로 엔드포인트가 200/201을 반환하는가"
-스모크 테스트를 mock DB가 아니라 실제(로컬/개발) DB에 대해 실행한다. 이 프로젝트엔 아직 별도
-테스트 DB 컨테이너가 없어 backend/.env가 가리키는 DB(로컬 개발자가 평소 실DB 검증에 쓰는 것과
-동일)를 그대로 쓴다 — CI에서 스모크를 돌리려면 backend-ci.yml에 테스트 DB 프로비저닝을 추가하는
-별도 인프라 작업이 필요하다(아직 안 돼 있음)."""
+스모크 테스트를 mock DB가 아니라 실제 DB에 대해 실행한다. 로컬에서는 backend/.env가 가리키는
+DB(개발자가 평소 실DB 검증에 쓰는 것과 동일)를 그대로 쓰고, CI(backend-ci.yml)에서는
+pgvector/pgvector 서비스 컨테이너로 매 실행마다 빈 DB에 마이그레이션을 새로 적용한 뒤 돈다
+(2026-08-24, PR #37 CI 실패로 발견해 추가)."""
 
 from collections.abc import AsyncIterator, Callable, Coroutine
 from uuid import uuid4
