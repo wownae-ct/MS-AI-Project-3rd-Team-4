@@ -5,7 +5,12 @@ backend/old/app/agents/retriever/search.py(단일 pgvector top-k)를 대체 — 
 계약조건(item_type='CONTRACT_TERM') 키워드 가중치는 같은 절 F9 참조).
 
 카테고리 필터는 `category_codes @> ARRAY[:category_code]`(배열 포함 검색) — rag_chunks.category_codes
-가 TEXT[]인 이유는 04_DB_spec.md (12) 참고."""
+가 TEXT[]인 이유는 04_DB_spec.md (12) 참고.
+
+category_code=None(카테고리 무관 전역 상담, 12_final_prototype_mockup.html 하단 탭바의
+"AI상담")이면 `:category_code IS NULL OR ...`로 카테고리 필터 자체를 건너뛴다 — SQL의
+`TRUE OR NULL = TRUE` 단축 평가 규칙 덕에 ARRAY[NULL]과의 @> 비교 결과(NULL/false)와 무관하게
+안전하게 전체 카테고리를 대상으로 검색한다."""
 
 from dataclasses import dataclass
 
@@ -37,7 +42,9 @@ _SEARCH_SQL = text("""
         SELECT id, content, document_id, item_type, source_url,
                ROW_NUMBER() OVER (ORDER BY embedding <=> CAST(:query_embedding AS vector)) AS rank
         FROM rag_chunks
-        WHERE category_codes @> ARRAY[:category_code]  -- 지금 카테고리(예: VENUE) 밖 자료는 애초에 제외
+        -- category_code IS NULL이면(카테고리 무관 전역 상담) 이 필터를 건너뛰고 전체 카테고리를
+        -- 대상으로 검색한다 — 아니면 지금 카테고리(예: VENUE) 밖 자료는 애초에 제외.
+        WHERE :category_code IS NULL OR category_codes @> ARRAY[:category_code]
         ORDER BY embedding <=> CAST(:query_embedding AS vector)
         LIMIT :vector_top_k
     ),
@@ -99,7 +106,7 @@ def _needs_contract_term_bonus(query: str) -> bool:
 async def retrieve(
     session: AsyncSession,
     query: str,
-    category_code: str,
+    category_code: str | None,
     settings: Settings | None = None,
 ) -> list[RetrievedChunk]:
     settings = settings or get_settings()

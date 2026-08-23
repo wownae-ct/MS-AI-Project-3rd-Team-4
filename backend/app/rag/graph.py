@@ -36,7 +36,10 @@ from app.rag.retrieval import RetrievedChunk, retrieve
 # 채우고, verify_node가 answer를 읽어서 verdict/verification_reason을 채우는 식.
 class ChatState(TypedDict):
     query: str  # 사용자 질문 원문
-    category_code: str  # 어느 카테고리(VENUE/SDM 등) 질문인지 — 검색 필터·프롬프트에 씀
+    # 어느 카테고리(VENUE/SDM 등) 질문인지 — 검색 필터·프롬프트에 씀. None이면 카테고리 무관
+    # 전역 상담(12_final_prototype_mockup.html 하단 탭바의 "AI상담") — retrieve/generation이
+    # 각각 카테고리 필터 생략/프롬프트 문구 생략으로 처리한다.
+    category_code: str | None
     context: list[RetrievedChunk]  # retrieve_node가 찾아온 근거 청크 목록
     answer: str  # generate_node가 만든 답변
     verdict: str  # verify_node의 판정: SUPPORTED/WEAK/GENERAL
