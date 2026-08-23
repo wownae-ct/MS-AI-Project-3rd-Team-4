@@ -32,6 +32,29 @@ param langfusePublicKey string
 @secure()
 param langfuseSecretKey string
 
+// 카카오·애플 소셜로그인(15_post_v4_scope_promotion.md §P1) — 위 구글/네이버와 같은 패턴
+// (외부 SaaS/IdP에서 사람이 직접 발급받은 값, Azure가 계산해주는 값이 아님).
+@secure()
+param kakaoClientId string
+
+@secure()
+param kakaoClientSecret string
+
+// 애플은 4개가 필요하다 — client_secret 자체가 고정값이 아니라 이 4개로 앱이 매 요청
+// 서명하는 JWT라서(app/core/oauth_providers.py::build_apple_client_secret), 나머지 3사보다
+// Key Vault에 저장할 필드가 많다. appleClientId는 웹/서버용 Services ID(앱 Bundle ID 아님).
+@secure()
+param appleClientId string
+
+@secure()
+param appleTeamId string
+
+@secure()
+param appleKeyId string
+
+@secure()
+param applePrivateKey string
+
 resource keyVault 'Microsoft.KeyVault/vaults@2026-03-01-preview' = {
   name: take('${namePrefix}-kv', 24)
   location: location
@@ -139,6 +162,60 @@ resource langfuseSecretKeySecret 'Microsoft.KeyVault/vaults/secrets@2026-03-01-p
   name: 'langfuse-secret-key'
   properties: {
     value: langfuseSecretKey
+  }
+  dependsOn: [deployerSecretsOfficerRoleAssignment]
+}
+
+resource kakaoClientIdSecret 'Microsoft.KeyVault/vaults/secrets@2026-03-01-preview' = {
+  parent: keyVault
+  name: 'kakao-client-id'
+  properties: {
+    value: kakaoClientId
+  }
+  dependsOn: [deployerSecretsOfficerRoleAssignment]
+}
+
+resource kakaoClientSecretSecret 'Microsoft.KeyVault/vaults/secrets@2026-03-01-preview' = {
+  parent: keyVault
+  name: 'kakao-client-secret'
+  properties: {
+    value: kakaoClientSecret
+  }
+  dependsOn: [deployerSecretsOfficerRoleAssignment]
+}
+
+resource appleClientIdSecret 'Microsoft.KeyVault/vaults/secrets@2026-03-01-preview' = {
+  parent: keyVault
+  name: 'apple-client-id'
+  properties: {
+    value: appleClientId
+  }
+  dependsOn: [deployerSecretsOfficerRoleAssignment]
+}
+
+resource appleTeamIdSecret 'Microsoft.KeyVault/vaults/secrets@2026-03-01-preview' = {
+  parent: keyVault
+  name: 'apple-team-id'
+  properties: {
+    value: appleTeamId
+  }
+  dependsOn: [deployerSecretsOfficerRoleAssignment]
+}
+
+resource appleKeyIdSecret 'Microsoft.KeyVault/vaults/secrets@2026-03-01-preview' = {
+  parent: keyVault
+  name: 'apple-key-id'
+  properties: {
+    value: appleKeyId
+  }
+  dependsOn: [deployerSecretsOfficerRoleAssignment]
+}
+
+resource applePrivateKeySecret 'Microsoft.KeyVault/vaults/secrets@2026-03-01-preview' = {
+  parent: keyVault
+  name: 'apple-private-key'
+  properties: {
+    value: applePrivateKey
   }
   dependsOn: [deployerSecretsOfficerRoleAssignment]
 }

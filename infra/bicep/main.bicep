@@ -66,6 +66,32 @@ param langfusePublicKey string
 @description('Langfuse Cloud 프로젝트 secret key. CI에서는 secrets.LANGFUSE_SECRET_KEY로 주입')
 param langfuseSecretKey string
 
+// 카카오·애플 소셜로그인(15_post_v4_scope_promotion.md §P1) — 위 구글/네이버와 같은 이유로
+// @secure() 필수 파라미터.
+@secure()
+@description('카카오 OAuth 클라이언트 ID. CI에서는 secrets.KAKAO_CLIENT_ID로 주입')
+param kakaoClientId string
+
+@secure()
+@description('카카오 OAuth 클라이언트 시크릿. CI에서는 secrets.KAKAO_CLIENT_SECRET로 주입')
+param kakaoClientSecret string
+
+@secure()
+@description('애플 Services ID(웹/서버용 client_id, 앱 Bundle ID 아님). CI에서는 secrets.APPLE_CLIENT_ID로 주입')
+param appleClientId string
+
+@secure()
+@description('애플 Team ID. CI에서는 secrets.APPLE_TEAM_ID로 주입')
+param appleTeamId string
+
+@secure()
+@description('"Sign in with Apple" 키의 Key ID. CI에서는 secrets.APPLE_KEY_ID로 주입')
+param appleKeyId string
+
+@secure()
+@description('"Sign in with Apple" 키의 개인키(PEM 원문). CI에서는 secrets.APPLE_PRIVATE_KEY로 주입')
+param applePrivateKey string
+
 var tags = {
   project: namePrefix
   environment: environment
@@ -119,6 +145,12 @@ module keyvault 'modules/keyvault.bicep' = {
     naverClientSecret: naverClientSecret
     langfusePublicKey: langfusePublicKey
     langfuseSecretKey: langfuseSecretKey
+    kakaoClientId: kakaoClientId
+    kakaoClientSecret: kakaoClientSecret
+    appleClientId: appleClientId
+    appleTeamId: appleTeamId
+    appleKeyId: appleKeyId
+    applePrivateKey: applePrivateKey
   }
 }
 

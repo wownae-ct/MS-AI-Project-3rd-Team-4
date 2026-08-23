@@ -101,6 +101,38 @@ spec:
                             secretKeyRef:
                                 name: backend-kv-secrets
                                 key: NAVER_CLIENT_SECRET
+                      # 카카오·애플 소셜로그인(15_post_v4_scope_promotion.md §P1) — 위와 동일
+                      # 이유로 필수(app/core/config.py Settings 필수 필드).
+                      - name: KAKAO_CLIENT_ID
+                        valueFrom:
+                            secretKeyRef:
+                                name: backend-kv-secrets
+                                key: KAKAO_CLIENT_ID
+                      - name: KAKAO_CLIENT_SECRET
+                        valueFrom:
+                            secretKeyRef:
+                                name: backend-kv-secrets
+                                key: KAKAO_CLIENT_SECRET
+                      - name: APPLE_CLIENT_ID
+                        valueFrom:
+                            secretKeyRef:
+                                name: backend-kv-secrets
+                                key: APPLE_CLIENT_ID
+                      - name: APPLE_TEAM_ID
+                        valueFrom:
+                            secretKeyRef:
+                                name: backend-kv-secrets
+                                key: APPLE_TEAM_ID
+                      - name: APPLE_KEY_ID
+                        valueFrom:
+                            secretKeyRef:
+                                name: backend-kv-secrets
+                                key: APPLE_KEY_ID
+                      - name: APPLE_PRIVATE_KEY
+                        valueFrom:
+                            secretKeyRef:
+                                name: backend-kv-secrets
+                                key: APPLE_PRIVATE_KEY
                   volumeMounts:
                       - name: kv-secrets
                         mountPath: /mnt/secrets

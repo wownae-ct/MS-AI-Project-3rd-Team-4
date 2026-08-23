@@ -139,6 +139,8 @@ backend와 rag는 **같은 브랜치(backend/main), 같은 Docker 이미지**를
 | `POSTGRES_ADMIN_PASSWORD` | `infra/.env`의 값 그대로 | **여기 README/문서에 실제 값 절대 적지 말 것** — 평문 커밋된 적 있음(2026-08-13). ⚠️ 아래 "히스토리 잔존" 참고 |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google Cloud Console에서 발급 | 소셜 로그인(`00_BASELINE.md` §0-2 Should). 2026-08-24 IaC화(`infra/docs/iac.md` §Key Vault 시크릿 자동화 참고) — 등록 안 하면 `dev.bicepparam`이 `CHANGE_ME_LOCAL_ONLY`로 폴백(파드는 뜨지만 로그인은 안 됨) |
 | `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | 네이버 개발자센터에서 발급 | 위와 동일 |
+| `KAKAO_CLIENT_ID` / `KAKAO_CLIENT_SECRET` | 카카오 디벨로퍼스에서 발급(OIDC 앱) | 소셜 로그인(`15_post_v4_scope_promotion.md` §P1). 위 구글/네이버와 동일 IaC 패턴 — 등록 안 하면 `CHANGE_ME_LOCAL_ONLY`로 폴백 |
+| `APPLE_CLIENT_ID` / `APPLE_TEAM_ID` / `APPLE_KEY_ID` / `APPLE_PRIVATE_KEY` | Apple Developer의 "Sign in with Apple" Services ID/Team ID/키 3종 | 소셜 로그인(`15_post_v4_scope_promotion.md` §P1). `APPLE_CLIENT_ID`는 웹/서버용 Services ID(앱 Bundle ID 아님), `APPLE_PRIVATE_KEY`는 PEM 원문 전체(줄바꿈 그대로 GitHub Secret에 붙여넣으면 됨 — GitHub Secrets는 멀티라인 값을 그대로 저장) |
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | Langfuse Cloud 프로젝트 설정에서 발급 | `14_langfuse_tracing_design.md`. **⚠️ 이미 라이브로 쓰이는 값** — GitHub Secrets 미등록 상태로 `infra-deploy.yml`을 `workflow_dispatch`(whatIf:false)로 실배포하면 `CHANGE_ME_LOCAL_ONLY`로 덮어써서 기존 정상 동작하던 트레이싱이 깨진다. **실배포 전 반드시 먼저 등록할 것** |
 
 > **⚠️ 이 문서의 이전 기술은 사실과 달랐다 (2026-08-19 정정)**
