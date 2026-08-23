@@ -279,10 +279,11 @@ async def oauth_callback(
     session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> RedirectResponse:
     """구글/네이버/카카오 콜백 — 셋 다 `response_mode` 기본값(query)이라 GET으로 온다. 애플은
-    `POST /auth/apple/callback`(아래) 별도 라우트를 쓴다."""
+    `POST /auth/apple/callback`(아래) 별도 라우트를 쓴다 — `{provider}` 자체는 "apple"도 여기
+    매칭시켜버리므로, 애플만 명시적으로 거부해야 이 GET 라우트로 잘못 흘러들어가지 않는다."""
     settings = get_settings()
     config = get_provider_config(provider)
-    if config is None:
+    if config is None or config.code == "APPLE":
         return RedirectResponse(
             f"{settings.frontend_base_url}/login?oauth_error=unsupported_provider"
         )
