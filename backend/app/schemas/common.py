@@ -3,7 +3,14 @@ enum 값이 두 곳에서 따로 정의되면 한쪽만 고치고 잊어버리�
 
 from typing import Literal
 
-CategoryCode = Literal["MEETING", "VENUE", "SDM", "GIFT", "HOMEWARE", "INVITATION", "HONEYMOON"]
+# v4.0(2026-08-24): 7개 -> 9개(HOMENEW/ETC 신설, 00_BASELINE.md §1). DB에서도 categories
+# 테이블이 이 값을 그대로 담은 category_code ENUM 타입으로 바뀌었다(app/models/wedding.py의
+# CategoryCodeEnum과 값 목록이 반드시 일치해야 함 — 두 곳에 따로 정의된 게 이 docstring이
+# 경고하는 바로 그 드리프트 위험이지만, ENUM은 SQL 타입 선언이라 Python Literal을 직접
+# 참조할 수 없어 불가피하게 값을 중복 기재한다).
+CategoryCode = Literal[
+    "MEETING", "VENUE", "SDM", "GIFT", "HOMEWARE", "INVITATION", "HONEYMOON", "HOMENEW", "ETC"
+]
 BenchmarkCategoryCode = Literal["VENUE", "SDM"]  # price_benchmarks/vendor_case_examples는 이 둘만
 # price_benchmarks.region_code는 DB에 CHECK 제약이 없다(값 목록이 데이터 갱신마다 바뀔 수 있어
 # 스키마 변경 없이 확장 가능하게 일부러 안 걸어둠) — 그래도 ETL 스크립트와 조회 서비스가 같은

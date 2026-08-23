@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     # cronjob.yaml: /app/data/rag_corpus, 컨테이너 WORKDIR이 /app이라 상대경로로 일치).
     rag_corpus_path: str = "data/rag_corpus"
 
+    # BFF + Opaque 세션 쿠키(07_technical_design.md §1). 쿠키 이름은 00_BASELINE.md §4-1/
+    # 07_technical_design.md §1이 "wr_session"이라 명시하는데, 03_API_spec.md 예시 3곳은
+    # "session_id"로 돼 있다 — BASELINE이 SSOT("다른 문서는 이와 문자 그대로 일치")이므로
+    # wr_session을 쓴다(03_API_spec.md 쪽 드리프트로 판단, 2026-08-24).
+    session_cookie_name: str = "wr_session"
+    session_ttl_days: int = 30
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
