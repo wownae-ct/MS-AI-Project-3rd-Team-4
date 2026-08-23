@@ -1,26 +1,30 @@
 """체크리스트 개인화 라우터 에이전트 비상 폴백 카탈로그 — 13_personalization_router_agent_design.md
-§2, docs/wedding/ing/ds6-checklist-seed-data-prep.md의 OFFICIAL-tier 24항목(VENUE CONTRACT_TERM
-10 + SDM CONTRACT_TERM 14) 전사.
+§2. VENUE/SDM은 docs/wedding/ing/ds6-checklist-seed-data-prep.md의 OFFICIAL-tier 24항목(VENUE
+CONTRACT_TERM 10 + SDM CONTRACT_TERM 14) 전사, 나머지 7개 MOCKUP 카테고리(MEETING/GIFT/
+HOMEWARE/INVITATION/HONEYMOON/HOMENEW/ETC)는 00_BASELINE.md §0-2 Should "MOCKUP 7개 카테고리
+얇은 시드" — 5개(MEETING/GIFT/HOMEWARE/INVITATION/HONEYMOON)는 같은 문서의 CONSENSUS-tier
+항목 전사, HOMENEW/ETC 2개(v3.0에 없던 v4.0 신규 카테고리라 ds6 문서에 원본이 없음)는 같은
+스타일로 이 자리에서 새로 저작했다.
 
-validate 노드가 BLOCKED를 반환했을 때만 쓰이는 최후 폴백이다 — 공정위 표준약관/표준계약서 조문을
-직접 근거로 삼은(source_tier=OFFICIAL) 항목만 담아, 나머지 CONSENSUS 항목처럼 팀 주관적 판단이
-섞이지 않은 객관적 콘텐츠로 제한했다(§2 근거). VENUE/SDM 외 7개 MOCKUP 카테고리는 이 카탈로그가
-커버하지 않는다 — 그 카테고리가 활성 상태에서 BLOCKED가 나면 해당 카테고리 체크리스트는 비어 있는
-채로 남는 게 이번 라운드가 받아들인 한계(§2가 명시적으로 인정).
+validate 노드가 BLOCKED를 반환했을 때만 쓰이는 최후 폴백이다. VENUE/SDM은 공정위 표준약관/
+표준계약서 조문을 직접 근거로 삼은 OFFICIAL 항목만 담고, 나머지 7개 MOCKUP 카테고리는 업계 통념·
+실무 관행에 기반한 CONSENSUS 항목이다(§8 "새 통계 수치 창작 금지" 원칙에 따라 구체적 수치·법령
+근거를 새로 지어내지 않고 일반적인 확인·준비 사항으로만 구성).
 
-group_label은 원본(ds6-checklist-seed-data-prep.md)에 필드 자체가 없어 카테고리 단위로 새로
-부여했다(VENUE 전부 동일 값, SDM 전부 동일 값) — item_type이 전부 CONTRACT_TERM이라 item_type
-기반 매핑을 쓰면 24개가 전부 같은 값 하나로 뭉개져 "화면에서 항목을 묶어 보여주는 UI 섹션
-헤더"라는 group_label의 원래 역할을 못 하기 때문이다(LLM 생성분의 group_label 부여 방식과는
-다른 이유 — app/services/personalization.py 참고)."""
+group_label은 VENUE/SDM은 원본(ds6-checklist-seed-data-prep.md)에 필드 자체가 없어 카테고리
+단위로 직접 부여했다(item_type이 전부 CONTRACT_TERM이라 item_type 기반 매핑을 쓰면 항목 전부가
+같은 값 하나로 뭉개지기 때문). 나머지 7개 MOCKUP 카테고리는 item_type이 CONTRACT_TERM/
+EXTRA_COST/PREP로 섞여 있어 반대로 item_type 기반 매핑(GROUP_LABEL_BY_ITEM_TYPE)이 의미 있게
+구분되므로 그대로 사용한다."""
 
 from dataclasses import dataclass
 
 from app.schemas.common import CategoryCode
 
 # app/services/personalization.py가 LLM 생성(SUCCESS 경로) 체크리스트 항목의 group_label을
-# item_type으로부터 채울 때 쓰는 매핑 — 이 폴백 카탈로그(전부 CONTRACT_TERM, 카테고리별 인라인
-# group_label)에는 적용하지 않는다.
+# item_type으로부터 채울 때 쓰는 매핑. VENUE/SDM 폴백(전부 CONTRACT_TERM, 카테고리별 인라인
+# group_label)에는 적용하지 않지만, 나머지 7개 MOCKUP 카테고리 폴백(item_type 혼합)은 이 매핑을
+# 그대로 재사용한다.
 GROUP_LABEL_BY_ITEM_TYPE: dict[str, str] = {
     "CONTRACT_TERM": "계약 조항 확인",
     "EXTRA_COST": "추가 비용 확인",
@@ -42,7 +46,9 @@ class ChecklistTemplateItem:
     body: str
     source_tier: str
     source_label: str
-    source_url: str
+    # OFFICIAL(VENUE/SDM)은 항상 근거 URL이 있지만 CONSENSUS(나머지 7개 MOCKUP 카테고리, 팀
+    # 자체 정리)는 인용할 1차 출처 자체가 없어 None이다.
+    source_url: str | None
     display_order: int
 
 
@@ -341,5 +347,410 @@ CHECKLIST_FALLBACK_CATALOG: tuple[ChecklistTemplateItem, ...] = (
         "공정위 결혼준비대행업 표준계약서(제10082호) 제8조",
         _FTC_AGENCY_URL,
         14,
+    ),
+    # ===== MEETING — CONSENSUS 5개(전부 PREP, BASELINE §6-1 배분표 그대로) =====
+    ChecklistTemplateItem(
+        "MEETING",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "상견례 장소는 양가 접근성을 고려해 중간 지점으로 정하기",
+        "한쪽 가족에게만 유리한 장소는 부담을 줄 수 있으니 이동 거리를 균형 있게 고려하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리",
+        None,
+        1,
+    ),
+    ChecklistTemplateItem(
+        "MEETING",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "예물·예단 금액은 상견례 당일이 아니라 사전 협의로 정리하기",
+        "상견례 자리에서 즉흥적으로 금액을 정하면 갈등이 생기기 쉬우니 미리 신랑신부가 조율해두세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리",
+        None,
+        2,
+    ),
+    ChecklistTemplateItem(
+        "MEETING",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "결혼 준비 예산 총액과 항목별 배분을 상견례 전 부모님과 공유하기",
+        "예산 규모에 대한 기대치가 다르면 이후 준비 과정에서 계속 부딪힐 수 있습니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리",
+        None,
+        3,
+    ),
+    ChecklistTemplateItem(
+        "MEETING",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "신혼집 마련 방식과 부담 비율을 상견례 전 미리 조율하기",
+        "전세·매매 여부와 양가 부담 비율은 예산 계획 전체에 영향을 주므로 일찍 정할수록 좋습니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리",
+        None,
+        4,
+    ),
+    ChecklistTemplateItem(
+        "MEETING",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "예식 날짜 후보 2~3개를 정해 상견례에서 확정하기",
+        "날짜가 늦게 정해지면 예식장·스드메 예약이 밀려 선택지가 줄어듭니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리",
+        None,
+        5,
+    ),
+    # ===== GIFT — CONSENSUS 5개(1 CONTRACT_TERM + 2 EXTRA_COST + 2 PREP, BASELINE §6-1) =====
+    ChecklistTemplateItem(
+        "GIFT",
+        "CONTRACT_TERM",
+        GROUP_LABEL_BY_ITEM_TYPE["CONTRACT_TERM"],
+        "예물 구매 시 보증서·감정서 발급과 AS 조건을 계약서로 확인",
+        "다이아몬드·귀금속은 감정서 없이 구매하면 등급·진위를 나중에 확인하기 어렵습니다. "
+        "사이즈 조정 등 AS 조건도 서면으로 받으세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(예물 구매 실무 관행)",
+        None,
+        1,
+    ),
+    ChecklistTemplateItem(
+        "GIFT",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "다이아몬드 등급(4C) 대비 가격이 적정한지 여러 업체 견적으로 비교",
+        "같은 캐럿이라도 컷·컬러·투명도 등급에 따라 가격 차이가 크므로 등급 기준 견적을 "
+        "비교하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(예물 구매 실무 관행)",
+        None,
+        2,
+    ),
+    ChecklistTemplateItem(
+        "GIFT",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "반지 사이즈 조정·각인 등 후속 작업 비용이 별도인지 확인",
+        "구매 후 사이즈 조정이나 각인이 무료 서비스인지 별도 비용인지 미리 확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(예물 구매 실무 관행)",
+        None,
+        3,
+    ),
+    ChecklistTemplateItem(
+        "GIFT",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "예단 형식(현금·예단비·생략)을 상견례 전에 양가와 합의",
+        "지역·집안마다 예단 관행이 달라 사전 조율 없이는 오해가 생기기 쉽습니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리",
+        None,
+        4,
+    ),
+    ChecklistTemplateItem(
+        "GIFT",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "예물 구매는 예식 1~2개월 전 여유 있게 진행",
+        "사이즈 조정·각인 시간을 고려해 너무 임박하지 않게 구매 일정을 잡으세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리",
+        None,
+        5,
+    ),
+    # ===== HOMEWARE — CONSENSUS 5개(1 CONTRACT_TERM + 2 EXTRA_COST + 2 PREP) =====
+    ChecklistTemplateItem(
+        "HOMEWARE",
+        "CONTRACT_TERM",
+        GROUP_LABEL_BY_ITEM_TYPE["CONTRACT_TERM"],
+        "가전·가구 구매 시 배송·설치일과 하자 교환·환불 조건을 계약서로 확인",
+        "구두 약속만으로는 배송 지연이나 하자 발생 시 대응이 어렵습니다. 배송일과 교환·환불 "
+        "조건을 서면으로 받으세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(혼수 구매 실무 관행)",
+        None,
+        1,
+    ),
+    ChecklistTemplateItem(
+        "HOMEWARE",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "대형 가전 구매 시 기존 제품 폐기·처리 비용이 별도인지 확인",
+        "냉장고·세탁기 등 대형 가전은 폐기물 처리 비용이 무료인지 별도인지 매장마다 다릅니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리(혼수 구매 실무 관행)",
+        None,
+        2,
+    ),
+    ChecklistTemplateItem(
+        "HOMEWARE",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "인테리어 시공 시 확장·철거 등 추가 공사비가 견적에 포함됐는지 확인",
+        "기본 시공 견적에 확장·철거·전기공사 등이 빠져 있으면 착공 후 추가 청구되는 경우가 "
+        "많습니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리(혼수 구매 실무 관행)",
+        None,
+        3,
+    ),
+    ChecklistTemplateItem(
+        "HOMEWARE",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "신혼집 평수·구조를 먼저 확정한 뒤 혼수 구매 순서를 정하기",
+        "공간 크기를 모른 채 가전·가구를 먼저 사면 배치가 맞지 않을 수 있습니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리",
+        None,
+        4,
+    ),
+    ChecklistTemplateItem(
+        "HOMEWARE",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "혼수 구매는 배송 일정을 고려해 예식 1~2개월 전 계약",
+        "인기 제품은 배송이 지연될 수 있으니 입주 일정에 맞춰 여유 있게 계약하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리",
+        None,
+        5,
+    ),
+    # ===== INVITATION — CONSENSUS 5개(1 CONTRACT_TERM + 2 EXTRA_COST + 2 PREP) =====
+    ChecklistTemplateItem(
+        "INVITATION",
+        "CONTRACT_TERM",
+        GROUP_LABEL_BY_ITEM_TYPE["CONTRACT_TERM"],
+        "청첩장 인쇄 계약 시 최소 발주 수량과 파본·재인쇄 조건 확인",
+        "인쇄소마다 최소 발주 수량이 있고, 파본 발생 시 재인쇄 비용 부담 주체가 다르니 미리 "
+        "확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(청첩장 제작 실무 관행)",
+        None,
+        1,
+    ),
+    ChecklistTemplateItem(
+        "INVITATION",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "모바일 청첩장 제작 시 추가 페이지·동영상 삽입 옵션 비용 확인",
+        "기본 템플릿 외 페이지 추가나 영상 삽입은 유료 옵션인 경우가 많습니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리(청첩장 제작 실무 관행)",
+        None,
+        2,
+    ),
+    ChecklistTemplateItem(
+        "INVITATION",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "답례품 개별 포장·각인 서비스가 기본 단가에 포함되는지 확인",
+        "답례품 개당 단가에 포장·각인이 포함되는지, 별도 옵션인지 확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(청첩장 제작 실무 관행)",
+        None,
+        3,
+    ),
+    ChecklistTemplateItem(
+        "INVITATION",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "하객 명단과 발송 인원을 먼저 확정한 뒤 청첩장 수량 결정",
+        "명단이 확정되지 않은 채 수량을 정하면 추가 인쇄나 낭비가 생길 수 있습니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리",
+        None,
+        4,
+    ),
+    ChecklistTemplateItem(
+        "INVITATION",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "청첩장은 예식 1~2개월 전 발송할 수 있도록 제작 일정을 역산",
+        "너무 이르면 하객이 잊고, 너무 늦으면 일정 조율이 어려우니 발송 시점을 기준으로 제작 "
+        "일정을 짜세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리",
+        None,
+        5,
+    ),
+    # ===== HONEYMOON — CONSENSUS 5개(1 CONTRACT_TERM + 2 EXTRA_COST + 2 PREP) =====
+    ChecklistTemplateItem(
+        "HONEYMOON",
+        "CONTRACT_TERM",
+        GROUP_LABEL_BY_ITEM_TYPE["CONTRACT_TERM"],
+        "여행 패키지·항공권 계약 시 취소·환불 수수료 규정을 예약 전에 확인",
+        "여행사·항공사마다 취소 시점별 환불 수수료율이 달라 예약 전 정확히 확인해야 합니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리(신혼여행 실무 관행)",
+        None,
+        1,
+    ),
+    ChecklistTemplateItem(
+        "HONEYMOON",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "리조트 업그레이드·조식 옵션이 기본 요금에 포함되는지 확인",
+        "허니문 패키지의 룸 업그레이드나 조식이 기본 포함인지 유료 옵션인지 확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(신혼여행 실무 관행)",
+        None,
+        2,
+    ),
+    ChecklistTemplateItem(
+        "HONEYMOON",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "여행자보험 가입 여부와 보장 범위(수하물·여행 취소 등)를 별도 확인",
+        "여행자보험이 패키지에 기본 포함되는지, 보장 범위가 충분한지 별도로 확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(신혼여행 실무 관행)",
+        None,
+        3,
+    ),
+    ChecklistTemplateItem(
+        "HONEYMOON",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "여권 유효기간(잔여 6개월 이상)과 비자 필요 여부를 여행 2개월 전 확인",
+        "많은 국가가 입국 시 여권 잔여 유효기간 6개월 이상을 요구하니 미리 갱신 여부를 확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리",
+        None,
+        4,
+    ),
+    ChecklistTemplateItem(
+        "HONEYMOON",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "신혼여행은 성수기 가격 변동을 고려해 6개월~1년 전 예약",
+        "허니문 성수기 항공권·숙박은 일찍 예약할수록 가격과 선택지가 유리합니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리",
+        None,
+        5,
+    ),
+    # ===== HOMENEW — CONSENSUS 5개(v4.0 신규 카테고리, ds6 원본 없어 이 자리에서 신규 저작,
+    # GIFT/HOMEWARE 등과 동일하게 1 CONTRACT_TERM + 2 EXTRA_COST + 2 PREP 배분) =====
+    ChecklistTemplateItem(
+        "HOMENEW",
+        "CONTRACT_TERM",
+        GROUP_LABEL_BY_ITEM_TYPE["CONTRACT_TERM"],
+        "전월세 계약 전 등기부등본으로 근저당·보증금 규모를 확인",
+        "근저당이 과도하게 설정된 집은 계약 종료 시 전세보증금을 못 돌려받을 위험이 있습니다. "
+        "계약 직전 등기부등본을 재발급받아 확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(신혼집 마련 실무 관행)",
+        None,
+        1,
+    ),
+    ChecklistTemplateItem(
+        "HOMENEW",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "중개수수료 요율과 부가세 포함 여부를 계약 전 중개사에게 서면으로 확인",
+        "중개수수료는 거래금액과 지역별 상한요율이 있고 부가세 별도 여부도 업체마다 달라 "
+        "계약서에 명시된 금액을 미리 확인해야 합니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리(신혼집 마련 실무 관행)",
+        None,
+        2,
+    ),
+    ChecklistTemplateItem(
+        "HOMENEW",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "입주 청소·인테리어 등 이사 부대비용을 별도 예산으로 잡기",
+        "집값·보증금 외에 청소, 도배·장판, 이사비 등 부대비용이 추가로 들어가니 미리 예산에 "
+        "포함하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(신혼집 마련 실무 관행)",
+        None,
+        3,
+    ),
+    ChecklistTemplateItem(
+        "HOMENEW",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "전세보증금 반환보증보험 가입 가능 여부를 계약 전 확인",
+        "임대인 동의 없이도 가입 가능한 보증상품이 있으니 계약 전 가입 요건을 확인해두면 "
+        "보증금을 지키는 데 도움이 됩니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리",
+        None,
+        4,
+    ),
+    ChecklistTemplateItem(
+        "HOMENEW",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "신혼집 계약은 혼수 구매 일정에 영향을 주므로 예식 3~4개월 전 여유 있게 진행",
+        "집이 정해져야 평수·구조에 맞춰 혼수를 고를 수 있어, 너무 임박하면 뒤 일정이 줄줄이 "
+        "밀립니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리",
+        None,
+        5,
+    ),
+    # ===== ETC — CONSENSUS 5개(v4.0 신규 카테고리, 특정 계약·비용 유형이 없어 MEETING과 동일하게
+    # 전부 PREP로 구성) =====
+    ChecklistTemplateItem(
+        "ETC",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "예산 관리 앱이나 스프레드시트로 카테고리별 지출을 한곳에 기록하기",
+        "여러 업체에 흩어진 지출을 한곳에 모아두면 예산 초과 여부를 빨리 알아챌 수 있습니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리(결혼 준비 실무 팁)",
+        None,
+        1,
+    ),
+    ChecklistTemplateItem(
+        "ETC",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "계약서·영수증 원본은 스캔해서 사본을 별도 보관하기",
+        "원본을 분실해도 분쟁이나 환불 요청 시 사본으로 근거를 남길 수 있습니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리(결혼 준비 실무 팁)",
+        None,
+        2,
+    ),
+    ChecklistTemplateItem(
+        "ETC",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "예식 당일 업체별 담당자 연락처를 하나로 정리해두기",
+        "당일 돌발 상황에서 각 업체 연락처를 흩어진 곳에서 찾다 보면 대응이 늦어질 수 있습니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리(결혼 준비 실무 팁)",
+        None,
+        3,
+    ),
+    ChecklistTemplateItem(
+        "ETC",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "결혼 준비 막바지(예식 1~2개월 전)엔 개인 일정에 여유를 두기",
+        "여러 업체 컨택이 몰리는 시기라 컨디션 관리를 위해 다른 약속을 줄여두는 게 좋습니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리(결혼 준비 실무 팁)",
+        None,
+        4,
+    ),
+    ChecklistTemplateItem(
+        "ETC",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "우천 등 돌발 상황에 대비한 실내 대안 동선을 예식장·업체와 미리 확인하기",
+        "야외 촬영·행사가 포함돼 있다면 우천 시 대체 장소나 일정을 미리 협의해두세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(결혼 준비 실무 팁)",
+        None,
+        5,
     ),
 )
