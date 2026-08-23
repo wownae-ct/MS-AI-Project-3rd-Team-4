@@ -11,12 +11,17 @@ Azure Functions/App Service/Container Apps/API Management만 지원하고 AKS는
 03_API_spec.md §1 갱신 완료, 상세 근거는
 docs/AI-Sessions/wiki/decisions/2026-08-21-cors-not-linked-backend.md 참고."""
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.core.config import get_settings
+from app.core.tracing import flush_tracing
 from app.routers import (
     auth,
     budget,
@@ -36,7 +41,16 @@ LOCAL_DEV_ORIGIN = "http://localhost:5173"
 # 형태로 뜨므로(Azure 문서 기준) 접미사까지 정규식으로 허용 — 값이 바뀌면(SWA 재생성 등) 여기도 갱신할 것.
 SWA_ORIGIN_REGEX = r"^https://polite-island-0bb189700(-[a-zA-Z0-9]+)?\.7\.azurestaticapps\.net$"
 
-app = FastAPI(title="메리맵 API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    yield
+    # Langfuse는 배치로 모아 보내는 exporter라, 파드가 롤아웃 중 종료되면 마지막 trace가
+    # 유실될 수 있다 — 종료 직전 명시적으로 flush(14_langfuse_tracing_design.md §4).
+    flush_tracing(get_settings())
+
+
+app = FastAPI(title="메리맵 API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
