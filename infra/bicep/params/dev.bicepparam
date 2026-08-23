@@ -24,3 +24,9 @@ param googleClientId = readEnvironmentVariable('GOOGLE_CLIENT_ID', 'CHANGE_ME_LO
 param googleClientSecret = readEnvironmentVariable('GOOGLE_CLIENT_SECRET', 'CHANGE_ME_LOCAL_ONLY')
 param naverClientId = readEnvironmentVariable('NAVER_CLIENT_ID', 'CHANGE_ME_LOCAL_ONLY')
 param naverClientSecret = readEnvironmentVariable('NAVER_CLIENT_SECRET', 'CHANGE_ME_LOCAL_ONLY')
+
+// Langfuse(14_langfuse_tracing_design.md) — 위와 동일 패턴. 주의: 이 값은 이미 라이브로 쓰이고
+// 있어서(PR #42), CHANGE_ME_LOCAL_ONLY 폴백으로 실배포하면 기존 정상 트레이싱을 깨뜨린다 —
+// 실배포 전엔 반드시 infra/.env에 실제 값을 채울 것(로컬 검증은 what-if로, 값 노출 없이 가능).
+param langfusePublicKey = readEnvironmentVariable('LANGFUSE_PUBLIC_KEY', 'CHANGE_ME_LOCAL_ONLY')
+param langfuseSecretKey = readEnvironmentVariable('LANGFUSE_SECRET_KEY', 'CHANGE_ME_LOCAL_ONLY')

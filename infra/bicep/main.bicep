@@ -54,6 +54,18 @@ param naverClientId string
 @description('네이버 OAuth 클라이언트 시크릿. CI에서는 secrets.NAVER_CLIENT_SECRET로 주입')
 param naverClientSecret string
 
+// Langfuse LLM 관측/트레이싱(14_langfuse_tracing_design.md) — Langfuse Cloud(외부 SaaS)에서
+// 발급받은 값이라 위 구글/네이버 OAuth 시크릿과 성격이 같다. 원래 az keyvault secret set으로
+// 수동 등록돼 있었는데(PR #42), 2026-08-24 팀 결정으로 이 IaC 패턴에 맞춰 전환 — 이미 KV에 있는
+// 값은 그대로 두고 Bicep이 같은 값으로 수렴하게만(what-if NoChange) 한다.
+@secure()
+@description('Langfuse Cloud 프로젝트 public key. CI에서는 secrets.LANGFUSE_PUBLIC_KEY로 주입')
+param langfusePublicKey string
+
+@secure()
+@description('Langfuse Cloud 프로젝트 secret key. CI에서는 secrets.LANGFUSE_SECRET_KEY로 주입')
+param langfuseSecretKey string
+
 var tags = {
   project: namePrefix
   environment: environment
@@ -105,6 +117,8 @@ module keyvault 'modules/keyvault.bicep' = {
     googleClientSecret: googleClientSecret
     naverClientId: naverClientId
     naverClientSecret: naverClientSecret
+    langfusePublicKey: langfusePublicKey
+    langfuseSecretKey: langfuseSecretKey
   }
 }
 

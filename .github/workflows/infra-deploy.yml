@@ -3,6 +3,9 @@
 #      + POSTGRES_ADMIN_PASSWORD (없으면 dev.bicepparam이 CHANGE_ME_LOCAL_ONLY로 폴백돼 배포 실패)
 #      + GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / NAVER_CLIENT_ID / NAVER_CLIENT_SECRET(소셜 로그인,
 #        00_BASELINE.md §0-2 Should — 없으면 CHANGE_ME_LOCAL_ONLY로 폴백돼 파드는 뜨지만 로그인은 안 됨)
+#      + LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY(14_langfuse_tracing_design.md — ⚠️ 이미 라이브로
+#        쓰이는 값이라 GitHub Secrets에 실제 값을 등록하기 전에는 workflow_dispatch로 whatIf:false
+#        실배포를 돌리지 말 것. 없으면 CHANGE_ME_LOCAL_ONLY로 덮어써서 기존 트레이싱이 깨진다)
 #   2. GitHub Variables: AZURE_RG (리소스그룹, az group create로 먼저 만들어야 함), NAME_PREFIX(필수 — 없으면
 #      dev.bicepparam이 BCP427로 바로 실패), POSTGRES_ADMIN_LOGIN(선택, 없으면 pgadmin으로 폴백),
 #      CLUSTER_ADMIN_OBJECT_IDS(선택, 쉼표구분 GUID)
@@ -35,6 +38,8 @@ jobs:
       GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
       NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
       NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+      LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+      LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
     steps:
       - uses: actions/checkout@v7
       - name: Azure login (OIDC)

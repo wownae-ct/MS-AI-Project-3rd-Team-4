@@ -24,6 +24,14 @@ param naverClientId string
 @secure()
 param naverClientSecret string
 
+// Langfuse LLM 관측/트레이싱(14_langfuse_tracing_design.md) — 원래 az keyvault secret set으로
+// 수동 등록돼 있었는데(PR #42), 2026-08-24 팀 결정으로 위 구글/네이버와 같은 IaC 패턴으로 전환.
+@secure()
+param langfusePublicKey string
+
+@secure()
+param langfuseSecretKey string
+
 resource keyVault 'Microsoft.KeyVault/vaults@2026-03-01-preview' = {
   name: take('${namePrefix}-kv', 24)
   location: location
@@ -113,6 +121,24 @@ resource naverClientSecretSecret 'Microsoft.KeyVault/vaults/secrets@2026-03-01-p
   name: 'naver-client-secret'
   properties: {
     value: naverClientSecret
+  }
+  dependsOn: [deployerSecretsOfficerRoleAssignment]
+}
+
+resource langfusePublicKeySecret 'Microsoft.KeyVault/vaults/secrets@2026-03-01-preview' = {
+  parent: keyVault
+  name: 'langfuse-public-key'
+  properties: {
+    value: langfusePublicKey
+  }
+  dependsOn: [deployerSecretsOfficerRoleAssignment]
+}
+
+resource langfuseSecretKeySecret 'Microsoft.KeyVault/vaults/secrets@2026-03-01-preview' = {
+  parent: keyVault
+  name: 'langfuse-secret-key'
+  properties: {
+    value: langfuseSecretKey
   }
   dependsOn: [deployerSecretsOfficerRoleAssignment]
 }
