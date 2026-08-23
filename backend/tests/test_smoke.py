@@ -3,7 +3,8 @@
 
 아직 30개 전부를 커버하지 않는다 — GET /categories(#11), chat_sessions(#27-29),
 feedback_reports(#30), dashboard/summary·reports/me(#25-26)까지 완료. 나머지 엔드포인트는 해당
-기능 구현 시 이어서 추가한다.
+기능 구현 시 이어서 추가한다. 소셜 로그인(구글/네이버, Should, 03_API_spec.md에 없는 번외
+엔드포인트)의 리다이렉트 배선도 TestOAuthSmoke로 커버.
 
 GET /categories는 03_API_spec.md §5 인증 필수 목록(`/weddings*` 등)에 없는 유일한 부류의
 엔드포인트라 401 케이스가 없다 — 세션 쿠키 없이도 항상 200이어야 하는 게 맞는 동작이다."""
@@ -205,3 +206,47 @@ class TestDashboardSmoke:
         response = await client.get("/reports/me")
 
         assert response.status_code == 401
+
+
+class TestOAuthSmoke:
+    """소셜 로그인(구글/네이버, 00_BASELINE.md §0-2 Should) — 실 IdP 토큰교환/유저정보 조회는
+    실 크레덴셜이 있어야 해서(비용은 없지만 CI/로컬 dev 크레덴셜 미보유) 자동 스모크 대상이
+    아니다(app/services/oauth.py의 find_or_create_social_user 계정 연동 로직은
+    tests/test_oauth_service.py가 실DB로 직접 검증). 여기서는 IdP 호출 전 단계(로그인 리다이렉트
+    조립, 콜백의 state 검증)만 확인한다 — httpx AsyncClient는 기본이 follow_redirects=False라
+    307 응답 자체를 그대로 받을 수 있다."""
+
+    async def test_login_redirects_to_google_authorize_endpoint(self, client):
+        response = await client.get("/auth/google/login")
+
+        assert response.status_code == 307
+        assert response.headers["location"].startswith("https://accounts.google.com/")
+        assert "wr_oauth_state" in response.cookies
+
+    async def test_login_redirects_to_naver_authorize_endpoint(self, client):
+        response = await client.get("/auth/naver/login")
+
+        assert response.status_code == 307
+        assert response.headers["location"].startswith("https://nid.naver.com/")
+
+    async def test_login_unsupported_provider_returns_404(self, client):
+        response = await client.get("/auth/kakao/login")
+
+        assert response.status_code == 404
+
+    async def test_callback_without_state_cookie_redirects_to_login_with_error(self, client):
+        response = await client.get("/auth/google/callback", params={"code": "x", "state": "s"})
+
+        assert response.status_code < 400  # RedirectResponse, 에러가 아니라 안내 리다이렉트
+        assert response.headers["location"].startswith("http://localhost:5173/login")
+        assert "oauth_error=state_missing" in response.headers["location"]
+
+    async def test_callback_with_mismatched_state_redirects_with_error(self, client):
+        login_response = await client.get("/auth/google/login")
+        assert login_response.status_code == 307
+
+        callback_response = await client.get(
+            "/auth/google/callback", params={"code": "x", "state": "not-the-real-state"}
+        )
+
+        assert "oauth_error=state_mismatch" in callback_response.headers["location"]
