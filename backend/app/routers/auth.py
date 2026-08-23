@@ -1,11 +1,27 @@
-"""#2-5 — 03_API_spec.md ⓪ 인증. 소셜 로그인(카카오/네이버/구글/애플)은 Should라 이번 Must
-범위에는 자체 이메일/비밀번호만 있다(00_BASELINE.md §0)."""
+"""#2-5 — 03_API_spec.md ⓪ 인증(자체 이메일/비밀번호, Must). #2-5 뒤에 이어붙인 소셜 로그인
+(구글/네이버만 — 00_BASELINE.md §0-2 Should, 카카오/애플은 이번 라운드 스코프 밖) 2개
+엔드포인트(`GET /auth/{provider}/login`, `GET /auth/{provider}/callback`)는 JSON이 아니라
+브라우저 전체 페이지 리다이렉트로 동작해 03_API_spec.md 문서화 대상인 나머지 엔드포인트들과
+호출 방식이 달라 OpenAPI 스키마에 노출하지 않는다(`include_in_schema=False`)."""
 
-from fastapi import APIRouter, Depends, Request, Response, status
+import json
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.db import get_session
+from app.core.errors import api_error
+from app.core.oauth_providers import (
+    OAUTH_STATE_COOKIE_NAME,
+    OAUTH_STATE_TTL_SECONDS,
+    build_authorization_url,
+    build_callback_redirect_uri,
+    generate_oauth_state,
+    generate_pkce_pair,
+    get_provider_config,
+)
 from app.deps import get_current_user
 from app.models import User
 from app.schemas.auth import AuthUserOut, LoginRequest, SignupRequest
@@ -16,8 +32,18 @@ from app.services.auth import (
     revoke_session_by_token,
     user_has_wedding,
 )
+from app.services.oauth import (
+    exchange_code_for_token,
+    fetch_oauth_profile,
+    find_or_create_social_user,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+_OAUTH_CLIENT_CREDENTIALS = {
+    "GOOGLE": lambda settings: (settings.google_client_id, settings.google_client_secret),
+    "NAVER": lambda settings: (settings.naver_client_id, settings.naver_client_secret),
+}
 
 
 def _set_session_cookie(response: Response, token: str) -> None:
@@ -104,3 +130,115 @@ async def get_me(
     return AuthUserOut(
         id=user.id, email=user.email, display_name=user.display_name, has_wedding=has_wedding
     )
+
+
+@router.get("/{provider}/login", include_in_schema=False)
+async def oauth_login(provider: str) -> RedirectResponse:
+    """구글/네이버 로그인 시작 — IdP 인가 화면으로 307 리다이렉트한다. state(+구글만 PKCE
+    code_verifier)를 짧은 httponly 쿠키에 담아 콜백까지 왕복시킨다(서버 세션 저장소가 없는
+    이 프로젝트에서 CSRF 방어를 위한 가장 단순한 방법 — Redis 등 별도 저장소 도입 금지
+    원칙과도 맞는다)."""
+    config = get_provider_config(provider)
+    if config is None:
+        raise api_error(404, "NOT_FOUND", f"지원하지 않는 로그인 방식입니다: {provider}")
+
+    settings = get_settings()
+    client_id, _ = _OAUTH_CLIENT_CREDENTIALS[config.code](settings)
+    state = generate_oauth_state()
+    code_verifier, code_challenge = generate_pkce_pair() if config.supports_pkce else (None, None)
+    redirect_uri = build_callback_redirect_uri(settings.oauth_backend_base_url, provider)
+    authorization_url = build_authorization_url(
+        config,
+        client_id=client_id,
+        redirect_uri=redirect_uri,
+        state=state,
+        code_challenge=code_challenge,
+    )
+
+    response = RedirectResponse(
+        url=authorization_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT
+    )
+    response.set_cookie(
+        key=OAUTH_STATE_COOKIE_NAME,
+        value=json.dumps({"state": state, "code_verifier": code_verifier}),
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=OAUTH_STATE_TTL_SECONDS,
+    )
+    return response
+
+
+@router.get("/{provider}/callback", include_in_schema=False)
+async def oauth_callback(
+    provider: str,
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> RedirectResponse:
+    """IdP가 인가 후 되돌아오는 콜백. 이 요청은 브라우저의 최상위 페이지 이동이라(fetch/XHR이
+    아님) 실패해도 원시 JSON을 그대로 보여주면 안 되고, 항상 프론트 화면(로그인 성공 시 홈,
+    실패 시 로그인 화면 + 에러 쿼리)으로 리다이렉트한다."""
+    settings = get_settings()
+    config = get_provider_config(provider)
+    login_page = f"{settings.frontend_base_url}/login"
+
+    if config is None:
+        return RedirectResponse(f"{login_page}?oauth_error=unsupported_provider")
+    if error is not None or code is None:
+        return RedirectResponse(f"{login_page}?oauth_error=denied")
+
+    raw_state_cookie = request.cookies.get(OAUTH_STATE_COOKIE_NAME)
+    if raw_state_cookie is None:
+        return RedirectResponse(f"{login_page}?oauth_error=state_missing")
+    try:
+        state_payload = json.loads(raw_state_cookie)
+    except json.JSONDecodeError:
+        return RedirectResponse(f"{login_page}?oauth_error=state_invalid")
+    if state is None or state != state_payload.get("state"):
+        return RedirectResponse(f"{login_page}?oauth_error=state_mismatch")
+
+    client_id, client_secret = _OAUTH_CLIENT_CREDENTIALS[config.code](settings)
+    redirect_uri = build_callback_redirect_uri(settings.oauth_backend_base_url, provider)
+    try:
+        access_token = await exchange_code_for_token(
+            config,
+            code=code,
+            code_verifier=state_payload.get("code_verifier"),
+            redirect_uri=redirect_uri,
+            client_id=client_id,
+            client_secret=client_secret,
+        )
+        profile = await fetch_oauth_profile(config, access_token)
+        user = await find_or_create_social_user(session, config.code, profile)
+    except HTTPException as exc:
+        # find_or_create_social_user가 던지는 EMAIL_ALREADY_EXISTS/SOCIAL_ACCOUNT_ALREADY_LINKED
+        # 등 — 이 흐름은 브라우저 최상위 페이지 이동이라 원시 JSON을 그대로 보여주면 안 되고
+        # 에러 코드를 쿼리 파라미터로 실어 로그인 화면으로 돌려보낸다.
+        await session.rollback()
+        detail = exc.detail if isinstance(exc.detail, dict) else {}
+        error_code = detail.get("error", {}).get("code", "UNKNOWN_ERROR")
+        return RedirectResponse(f"{login_page}?oauth_error={error_code}")
+    except Exception:  # noqa: BLE001
+        # IdP 쪽 네트워크/타임아웃/응답형식 오류 — 브라우저 리다이렉트 흐름이라 로그인 화면으로
+        # 안전하게 돌려보낸다(app/services/chat.py의 SSE event:error와 같은 이유로, 이 경계
+        # 하나에서만 광범위 캐치).
+        await session.rollback()
+        return RedirectResponse(f"{login_page}?oauth_error=upstream_failed")
+
+    _, raw_token = await issue_session(
+        session,
+        settings,
+        user,
+        config.code,
+        request.headers.get("user-agent"),
+        request.client.host if request.client else None,
+    )
+    await session.commit()
+
+    response = RedirectResponse(url=settings.frontend_base_url)
+    _set_session_cookie(response, raw_token)
+    response.delete_cookie(key=OAUTH_STATE_COOKIE_NAME)
+    return response

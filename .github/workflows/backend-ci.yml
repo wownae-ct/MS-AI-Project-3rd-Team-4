@@ -76,6 +76,12 @@ jobs:
         env:
             DATABASE_URL: postgresql://postgres:postgres@localhost:5432/merrymap_ci
             AZURE_OPENAI_ENDPOINT: https://ci-dummy-not-called.openai.azure.com/
+            # 소셜 로그인(구글/네이버) 스모크 테스트도 실 IdP를 호출하지 않는다 — /login이
+            # 리다이렉트 URL을 조립할 때만 쓰는 값이라 더미로 충분하다.
+            GOOGLE_CLIENT_ID: ci-dummy-google-client-id
+            GOOGLE_CLIENT_SECRET: ci-dummy-google-client-secret
+            NAVER_CLIENT_ID: ci-dummy-naver-client-id
+            NAVER_CLIENT_SECRET: ci-dummy-naver-client-secret
         steps:
             - uses: actions/checkout@v7
 
