@@ -14,6 +14,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from app.core.config import Settings, get_settings
 from app.core.embeddings import get_azure_openai_client
+from app.core.tracing import traced_span
 from app.personalization.prompts import build_generate_prompt, build_route_prompt
 from app.personalization.state import PersonalizationState
 from app.personalization.validation import validate_personalization_draft
@@ -24,55 +25,59 @@ from app.personalization.validation import validate_personalization_draft
 # 호출하므로 이 분기는 실사용 경로가 아직 없지만, 그래프 완결성과 향후 FIELD_UPDATED 연결을
 # 위해 구현해둔다.
 async def route_node(state: PersonalizationState, config: RunnableConfig) -> dict:
-    if state["trigger"] == "ONBOARDING_INITIAL":
-        return {
-            "affected_domains": ["CHECKLIST", "TIMELINE"],
-            "route_reasoning": "온보딩 최초 생성 — 라우팅 판단 불필요, 두 도메인 모두 생성",
-        }
-
     settings: Settings = config["configurable"].get("settings") or get_settings()
-    client = get_azure_openai_client(settings)
-    response = await client.chat.completions.create(
-        model=settings.azure_openai_chat_deployment,
-        response_format={"type": "json_object"},
-        messages=[
-            {
-                "role": "user",
-                "content": build_route_prompt(state["changed_fields"], str(state["profile"])),
+    async with traced_span("personalization.route", settings=settings, input=state["trigger"]):
+        if state["trigger"] == "ONBOARDING_INITIAL":
+            return {
+                "affected_domains": ["CHECKLIST", "TIMELINE"],
+                "route_reasoning": "온보딩 최초 생성 — 라우팅 판단 불필요, 두 도메인 모두 생성",
             }
-        ],
-    )
-    parsed = json.loads(response.choices[0].message.content)
-    return {
-        "affected_domains": parsed.get("affected_domains", []),
-        "route_reasoning": parsed.get("reasoning", ""),
-    }
+
+        client = get_azure_openai_client(settings)
+        response = await client.chat.completions.create(
+            model=settings.azure_openai_chat_deployment,
+            response_format={"type": "json_object"},
+            messages=[
+                {
+                    "role": "user",
+                    "content": build_route_prompt(state["changed_fields"], str(state["profile"])),
+                }
+            ],
+        )
+        parsed = json.loads(response.choices[0].message.content)
+        return {
+            "affected_domains": parsed.get("affected_domains", []),
+            "route_reasoning": parsed.get("reasoning", ""),
+        }
 
 
 # ② generate: affected_domains가 둘 다면 단일 결합 LLM 호출로 두 도메인을 한 번에 만든다(§1-3
 # "결합 호출" 명시 — 특히 온보딩은 항상 양쪽 다라 이 경로가 상시 경로).
 async def generate_node(state: PersonalizationState, config: RunnableConfig) -> dict:
-    if not state["affected_domains"]:
-        return {"checklist_draft": None, "timeline_draft": None}
-
     settings: Settings = config["configurable"].get("settings") or get_settings()
-    client = get_azure_openai_client(settings)
-    prompt = build_generate_prompt(
-        state["affected_domains"], state["profile"], state["protected_items"]
-    )
-    response = await client.chat.completions.create(
-        model=settings.azure_openai_chat_deployment,
-        response_format={"type": "json_object"},
-        messages=[{"role": "user", "content": prompt}],
-    )
-    parsed = json.loads(response.choices[0].message.content)
-    checklist_draft = (
-        parsed.get("checklist_items") if "CHECKLIST" in state["affected_domains"] else None
-    )
-    timeline_draft = (
-        parsed.get("timeline_items") if "TIMELINE" in state["affected_domains"] else None
-    )
-    return {"checklist_draft": checklist_draft, "timeline_draft": timeline_draft}
+    async with traced_span(
+        "personalization.generate", settings=settings, input=state["affected_domains"]
+    ):
+        if not state["affected_domains"]:
+            return {"checklist_draft": None, "timeline_draft": None}
+
+        client = get_azure_openai_client(settings)
+        prompt = build_generate_prompt(
+            state["affected_domains"], state["profile"], state["protected_items"]
+        )
+        response = await client.chat.completions.create(
+            model=settings.azure_openai_chat_deployment,
+            response_format={"type": "json_object"},
+            messages=[{"role": "user", "content": prompt}],
+        )
+        parsed = json.loads(response.choices[0].message.content)
+        checklist_draft = (
+            parsed.get("checklist_items") if "CHECKLIST" in state["affected_domains"] else None
+        )
+        timeline_draft = (
+            parsed.get("timeline_items") if "TIMELINE" in state["affected_domains"] else None
+        )
+        return {"checklist_draft": checklist_draft, "timeline_draft": timeline_draft}
 
 
 # ③ validate: 순수 코드, LLM 호출 없음(§1-4) — app/personalization/validation.py의 4규칙을

@@ -6,3 +6,14 @@ resources:
   - namespace.yaml
   - ../../base/backend
   - ingress.yaml
+patches:
+  # 14_langfuse_tracing_design.md — backend-staging/kustomization.yaml과 대칭(값만 다름).
+  - target:
+      kind: Deployment
+      name: backend
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: LANGFUSE_ENVIRONMENT
+          value: production

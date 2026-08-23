@@ -58,6 +58,25 @@ spec:
                             secretKeyRef:
                                 name: backend-kv-secrets
                                 key: AZURE_OPENAI_ENDPOINT
+                      # 14_langfuse_tracing_design.md — LANGFUSE_ENVIRONMENT는 여기(base)에
+                      # 안 둔다. staging/production 파드가 서로 다른 값을 가져야 하는데 base는
+                      # 두 오버레이가 공유하는 계층이라, 각 오버레이의 kustomization.yaml이
+                      # patches로 이 env 배열에 추가한다(생략 시 앱 쪽 Settings 기본값 "local"로
+                      # 안전하게 폴백).
+                      - name: LANGFUSE_ENABLED
+                        value: "true"
+                      - name: LANGFUSE_HOST
+                        value: "https://jp.cloud.langfuse.com"
+                      - name: LANGFUSE_PUBLIC_KEY
+                        valueFrom:
+                            secretKeyRef:
+                                name: backend-kv-secrets
+                                key: LANGFUSE_PUBLIC_KEY
+                      - name: LANGFUSE_SECRET_KEY
+                        valueFrom:
+                            secretKeyRef:
+                                name: backend-kv-secrets
+                                key: LANGFUSE_SECRET_KEY
                   volumeMounts:
                       - name: kv-secrets
                         mountPath: /mnt/secrets
