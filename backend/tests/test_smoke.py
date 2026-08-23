@@ -215,11 +215,20 @@ class TestBenchmarksSmoke:
     signed_up_client로 검증한다. #23 GET /benchmarks/compare는 이 세션 범위 밖(기존 미커버
     엔드포인트, 이 파일 상단 docstring 참고)이라 여기서 같이 채우지 않는다.
 
-    404(TOTAL_BUDGET_UNAVAILABLE) 케이스는 여기 없다 — ETL이 RegionCode Literal의 17개
-    유효값 전부에 TOTAL 행을 이미 채워둬서(2026-08-24 사용자 실DB 확인, todo.md), 실DB로는
-    "유효한 region_code인데 데이터가 없는" 상태를 자연스럽게 재현할 방법이 없다."""
+    200 케이스는 total_budget_benchmark 픽스처(conftest.py)로 데이터를 직접 만든다 — 처음엔
+    "ETL이 이미 채워뒀으니 실 시드에 기대면 된다"고 가정했다가 CI(마이그레이션만 적용된 빈
+    DB, ETL 시드 없음)에서 404로 떨어져 PR #41이 깨졌다(2026-08-24). 로컬 dev DB에만 있는
+    데이터에 기대는 스모크 테스트는 이 실패 패턴 자체가 재발 위험이라 직접 데이터를 준비하는
+    쪽으로 고쳤다.
 
-    async def test_total_average_returns_200_for_valid_region(self, signed_up_client):
+    404(TOTAL_BUDGET_UNAVAILABLE) 케이스는 여기 없다 — 로컬 dev DB는 이미 RegionCode Literal
+    17개 유효값 전부가 지역 폴백 체인(특정 지역→수도권/비수도권→전국)을 거쳐서라도 매치되도록
+    실 시드가 차 있어서, "유효한 region_code인데 매치되는 게 하나도 없는" 상태를 로컬/CI
+    양쪽에서 똑같이 재현할 방법이 없다."""
+
+    async def test_total_average_returns_200_for_valid_region(
+        self, signed_up_client, total_budget_benchmark
+    ):
         response = await signed_up_client.get(
             "/benchmarks/total-average", params={"region_code": "SEOUL_GANGNAM"}
         )
@@ -227,7 +236,7 @@ class TestBenchmarksSmoke:
         assert response.status_code == 200
         body = response.json()
         assert body["region_code"] == "SEOUL_GANGNAM"
-        assert body["median_price"] > 0
+        assert body["median_price"] == 45_000_000
 
     async def test_total_average_without_cookie_returns_401(self, client):
         response = await client.get(

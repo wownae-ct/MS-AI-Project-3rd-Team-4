@@ -7,14 +7,26 @@ pgvector/pgvector 서비스 컨테이너로 매 실행마다 빈 DB에 마이그
 (2026-08-24, PR #37 CI 실패로 발견해 추가)."""
 
 from collections.abc import AsyncIterator, Callable, Coroutine
+from datetime import date
 from uuid import uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import delete
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from app.core.db import get_session_factory
 from app.main import app
+from app.models import PriceBenchmark
 
 API_PREFIX = "/api/v1"
+
+# scripts/seed_price_benchmarks.py가 ETL로 채우는 실 데이터는 로컬 dev DB에만 있고, CI
+# (backend-ci.yml)는 마이그레이션만 적용된 빈 DB로 돈다 — GET /benchmarks/total-average
+# 스모크 테스트가 로컬에선 통과하고 CI에서만 404로 떨어진 원인(PR #41). 2099-01-01처럼 실
+# 데이터가 절대 못 따라올 미래 날짜를 써서 get_latest_benchmark()의 "survey_month 최신순"
+# 선택 로직이 로컬 실데이터 유무와 무관하게 항상 이 행을 고르게 한다.
+_SMOKE_TOTAL_BENCHMARK_SURVEY_MONTH = date(2099, 1, 1)
 
 
 @pytest.fixture
@@ -63,6 +75,51 @@ async def _signup_and_create_wedding(client: AsyncClient) -> AsyncClient:
         },
     )
     return client
+
+
+@pytest.fixture
+async def total_budget_benchmark() -> AsyncIterator[None]:
+    """GET /benchmarks/total-average(#31) 스모크 테스트가 의존하는 price_benchmarks TOTAL 행을
+    SEOUL_GANGNAM에 upsert한다 — CI엔 ETL 시드가 없어 이 행이 아예 없으므로 직접 만들어야
+    한다(위 _SMOKE_TOTAL_BENCHMARK_SURVEY_MONTH 설명 참고). on_conflict_do_update로 멱등
+    처리해 로컬에서 반복 실행해도 유니크 제약 위반이 안 난다 —
+    scripts/seed_price_benchmarks.py::_upsert_rows와 동일한 패턴.
+
+    이 fixture는 다른 스모크 fixture들과 달리 테스트 종료 후 행을 지운다(테스트 자체 스코프
+    로만 존재) — 다른 것들(유저/웨딩 등)과 달리 이건 "고아 데이터가 쌓이는" 수준이 아니라,
+    SEOUL_GANGNAM/TOTAL의 `_resolve_total_budget`(`POST /weddings`의 미정 처리)이 실제로
+    읽는 최신 행을 조작하는 것이라 로컬 dev DB에 남으면 팀원의 수동 검증 결과를 왜곡한다."""
+    async with get_session_factory()() as session:
+        stmt = pg_insert(PriceBenchmark).values(
+            survey_month=_SMOKE_TOTAL_BENCHMARK_SURVEY_MONTH,
+            region_code="SEOUL_GANGNAM",
+            category_code="TOTAL",
+            item_code="TOTAL",
+            median_price=45_000_000,
+            min_price=30_000_000,
+            max_price=60_000_000,
+            sample_count=42,
+            source_url="https://example.com/price-benchmarks-smoke-test",
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["survey_month", "region_code", "category_code", "item_code"],
+            set_={"median_price": stmt.excluded.median_price},
+        )
+        await session.execute(stmt)
+        await session.commit()
+
+    yield
+
+    async with get_session_factory()() as session:
+        await session.execute(
+            delete(PriceBenchmark).where(
+                PriceBenchmark.survey_month == _SMOKE_TOTAL_BENCHMARK_SURVEY_MONTH,
+                PriceBenchmark.region_code == "SEOUL_GANGNAM",
+                PriceBenchmark.category_code == "TOTAL",
+                PriceBenchmark.item_code == "TOTAL",
+            )
+        )
+        await session.commit()
 
 
 @pytest.fixture
