@@ -27,15 +27,14 @@ async def client() -> AsyncIterator[AsyncClient]:
         yield ac
 
 
-async def _signup_and_create_wedding(client: AsyncClient) -> AsyncClient:
-    """회원가입(#2) → 웨딩 생성(#6)까지 마친 인증된 클라이언트를 만든다. httpx AsyncClient는
-    응답의 Set-Cookie를 자체 쿠키 저장소에 담아 이후 요청에 자동으로 실어 보낸다(요청마다
-    cookies=를 직접 넘길 필요 없음).
+async def _signup(client: AsyncClient) -> AsyncClient:
+    """회원가입(#2)만 마친 인증된 클라이언트 — 아직 웨딩이 없는 온보딩 이전 상태. httpx
+    AsyncClient는 응답의 Set-Cookie를 자체 쿠키 저장소에 담아 이후 요청에 자동으로 실어
+    보낸다(요청마다 cookies=를 직접 넘길 필요 없음).
 
-    실DB에 테스트 유저 1행 + 웨딩 1행(+wedding_categories 9행, timeline_items 55행)이 호출마다
-    쌓인다 — 이 프로젝트에 아직 테스트 DB 정리/롤백 인프라가 없어(conftest.py 최초 도입, 별도
-    테스트 DB 컨테이너도 없음) 지금은 감수한다. 데이터가 쌓이는 게 신경 쓰이면 이메일에 실린
-    uuid4로 나중에 골라 지울 수 있다."""
+    실DB에 테스트 유저 1행이 호출마다 쌓인다 — 이 프로젝트에 아직 테스트 DB 정리/롤백
+    인프라가 없어(conftest.py 최초 도입, 별도 테스트 DB 컨테이너도 없음) 지금은 감수한다.
+    데이터가 쌓이는 게 신경 쓰이면 이메일에 실린 uuid4로 나중에 골라 지울 수 있다."""
     unique = uuid4().hex[:12]
     await client.post(
         "/auth/signup",
@@ -45,6 +44,14 @@ async def _signup_and_create_wedding(client: AsyncClient) -> AsyncClient:
             "display_name": "스모크테스트",
         },
     )
+    return client
+
+
+async def _signup_and_create_wedding(client: AsyncClient) -> AsyncClient:
+    """회원가입(#2) → 웨딩 생성(#6)까지 마친 인증된 클라이언트를 만든다. 웨딩 생성이 추가로
+    실DB에 웨딩 1행(+wedding_categories 9행, timeline_items 55행)을 쌓는다 — 데이터 적재에
+    대한 나머지 설명은 _signup 참고."""
+    await _signup(client)
     await client.post(
         "/weddings",
         json={
@@ -56,6 +63,13 @@ async def _signup_and_create_wedding(client: AsyncClient) -> AsyncClient:
         },
     )
     return client
+
+
+@pytest.fixture
+async def signed_up_client(client: AsyncClient) -> AsyncClient:
+    """웨딩 생성 전 온보딩 단계 엔드포인트(예: GET /benchmarks/total-average) 스모크 테스트용
+    — 로그인만 마치고 웨딩은 아직 없는 클라이언트."""
+    return await _signup(client)
 
 
 @pytest.fixture

@@ -1,9 +1,11 @@
-"""엔드포인트 스모크 테스트 — 09_backend_implementation_plan.md §4/§6 DoD: 30개 엔드포인트 각각
-"정상 요청 시 200/201" 확인 + 인증이 필요한 엔드포인트는 "세션 쿠키 없이 401"을 함께 확인한다.
+"""엔드포인트 스모크 테스트 — 09_backend_implementation_plan.md §4/§6 DoD: 문서화된 엔드포인트
+각각 "정상 요청 시 200/201" 확인 + 인증이 필요한 엔드포인트는 "세션 쿠키 없이 401"을 함께
+확인한다. 03_API_spec.md의 v3.0 기준 30개에 v4.0 신규 #31(GET /benchmarks/total-average,
+00_BASELINE.md §2-5)이 더해져 지금은 31개.
 
-아직 30개 전부를 커버하지 않는다 — GET /categories(#11), chat_sessions(#27-29),
-feedback_reports(#30), dashboard/summary·reports/me(#25-26)까지 완료. 나머지 엔드포인트는 해당
-기능 구현 시 이어서 추가한다.
+아직 31개 전부를 커버하지 않는다 — GET /categories(#11), chat_sessions(#27-29),
+feedback_reports(#30), dashboard/summary·reports/me(#25-26), benchmarks/total-average(#31)까지
+완료. 나머지 엔드포인트는 해당 기능 구현 시 이어서 추가한다.
 
 GET /categories는 03_API_spec.md §5 인증 필수 목록(`/weddings*` 등)에 없는 유일한 부류의
 엔드포인트라 401 케이스가 없다 — 세션 쿠키 없이도 항상 200이어야 하는 게 맞는 동작이다."""
@@ -203,5 +205,33 @@ class TestDashboardSmoke:
 
     async def test_my_report_without_cookie_returns_401(self, client):
         response = await client.get("/reports/me")
+
+        assert response.status_code == 401
+
+
+class TestBenchmarksSmoke:
+    """#31 GET /benchmarks/total-average — 00_BASELINE.md §2-5 예산 "미정" 슬라이더
+    플레이스홀더. 웨딩 생성 전(온보딩 중) 호출되는 엔드포인트라 wedding_client가 아니라
+    signed_up_client로 검증한다. #23 GET /benchmarks/compare는 이 세션 범위 밖(기존 미커버
+    엔드포인트, 이 파일 상단 docstring 참고)이라 여기서 같이 채우지 않는다.
+
+    404(TOTAL_BUDGET_UNAVAILABLE) 케이스는 여기 없다 — ETL이 RegionCode Literal의 17개
+    유효값 전부에 TOTAL 행을 이미 채워둬서(2026-08-24 사용자 실DB 확인, todo.md), 실DB로는
+    "유효한 region_code인데 데이터가 없는" 상태를 자연스럽게 재현할 방법이 없다."""
+
+    async def test_total_average_returns_200_for_valid_region(self, signed_up_client):
+        response = await signed_up_client.get(
+            "/benchmarks/total-average", params={"region_code": "SEOUL_GANGNAM"}
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["region_code"] == "SEOUL_GANGNAM"
+        assert body["median_price"] > 0
+
+    async def test_total_average_without_cookie_returns_401(self, client):
+        response = await client.get(
+            "/benchmarks/total-average", params={"region_code": "SEOUL_GANGNAM"}
+        )
 
         assert response.status_code == 401
