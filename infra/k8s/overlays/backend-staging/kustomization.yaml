@@ -19,3 +19,21 @@ patches:
         value:
           name: LANGFUSE_ENVIRONMENT
           value: staging
+  # 소셜 로그인(구글/네이버, 00_BASELINE.md §0-2 Should) — OAUTH_BACKEND_BASE_URL은 IdP
+  # 콘솔에 등록해둔 redirect_uri와 문자 그대로 일치해야 하는 값이라 이 배포 환경의 실제
+  # Ingress 도메인(03_API_spec.md §1 base URL, /api/v1 제외)으로 명시한다. FRONTEND_BASE_URL은
+  # app/main.py의 SWA_ORIGIN_REGEX가 허용하는 실제 배포 오리진.
+  - target:
+      kind: Deployment
+      name: backend
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OAUTH_BACKEND_BASE_URL
+          value: https://20-249-52-148.nip.io
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: FRONTEND_BASE_URL
+          value: https://polite-island-0bb189700.7.azurestaticapps.net

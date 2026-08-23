@@ -17,3 +17,19 @@ patches:
         value:
           name: LANGFUSE_ENVIRONMENT
           value: production
+  # 소셜 로그인(구글/네이버, 00_BASELINE.md §0-2 Should) — backend-staging/kustomization.yaml과
+  # 대칭(값만 다름).
+  - target:
+      kind: Deployment
+      name: backend
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OAUTH_BACKEND_BASE_URL
+          value: https://merrymap-production.koreacentral.cloudapp.azure.com
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: FRONTEND_BASE_URL
+          value: https://polite-island-0bb189700.7.azurestaticapps.net
