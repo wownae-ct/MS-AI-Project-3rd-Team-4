@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.checklist_catalog import CHECKLIST_FALLBACK_CATALOG, GROUP_LABEL_BY_ITEM_TYPE
 from app.core.config import Settings
+from app.core.tracing import traced_span
 from app.models import AiInvocation, ChecklistItem, TimelineItem, Wedding
 from app.personalization.graph import build_graph
 from app.personalization.state import PersonalizationState
@@ -217,49 +218,57 @@ async def run_personalization(
     checklist_rows: list[ChecklistItem] = []
     timeline_rows: list[TimelineItem] = []
 
-    try:
-        result = await _GRAPH.ainvoke(initial_state, {"configurable": {"settings": settings}})
-        affected_domains = result["affected_domains"]
-        if result["validation_status"] == "SUCCESS":
-            if "CHECKLIST" in affected_domains:
-                checklist_rows = [
-                    row
-                    for row in (
-                        _checklist_row_from_draft(active_categories, item)
-                        for item in result["checklist_draft"] or []
+    async with traced_span(
+        "personalization",
+        settings=settings,
+        input={"trigger": trigger, "changed_fields": changed_fields},
+        metadata={"wedding_id": str(wedding.id), "active_categories": sorted(active_categories)},
+        user_id=str(wedding.owner_user_id),  # 이메일 등 PII 대신 UUID만 전달
+    ) as trace:
+        try:
+            result = await _GRAPH.ainvoke(initial_state, {"configurable": {"settings": settings}})
+            affected_domains = result["affected_domains"]
+            if result["validation_status"] == "SUCCESS":
+                if "CHECKLIST" in affected_domains:
+                    checklist_rows = [
+                        row
+                        for row in (
+                            _checklist_row_from_draft(active_categories, item)
+                            for item in result["checklist_draft"] or []
+                        )
+                        if row is not None
+                    ]
+                if "TIMELINE" in affected_domains:
+                    timeline_rows = [
+                        _timeline_row_from_draft(
+                            wedding.wedding_date, done_categories, today, idx, item
+                        )
+                        for idx, item in enumerate(result["timeline_draft"] or [], start=1)
+                    ]
+            else:
+                status = "BLOCKED"
+                error_message = "; ".join(result["validation_errors"])[:2000]
+                if "CHECKLIST" in affected_domains:
+                    checklist_rows = _checklist_fallback_rows(active_categories)
+                if "TIMELINE" in affected_domains:
+                    timeline_rows = _timeline_fallback_rows(
+                        wedding.wedding_date, active_categories, done_so_far, today
                     )
-                    if row is not None
-                ]
-            if "TIMELINE" in affected_domains:
-                timeline_rows = [
-                    _timeline_row_from_draft(
-                        wedding.wedding_date, done_categories, today, idx, item
-                    )
-                    for idx, item in enumerate(result["timeline_draft"] or [], start=1)
-                ]
-        else:
-            status = "BLOCKED"
-            error_message = "; ".join(result["validation_errors"])[:2000]
+        except Exception as exc:  # noqa: BLE001
+            # 이 그래프(app/personalization/graph.py)는 챗 그래프와 같은 "재시도 없음" 원칙이라
+            # 노드 안에서 예외를 잡지 않는다 — LLM 호출 실패·JSON 파싱 실패 등 모든 예외가 여기까지
+            # 전파되면 이 경계에서 한 번만 잡아 FAILED 기록 + 결정론적 폴백으로 안전하게 내려간다
+            # (의도적 광범위 캐치 — 이 함수가 유일한 예외 경계).
+            status = "FAILED"
+            error_message = str(exc)[:2000]
+            affected_domains = ["CHECKLIST", "TIMELINE"] if trigger == "ONBOARDING_INITIAL" else []
             if "CHECKLIST" in affected_domains:
                 checklist_rows = _checklist_fallback_rows(active_categories)
             if "TIMELINE" in affected_domains:
                 timeline_rows = _timeline_fallback_rows(
                     wedding.wedding_date, active_categories, done_so_far, today
                 )
-    except Exception as exc:  # noqa: BLE001
-        # 이 그래프(app/personalization/graph.py)는 챗 그래프와 같은 "재시도 없음" 원칙이라
-        # 노드 안에서 예외를 잡지 않는다 — LLM 호출 실패·JSON 파싱 실패 등 모든 예외가 여기까지
-        # 전파되면 이 경계에서 한 번만 잡아 FAILED 기록 + 결정론적 폴백으로 안전하게 내려간다
-        # (의도적 광범위 캐치 — 이 함수가 유일한 예외 경계).
-        status = "FAILED"
-        error_message = str(exc)[:2000]
-        affected_domains = ["CHECKLIST", "TIMELINE"] if trigger == "ONBOARDING_INITIAL" else []
-        if "CHECKLIST" in affected_domains:
-            checklist_rows = _checklist_fallback_rows(active_categories)
-        if "TIMELINE" in affected_domains:
-            timeline_rows = _timeline_fallback_rows(
-                wedding.wedding_date, active_categories, done_so_far, today
-            )
+        trace.update(metadata={"status": status, "affected_domains": affected_domains})
 
     # affected_domains에 든 도메인은 SUCCESS/BLOCKED/FAILED 경로 어느 쪽이든 이미 새 내용으로
     # 대체하기로 결정된 상태다 — protected(user_edited_at 있음) 행만 남기고 나머지 기존 행을
@@ -273,6 +282,7 @@ async def run_personalization(
         affected_domains=affected_domains,
         status=status,
         error_message=error_message,
+        trace_ref=trace.trace_id,
     )
     session.add(ai_invocation)
     # checklist_rows/timeline_rows.generated_by_run_id가 이 id를 참조해야 해서 커밋 전에 flush.

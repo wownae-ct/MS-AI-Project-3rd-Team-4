@@ -41,6 +41,15 @@ class Settings(BaseSettings):
     session_cookie_name: str = "wr_session"
     session_ttl_days: int = 30
 
+    # 14_langfuse_tracing_design.md — 기본 off(마스터 스위치). 켜져 있어도 두 키가 없으면
+    # app/core/tracing.py::is_tracing_enabled()가 다시 막는다(오설정으로 매 요청 예외 방지).
+    langfuse_enabled: bool = False
+    langfuse_public_key: str | None = None
+    langfuse_secret_key: str | None = None
+    # Japan 리전 — 한국에서 EU(아일랜드)/US(오레곤)보다 지연시간 짧음(2026-04 출시).
+    langfuse_host: str = "https://jp.cloud.langfuse.com"
+    langfuse_environment: str = "local"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
