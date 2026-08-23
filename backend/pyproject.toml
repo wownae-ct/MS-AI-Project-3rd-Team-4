@@ -32,6 +32,10 @@ dependencies = [
     # (azure-identity 경유)의 전이 의존성으로 이미 lockfile에 있었지만, 코드가 직접 import하므로
     # 명시적 직접 의존성으로 승격 — 향후 azure-identity가 msal을 안 쓰게 바뀌어도 안 깨지도록.
     "pyjwt[crypto]>=2.9",
+    # 애플 콜백만 POST form-urlencoded로 온다(app/routers/auth.py::apple_oauth_callback의
+    # request.form()) — Starlette가 폼 파싱에 요구하는 필수 런타임 의존성, 없으면
+    # AssertionError로 즉시 실패(CI에서 실제로 겪음, 2026-08-24).
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]

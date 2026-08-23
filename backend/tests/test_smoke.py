@@ -274,11 +274,13 @@ class TestOAuthSmoke:
         assert "oauth_error=state_mismatch" in callback_response.headers["location"]
 
     async def test_apple_callback_is_post_not_get(self, client):
-        """애플만 response_mode=form_post라 콜백이 POST다 — GET으로 치면 404(라우트 자체가
-        없음)여야 한다."""
+        """애플만 response_mode=form_post라 콜백이 POST다 — GET `/auth/{provider}/callback`은
+        `{provider}` 자체가 "apple"도 매칭시켜버리므로 404는 안 나고, 라우터가 애플만 명시적으로
+        거부해 에러 리다이렉트로 응답해야 한다(app/routers/auth.py::oauth_callback 참고)."""
         response = await client.get("/auth/apple/callback", params={"code": "x", "state": "s"})
 
-        assert response.status_code == 404
+        assert response.status_code < 400
+        assert "oauth_error=unsupported_provider" in response.headers["location"]
 
     async def test_apple_callback_without_state_cookie_redirects_with_error(self, client):
         response = await client.post("/auth/apple/callback", data={"code": "x", "state": "s"})
