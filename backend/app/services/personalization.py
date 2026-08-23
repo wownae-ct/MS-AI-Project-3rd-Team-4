@@ -1,12 +1,19 @@
 """개인화 라우터 에이전트 오케스트레이션 — 그래프 호출, SUCCESS/BLOCKED/FAILED 3경로별 DB 반영,
 ai_invocations 감사로그 기록. 13_personalization_router_agent_design.md §1-4/§2.
 
+FIELD_UPDATED 재트리거(app/services/wedding.py의 update_wedding/update_wedding_categories)에서
+protected_items(user_edited_at 있는 행)는 DB에서 직접 조회해 그래프 few-shot에 참고로만
+넘기고, affected_domains에 든 도메인의 기존 행 중 protected가 아닌 것만 지운 뒤 새로 생성한
+행으로 교체한다 — 사용자가 이미 체크하거나 메모를 남긴 항목은 재생성으로 사라지지 않는다.
+
 이 모듈이 커밋하지 않는다 — 호출자(app/services/wedding.py)의 더 큰 트랜잭션 일부로 flush만
 하고, 최종 commit은 호출자가 한다(온보딩 시 wedding_categories 등 다른 행들과 원자적으로 함께
 커밋되어야 하므로)."""
 
 from datetime import UTC, date, datetime, timedelta
+from uuid import UUID
 
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.checklist_catalog import CHECKLIST_FALLBACK_CATALOG, GROUP_LABEL_BY_ITEM_TYPE
@@ -19,7 +26,60 @@ from app.services.timeline import generate_timeline_items
 
 _GRAPH = build_graph()
 
-_EMPTY_PROTECTED_ITEMS: dict[str, list[str]] = {"CHECKLIST": [], "TIMELINE": []}
+
+async def _fetch_protected_items(session: AsyncSession, wedding_id: UUID) -> dict[str, list[str]]:
+    """설계 문서 §1-1: protected_items = user_edited_at이 있는(=사용자가 PATCH로 한 번이라도
+    건드린) 행의 id. ONBOARDING_INITIAL은 아직 행 자체가 없어 항상 빈 리스트를 반환한다."""
+    checklist_ids = (
+        (
+            await session.execute(
+                select(ChecklistItem.id).where(
+                    ChecklistItem.wedding_id == wedding_id,
+                    ChecklistItem.user_edited_at.is_not(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    timeline_ids = (
+        (
+            await session.execute(
+                select(TimelineItem.id).where(
+                    TimelineItem.wedding_id == wedding_id,
+                    TimelineItem.user_edited_at.is_not(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return {
+        "CHECKLIST": [str(item_id) for item_id in checklist_ids],
+        "TIMELINE": [str(item_id) for item_id in timeline_ids],
+    }
+
+
+async def _delete_unprotected_items(
+    session: AsyncSession, wedding_id: UUID, affected_domains: list[str]
+) -> None:
+    """재생성 대상 도메인(affected_domains)의 기존 행 중 protected(user_edited_at 있음)가 아닌
+    행만 지운다 — FIELD_UPDATED 재생성이 사용자가 직접 수정한 항목을 덮어쓰지 않게 하는 축.
+    ONBOARDING_INITIAL은 애초에 기존 행이 없어 no-op이다."""
+    if "CHECKLIST" in affected_domains:
+        await session.execute(
+            delete(ChecklistItem).where(
+                ChecklistItem.wedding_id == wedding_id,
+                ChecklistItem.user_edited_at.is_(None),
+            )
+        )
+    if "TIMELINE" in affected_domains:
+        await session.execute(
+            delete(TimelineItem).where(
+                TimelineItem.wedding_id == wedding_id,
+                TimelineItem.user_edited_at.is_(None),
+            )
+        )
 
 
 def _build_profile(wedding: Wedding, active_categories: set[str]) -> dict:
@@ -131,11 +191,10 @@ async def run_personalization(
     active_categories: set[str],
     trigger: str,
     changed_fields: list[str] | None = None,
-    protected_items: dict[str, list[str]] | None = None,
     done_so_far: list[str] | None = None,
 ) -> AiInvocation:
     today = datetime.now(UTC).date()
-    protected_items = protected_items or _EMPTY_PROTECTED_ITEMS
+    protected_items = await _fetch_protected_items(session, wedding.id)
     done_categories = set(done_so_far or [])
 
     initial_state: PersonalizationState = {
@@ -201,6 +260,11 @@ async def run_personalization(
             timeline_rows = _timeline_fallback_rows(
                 wedding.wedding_date, active_categories, done_so_far, today
             )
+
+    # affected_domains에 든 도메인은 SUCCESS/BLOCKED/FAILED 경로 어느 쪽이든 이미 새 내용으로
+    # 대체하기로 결정된 상태다 — protected(user_edited_at 있음) 행만 남기고 나머지 기존 행을
+    # 지운 뒤 아래에서 새 행을 꽂는다. ONBOARDING_INITIAL은 기존 행 자체가 없어 no-op.
+    await _delete_unprotected_items(session, wedding.id, affected_domains)
 
     ai_invocation = AiInvocation(
         wedding_id=wedding.id,

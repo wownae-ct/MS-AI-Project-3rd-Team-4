@@ -51,7 +51,7 @@ async def update_wedding(
     wedding: Wedding = Depends(get_current_wedding),  # noqa: B008
     session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> Wedding:
-    return await update_wedding_service(session, wedding, payload)
+    return await update_wedding_service(session, get_settings(), wedding, payload)
 
 
 @router.get("/wedding-categories", response_model=WeddingCategoriesOut)
@@ -68,5 +68,5 @@ async def update_wedding_categories(
     wedding: Wedding = Depends(get_current_wedding),  # noqa: B008
     session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> WeddingCategoriesOut:
-    categories = await update_wedding_categories_service(session, wedding, payload)
+    categories = await update_wedding_categories_service(session, get_settings(), wedding, payload)
     return WeddingCategoriesOut(categories=categories)
