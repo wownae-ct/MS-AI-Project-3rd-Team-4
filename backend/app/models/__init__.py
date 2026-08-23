@@ -17,13 +17,12 @@ from app.models.payment import Payment
 from app.models.rag import RagChunk, RagDocument
 from app.models.timeline import TimelineItem
 from app.models.user import AuthSession, User
-from app.models.wedding import Category, Wedding, WeddingCategory
+from app.models.wedding import Wedding, WeddingCategory
 
 __all__ = [
     "AiInvocation",
     "AuthSession",
     "Base",
-    "Category",
     "ChatMessage",
     "ChatSession",
     "ChecklistItem",
