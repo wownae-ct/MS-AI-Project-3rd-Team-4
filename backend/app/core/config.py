@@ -41,13 +41,28 @@ class Settings(BaseSettings):
     session_cookie_name: str = "wr_session"
     session_ttl_days: int = 30
 
-    # 소셜 로그인(구글/네이버, 00_BASELINE.md §0-2 Should) — BFF 패턴이라 client_secret은
-    # 서버에만 있고 브라우저에는 절대 노출되지 않는다(§4-1). 다른 필수 시크릿(azure_openai_
-    # endpoint 등)과 동일하게 기본값 없이 필수로 둔다 — CI는 backend-ci.yml에 더미값을 준다.
+    # 소셜 로그인(구글/네이버/카카오/애플, 00_BASELINE.md §0-2 Should + 15_post_v4_scope_
+    # promotion.md §P1) — BFF 패턴이라 client_secret은 서버에만 있고 브라우저에는 절대
+    # 노출되지 않는다(§4-1). 다른 필수 시크릿(azure_openai_endpoint 등)과 동일하게 기본값
+    # 없이 필수로 둔다 — CI는 backend-ci.yml에 더미값을 준다.
     google_client_id: str
     google_client_secret: str
     naver_client_id: str
     naver_client_secret: str
+    kakao_client_id: str
+    # 카카오는 REST 방식이라(OIDC 확장이어도) client_secret 자체는 필요 — 구글/네이버와 동일.
+    kakao_client_secret: str
+    # 애플은 Services ID(웹/서버용으로 등록한 client_id, 앱의 Bundle ID와는 다른 값)와, 그
+    # Services ID에 연결된 "Sign in with Apple" 키 3종(Team ID/Key ID/개인키)이 필요하다.
+    # client_secret 자체는 고정값이 아니라 이 4개로 매 요청 서명해서 만든다(app/core/
+    # oauth_providers.py::build_apple_client_secret). apple_private_key는 PEM 원문(여러 줄) —
+    # 로컬 .env에 둘 땐 큰따옴표로 감싸 개행을 \n으로 이스케이프해야 한다(python-dotenv가
+    # 큰따옴표 안의 \n만 실제 개행으로 되돌려준다), K8s Secret에서는 원문 그대로 주입되므로
+    # 이 이스케이프가 필요 없다.
+    apple_client_id: str
+    apple_team_id: str
+    apple_key_id: str
+    apple_private_key: str
     # 이 백엔드 자신의 공개 base URL — OAuth redirect_uri(=IdP 콘솔에 등록해둔 콜백 주소)를
     # 조립하는 데 쓴다. 로컬은 uvicorn 기본 포트, staging/production은 실제 AKS Ingress 도메인
     # (03_API_spec.md §1의 base URL과 동일 호스트, /api/v1 제외 — 콜백 경로 조립 시 붙인다).
