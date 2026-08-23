@@ -15,7 +15,6 @@ from sqlalchemy import (
     Date,
     ForeignKey,
     SmallInteger,
-    String,
     Text,
     UniqueConstraint,
     func,
@@ -132,25 +131,3 @@ class WeddingCategory(Base):
     skip_reason: Mapped[str | None] = mapped_column(Text)
     display_order: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
-
-
-class Category(Base):
-    """[DEPRECATED — v3.0 잔재] 원래 테이블(categories)은 7713273146d1로 이미 삭제됐고
-    v4.0에서는 category_code ENUM + app/core/categories.py 백엔드 상수로 대체됐다(위
-    WeddingCategory가 그 새 방식을 씀). 이 클래스는 아직 v4.0으로 재구현되지 않은
-    app/services/chat.py가 참조하고 있어서만 남겨뒀다 — 새 코드에서는 쓰지 말 것.
-    chat_sessions/chat_messages를 v4.0으로 재구현하는 별도 태스크에서 chat.py와 함께 정리
-    (app/core/categories.py의 CATEGORY_META로 교체)하고 이 클래스도 지울 것."""
-
-    __tablename__ = "categories"
-
-    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, autoincrement=False)
-    code: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
-    name_ko: Mapped[str] = mapped_column(Text, nullable=False)
-    display_order: Mapped[int] = mapped_column(SmallInteger, nullable=False)
-    tier: Mapped[str] = mapped_column(
-        String, CheckConstraint("tier IN ('FOCUS','MOCKUP')"), nullable=False
-    )
-    has_cost: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    has_benchmark: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    has_vendor_cases: Mapped[bool] = mapped_column(Boolean, nullable=False)

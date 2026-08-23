@@ -38,6 +38,13 @@ extend-exclude = ["old"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# app/core/db.py의 엔진/세션팩토리는 프로세스 전역 싱글턴(실제 서버와 동일 설계) — 테스트마다
+# 새 이벤트 루프(기본값)를 쓰면 asyncpg 커넥션이 다른 루프에서 재사용되며 깨진다
+# ("cannot perform operation: another operation is in progress", 2026-08-24 chat 스모크
+# 테스트 작성 중 재현). 세션 전체가 하나의 루프를 쓰게 맞춘다 — fixture와 test item 둘 다
+# 설정해야 한다(pytest-asyncio는 이 둘을 별도 옵션으로 관리).
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 norecursedirs = ["old"]
 
 [tool.hatch.build.targets.wheel]

@@ -50,6 +50,32 @@ jobs:
         defaults:
             run:
                 working-directory: backend
+        # 2026-08-24부터 tests/conftest.py가 실제 ASGI 앱(app.main)을 띄우는 스모크 테스트를
+        # 돌린다 — app.core.config.Settings의 필수 필드(database_url/azure_openai_endpoint)가
+        # 없으면 앱이 아예 안 뜬다. 이전엔 서비스 함수만 단위 테스트해서 CI에 DB가 없어도
+        # 문제가 없었는데, 이제는 실제 Postgres가 있어야 한다 — 09_backend_implementation_plan.md
+        # §4가 명시한 "CI 내 임시 DB" 옵션을 여기서 쓴다. pgvector/pgvector 이미지를 쓰는 이유는
+        # rag_chunks.embedding VECTOR(1536) 컬럼 마이그레이션(66e6da86e72e)이 `CREATE EXTENSION
+        # vector`를 실행하는데, 일반 postgres 이미지엔 그 확장 파일 자체가 없어서 실패한다.
+        # AZURE_OPENAI_ENDPOINT는 스모크 테스트가 실LLM을 호출하지 않아(비용/지연 때문에
+        # 의도적으로 제외 — tests/test_smoke.py 상단 docstring 참고) 더미 값으로 충분하다.
+        services:
+            postgres:
+                image: pgvector/pgvector:pg16
+                env:
+                    POSTGRES_USER: postgres
+                    POSTGRES_PASSWORD: postgres
+                    POSTGRES_DB: merrymap_ci
+                ports:
+                    - 5432:5432
+                options: >-
+                    --health-cmd pg_isready
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 5
+        env:
+            DATABASE_URL: postgresql://postgres:postgres@localhost:5432/merrymap_ci
+            AZURE_OPENAI_ENDPOINT: https://ci-dummy-not-called.openai.azure.com/
         steps:
             - uses: actions/checkout@v7
 
@@ -67,6 +93,10 @@ jobs:
             # 린트 게이트 — 통과 못하면 테스트/빌드 안 함
             - name: Lint
               run: uv run ruff check .
+
+            # 스모크 테스트가 실제 테이블에 대해 돌므로 마이그레이션을 먼저 적용해야 한다.
+            - name: Run DB migrations
+              run: uv run alembic upgrade head
 
             # 테스트 게이트 — 통과 못하면 이미지 빌드 안 함
             # 아직 테스트가 하나도 없으면 pytest가 exit code 5(수집된 테스트 없음)로 죽는데,

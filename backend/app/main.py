@@ -24,6 +24,7 @@ from app.routers import (
     chat,
     checklist,
     dashboard,
+    feedback,
     health,
     timeline,
     vendor_case,
@@ -83,3 +84,4 @@ app.include_router(checklist.router, prefix="/api/v1")
 app.include_router(timeline.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")
+app.include_router(feedback.router, prefix="/api/v1")

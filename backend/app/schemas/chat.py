@@ -68,3 +68,12 @@ class VerificationEventData(BaseModel):
 class DoneEventData(BaseModel):
     message_id: str
     latency_ms: int
+
+
+class ErrorEventData(BaseModel):
+    """03_API_spec.md #29 "에러 시" / 05_RAG_design.md §10 — Azure OpenAI 429·타임아웃 등으로
+    스트림 중간에 실패하면 HTTP 상태코드를 더 이상 바꿀 수 없어(이미 200 스트림 시작) 이 이벤트로
+    대신 알린다."""
+
+    code: str
+    message: str
