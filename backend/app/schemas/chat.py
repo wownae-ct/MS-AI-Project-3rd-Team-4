@@ -9,12 +9,15 @@ from app.schemas.common import CategoryCode, ChatRole, SourceTier, Verdict
 
 
 class ChatSessionCreate(BaseModel):
-    category_code: CategoryCode
+    # 12_final_prototype_mockup.html 하단 탭바의 전역 "AI상담"(카테고리 무관)과 카테고리 상세
+    # 안의 "AI상담" 서브탭 둘 다 이 엔드포인트로 세션을 만든다 — None이면 전역 상담.
+    # ChatSession.category_code(app/models/chat.py)가 이미 nullable로 설계돼 있던 걸 반영.
+    category_code: CategoryCode | None = None
 
 
 class ChatSessionOut(BaseModel):
     id: UUID
-    category_code: CategoryCode
+    category_code: CategoryCode | None
     title: str | None
     created_at: datetime
 
