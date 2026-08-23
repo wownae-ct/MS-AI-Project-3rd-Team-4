@@ -7,6 +7,31 @@ param tenantId string = subscription().tenantId
 @description('Key Vault Secrets User 권한을 부여할 principal ID (AKS backend workload identity). 같은 모듈 안에서 처리해야 BCP120(모듈 출력값으로 만든 existing 참조를 roleAssignment scope/name에 못 씀) 오류를 피할 수 있다.')
 param backendIdentityPrincipalId string
 
+// 소셜 로그인(구글/네이버, 00_BASELINE.md §0-2 Should) — main.bicep이 infra/.env(또는 CI
+// secrets)에서 읽어 그대로 넘겨준다. openai-endpoint(openai.bicep이 배포 시점에 직접 씀)와
+// 달리 이 값들은 Azure 밖(Google/Naver 콘솔)에서 미리 발급받은 값이라 여기서 파라미터로
+// 받는다 — infra/k8s/base/backend/secretproviderclass.yaml의 objectName(google-client-id 등)
+// 과 시크릿 이름이 반드시 일치해야 한다.
+@secure()
+param googleClientId string
+
+@secure()
+param googleClientSecret string
+
+@secure()
+param naverClientId string
+
+@secure()
+param naverClientSecret string
+
+// Langfuse LLM 관측/트레이싱(14_langfuse_tracing_design.md) — 원래 az keyvault secret set으로
+// 수동 등록돼 있었는데(PR #42), 2026-08-24 팀 결정으로 위 구글/네이버와 같은 IaC 패턴으로 전환.
+@secure()
+param langfusePublicKey string
+
+@secure()
+param langfuseSecretKey string
+
 resource keyVault 'Microsoft.KeyVault/vaults@2026-03-01-preview' = {
   name: take('${namePrefix}-kv', 24)
   location: location
@@ -59,6 +84,63 @@ resource deployerSecretsOfficerRoleAssignment 'Microsoft.Authorization/roleAssig
     // deployer()는 principalType을 안 알려줌 — userPrincipalName이 있으면 사람 계정, 없으면 SP/관리 ID로 판단
     principalType: empty(deployer().userPrincipalName) ? 'ServicePrincipal' : 'User'
   }
+}
+
+// deployerSecretsOfficerRoleAssignment 뒤에 와야 이 배포 주체가 시크릿 쓰기 권한을 먼저 받은
+// 채로 실행된다(Bicep은 리소스 간 참조로 암묵적 dependsOn을 추론하지만, 이 4개는 keyVault
+// 리소스만 참조하고 롤 할당 리소스를 직접 참조하지 않으므로 명시적으로 순서를 강제한다).
+resource googleClientIdSecret 'Microsoft.KeyVault/vaults/secrets@2026-03-01-preview' = {
+  parent: keyVault
+  name: 'google-client-id'
+  properties: {
+    value: googleClientId
+  }
+  dependsOn: [deployerSecretsOfficerRoleAssignment]
+}
+
+resource googleClientSecretSecret 'Microsoft.KeyVault/vaults/secrets@2026-03-01-preview' = {
+  parent: keyVault
+  name: 'google-client-secret'
+  properties: {
+    value: googleClientSecret
+  }
+  dependsOn: [deployerSecretsOfficerRoleAssignment]
+}
+
+resource naverClientIdSecret 'Microsoft.KeyVault/vaults/secrets@2026-03-01-preview' = {
+  parent: keyVault
+  name: 'naver-client-id'
+  properties: {
+    value: naverClientId
+  }
+  dependsOn: [deployerSecretsOfficerRoleAssignment]
+}
+
+resource naverClientSecretSecret 'Microsoft.KeyVault/vaults/secrets@2026-03-01-preview' = {
+  parent: keyVault
+  name: 'naver-client-secret'
+  properties: {
+    value: naverClientSecret
+  }
+  dependsOn: [deployerSecretsOfficerRoleAssignment]
+}
+
+resource langfusePublicKeySecret 'Microsoft.KeyVault/vaults/secrets@2026-03-01-preview' = {
+  parent: keyVault
+  name: 'langfuse-public-key'
+  properties: {
+    value: langfusePublicKey
+  }
+  dependsOn: [deployerSecretsOfficerRoleAssignment]
+}
+
+resource langfuseSecretKeySecret 'Microsoft.KeyVault/vaults/secrets@2026-03-01-preview' = {
+  parent: keyVault
+  name: 'langfuse-secret-key'
+  properties: {
+    value: langfuseSecretKey
+  }
+  dependsOn: [deployerSecretsOfficerRoleAssignment]
 }
 
 output keyVaultId string = keyVault.id
