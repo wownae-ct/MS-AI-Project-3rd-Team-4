@@ -31,6 +31,7 @@ from app.routers import (
     dashboard,
     feedback,
     health,
+    personalization,
     timeline,
     vendor_case,
     wedding,
@@ -99,3 +100,4 @@ app.include_router(timeline.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")
 app.include_router(feedback.router, prefix="/api/v1")
+app.include_router(personalization.router, prefix="/api/v1")

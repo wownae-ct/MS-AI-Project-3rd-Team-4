@@ -20,10 +20,10 @@ from app.personalization.state import PersonalizationState
 from app.personalization.validation import validate_personalization_draft
 
 
-# ① route: ONBOARDING_INITIAL은 판단할 게 없어 LLM 호출 없이 즉시 두 도메인 다 선택한다(§1-2).
-# FIELD_UPDATED만 실제로 LLM을 호출한다 — 이번 라운드는 wedding.py가 ONBOARDING_INITIAL만
-# 호출하므로 이 분기는 실사용 경로가 아직 없지만, 그래프 완결성과 향후 FIELD_UPDATED 연결을
-# 위해 구현해둔다.
+# ① route: ONBOARDING_INITIAL/MANUAL_REGENERATE는 판단할 게 없어 LLM 호출 없이 즉시 도메인을
+# 정한다(§1-2, §4) — 전자는 하드코딩된 "둘 다", 후자는 사용자가 직접 고른 domains를 그대로
+# 신뢰한다(수동 트리거이므로 route가 다시 판단할 이유가 없다는 게 설계 결정, 15_post_v4_scope_
+# promotion.md §P2). FIELD_UPDATED만 실제로 LLM을 호출한다.
 async def route_node(state: PersonalizationState, config: RunnableConfig) -> dict:
     settings: Settings = config["configurable"].get("settings") or get_settings()
     async with traced_span("personalization.route", settings=settings, input=state["trigger"]):
@@ -31,6 +31,11 @@ async def route_node(state: PersonalizationState, config: RunnableConfig) -> dic
             return {
                 "affected_domains": ["CHECKLIST", "TIMELINE"],
                 "route_reasoning": "온보딩 최초 생성 — 라우팅 판단 불필요, 두 도메인 모두 생성",
+            }
+        if state["trigger"] == "MANUAL_REGENERATE":
+            return {
+                "affected_domains": state["requested_domains"],
+                "route_reasoning": "수동 재생성 — 사용자가 도메인을 직접 선택, 라우팅 판단 불필요",
             }
 
         client = get_azure_openai_client(settings)
