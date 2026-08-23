@@ -6,16 +6,20 @@ verbatim(규칙 원문 그대로), few-shot만 이 모듈이 조립한다. `app/
 from app.core.checklist_catalog import CHECKLIST_FALLBACK_CATALOG
 from app.core.timeline_catalog import TIMELINE_CATALOG
 
-# ds6-checklist-seed-data-prep.md에서 VENUE/SDM(=CHECKLIST_FALLBACK_CATALOG의 24항목) 외
-# 나머지 5개 카테고리(HOMENEW/ETC는 DS6 코퍼스가 애초에 다루지 않음 — v4.0 신설 카테고리라
-# 원본 저작 당시 대상 밖이었음)에서 대표 예시 1개씩만 발췌(설계 문서 §1-3 "대표 예시" — 85항목
-# 전체 전사는 few-shot 취지에 비해 과함).
-_OTHER_CATEGORY_EXAMPLES: tuple[tuple[str, str], ...] = (
-    ("MEETING", "상견례 장소는 양가 접근성을 고려해 중간 지점으로 정하기"),
-    ("GIFT", "예물 구매 시 보증서·감정서 발급과 AS 조건을 계약서로 확인"),
-    ("HOMEWARE", "가전·가구 구매 시 배송·설치일과 하자 교환·환불 조건을 계약서로 확인"),
-    ("INVITATION", "청첩장 인쇄 계약 시 최소 발주 수량과 파본·재인쇄 조건 확인"),
-    ("HONEYMOON", "여행 패키지·항공권 계약 시 취소·환불 수수료 규정을 예약 전에 확인"),
+# CHECKLIST_FALLBACK_CATALOG가 이제 VENUE/SDM(OFFICIAL 24항목) + 나머지 7개 MOCKUP 카테고리
+# (CONSENSUS, 카테고리당 5항목)를 전부 커버한다(00_BASELINE.md §0-2 Should "MOCKUP 7개 카테고리
+# 얇은 시드"). few-shot에는 VENUE/SDM 24항목 전체 + MOCKUP 카테고리별 대표 예시 1개씩만 쓴다
+# (설계 문서 §1-3 "대표 예시" — 59항목 전체 전사는 few-shot 취지에 비해 과함). 대표 예시를
+# 하드코딩 문자열로 따로 들고 있으면 카탈로그가 바뀔 때 드리프트가 나므로 카탈로그에서 매번
+# 동적으로 뽑는다.
+_MOCKUP_CATEGORY_CODES: tuple[str, ...] = (
+    "MEETING",
+    "GIFT",
+    "HOMEWARE",
+    "INVITATION",
+    "HONEYMOON",
+    "HOMENEW",
+    "ETC",
 )
 
 ROUTE_PROMPT_TEMPLATE = """당신은 메리맵의 개인화 콘텐츠 라우터입니다. 어떤 필드가 바뀌었는지 보고
@@ -63,11 +67,20 @@ _TIMELINE_OUTPUT_SCHEMA = """타임라인 항목은 각각 이 필드만 채우�
 
 
 def _build_checklist_few_shot() -> str:
-    lines = ["[체크리스트 few-shot — VENUE/SDM 표준약관 근거 항목 + 나머지 카테고리 대표 예시]"]
+    lines = [
+        "[체크리스트 few-shot — VENUE/SDM 표준약관 근거 항목 전체 + 나머지 카테고리 대표 예시 1개씩]"
+    ]
     for item in CHECKLIST_FALLBACK_CATALOG:
-        lines.append(f"- [{item.category_code}] ({item.item_type}) {item.title}")
-    for category_code, title in _OTHER_CATEGORY_EXAMPLES:
-        lines.append(f"- [{category_code}] (PREP/CONTRACT_TERM 등) {title}")
+        if item.category_code in ("VENUE", "SDM"):
+            lines.append(f"- [{item.category_code}] ({item.item_type}) {item.title}")
+    for category_code in _MOCKUP_CATEGORY_CODES:
+        representative = next(
+            item for item in CHECKLIST_FALLBACK_CATALOG if item.category_code == category_code
+        )
+        lines.append(
+            f"- [{representative.category_code}] ({representative.item_type}) "
+            f"{representative.title}"
+        )
     return "\n".join(lines)
 
 
