@@ -2,7 +2,8 @@
 "정상 요청 시 200/201" 확인 + 인증이 필요한 엔드포인트는 "세션 쿠키 없이 401"을 함께 확인한다.
 
 아직 30개 전부를 커버하지 않는다 — GET /categories(#11), chat_sessions(#27-29),
-feedback_reports(#30)까지 완료. 나머지 엔드포인트는 해당 기능 구현 시 이어서 추가한다.
+feedback_reports(#30), dashboard/summary·reports/me(#25-26)까지 완료. 나머지 엔드포인트는 해당
+기능 구현 시 이어서 추가한다.
 
 GET /categories는 03_API_spec.md §5 인증 필수 목록(`/weddings*` 등)에 없는 유일한 부류의
 엔드포인트라 401 케이스가 없다 — 세션 쿠키 없이도 항상 200이어야 하는 게 맞는 동작이다."""
@@ -163,3 +164,44 @@ class TestFeedbackReportsSmoke:
         )
 
         assert response.status_code == 422
+
+
+class TestDashboardSmoke:
+    """#25/#26 — 온보딩(POST /weddings)이 이미 checklist_items 24개(또는 폴백) + timeline_items
+    55개 + wedding_categories 9행(전부 is_active=True)을 만들어두므로 별도 셋업이 필요 없다."""
+
+    async def test_dashboard_summary_returns_200_with_all_categories_active(self, wedding_client):
+        response = await wedding_client.get("/dashboard/summary")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total_budget"] == 50_000_000
+        assert len(body["categories"]) == 9
+        assert all(c["is_active"] for c in body["categories"])
+
+    async def test_dashboard_summary_without_cookie_returns_401(self, client):
+        response = await client.get("/dashboard/summary")
+
+        assert response.status_code == 401
+
+    async def test_dashboard_summary_upcoming_items_have_expected_shape(self, wedding_client):
+        response = await wedding_client.get("/dashboard/summary")
+
+        items = response.json()["upcoming_items"]
+        assert 0 < len(items) <= 5
+        for item in items:
+            assert item["source"] in ("timeline", "checklist")
+            assert item["title"]
+
+    async def test_my_report_returns_200(self, wedding_client):
+        response = await wedding_client.get("/reports/me")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["budget_summary"]["total_budget"] == 50_000_000
+        assert len(body["next_recommended_checks"]) <= 5
+
+    async def test_my_report_without_cookie_returns_401(self, client):
+        response = await client.get("/reports/me")
+
+        assert response.status_code == 401
