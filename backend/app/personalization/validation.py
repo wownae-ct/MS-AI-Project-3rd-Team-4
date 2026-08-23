@@ -1,0 +1,97 @@
+"""route→generate→validate 그래프의 validate 노드 — 13_personalization_router_agent_design.md
+§1-4의 4개 규칙. LLM 호출 없는 순수 함수(챗 그래프의 verify와 달리 구조적으로 기계 검증 가능한
+규칙이라 LLM이 필요 없다는 게 설계 문서의 명시적 근거).
+
+체크리스트·타임라인은 완전히 분리된 테이블이라는 이번 프로젝트 전체의 원칙(11_v3_to_v4_diff.md
+§1-3)대로, 검증도 두 도메인에 독립적으로 적용한다 — 합쳐서 "둘 중 하나에라도 있으면 통과"로
+보지 않는다. 체크리스트엔 활성 카테고리 A 항목이 있고 타임라인엔 A 항목이 없으면 타임라인
+쪽만 실패한다."""
+
+from typing import get_args
+
+from app.schemas.common import CategoryCode
+
+MIN_DDAY_OFFSET_DAYS = -400
+MAX_DDAY_OFFSET_DAYS = 60
+
+_VALID_CATEGORY_CODES: frozenset[str] = frozenset(get_args(CategoryCode))
+
+
+def _validate_category_membership(
+    domain_label: str, active_categories: set[str], items: list[dict]
+) -> list[str]:
+    """규칙 (1): category_code가 ENUM 안에 있고, 해당 웨딩의 활성 카테고리에 속하는가."""
+    errors = []
+    for item in items:
+        code = item.get("category_code")
+        if code is None:
+            continue  # 타임라인 범용 항목(category_code=null)은 이 규칙 대상이 아님
+        if code not in _VALID_CATEGORY_CODES or code not in active_categories:
+            errors.append(
+                f"{domain_label}: category_code={code!r}가 ENUM 또는 활성 카테고리 밖입니다."
+            )
+    return errors
+
+
+def _validate_category_coverage(
+    domain_label: str, active_categories: set[str], items: list[dict]
+) -> list[str]:
+    """규칙 (2): 활성 카테고리마다 항목이 1개 이상 있는가(도메인별 독립 적용)."""
+    covered = {item.get("category_code") for item in items if item.get("category_code") is not None}
+    missing = active_categories - covered
+    return [
+        f"{domain_label}: 활성 카테고리 {code}에 생성된 항목이 없습니다."
+        for code in sorted(missing)
+    ]
+
+
+def _validate_no_duplicate_titles(domain_label: str, items: list[dict]) -> list[str]:
+    """규칙 (4): 같은 카테고리 내 제목 중복이 없는가."""
+    errors = []
+    seen: set[tuple] = set()
+    for item in items:
+        key = (item.get("category_code"), item.get("title"))
+        if key in seen:
+            errors.append(f"{domain_label}: category_code={key[0]!r}에 제목 중복 {key[1]!r}")
+        seen.add(key)
+    return errors
+
+
+def validate_checklist_items(active_categories: set[str], items: list[dict]) -> list[str]:
+    errors = _validate_category_membership("CHECKLIST", active_categories, items)
+    errors += _validate_category_coverage("CHECKLIST", active_categories, items)
+    errors += _validate_no_duplicate_titles("CHECKLIST", items)
+    return errors
+
+
+def validate_timeline_items(active_categories: set[str], items: list[dict]) -> list[str]:
+    """체크리스트 3규칙 + 규칙 (3): default_dday_offset_days가 -400~60 범위인가(타임라인 전용
+    필드라 이 도메인에만 적용)."""
+    errors = _validate_category_membership("TIMELINE", active_categories, items)
+    errors += _validate_category_coverage("TIMELINE", active_categories, items)
+    errors += _validate_no_duplicate_titles("TIMELINE", items)
+    for item in items:
+        offset = item.get("default_dday_offset_days")
+        if offset is not None and not (MIN_DDAY_OFFSET_DAYS <= offset <= MAX_DDAY_OFFSET_DAYS):
+            errors.append(
+                f"TIMELINE: default_dday_offset_days={offset}가 "
+                f"[{MIN_DDAY_OFFSET_DAYS},{MAX_DDAY_OFFSET_DAYS}] 범위 밖입니다."
+            )
+    return errors
+
+
+def validate_personalization_draft(
+    active_categories: set[str],
+    affected_domains: list[str],
+    checklist_draft: list[dict] | None,
+    timeline_draft: list[dict] | None,
+) -> list[str]:
+    """affected_domains에 실제로 포함된 도메인만 검증한다 — route가 CHECKLIST만 골랐으면
+    TIMELINE 기존 행은 이번 실행의 검증 대상이 아니다(온보딩만 다루는 이번 라운드는 항상
+    양쪽 다 포함되지만, 그래프 자체는 FIELD_UPDATED의 부분 선택도 지원하도록 일반적으로 짠다)."""
+    errors: list[str] = []
+    if "CHECKLIST" in affected_domains:
+        errors += validate_checklist_items(active_categories, checklist_draft or [])
+    if "TIMELINE" in affected_domains:
+        errors += validate_timeline_items(active_categories, timeline_draft or [])
+    return errors
