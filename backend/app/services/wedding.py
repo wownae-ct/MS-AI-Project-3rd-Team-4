@@ -1,14 +1,12 @@
 """#6-10 실제 DB 로직. 03_API_spec.md ① 웨딩 핵심.
 
 timeline-task(2026-08-24)에서 timeline_items/ai_invocations 생성 + wedding_date 변경 시
-재계산을 채웠다(아래 TODO(personalization-task)만 남음 — 개인화 라우터 에이전트가 붙기 전까지
-checklist_items는 여전히 생성되지 않는다, 03_API_spec.md #6이 문서화한 대로 GET
-/checklist-items가 빈 배열을 반환하는 게 정상 동작).
+재계산을, payments-task(2026-08-24)에서 wedding_categories.paid_amount 계산과 PUT
+/wedding-categories의 BUDGET_BELOW_PAID 검증을 채웠다(아래 TODO(personalization-task)만 남음
+— 개인화 라우터 에이전트가 붙기 전까지 checklist_items는 여전히 생성되지 않는다,
+03_API_spec.md #6이 문서화한 대로 GET /checklist-items가 빈 배열을 반환하는 게 정상 동작).
 
 여전히 범위 밖이라 TODO로 남긴 것:
-  - wedding_categories.paid_amount 계산에 필요한 payments 조인. 테이블 자체가 아직 없음
-    (0으로 반환).
-  - PUT /wedding-categories의 BUDGET_BELOW_PAID 검증(payments 필요, 위와 동일 이유로 보류).
   - checklist_items LLM 개인화 생성(personalization-task, 13_personalization_router_agent_design.md)."""
 
 from datetime import UTC, date, datetime
@@ -28,6 +26,7 @@ from app.schemas.wedding import (
     WeddingUpdate,
 )
 from app.services.benchmark import get_latest_benchmark
+from app.services.payment import get_paid_amounts_by_category
 from app.services.timeline import generate_timeline_items, recalculate_timeline_dates
 
 
@@ -193,10 +192,8 @@ async def update_wedding(
     return wedding
 
 
-def _wedding_category_out(row: WeddingCategory) -> WeddingCategoryOut:
+def _wedding_category_out(row: WeddingCategory, paid_amount: int) -> WeddingCategoryOut:
     meta = CATEGORY_META_BY_CODE[row.category_code]
-    # TODO(payments-task): paid_amount를 payments.amount(status='PAID') 합계로 대체.
-    paid_amount = 0
     return WeddingCategoryOut(
         category_code=row.category_code,
         name_ko=meta.name_ko,
@@ -210,6 +207,19 @@ def _wedding_category_out(row: WeddingCategory) -> WeddingCategoryOut:
         has_benchmark=meta.has_benchmark,
         has_vendor_cases=meta.has_vendor_cases,
     )
+
+
+def find_budget_below_paid_violation(
+    planned_budgets: dict[str, int], paid_amounts: dict[str, int]
+) -> tuple[str, int] | None:
+    """03_API_spec.md #10 검증 2(DB I/O 없는 순수 함수): 카테고리별 planned_budget이 이미 지급된
+    PAID 합계보다 낮아지지 않았는지 확인, 위반한 첫 (category_code, min_required) 쌍을 반환하고
+    없으면 None."""
+    for category_code, planned in planned_budgets.items():
+        paid = paid_amounts.get(category_code, 0)
+        if planned < paid:
+            return category_code, paid
+    return None
 
 
 async def list_wedding_categories_out(
@@ -226,17 +236,22 @@ async def list_wedding_categories_out(
         .scalars()
         .all()
     )
-    return [_wedding_category_out(row) for row in rows]
+    paid_amounts = await get_paid_amounts_by_category(session, wedding_id)
+    return [_wedding_category_out(row, paid_amounts.get(row.category_code, 0)) for row in rows]
 
 
 async def update_wedding_categories(
     session: AsyncSession, wedding: Wedding, payload: WeddingCategoriesUpdate
 ) -> list[WeddingCategoryOut]:
+    # 03_API_spec.md §5: PUT 처리 중 갱신 직전에 재확인(TOCTOU 방지) — 같은 웨딩의 동시 PUT
+    # 요청이 서로의 planned_budget 판단 근거를 덮어쓰지 못하게 잠근다.
     existing_by_code = {
         row.category_code: row
         for row in (
             await session.execute(
-                select(WeddingCategory).where(WeddingCategory.wedding_id == wedding.id)
+                select(WeddingCategory)
+                .where(WeddingCategory.wedding_id == wedding.id)
+                .with_for_update()
             )
         ).scalars()
     }
@@ -262,9 +277,20 @@ async def update_wedding_categories(
         over = total_planned - wedding.total_budget
         raise api_error(400, "BUDGET_EXCEEDED", f"배정 합계가 예산을 {over:,}원 초과합니다.")
 
-    # TODO(payments-task): 검증 2 — category_code별 planned_budget >= SUM(payments.amount
-    # WHERE status='PAID') 위반 시 400 BUDGET_BELOW_PAID(payload에 category_code/min_required
-    # 포함, 03_API_spec.md #10). payments 테이블이 없어 지금은 건너뛴다.
+    # 검증 2: category_code별 planned_budget >= SUM(payments.amount WHERE status='PAID').
+    planned_budgets = {code: row.planned_budget for code, row in existing_by_code.items()}
+    paid_amounts = await get_paid_amounts_by_category(session, wedding.id)
+    violation = find_budget_below_paid_violation(planned_budgets, paid_amounts)
+    if violation is not None:
+        category_code, min_required = violation
+        name_ko = CATEGORY_META_BY_CODE[category_code].name_ko
+        raise api_error(
+            400,
+            "BUDGET_BELOW_PAID",
+            f"{name_ko} 카테고리는 이미 {min_required:,}원을 지급해 그 아래로 예산을 낮출 수 없습니다.",
+            category_code=category_code,
+            min_required=min_required,
+        )
 
     await session.commit()
     return await list_wedding_categories_out(session, wedding.id)
