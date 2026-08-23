@@ -1,10 +1,12 @@
-"""엔드포인트 스모크 테스트 — 09_backend_implementation_plan.md §4/§6 DoD: 30개 엔드포인트 각각
-"정상 요청 시 200/201" 확인 + 인증이 필요한 엔드포인트는 "세션 쿠키 없이 401"을 함께 확인한다.
+"""엔드포인트 스모크 테스트 — 09_backend_implementation_plan.md §4/§6 DoD: 문서화된 엔드포인트
+각각 "정상 요청 시 200/201" 확인 + 인증이 필요한 엔드포인트는 "세션 쿠키 없이 401"을 함께
+확인한다. 03_API_spec.md의 v3.0 기준 30개에 v4.0 신규 #31(GET /benchmarks/total-average,
+00_BASELINE.md §2-5)이 더해져 지금은 31개.
 
-아직 30개 전부를 커버하지 않는다 — GET /categories(#11), chat_sessions(#27-29),
-feedback_reports(#30), dashboard/summary·reports/me(#25-26)까지 완료. 나머지 엔드포인트는 해당
-기능 구현 시 이어서 추가한다. 소셜 로그인(구글/네이버, Should, 03_API_spec.md에 없는 번외
-엔드포인트)의 리다이렉트 배선도 TestOAuthSmoke로 커버.
+아직 31개 전부를 커버하지 않는다 — GET /categories(#11), chat_sessions(#27-29),
+feedback_reports(#30), dashboard/summary·reports/me(#25-26), benchmarks/total-average(#31)까지
+완료. 나머지 엔드포인트는 해당 기능 구현 시 이어서 추가한다. 소셜 로그인(구글/네이버, Should,
+03_API_spec.md에 없는 번외 엔드포인트)의 리다이렉트 배선도 TestOAuthSmoke로 커버.
 
 GET /categories는 03_API_spec.md §5 인증 필수 목록(`/weddings*` 등)에 없는 유일한 부류의
 엔드포인트라 401 케이스가 없다 — 세션 쿠키 없이도 항상 200이어야 하는 게 맞는 동작이다."""
@@ -250,3 +252,40 @@ class TestOAuthSmoke:
         )
 
         assert "oauth_error=state_mismatch" in callback_response.headers["location"]
+
+
+class TestBenchmarksSmoke:
+    """#31 GET /benchmarks/total-average — 00_BASELINE.md §2-5 예산 "미정" 슬라이더
+    플레이스홀더. 웨딩 생성 전(온보딩 중) 호출되는 엔드포인트라 wedding_client가 아니라
+    signed_up_client로 검증한다. #23 GET /benchmarks/compare는 이 세션 범위 밖(기존 미커버
+    엔드포인트, 이 파일 상단 docstring 참고)이라 여기서 같이 채우지 않는다.
+
+    200 케이스는 total_budget_benchmark 픽스처(conftest.py)로 데이터를 직접 만든다 — 처음엔
+    "ETL이 이미 채워뒀으니 실 시드에 기대면 된다"고 가정했다가 CI(마이그레이션만 적용된 빈
+    DB, ETL 시드 없음)에서 404로 떨어져 PR #41이 깨졌다(2026-08-24). 로컬 dev DB에만 있는
+    데이터에 기대는 스모크 테스트는 이 실패 패턴 자체가 재발 위험이라 직접 데이터를 준비하는
+    쪽으로 고쳤다.
+
+    404(TOTAL_BUDGET_UNAVAILABLE) 케이스는 여기 없다 — 로컬 dev DB는 이미 RegionCode Literal
+    17개 유효값 전부가 지역 폴백 체인(특정 지역→수도권/비수도권→전국)을 거쳐서라도 매치되도록
+    실 시드가 차 있어서, "유효한 region_code인데 매치되는 게 하나도 없는" 상태를 로컬/CI
+    양쪽에서 똑같이 재현할 방법이 없다."""
+
+    async def test_total_average_returns_200_for_valid_region(
+        self, signed_up_client, total_budget_benchmark
+    ):
+        response = await signed_up_client.get(
+            "/benchmarks/total-average", params={"region_code": "SEOUL_GANGNAM"}
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["region_code"] == "SEOUL_GANGNAM"
+        assert body["median_price"] == 45_000_000
+
+    async def test_total_average_without_cookie_returns_401(self, client):
+        response = await client.get(
+            "/benchmarks/total-average", params={"region_code": "SEOUL_GANGNAM"}
+        )
+
+        assert response.status_code == 401

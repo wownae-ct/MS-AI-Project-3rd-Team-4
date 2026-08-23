@@ -25,6 +25,7 @@ dependencies = [
     # app/services/oauth.py(소셜 로그인 토큰 교환/유저정보 조회)가 런타임에 직접 호출한다 —
     # 기존엔 dev extras(테스트 클라이언트 용도)에만 있었는데, 프로덕션 코드가 쓰게 되면서 승격.
     "httpx>=0.27",
+    "langfuse>=4.0",
 ]
 
 [project.optional-dependencies]
