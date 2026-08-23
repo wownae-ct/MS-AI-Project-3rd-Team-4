@@ -1,4 +1,4 @@
-# [왕초보 가이드] Ingress 개념 자체는 ../backend-production/ingress.yaml 상단 주석 참고 — 이
+# Ingress 개념 자체는 ../backend-production/ingress.yaml 상단 주석 참고 — 이
 # 파일은 프로덕션과 구조가 완전히 동일하고 host(도메인)만 다르다.
 #
 # 도메인: staging은 production과 같은 ingress-nginx 컨트롤러(같은 공인 IP)를 nip.io로 재사용한다
