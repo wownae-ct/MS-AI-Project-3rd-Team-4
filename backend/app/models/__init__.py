@@ -9,27 +9,30 @@ class Base(DeclarativeBase):
     pass
 
 
+from app.models.ai_invocation import AiInvocation
 from app.models.benchmark import PriceBenchmark, VendorCaseExample
 from app.models.chat import ChatMessage, ChatSession
-from app.models.checklist import ChecklistItem, ChecklistProgress
+from app.models.checklist import ChecklistItem
 from app.models.payment import Payment
 from app.models.rag import RagChunk, RagDocument
-from app.models.timeline import MilestoneTemplate, UserMilestone
+from app.models.timeline import TimelineItem
+from app.models.user import AuthSession, User
 from app.models.wedding import Category, Wedding, WeddingCategory
 
 __all__ = [
+    "AiInvocation",
+    "AuthSession",
     "Base",
     "Category",
     "ChatMessage",
     "ChatSession",
     "ChecklistItem",
-    "ChecklistProgress",
-    "MilestoneTemplate",
     "Payment",
     "PriceBenchmark",
     "RagChunk",
     "RagDocument",
-    "UserMilestone",
+    "TimelineItem",
+    "User",
     "VendorCaseExample",
     "Wedding",
     "WeddingCategory",

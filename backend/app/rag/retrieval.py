@@ -30,14 +30,19 @@ class RetrievedChunk:
 
 
 _SEARCH_SQL = text("""
+    -- ① "의미"로 찾기: 질문을 숫자 벡터로 바꾼 뒤(:query_embedding), 벡터끼리 거리가 가까운
+    --   순으로 top-8(:vector_top_k)개를 뽑는다. "위약금"이라고 안 써도 "계약 취소 시 손해배상"처럼
+    --   뜻이 비슷한 문장을 찾아낼 수 있다("코사인 거리" <=> 연산자, 값이 작을수록 더 비슷함).
     WITH vector_search AS (
         SELECT id, content, document_id, item_type, source_url,
                ROW_NUMBER() OVER (ORDER BY embedding <=> CAST(:query_embedding AS vector)) AS rank
         FROM rag_chunks
-        WHERE category_codes @> ARRAY[:category_code]
+        WHERE category_codes @> ARRAY[:category_code]  -- 지금 카테고리(예: VENUE) 밖 자료는 애초에 제외
         ORDER BY embedding <=> CAST(:query_embedding AS vector)
         LIMIT :vector_top_k
     ),
+    -- ② "단어"로 찾기: 질문에 실제로 들어있는 단어(예: "제3조", "10%")가 그대로 포함된 문서를
+    --   top-4(:tsvector_top_k)개 뽑는다. 의미 검색이 놓치기 쉬운 "정확한 숫자·조항 번호" 매칭에 강함.
     keyword_search AS (
         SELECT id, content, document_id, item_type, source_url,
                ROW_NUMBER() OVER (
@@ -48,6 +53,13 @@ _SEARCH_SQL = text("""
           AND tsv @@ plainto_tsquery('simple', :query_text)
         LIMIT :tsvector_top_k
     ),
+    -- ③ ①·② 두 순위표를 하나로 합친다(RRF, Reciprocal Rank Fusion). 공식은 "1 ÷ (상수 + 그
+    --   목록에서의 순위)" — 순위가 낮은 숫자(=상위)일수록 점수가 커지고, 두 목록 모두에서
+    --   상위권이면 점수가 두 번 더해져 최종 순위가 확 올라간다. 한쪽에만 나온 자료는 없는 쪽
+    --   순위를 1000(사실상 "매우 하위")으로 쳐서 자연스럽게 낮은 점수를 받게 한다.
+    --   여기에 "계약/위약금/해지" 같은 단어가 질문에 있으면(F9, :apply_contract_bonus) 계약
+    --   조항(item_type='CONTRACT_TERM') 청크에 가산점(:contract_bonus)을 더 준다 — 계약 관련
+    --   질문일 땐 법적 근거가 더 잘 뽑히도록 하는 튜닝이다.
     merged AS (
         SELECT
             COALESCE(v.id, k.id) AS id,
@@ -65,6 +77,8 @@ _SEARCH_SQL = text("""
         FROM vector_search v
         FULL OUTER JOIN keyword_search k ON v.id = k.id
     )
+    -- ④ 최종 점수 순으로 top-5(:context_top_k)만 골라, 어느 문서(rag_documents)에서 온 조각인지
+    --   제목·출처등급까지 같이 붙여서 반환한다 — 이게 AI가 답변을 만들 때 보는 "근거 자료"가 된다.
     SELECT
         m.id AS chunk_id,
         m.content,
@@ -90,6 +104,7 @@ async def retrieve(
 ) -> list[RetrievedChunk]:
     settings = settings or get_settings()
     client = get_azure_openai_client(settings)
+    # 사용자 질문 문장도 색인 때와 똑같은 방식으로 벡터로 바꿔야 "의미가 가까운지" 비교할 수 있다.
     query_embedding = await embed_query(client, query, settings.azure_openai_embedding_deployment)
 
     result = await session.execute(

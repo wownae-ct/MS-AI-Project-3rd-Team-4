@@ -5,7 +5,11 @@
 from fastapi import HTTPException
 
 
-def api_error(status_code: int, code: str, message: str) -> HTTPException:
+def api_error(status_code: int, code: str, message: str, **extra: object) -> HTTPException:
+    """extra는 BUDGET_BELOW_PAID(03_API_spec.md #10)처럼 error 객체에 category_code/
+    min_required 같은 구조화된 필드를 더 실어야 하는 에러코드를 위한 것 — 대부분의 호출은
+    안 씀."""
     return HTTPException(
-        status_code=status_code, detail={"error": {"code": code, "message": message}}
+        status_code=status_code,
+        detail={"error": {"code": code, "message": message, **extra}},
     )

@@ -1,8 +1,11 @@
-"""#17-19, #23 — 03_API_spec.md §3. 타임라인, 대시보드 요약, 마이 리포트.
+"""#19, #23 — 03_API_spec.md §3. 대시보드 요약, 마이 리포트.
 
-09_backend_implementation_plan.md Phase 1 범위 — 전부 목 응답. d_day/is_overdue는 문서에 명시된
-계산식(§3 #17, #19)을 그대로 적용해 date.today() 기준으로 매번 계산한다 — 목이라도 날짜 계산
-로직 자체는 Phase 2에서 거의 그대로 재사용할 수 있게."""
+09_backend_implementation_plan.md Phase 1 범위 — 전부 목 응답. d_day는 문서에 명시된 계산식
+(§3 #19)을 그대로 적용해 date.today() 기준으로 매번 계산한다 — 목이라도 날짜 계산 로직 자체는
+Phase 2에서 거의 그대로 재사용할 수 있게.
+
+v3.0의 `/timeline`·`/timeline/{milestone_id}`(#17-18) 목 엔드포인트는 v4.0에서 `/timeline-items`
+(app/routers/timeline.py, 웨딩별 실DB 행)로 완전히 대체돼 여기서 제거했다."""
 
 from datetime import UTC, date, datetime
 from uuid import UUID
@@ -17,27 +20,10 @@ from app.schemas.report import (
     RecommendedCheckOut,
     ReportOut,
 )
-from app.schemas.timeline import MilestoneOut, MilestoneUpdate, TimelineOut
 
 router = APIRouter(tags=["dashboard"])
 
-_MOCK_MILESTONE_ID = UUID("d1e2f3a4-0000-4000-8000-000000000001")
 _MOCK_UPCOMING_PAYMENT_ID = UUID("c1a2b3c4-0000-4000-8000-000000000003")
-
-_MOCK_MILESTONE_RAW = {
-    "id": _MOCK_MILESTONE_ID,
-    "category_code": "VENUE",
-    "title": "예식장 투어 및 계약",
-    "phase_label": "D-11M",
-    "target_date": date(2026, 6, 15),
-    "status": "DONE",
-}
-
-
-def _milestone_out(raw: dict) -> MilestoneOut:
-    today = datetime.now(UTC).date()
-    is_overdue = raw["status"] == "TODO" and raw["target_date"] < today
-    return MilestoneOut(is_overdue=is_overdue, **raw)
 
 
 def _mock_upcoming_payment() -> UpcomingPaymentOut:
@@ -49,17 +35,6 @@ def _mock_upcoming_payment() -> UpcomingPaymentOut:
         due_date=date(2026, 8, 28),
         d_day=-8,
     )
-
-
-@router.get("/timeline", response_model=TimelineOut)
-async def list_timeline() -> TimelineOut:
-    return TimelineOut(milestones=[_milestone_out(_MOCK_MILESTONE_RAW)])
-
-
-@router.patch("/timeline/{milestone_id}", response_model=MilestoneOut)
-async def update_milestone(milestone_id: str, payload: MilestoneUpdate) -> MilestoneOut:
-    base = _milestone_out(_MOCK_MILESTONE_RAW)
-    return base.model_copy(update=payload.model_dump(exclude_unset=True))
 
 
 @router.get("/dashboard/summary", response_model=DashboardSummaryOut)
