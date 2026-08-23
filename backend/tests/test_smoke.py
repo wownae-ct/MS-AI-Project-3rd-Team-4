@@ -1,12 +1,14 @@
 """엔드포인트 스모크 테스트 — 09_backend_implementation_plan.md §4/§6 DoD: 문서화된 엔드포인트
 각각 "정상 요청 시 200/201" 확인 + 인증이 필요한 엔드포인트는 "세션 쿠키 없이 401"을 함께
 확인한다. 03_API_spec.md의 v3.0 기준 30개에 v4.0 신규 #31(GET /benchmarks/total-average,
-00_BASELINE.md §2-5)이 더해져 지금은 31개.
+00_BASELINE.md §2-5) + 스코프 밖 승격 #32(POST /personalization/regenerate,
+15_post_v4_scope_promotion.md §P2)가 더해져 지금은 32개.
 
-아직 31개 전부를 커버하지 않는다 — GET /categories(#11), chat_sessions(#27-29),
-feedback_reports(#30), dashboard/summary·reports/me(#25-26), benchmarks/total-average(#31)까지
-완료. 나머지 엔드포인트는 해당 기능 구현 시 이어서 추가한다. 소셜 로그인(구글/네이버, Should,
-03_API_spec.md에 없는 번외 엔드포인트)의 리다이렉트 배선도 TestOAuthSmoke로 커버.
+아직 32개 전부를 커버하지 않는다 — GET /categories(#11), chat_sessions(#27-29),
+feedback_reports(#30), dashboard/summary·reports/me(#25-26), benchmarks/total-average(#31),
+personalization/regenerate(#32)까지 완료. 나머지 엔드포인트는 해당 기능 구현 시 이어서
+추가한다. 소셜 로그인(구글/네이버, Should, 03_API_spec.md에 없는 번외 엔드포인트)의 리다이렉트
+배선도 TestOAuthSmoke로 커버.
 
 GET /categories는 03_API_spec.md §5 인증 필수 목록(`/weddings*` 등)에 없는 유일한 부류의
 엔드포인트라 401 케이스가 없다 — 세션 쿠키 없이도 항상 200이어야 하는 게 맞는 동작이다."""
@@ -289,3 +291,29 @@ class TestBenchmarksSmoke:
         )
 
         assert response.status_code == 401
+
+
+class TestPersonalizationRegenerateSmoke:
+    """#32 POST /personalization/regenerate — MANUAL_REGENERATE(15_post_v4_scope_promotion.md
+    §P2). generate 노드가 실LLM을 호출하므로 TestChatSessionsSmoke와 같은 원칙으로 SUCCESS/
+    BLOCKED 응답까지 가는 실행 경로는 자동 스모크에 넣지 않는다 — 2026-08-24 구현 시점에
+    수동으로 1회 실행해 checklist_items/timeline_items 교체와 ai_invocations 행 기록을
+    확인했다(회귀 시엔 다시 수동 확인). 여기서는 인증 배선과 요청 검증(도메인 비어있음/중복)만
+    자동화한다 — 둘 다 route/generate 노드에 도달하기 전에 걸러지므로 LLM 호출이 없다."""
+
+    async def test_regenerate_without_cookie_returns_401(self, client):
+        response = await client.post("/personalization/regenerate", json={"domains": ["CHECKLIST"]})
+
+        assert response.status_code == 401
+
+    async def test_regenerate_empty_domains_returns_422(self, wedding_client):
+        response = await wedding_client.post("/personalization/regenerate", json={"domains": []})
+
+        assert response.status_code == 422
+
+    async def test_regenerate_duplicate_domains_returns_422(self, wedding_client):
+        response = await wedding_client.post(
+            "/personalization/regenerate", json={"domains": ["CHECKLIST", "CHECKLIST"]}
+        )
+
+        assert response.status_code == 422

@@ -193,6 +193,7 @@ async def run_personalization(
     trigger: str,
     changed_fields: list[str] | None = None,
     done_so_far: list[str] | None = None,
+    requested_domains: list[str] | None = None,
 ) -> AiInvocation:
     today = datetime.now(UTC).date()
     protected_items = await _fetch_protected_items(session, wedding.id)
@@ -204,6 +205,7 @@ async def run_personalization(
         "changed_fields": changed_fields or [],
         "profile": _build_profile(wedding, active_categories),
         "protected_items": protected_items,
+        "requested_domains": requested_domains or [],
         "affected_domains": [],
         "route_reasoning": "",
         "checklist_draft": None,
@@ -261,7 +263,12 @@ async def run_personalization(
             # (의도적 광범위 캐치 — 이 함수가 유일한 예외 경계).
             status = "FAILED"
             error_message = str(exc)[:2000]
-            affected_domains = ["CHECKLIST", "TIMELINE"] if trigger == "ONBOARDING_INITIAL" else []
+            if trigger == "ONBOARDING_INITIAL":
+                affected_domains = ["CHECKLIST", "TIMELINE"]
+            elif trigger == "MANUAL_REGENERATE":
+                affected_domains = requested_domains or []
+            else:
+                affected_domains = []
             if "CHECKLIST" in affected_domains:
                 checklist_rows = _checklist_fallback_rows(active_categories)
             if "TIMELINE" in affected_domains:
