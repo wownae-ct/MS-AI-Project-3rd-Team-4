@@ -7,12 +7,14 @@ from typing import TypedDict
 
 class PersonalizationState(TypedDict):
     wedding_id: str
-    trigger: str  # ONBOARDING_INITIAL | FIELD_UPDATED
+    trigger: str  # ONBOARDING_INITIAL | FIELD_UPDATED | MANUAL_REGENERATE
     changed_fields: list[str]
     profile: dict  # 활성 카테고리, 우선순위, 스타일, primary_goals, 예산, wedding_date, 지역 등
     protected_items: (
         dict  # {"CHECKLIST": [id, ...], "TIMELINE": [id, ...]} — user_edited_at 있는 행
     )
+    requested_domains: list[str]  # MANUAL_REGENERATE 전용: 사용자가 직접 고른 도메인.
+    # ONBOARDING_INITIAL/FIELD_UPDATED는 항상 빈 리스트 — route 노드가 무시한다.
     affected_domains: list[str]  # route 결과: CHECKLIST/TIMELINE 부분집합
     route_reasoning: str  # 감사로그용(화면 비노출)
     checklist_draft: list[dict] | None
