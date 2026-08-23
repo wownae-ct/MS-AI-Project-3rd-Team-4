@@ -77,6 +77,30 @@ spec:
                             secretKeyRef:
                                 name: backend-kv-secrets
                                 key: LANGFUSE_SECRET_KEY
+                      # 소셜 로그인(구글/네이버, 00_BASELINE.md §0-2 Should) — app/core/config.py의
+                      # 4개 필수 필드. OAUTH_BACKEND_BASE_URL/FRONTEND_BASE_URL은 시크릿이 아니고
+                      # staging/production마다 값이 달라 여기(base)엔 안 두고 LANGFUSE_ENVIRONMENT와
+                      # 같은 방식으로 각 오버레이 kustomization.yaml이 patches로 추가한다.
+                      - name: GOOGLE_CLIENT_ID
+                        valueFrom:
+                            secretKeyRef:
+                                name: backend-kv-secrets
+                                key: GOOGLE_CLIENT_ID
+                      - name: GOOGLE_CLIENT_SECRET
+                        valueFrom:
+                            secretKeyRef:
+                                name: backend-kv-secrets
+                                key: GOOGLE_CLIENT_SECRET
+                      - name: NAVER_CLIENT_ID
+                        valueFrom:
+                            secretKeyRef:
+                                name: backend-kv-secrets
+                                key: NAVER_CLIENT_ID
+                      - name: NAVER_CLIENT_SECRET
+                        valueFrom:
+                            secretKeyRef:
+                                name: backend-kv-secrets
+                                key: NAVER_CLIENT_SECRET
                   volumeMounts:
                       - name: kv-secrets
                         mountPath: /mnt/secrets
