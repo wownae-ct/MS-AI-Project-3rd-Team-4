@@ -2,12 +2,12 @@
 
 timeline-task(2026-08-24)에서 timeline_items/ai_invocations 생성 + wedding_date 변경 시
 재계산을, payments-task(2026-08-24)에서 wedding_categories.paid_amount 계산과 PUT
-/wedding-categories의 BUDGET_BELOW_PAID 검증을 채웠다(아래 TODO(personalization-task)만 남음
-— 개인화 라우터 에이전트가 붙기 전까지 checklist_items는 여전히 생성되지 않는다,
-03_API_spec.md #6이 문서화한 대로 GET /checklist-items가 빈 배열을 반환하는 게 정상 동작).
-
-여전히 범위 밖이라 TODO로 남긴 것:
-  - checklist_items LLM 개인화 생성(personalization-task, 13_personalization_router_agent_design.md)."""
+/wedding-categories의 BUDGET_BELOW_PAID 검증을, personalization-task(2026-08-24)에서
+개인화 라우터 에이전트(route→generate→validate, 13_personalization_router_agent_design.md)
+연결을 채웠다. 온보딩 시 checklist_items/timeline_items 둘 다 이제 이 에이전트를 거쳐 생성된다
+(app/services/personalization.py::run_personalization) — LLM generate가 실패/BLOCKED이면
+결정론적 카탈로그(app/core/timeline_catalog.py, app/core/checklist_catalog.py)로 자동
+폴백하므로 GET /checklist-items·/timeline-items는 온보딩 완료 즉시 항상 비어있지 않다."""
 
 from datetime import UTC, date, datetime
 
@@ -27,7 +27,8 @@ from app.schemas.wedding import (
 )
 from app.services.benchmark import get_latest_benchmark
 from app.services.payment import get_paid_amounts_by_category
-from app.services.timeline import generate_timeline_items, recalculate_timeline_dates
+from app.services.personalization import run_personalization
+from app.services.timeline import recalculate_timeline_dates
 
 
 def approximate_wedding_date(today: date, wedding_date_precision: str) -> date:
@@ -119,28 +120,19 @@ async def create_wedding(
             )
         )
 
-    # ai_invocations 먼저 flush해 id를 채번 — timeline_items.generated_by_run_id가 이 id를 참조.
-    ai_invocation = AiInvocation(
-        wedding_id=wedding.id,
-        trigger="ONBOARDING_INITIAL",
-        affected_domains=["TIMELINE"],
-        status="SUCCESS",
-    )
-    session.add(ai_invocation)
-    await session.flush()
-
     # 새 웨딩은 9개 카테고리 전부 방금 is_active=True로 켰으므로 전체 집합을 active로 넘긴다.
+    # run_personalization이 ai_invocations 1행 기록 + checklist_items/timeline_items 생성(LLM
+    # SUCCESS 또는 BLOCKED/FAILED 결정론적 폴백)을 전부 처리한다 — 여기서는 flush만 하고 커밋은
+    # 아래에서 다른 온보딩 부작용과 함께 한 번에 한다.
     active_categories = {meta.code for meta in CATEGORY_META}
-    today = datetime.now(UTC).date()
-    for row in generate_timeline_items(wedding_date, active_categories, payload.done_so_far, today):
-        session.add(
-            TimelineItem(wedding_id=wedding.id, generated_by_run_id=ai_invocation.id, **row)
-        )
-
-    # TODO(personalization-task): checklist_items LLM 생성 트리거(비동기, ai_invocations 위 1행에
-    # affected_domains=["TIMELINE","CHECKLIST"]로 갱신). 개인화 라우터 에이전트
-    # (13_personalization_router_agent_design.md)가 붙기 전까지 GET /checklist-items는 빈
-    # 배열을 반환한다 — 03_API_spec.md #6이 문서화한 정상 동작.
+    await run_personalization(
+        session,
+        settings,
+        wedding,
+        active_categories,
+        trigger="ONBOARDING_INITIAL",
+        done_so_far=payload.done_so_far,
+    )
 
     await session.commit()
     await session.refresh(wedding)
