@@ -41,6 +41,20 @@ class Settings(BaseSettings):
     session_cookie_name: str = "wr_session"
     session_ttl_days: int = 30
 
+    # 소셜 로그인(구글/네이버, 00_BASELINE.md §0-2 Should) — BFF 패턴이라 client_secret은
+    # 서버에만 있고 브라우저에는 절대 노출되지 않는다(§4-1). 다른 필수 시크릿(azure_openai_
+    # endpoint 등)과 동일하게 기본값 없이 필수로 둔다 — CI는 backend-ci.yml에 더미값을 준다.
+    google_client_id: str
+    google_client_secret: str
+    naver_client_id: str
+    naver_client_secret: str
+    # 이 백엔드 자신의 공개 base URL — OAuth redirect_uri(=IdP 콘솔에 등록해둔 콜백 주소)를
+    # 조립하는 데 쓴다. 로컬은 uvicorn 기본 포트, staging/production은 실제 AKS Ingress 도메인
+    # (03_API_spec.md §1의 base URL과 동일 호스트, /api/v1 제외 — 콜백 경로 조립 시 붙인다).
+    oauth_backend_base_url: str = "http://localhost:8000"
+    # 소셜 로그인 콜백 성공/실패 후 브라우저를 돌려보낼 프론트 오리진(SWA/로컬 dev 서버).
+    frontend_base_url: str = "http://localhost:5173"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

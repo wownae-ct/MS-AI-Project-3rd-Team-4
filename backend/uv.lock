@@ -201,6 +201,7 @@ dependencies = [
     { name = "azure-keyvault-secrets" },
     { name = "email-validator" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "langchain-core" },
     { name = "langgraph" },
     { name = "openai" },
@@ -216,7 +217,6 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
@@ -231,7 +231,7 @@ requires-dist = [
     { name = "azure-keyvault-secrets", specifier = ">=4.8" },
     { name = "email-validator", specifier = ">=2.2" },
     { name = "fastapi", specifier = ">=0.115" },
-    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
+    { name = "httpx", specifier = ">=0.27" },
     { name = "langchain-core", specifier = ">=1.0" },
     { name = "langgraph", specifier = ">=0.2" },
     { name = "openai", specifier = ">=1.40" },
