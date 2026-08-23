@@ -27,6 +27,9 @@ param postgresAdminLogin string = 'pgadmin'
 @description('Postgres 관리자 비밀번호. CI에서는 secrets.POSTGRES_ADMIN_PASSWORD로 주입')
 param postgresAdminPassword string
 
+@description('RAG 스키마가 들어갈 데이터베이스 이름. infra/.env의 DATABASE_NAME으로 채움')
+param postgresDatabaseName string = 'postgres'
+
 @description('kubectl AAD RBAC 클러스터 관리자로 등록할 AAD 오브젝트 ID들. 이메일이 아니라 GUID 필요 —\ndev.bicepparam에서 infra/.env의 CLUSTER_ADMIN_OBJECT_IDS(쉼표구분)로 채움')
 param clusterAdminPrincipalIds array = []
 
@@ -90,6 +93,8 @@ module postgres 'modules/postgres.bicep' = {
     administratorLogin: postgresAdminLogin
     administratorLoginPassword: postgresAdminPassword
     backendIdentityPrincipalId: aks.outputs.backendIdentityPrincipalId
+    keyVaultName: keyvault.outputs.keyVaultName
+    databaseName: postgresDatabaseName
   }
 }
 
@@ -115,7 +120,7 @@ module staticwebapp 'modules/staticwebapp.bicep' = {
   }
 }
 
-// 8) ML 모델 아티팩트 Blob 저장소 — ml 레포가 업로드, AKS Init Container가 다운로드(ConfigMap의 버전 태그 기준). 읽기 권한도 모듈 내부에서 처리
+// 8) 범용 Blob 저장소 — 답변 오디오 저장용으로 재사용 예정(컨테이너/RBAC는 미구현, storage.bicep TODO 참고)
 module storage 'modules/storage.bicep' = {
   name: 'storage'
   params: {

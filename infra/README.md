@@ -40,15 +40,14 @@ flowchart LR
     end
     subgraph Data["데이터"]
         PG["PostgreSQL Flexible<br/>+ pgvector"]
-        BLOB["Blob Storage<br/>ONNX 모델 아티팩트"]
+        BLOB["Blob Storage<br/>(답변 오디오, 재사용 예정)"]
     end
     KV["Key Vault"]
     ACR["Container Registry"]
     SWA["Static Web Apps"]
     LAW["Log Analytics"]
-    ML["ml 레포<br/>(로컬 학습)"]
 
-    USERS -- "aicoach-production...cloudapp.azure.com (HTTPS)" --> ING
+    USERS -- "merrymap-production...cloudapp.azure.com (HTTPS)" --> ING
     USERS -- "nip.io (HTTPS, 내부 점검용)" --> ING
     ING -- host 기반 라우팅 --> GW_S & GW_P
     BCI -- OIDC --> ACR
@@ -59,8 +58,6 @@ flowchart LR
     ARGO_BP -- sync --> NS_P
     ARGO_RP -- sync --> NS_P
     FCI -- OIDC 불가, 배포토큰 --> SWA
-    ML -- "az storage blob upload" --> BLOB
-    GW_S & GW_P -- "Init Container가 MODEL_VERSION(ConfigMap) 기준 다운로드" --> BLOB
     GW_S & GW_P & CJ_S & CJ_P -- Workload Identity --> KV
     GW_S & GW_P --> AOAI
     GW_S & GW_P --> PG
@@ -76,7 +73,7 @@ flowchart LR
 | **Container Registry** | 백엔드 이미지(backend Deployment와 rag-reindex CronJob이 같은 이미지 공유). kubelet identity에 AcrPull, ArgoCD Image Updater는 전용 Workload Identity로 AcrPull(정적 토큰 없음) |
 | **Key Vault** | 시크릿 저장(Azure OpenAI 키, DB 연결정보 등). RBAC 인증, 앱은 Workload Identity로 직접 조회 |
 | **PostgreSQL Flexible Server** | 세션/판정/트레이스 + pgvector(RAG). `azure.extensions=VECTOR` 활성화. MVP는 public+방화벽(VNet 미사용). AAD 인증을 비밀번호 인증과 병행(backend Managed Identity가 AAD 관리자로 등록) |
-| **Blob Storage** | ml 레포가 학습한 ONNX 모델 아티팩트. `models/<version>/model.onnx` 경로 규칙, backend workload identity에 Blob 읽기 권한만 부여 |
+| **Blob Storage** | 범용 저장소. 이전엔 ml 레포의 ONNX 모델 아티팩트용이었으나(TCN 제거로 사용 종료), 답변 오디오 저장 용도로 재사용 예정 — 컨테이너/RBAC는 미구현(`infra/bicep/modules/storage.bicep` TODO 참고) |
 | **Azure OpenAI** | `chat`(gpt-5.4) + `chat-mini`(gpt-5.4-mini, coach/safety/planner) + `embedding`(text-embedding-3-small, retriever/rag 인덱싱) 배포 분리. **API 키 완전 비활성화**(`disableLocalAuth: true`) — backend Managed Identity에 "Cognitive Services OpenAI User" RBAC만 부여 |
 | **Static Web Apps** | 프론트엔드 정적 호스팅 (Free) |
 | **Log Analytics + App Insights** | AKS Container Insights + 앱 관측성 |
@@ -90,24 +87,12 @@ flowchart LR
 | `rag-cronjob-staging` | `backend` | `staging` | CronJob(주기적 재인덱싱, 매일 03:00) |
 | `rag-cronjob-production` | `main` | `production` | CronJob |
 
-backend와 rag는 **같은 브랜치(backend/main), 같은 Docker 이미지**를 쓰지만(코드가 `backend/rag/`에 같이 있음, pgvector라 DB 커넥션도 공유)
+backend와 rag는 **같은 브랜치(backend/main), 같은 Docker 이미지**를 쓰지만(코드가 `backend/app/rag/`에 같이 있음, pgvector라 DB 커넥션도 공유)
 배포 단위(ArgoCD Application)만 나눠서, RAG 재인덱싱을 상시 서빙 Deployment 재시작 없이 독립적으로 sync/pause할 수 있게 했다.
 
-## ML 모델 버전 관리 (ml 레포 multi-source + Reloader, 2026-08-13 개편)
-
-1. ml 레포가 로컬 학습 → `az storage blob upload`로 `models/<version>/model.onnx` 업로드
-2. ml 레포 자신의 `k8s/model-version/configmap-model-version.yaml`(`MODEL_VERSION`)을 그 버전으로 **바로 커밋**
-   (이 레포에 PR 필요 없음 — ml팀 소유 레포라 리뷰 없이 자기 파이프라인이 바로 반영)
-3. `infra/k8s/apps/{backend,rag-cronjob}-*.yaml`의 ArgoCD Application이 **multi-source**로 이 레포(overlay)와
-   ml 레포(`k8s/model-version/`)를 같은 네임스페이스에 같이 배포 — ArgoCD가 ml 레포 변경을 감지해서 ConfigMap을 갱신
-4. **Reloader**(`infra/ansible/playbooks/bootstrap-cluster.yml`가 설치)가 그 ConfigMap 변경을 감지해서 backend
-   Deployment를 자동 롤링 재시작(`reloader.stakater.com/auto` 어노테이션 기준) — 수동 `kubectl rollout restart` 불필요.
-   rag-cronjob은 매일 03:00 새 Pod로 뜨므로 별도 트리거 없이 자연히 최신 값을 읽음
-5. Deployment의 **Init Container**(`fetch-model`)가 `MODEL_VERSION`에 해당하는 blob을 내려받아 emptyDir(`model-cache`)에 저장 → 메인 컨테이너(`backend/app/inference/`)가 그걸 로드
-6. 즉 모델 자체는 git에 안 올라가고, **버전 태그만 GitOps로 관리**되되 그 git이 이 레포가 아니라 ml 레포임
-
-이전엔 `infra/k8s/base/{backend,rag-cronjob}/configmap-model-version.yaml`을 이 레포에 PR하는 방식이었는데,
-ml팀 입장에서 매번 이 레포에 PR 올려야 하는 게 번거롭고 수동 재시작도 귀찮다는 피드백으로 위 방식으로 변경함.
+> **브리프코치 피벗(2026-08-19) 이후**: 여기 있던 "ML 모델 버전 관리" 절(ml 레포 multi-source +
+> Reloader)을 제거했다 — 커스텀 모델(TCN)이 없어졌다. 전체 흐름은
+> [`infra/old/모델버전-GitOps.md`](old/모델버전-GitOps.md)에 보존돼 있다.
 
 ## ArgoCD (GitOps)
 
@@ -136,7 +121,7 @@ ml팀 입장에서 매번 이 레포에 PR 올려야 하는 게 번거롭고 수
 
 - **AKS 클러스터 1개 공유**: staging/production을 네임스페이스로만 분리 — 클러스터 격리 수준의 안전성은 아님(노드/네트워크는 공유).
 - **VNet 미사용**: Postgres/AKS 모두 퍼블릭 액세스 + 방화벽 허용목록. 시간 여유 시 Private Endpoint로 전환 권장.
-- **Ingress: NGINX 1벌로 확정** (`infra/k8s/ingress-nginx/README.md`). HAProxy도 로컬 사용 경험이 있어 후보였지만 생태계가 더 큰 NGINX로 결정 — 성능 이슈 생기면 HAProxy로 교체 후보. Azure 별도 유료 리소스 아님(AGIC였다면 Application Gateway가 필요했을 것). **도메인**: 실도메인 구매 대신 Azure LoadBalancer 자동생성 DNS 라벨(무료) — production은 `aicoach-production.koreacentral.cloudapp.azure.com`, staging은 같은 컨트롤러의 같은 공인 IP를 `nip.io`로 재사용(브라우저가 staging 백엔드를 직접 호출하는 경로가 없어서 별도 컨트롤러/도메인 불필요). **TLS**: cert-manager + Let's Encrypt 자동 발급(`infra/k8s/cert-manager/README.md`). production 호스트는 확정 완료, staging 호스트는 ingress-nginx 설치 후 실제 IP가 나와야 알 수 있어 `<STAGING_NIP_IO_HOST_TBD>` 자리표시자로 남아있음.
+- **Ingress: NGINX 1벌로 확정** (`infra/k8s/ingress-nginx/README.md`). HAProxy도 로컬 사용 경험이 있어 후보였지만 생태계가 더 큰 NGINX로 결정 — 성능 이슈 생기면 HAProxy로 교체 후보. Azure 별도 유료 리소스 아님(AGIC였다면 Application Gateway가 필요했을 것). **도메인**: 실도메인 구매 대신 Azure LoadBalancer 자동생성 DNS 라벨(무료) — production은 `merrymap-production.koreacentral.cloudapp.azure.com`, staging은 같은 컨트롤러의 같은 공인 IP를 `nip.io`로 재사용(브라우저가 staging 백엔드를 직접 호출하는 경로가 없어서 별도 컨트롤러/도메인 불필요). **TLS**: cert-manager + Let's Encrypt 자동 발급(`infra/k8s/cert-manager/README.md`). production 호스트는 확정 완료, staging 호스트는 ingress-nginx 설치 후 실제 IP가 나와야 알 수 있어 `<STAGING_NIP_IO_HOST_TBD>` 자리표시자로 남아있음.
 - **Init Container 인증 플래그 미검증**: `az login --identity`가 AKS Workload Identity federation과 실제로 맞물리는지 실배포 시 확인 필요.
 - **Static Web Apps 배포는 OIDC 미지원**: `AZURE_STATIC_WEB_APPS_API_TOKEN`을 GitHub Secrets에 등록 필요(SWA 리소스 생성 후 `az staticwebapp secrets list`로 확인).
 
@@ -151,7 +136,18 @@ ml팀 입장에서 매번 이 레포에 PR 올려야 하는 게 번거롭고 수
 | `AZURE_SUBSCRIPTION_ID` | `az account show --query id -o tsv` | |
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | `az staticwebapp secrets list --name <prefix>-swa --resource-group <RG> --query properties.apiKey -o tsv` | SWA는 OIDC 미지원이라 이것만 예외적으로 장기 토큰 사용 |
 | `VITE_API_BASE` | 프론트 빌드 시 주입할 백엔드 API 주소(P3에서 확정한 production 호스트) | cert-manager 인증서 발급 확인 후 등록 |
-| `POSTGRES_ADMIN_PASSWORD` | `infra/.env`의 값 그대로 | **여기 README/문서에 실제 값 절대 적지 말 것** — 평문 커밋된 적 있어서(2026-08-13) git 히스토리까지 재작성해서 지운 전례 있음 |
+| `POSTGRES_ADMIN_PASSWORD` | `infra/.env`의 값 그대로 | **여기 README/문서에 실제 값 절대 적지 말 것** — 평문 커밋된 적 있음(2026-08-13). ⚠️ 아래 "히스토리 잔존" 참고 |
+
+> **⚠️ 이 문서의 이전 기술은 사실과 달랐다 (2026-08-19 정정)**
+>
+> 예전에 여기 "git 히스토리까지 재작성해서 지운 전례 있음"이라고 적혀 있었다. **재작성은 없었다.**
+> `595a12f`는 파일 내용에서만 지웠고, 평문 값은 지금도 **11개 커밋**에 남아 있다
+> (`main`·`backend`·`feature/backend` 세 브랜치 모두의 조상 — GitHub compare API로 확인).
+> 브랜치 tip은 모두 깨끗하지만, 저장소 접근 권한이 있으면 히스토리에서 복원할 수 있다.
+>
+> 이 문장이 제일 위험했다 — 팀이 "이미 정리됐다"고 믿게 만들어 **대응이 필요하다는 판단 자체를
+> 막고 있었기 때문**이다. 경위·노출 범위와 결정(회전하지 않음, 2026-08-19) 기록은
+> [시크릿-회전.md](./시크릿-회전.md) 참고.
 
 ### GitHub Variables (Settings → Secrets and variables → Actions → Variables)
 
@@ -159,8 +155,28 @@ ml팀 입장에서 매번 이 레포에 PR 올려야 하는 게 번거롭고 수
 |---|---|---|
 | `AZURE_RG` | 리소스그룹 이름 | 비밀 아님, 리소스 이름일 뿐 |
 | `ACR_NAME` | `<prefix>acr` (하이픈 제거) | `acr.bicep`의 이름 규칙과 동일 |
-| `ACR_LOGIN_SERVER` | `<prefix>acr.azurecr.io` | Bicep 출력값 `acrLoginServer` |
+| `ACR_LOGIN_SERVER` | **`az acr show -n <ACR_NAME> --query loginServer -o tsv \| tr -d '\r'`** | ⚠️ 유추 금지 + `tr -d '\r'` 생략 금지 — 아래 참고 |
 | `AKS_NAME` | `<prefix>-aks` | Bicep 출력값 `aksName` |
+
+> **`ACR_LOGIN_SERVER`를 손으로 조합하면 안 되는 이유** (2026-08-19 실제 CI 실패)
+>
+> 이 값은 `<prefix>acr.azurecr.io`가 **아니다.** Azure는 ACR 로그인 서버에 전역 이름 충돌을
+> 막기 위한 고유 접미사를 붙이므로 실제 값은 `<prefix>acr-<임의문자열>.azurecr.io` 형태다.
+> 정본은 Bicep 출력 `acrLoginServer`(= `acr.properties.loginServer`, `bicep/modules/acr.bicep`)이고,
+> 그걸 조회하는 가장 짧은 방법이 위 `az acr show` 명령이다.
+>
+> **`| tr -d '\r'`를 빼면 안 된다** (2026-08-19 실제로 두 번째 CI 실패를 냈다).
+> WSL에서 `az`를 부르면 `appendWindowsPath=true` 때문에 Windows용 Azure CLI
+> (`/mnt/c/Program Files/Microsoft SDKs/Azure/CLI2/wbin/az`)가 잡히고, 그 출력은 CRLF다.
+> `$(...)`는 끝의 `\n`만 떼므로 `\r`가 값에 남아 GitHub Variable에 그대로 저장된다.
+> 눈으로는 안 보이지만 빌드는 이렇게 죽는다:
+> `invalid tag "team4hcacr-....azurecr.io\r/backend:<sha>": invalid reference format`
+>
+> 실제로 이 문서가 `<prefix>acr.azurecr.io`로 안내한 탓에 Variables에 접미사 없는 값이 등록됐고,
+> `backend-ci`의 이미지 push가 `dial tcp: lookup team4hcacr.azurecr.io: no such host`로 실패해
+> **ArgoCD Image Updater가 감지할 새 태그가 없어 배포가 멈춰 있었다.**
+> 커밋 `053b18d`이 같은 문제를 K8s 매니페스트 4개에서 고쳤지만 이 변수와 문서는 남아 있었다
+> (같은 뿌리의 이름 충돌 이슈는 `트러블슈팅.md` #1의 `aicoachacr` 폐기 건).
 
 ### Azure AD OIDC 설정 (GitHub Actions가 장기 키 없이 Azure에 로그인하는 절차)
 

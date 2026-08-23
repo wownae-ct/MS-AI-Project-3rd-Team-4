@@ -10,14 +10,10 @@ metadata:
     argocd-image-updater.argoproj.io/write-back-method: argocd
 spec:
   project: default
-  # backend-production.yaml과 동일한 multi-source 구조 (거기 주석 참고).
-  sources:
-    - repoURL: https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4.git
-      targetRevision: backend
-      path: infra/k8s/overlays/backend-staging
-    - repoURL: https://github.com/wownae-ct/health-ml.git
-      targetRevision: main
-      path: k8s/model-version
+  source:
+    repoURL: https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4.git
+    targetRevision: backend
+    path: infra/k8s/overlays/backend-staging
   destination:
     server: https://kubernetes.default.svc
     namespace: staging
