@@ -10,7 +10,12 @@ generate_node는 LangGraph 네이티브 커스텀 스트리밍(get_stream_writer
 있는 공식 API다. stream_mode="custom" 없이 ainvoke()/astream(stream_mode="values")로 호출하면
 writer가 기본 no-op이라(langgraph.runtime.Runtime.stream_writer 기본값) 평가 스크립트 같은 배치
 용도에도 그대로 쓸 수 있다 — app/services/chat.py의 실시간 SSE 스트리밍과 이 그래프가 같은 코드
-경로를 공유한다(과거엔 두 곳에 로직이 중복돼 있었음)."""
+경로를 공유한다(과거엔 두 곳에 로직이 중복돼 있었음).
+
+세 노드 모두 진입 직후 {"type": "stage", "stage": "retrieve"/"generate"/"verify"}를 먼저
+흘려보낸다 — 토큰과 같은 writer() 채널(stream_mode="custom")을 타므로 그래프 토폴로지나
+State 스키마는 그대로다. 최종 결과(answer/context/verdict)엔 전혀 영향 없는 순수 UX용
+신호로, app/services/chat.py가 SSE stage 이벤트로 그대로 전달한다."""
 
 from typing import TypedDict
 
@@ -48,6 +53,9 @@ class ChatState(TypedDict):
 
 # ① retrieve: 질문+카테고리로 하이브리드 검색(retrieval.py)을 돌려 근거 청크를 찾아온다.
 async def retrieve_node(state: ChatState, config: RunnableConfig) -> dict:
+    # 노드 진입 직후 곧바로 "지금 이 단계다"를 흘려보낸다 — generate_node가 이미 쓰는
+    # get_stream_writer() 패턴 그대로, 노드가 실제로 뭘 하기 전에 먼저 알린다.
+    get_stream_writer()({"type": "stage", "stage": "retrieve"})
     session = config["configurable"]["session"]
     settings: Settings = config["configurable"].get("settings") or get_settings()
     async with traced_span("chat.retrieve", settings=settings, input=state["query"]):
@@ -61,6 +69,7 @@ async def retrieve_node(state: ChatState, config: RunnableConfig) -> dict:
 async def generate_node(state: ChatState, config: RunnableConfig) -> dict:
     # 스트리밍 중이 아니면(배치 실행 등) writer는 그냥 아무 일도 안 하는 함수가 된다.
     writer = get_stream_writer()
+    writer({"type": "stage", "stage": "generate"})
     settings: Settings = config["configurable"].get("settings") or get_settings()
 
     async with traced_span("chat.generate", settings=settings, input=state["query"]):
@@ -90,6 +99,7 @@ async def generate_node(state: ChatState, config: RunnableConfig) -> dict:
 # ③ verify: 방금 쓴 답변이 근거 자료로 실제 뒷받침되는지 AI에게 한 번 더 물어본다("셀프 채점").
 #    근거가 없으면(0건 검색) 굳이 다시 물어볼 것도 없이 곧바로 GENERAL로 확정.
 async def verify_node(state: ChatState, config: RunnableConfig) -> dict:
+    get_stream_writer()({"type": "stage", "stage": "verify"})
     settings: Settings = config["configurable"].get("settings") or get_settings()
     async with traced_span("chat.verify", settings=settings, input=state["answer"]):
         if not state["context"]:
