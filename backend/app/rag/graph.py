@@ -48,6 +48,7 @@ from app.rag.generation import (
     reformulate_query,
     verify_answer,
 )
+from app.rag.query_profile import profile_query
 from app.rag.retrieval import RetrievedChunk, retrieve
 
 # CRAG 재검색 루프의 상한. 무한루프/비용 폭증 방지가 목적이라 설정값으로 노출하지 않고 코드에
@@ -92,9 +93,18 @@ async def retrieve_node(state: ChatState, config: RunnableConfig) -> dict:
     # 있게 한다 — 대시보드 위젯 API는 커스텀 metadata를 집계 차원으로 못 쓰고 name 같은 OTel
     # 표준 필드만 지원한다(2026-08-24-langfuse-tracing-completion.md에서 실제 400 에러로 확인된
     # 제약). trace.update(metadata={"retry_count": ...})는 트레이스 목록 수동 필터링용으로 별도
-    # 유지한다(app/services/chat.py).
+    # 유지한다(app/services/chat.py). metadata(category_code/질의 품질 태깅) 자체는 observation
+    # 메타데이터라 위젯 차원 제약과 무관하게 그대로 유지한다(app/rag/query_profile.py).
     span_name = "chat.retrieve_retry" if is_retry else "chat.retrieve"
-    async with traced_span(span_name, settings=settings, input=state["query"]):
+    async with traced_span(
+        span_name,
+        settings=settings,
+        input=state["query"],
+        metadata={
+            "category_code": state["category_code"] or "ALL",
+            **profile_query(state["query"]).as_metadata(),
+        },
+    ):
         if is_retry:
             client = get_azure_openai_client(settings)
             search_query = await reformulate_query(

@@ -31,9 +31,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.db import get_session_factory
 from app.core.errors import api_error
-from app.core.tracing import traced_span
+from app.core.tracing import score_trace, traced_span
 from app.models import ChatMessage, ChatSession, Wedding
 from app.rag.graph import ChatState, build_graph
+from app.rag.query_profile import profile_query
 from app.schemas.chat import (
     ChatMessageCreate,
     CitationOut,
@@ -74,6 +75,61 @@ async def get_chat_session(
     return chat_session
 
 
+async def get_chat_message(
+    session: AsyncSession, wedding_id: UUID, session_id: UUID, message_id: UUID
+) -> ChatMessage:
+    """get_chat_session과 같은 원칙 — 메시지 id / 그 메시지가 속한 세션 / 그 세션의 웨딩 셋 다
+    WHERE에 넣어 "없음"·"다른 세션 소속"·"남의 것"을 응답에서 구분 못 하게 한다. chat_messages에는
+    wedding_id가 없어 chat_sessions 조인이 필요하다(app/services/feedback.py::
+    target_exists_for_wedding의 CHAT_MESSAGE 분기와 동일한 조인)."""
+    stmt = (
+        select(ChatMessage)
+        .join(ChatSession, ChatMessage.session_id == ChatSession.id)
+        .where(
+            ChatMessage.id == message_id,
+            ChatMessage.session_id == session_id,
+            ChatSession.wedding_id == wedding_id,
+        )
+    )
+    message = (await session.execute(stmt)).scalar_one_or_none()
+    if message is None:
+        raise api_error(404, "CHAT_MESSAGE_NOT_FOUND", "상담 메시지를 찾을 수 없습니다.")
+    return message
+
+
+# Langfuse BOOLEAN 스코어는 0/1 수치로 저장되고 UI에서 true/false로 렌더링된다 — GOOD/BAD 이분
+# 신호에 정확히 대응하고, 평균이 그대로 "GOOD 비율"이 된다. 5점 척도가 필요해지면 그때
+# data_type="NUMERIC"으로 바꾼다(지금 필요 없음 — YAGNI).
+_RATING_SCORE_NAME = "user_rating"
+_RATING_SCORE_VALUES: dict[str, float] = {"GOOD": 1.0, "BAD": 0.0}
+
+
+async def rate_chat_message(
+    session: AsyncSession, wedding_id: UUID, session_id: UUID, message_id: UUID, rating: str
+) -> ChatMessage:
+    """DB 저장이 먼저, Langfuse 전송이 나중 — 전송 실패가 사용자 평가를 되돌리면 안 된다.
+    trace_ref가 없는 메시지(트레이싱 off 상태에서 생성됐거나 마이그레이션 이전 행)는 DB에만
+    저장하고 조용히 넘어간다."""
+    message = await get_chat_message(session, wedding_id, session_id, message_id)
+    if message.role != "assistant":
+        raise api_error(
+            400, "CHAT_MESSAGE_NOT_RATABLE", "AI 답변 메시지에만 평가를 남길 수 있습니다."
+        )
+
+    message.user_rating = rating
+    await session.commit()
+    await session.refresh(message)
+
+    if message.trace_ref:
+        score_trace(
+            message.trace_ref,
+            name=_RATING_SCORE_NAME,
+            value=_RATING_SCORE_VALUES[rating],
+            score_id=f"{_RATING_SCORE_NAME}-{message.id}",
+        )
+    return message
+
+
 async def list_chat_messages(
     session: AsyncSession, wedding_id: UUID, session_id: UUID
 ) -> list[ChatMessage]:
@@ -93,7 +149,10 @@ def _sse(event: str, data: BaseModel) -> str:
 
 
 async def stream_chat_response(
-    chat_session_id: UUID, wedding_id: UUID, payload: ChatMessageCreate
+    chat_session_id: UUID,
+    wedding_id: UUID,
+    owner_user_id: UUID,
+    payload: ChatMessageCreate,
 ) -> AsyncIterator[str]:
     start = time.monotonic()
 
@@ -116,11 +175,26 @@ async def stream_chat_response(
         config = {"configurable": {"session": session, "settings": settings}}
 
         final_state: ChatState = initial_state
+        # metadata를 변수로 뽑아두는 이유: 아래 trace.update(metadata=...)가 생성 시점 metadata를
+        # 덮어쓸지 병합할지 SDK 구현에 기대지 않고, 명시적으로 합쳐 보내면 어느 쪽이든 유실이
+        # 없다. tags는 app/rag/query_profile.py의 질의 품질 리스크 분류(short_query 등)를
+        # 트레이스 레벨에 붙여 목록에서 필터링할 수 있게 한다(chat.retrieve 자식 span엔 굳이
+        # 다시 안 넘김 — 컨텍스트 전파로 이미 상속됨, app/core/tracing.py::traced_span 참고).
+        query_profile = profile_query(payload.content)
+        span_metadata = {
+            "category_code": chat_session.category_code or "ALL",
+            **query_profile.as_metadata(),
+        }
         async with traced_span(
             "chat",
             settings=settings,
             input=payload.content,
+            metadata=span_metadata,
             session_id=str(chat_session.id),
+            user_id=str(
+                owner_user_id
+            ),  # 이메일 등 PII 대신 UUID만 전달(personalization.py와 동일 원칙)
+            tags=list(query_profile.tags),
         ) as trace:
             try:
                 # 그래프(retrieve→generate→verify, verify→retrieve 조건부 재검색 포함)를
@@ -157,6 +231,7 @@ async def stream_chat_response(
             trace.update(
                 output=final_state["answer"],
                 metadata={
+                    **span_metadata,
                     "verdict": final_state["verdict"],
                     "retry_count": final_state["retry_count"],
                     "retried": final_state["retry_count"] > 0,

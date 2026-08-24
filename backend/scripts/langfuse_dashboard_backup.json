@@ -1,0 +1,469 @@
+{
+  "dashboard": {
+    "name": "MerryMap",
+    "description": "챗 상담 + 개인화 라우터 에이전트 LLM 관측 (14_langfuse_tracing_design.md)"
+  },
+  "widgets": [
+    {
+      "placement": {
+        "x": 0,
+        "y": 0,
+        "width": 3,
+        "height": 4
+      },
+      "widget": {
+        "id": "cmt6782sp000yad0j3l9ammt9",
+        "createdAt": "2026-08-23 19:27:09.098000+00:00",
+        "updatedAt": "2026-08-23 19:27:09.098000+00:00",
+        "name": "전체 트레이스 수",
+        "description": "chat/personalization 트레이스 총 개수",
+        "view": "observations",
+        "dimensions": [],
+        "metrics": [
+          {
+            "measure": "count",
+            "agg": "count"
+          }
+        ],
+        "filters": [
+          {
+            "column": "name",
+            "operator": "any of",
+            "type": "stringOptions",
+            "value": [
+              "chat",
+              "personalization"
+            ]
+          }
+        ],
+        "chartType": "NUMBER",
+        "chartConfig": {
+          "type": "NUMBER"
+        }
+      }
+    },
+    {
+      "placement": {
+        "x": 3,
+        "y": 0,
+        "width": 9,
+        "height": 4
+      },
+      "widget": {
+        "id": "cmt6782uk0011ad0jtv3veavz",
+        "createdAt": "2026-08-23 19:27:09.164000+00:00",
+        "updatedAt": "2026-08-23 19:27:09.164000+00:00",
+        "name": "트레이스 볼륨 추이",
+        "description": "시간대별 chat/personalization 트레이스 발생량",
+        "view": "observations",
+        "dimensions": [
+          {
+            "field": "traceName"
+          }
+        ],
+        "metrics": [
+          {
+            "measure": "count",
+            "agg": "count"
+          }
+        ],
+        "filters": [
+          {
+            "column": "name",
+            "operator": "any of",
+            "type": "stringOptions",
+            "value": [
+              "chat",
+              "personalization"
+            ]
+          }
+        ],
+        "chartType": "LINE_TIME_SERIES",
+        "chartConfig": {
+          "type": "LINE_TIME_SERIES"
+        }
+      }
+    },
+    {
+      "placement": {
+        "x": 0,
+        "y": 4,
+        "width": 6,
+        "height": 4
+      },
+      "widget": {
+        "id": "cmt6782w80014ad0jc79n8uq9",
+        "createdAt": "2026-08-23 19:27:09.224000+00:00",
+        "updatedAt": "2026-08-23 19:27:09.224000+00:00",
+        "name": "응답 시간 p95 (트레이스별)",
+        "description": "느린 5%까지 감안한 실제 체감 지연",
+        "view": "observations",
+        "dimensions": [
+          {
+            "field": "traceName"
+          }
+        ],
+        "metrics": [
+          {
+            "measure": "latency",
+            "agg": "p95"
+          }
+        ],
+        "filters": [
+          {
+            "column": "name",
+            "operator": "any of",
+            "type": "stringOptions",
+            "value": [
+              "chat",
+              "personalization"
+            ]
+          }
+        ],
+        "chartType": "VERTICAL_BAR",
+        "chartConfig": {
+          "type": "VERTICAL_BAR"
+        }
+      }
+    },
+    {
+      "placement": {
+        "x": 6,
+        "y": 4,
+        "width": 6,
+        "height": 4
+      },
+      "widget": {
+        "id": "cmt6782xu0017ad0jgvqpdfz6",
+        "createdAt": "2026-08-23 19:27:09.283000+00:00",
+        "updatedAt": "2026-08-23 19:27:09.283000+00:00",
+        "name": "Azure OpenAI 비용 추이",
+        "description": "LLM/임베딩 호출 누적 비용(USD)",
+        "view": "observations",
+        "dimensions": [],
+        "metrics": [
+          {
+            "measure": "totalCost",
+            "agg": "sum"
+          }
+        ],
+        "filters": [
+          {
+            "column": "type",
+            "operator": "any of",
+            "type": "stringOptions",
+            "value": [
+              "GENERATION",
+              "EMBEDDING"
+            ]
+          }
+        ],
+        "chartType": "AREA_TIME_SERIES",
+        "chartConfig": {
+          "type": "AREA_TIME_SERIES"
+        }
+      }
+    },
+    {
+      "placement": {
+        "x": 0,
+        "y": 8,
+        "width": 4,
+        "height": 5
+      },
+      "widget": {
+        "id": "cmt6782zh001aad0j4sjo5ooi",
+        "createdAt": "2026-08-23 19:27:09.342000+00:00",
+        "updatedAt": "2026-08-23 19:27:09.342000+00:00",
+        "name": "모델별 호출 수",
+        "description": "chat-mini/embedding 배포별 호출 비중",
+        "view": "observations",
+        "dimensions": [
+          {
+            "field": "providedModelName"
+          }
+        ],
+        "metrics": [
+          {
+            "measure": "count",
+            "agg": "count"
+          }
+        ],
+        "filters": [
+          {
+            "column": "type",
+            "operator": "any of",
+            "type": "stringOptions",
+            "value": [
+              "GENERATION",
+              "EMBEDDING"
+            ]
+          }
+        ],
+        "chartType": "PIE",
+        "chartConfig": {
+          "type": "PIE"
+        }
+      }
+    },
+    {
+      "placement": {
+        "x": 4,
+        "y": 8,
+        "width": 4,
+        "height": 5
+      },
+      "widget": {
+        "id": "cmt678313001dad0jz5ldtxvp",
+        "createdAt": "2026-08-23 19:27:09.399000+00:00",
+        "updatedAt": "2026-08-23 19:27:09.399000+00:00",
+        "name": "관측 타입 분포",
+        "description": "span/generation/embedding 비중",
+        "view": "observations",
+        "dimensions": [
+          {
+            "field": "type"
+          }
+        ],
+        "metrics": [
+          {
+            "measure": "count",
+            "agg": "count"
+          }
+        ],
+        "filters": [],
+        "chartType": "PIE",
+        "chartConfig": {
+          "type": "PIE"
+        }
+      }
+    },
+    {
+      "placement": {
+        "x": 8,
+        "y": 8,
+        "width": 4,
+        "height": 5
+      },
+      "widget": {
+        "id": "cmt67832p001gad0jsdnlainn",
+        "createdAt": "2026-08-23 19:27:09.457000+00:00",
+        "updatedAt": "2026-08-23 19:27:09.457000+00:00",
+        "name": "환경별 트레이스 수",
+        "description": "local/staging/production 배포 환경별",
+        "view": "observations",
+        "dimensions": [
+          {
+            "field": "environment"
+          }
+        ],
+        "metrics": [
+          {
+            "measure": "count",
+            "agg": "count"
+          }
+        ],
+        "filters": [
+          {
+            "column": "name",
+            "operator": "any of",
+            "type": "stringOptions",
+            "value": [
+              "chat",
+              "personalization"
+            ]
+          }
+        ],
+        "chartType": "VERTICAL_BAR",
+        "chartConfig": {
+          "type": "VERTICAL_BAR"
+        }
+      }
+    },
+    {
+      "placement": {
+        "x": 6,
+        "y": 13,
+        "width": 2,
+        "height": 6
+      },
+      "widget": {
+        "id": "cmt6ls6ve004gad0fqv3w1mcp",
+        "createdAt": "2026-08-24 02:14:42.123000+00:00",
+        "updatedAt": "2026-08-24 02:14:42.123000+00:00",
+        "name": "CRAG 재시도 발생 건수",
+        "description": "verify가 WEAK/GENERAL이라 재검색이 실제로 발생한 총 건수(chat.retrieve_retry span 수)",
+        "view": "observations",
+        "dimensions": [],
+        "metrics": [
+          {
+            "measure": "count",
+            "agg": "count"
+          }
+        ],
+        "filters": [
+          {
+            "column": "name",
+            "operator": "any of",
+            "type": "stringOptions",
+            "value": [
+              "chat.retrieve_retry"
+            ]
+          }
+        ],
+        "chartType": "NUMBER",
+        "chartConfig": {
+          "type": "NUMBER"
+        }
+      }
+    },
+    {
+      "placement": {
+        "x": 0,
+        "y": 13,
+        "width": 6,
+        "height": 6
+      },
+      "widget": {
+        "id": "cmt6ls71v004jad0f17phigwg",
+        "createdAt": "2026-08-24 02:14:42.355000+00:00",
+        "updatedAt": "2026-08-24 02:14:42.355000+00:00",
+        "name": "CRAG 재시도 발생 추이",
+        "description": "시간대별 CRAG 재검색 발생량 — verify 판정 품질이 나빠지는 구간을 찾는 데 씀",
+        "view": "observations",
+        "dimensions": [],
+        "metrics": [
+          {
+            "measure": "count",
+            "agg": "count"
+          }
+        ],
+        "filters": [
+          {
+            "column": "name",
+            "operator": "any of",
+            "type": "stringOptions",
+            "value": [
+              "chat.retrieve_retry"
+            ]
+          }
+        ],
+        "chartType": "LINE_TIME_SERIES",
+        "chartConfig": {
+          "type": "LINE_TIME_SERIES"
+        }
+      }
+    },
+    {
+      "placement": {
+        "x": 6,
+        "y": 19,
+        "width": 2,
+        "height": 5
+      },
+      "widget": {
+        "id": "cmt6ltxin001uad0i4isw4aop",
+        "createdAt": "2026-08-24 02:16:03.312000+00:00",
+        "updatedAt": "2026-08-24 02:16:03.312000+00:00",
+        "name": "짧은 질의 태그 관측 수",
+        "description": "app/rag/query_profile.py가 3어절 이하로 분류한 질의(short_query 태그)의 chat.retrieve 관측 수 — 2026-08-24-hybrid-retrieval-short-query-ranking-bias.md 재현 사례를 트레이스 목록에서 빠르게 필터링하기 위한 신호",
+        "view": "observations",
+        "dimensions": [],
+        "metrics": [
+          {
+            "measure": "count",
+            "agg": "count"
+          }
+        ],
+        "filters": [
+          {
+            "column": "tags",
+            "operator": "any of",
+            "type": "arrayOptions",
+            "value": [
+              "short_query"
+            ]
+          }
+        ],
+        "chartType": "NUMBER",
+        "chartConfig": {
+          "type": "NUMBER"
+        }
+      }
+    },
+    {
+      "placement": {
+        "x": 0,
+        "y": 19,
+        "width": 6,
+        "height": 5
+      },
+      "widget": {
+        "id": "cmt6ltxkq008jad0f306n5x5v",
+        "createdAt": "2026-08-24 02:16:03.386000+00:00",
+        "updatedAt": "2026-08-24 02:16:03.386000+00:00",
+        "name": "짧은 질의 태그 발생 추이",
+        "description": "short_query 태그가 붙은 관측의 시간대별 발생량",
+        "view": "observations",
+        "dimensions": [],
+        "metrics": [
+          {
+            "measure": "count",
+            "agg": "count"
+          }
+        ],
+        "filters": [
+          {
+            "column": "tags",
+            "operator": "any of",
+            "type": "arrayOptions",
+            "value": [
+              "short_query"
+            ]
+          }
+        ],
+        "chartType": "LINE_TIME_SERIES",
+        "chartConfig": {
+          "type": "LINE_TIME_SERIES"
+        }
+      }
+    },
+    {
+      "placement": {
+        "x": 8,
+        "y": 13,
+        "width": 4,
+        "height": 6
+      },
+      "widget": {
+        "id": "cmt6ltxm7001xad0igrj5pdeu",
+        "createdAt": "2026-08-24 02:16:03.439000+00:00",
+        "updatedAt": "2026-08-24 02:16:03.439000+00:00",
+        "name": "사용자 평가 평균(GOOD 비율)",
+        "description": "POST /chat/sessions/{id}/messages/{message_id}/feedback로 남긴 GOOD/BAD를 Langfuse BOOLEAN 스코어(user_rating, GOOD=1/BAD=0)로 전송한 값의 평균 — 1에 가까울수록 GOOD 비율이 높음",
+        "view": "scores-boolean",
+        "dimensions": [],
+        "metrics": [
+          {
+            "measure": "value",
+            "agg": "avg"
+          }
+        ],
+        "filters": [
+          {
+            "column": "name",
+            "operator": "any of",
+            "type": "stringOptions",
+            "value": [
+              "user_rating"
+            ]
+          }
+        ],
+        "chartType": "NUMBER",
+        "chartConfig": {
+          "type": "NUMBER"
+        }
+      }
+    }
+  ]
+}
