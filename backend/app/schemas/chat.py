@@ -59,6 +59,16 @@ class TokenEventData(BaseModel):
     delta: str
 
 
+class RetryEventData(BaseModel):
+    """CRAG 조건부 재검색 루프(2026-08-24 결정, app/rag/graph.py) — verify가 WEAK/GENERAL
+    판정을 내려 재구성된 질의로 retrieve를 다시 돌 때 딱 한 번(최대 1회) 발생한다. 이 이벤트를
+    받으면 그 시점까지 스트리밍된 답변(token 누적분)은 버리고 새로 시작해야 한다 — 뒤이어 오는
+    token들은 새 답변의 처음부터다. 완전 additive라 무시해도 기존 token/citations/verification/
+    done 흐름은 깨지지 않는다(재시도 시 1차+2차 답변이 이어붙어 보이는 어색함만 생김)."""
+
+    reason: str
+
+
 class CitationsEventData(BaseModel):
     citations: list[CitationOut]
 

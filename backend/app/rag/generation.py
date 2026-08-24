@@ -53,6 +53,16 @@ _VERIFY_PROMPT_TEMPLATE = """아래는 사용자 질문에 대한 답변과, 답
 - WEAK: 부분적으로만 연결됨
 - GENERAL: 참고 자료 근거 없이 일반론으로 답함"""
 
+_REFORMULATE_QUERY_PROMPT_TEMPLATE = """아래는 사용자의 원래 질문과, 그 질문에 대한 답변이 왜
+근거 부족(WEAK/GENERAL) 판정을 받았는지의 이유입니다. 검색 엔진에 다시 넣을 새로운 검색 질의를
+한 줄로 작성하세요. 사용자에게 보여줄 답변이 아니라 내부 검색에만 쓰이므로, 설명 없이 검색어만
+출력하세요.
+
+원래 질문: {query}
+근거 부족 판정 이유: {verification_reason}
+
+새 검색 질의 (한 줄, 설명 없이 검색어만):"""
+
 
 def build_context_block(chunks: list[RetrievedChunk]) -> str:
     """검색으로 찾아온 청크 5개를 "[참고 자료 1] ... [참고 자료 2] ..." 형태의 텍스트 한 덩어리로
@@ -105,3 +115,25 @@ async def verify_answer(
     )
     verdict_json = json.loads(response.choices[0].message.content)
     return verdict_json.get("verdict", "GENERAL"), verdict_json.get("reason", "")
+
+
+async def reformulate_query(
+    client: AsyncAzureOpenAI, settings: Settings, query: str, verification_reason: str
+) -> str:
+    """CRAG(Corrective RAG) 재검색 루프용 질의 재구성 — verify가 WEAK/GENERAL을 낸 이유를
+    근거로 검색에 더 적합한 질의를 LLM에게 다시 쓰게 한다. verify_answer와 달리
+    response_format으로 JSON을 강제하지 않는다 — 자유 텍스트 검색어 한 줄이면 충분해서
+    JSON 강제는 과설계."""
+    response = await client.chat.completions.create(
+        model=settings.azure_openai_chat_deployment,
+        messages=[
+            {
+                "role": "user",
+                "content": _REFORMULATE_QUERY_PROMPT_TEMPLATE.format(
+                    query=query, verification_reason=verification_reason
+                ),
+            }
+        ],
+    )
+    reformulated = (response.choices[0].message.content or "").strip()
+    return reformulated or query  # 빈 응답 방어: retrieve()에 빈 문자열 대신 원 질문으로 폴백

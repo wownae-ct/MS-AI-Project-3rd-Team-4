@@ -1,11 +1,15 @@
 """#20-22 실제 DB + RAG 로직. 03_API_spec.md §3, 05_RAG_design.md §2/§7.
 
-stream_chat_response가 #22의 핵심이다. app/rag/graph.py의 그래프(retrieve→generate→verify)를
+stream_chat_response가 #22의 핵심이다. app/rag/graph.py의 그래프(retrieve→generate→verify,
+verify가 WEAK/GENERAL이면 최대 1회 retrieve로 되돌아가는 CRAG 조건부 루프 포함)를
 graph.astream(..., stream_mode=["custom", "values"])로 순회하는 얇은 래퍼다 — "custom" 청크는
-generate_node가 get_stream_writer()로 흘려보낸 토큰이라 그대로 SSE token 이벤트로 전달하고,
-"values" 청크는 매 노드가 끝날 때마다의 상태 스냅샷이라 마지막 것만 최종 answer/context/verdict로
-쓴다. 그래프와 로직을 분리하지 않고 하나로 합친 이유: 예전엔 이 파일이 그래프를 거치지 않고
-retrieve/generate/verify를 직접 재구현해서 app/rag/graph.py와 로직이 중복돼 있었다.
+generate_node/retrieve_node가 get_stream_writer()로 흘려보낸 것으로, chunk["type"]에 따라
+"token"(델타 텍스트, SSE token 이벤트)과 "retry"(재검색 시작 알림, SSE retry 이벤트, 최대 1회)
+둘로 나뉜다. "values" 청크는 매 노드가 끝날 때마다의 상태 스냅샷이라 마지막 것만 최종
+answer/context/verdict로 쓴다 — 재검색이 일어나도 이 방식은 자동으로 "마지막 시도" 결과만
+남긴다(따로 처리 불필요). 그래프와 로직을 분리하지 않고 하나로 합친 이유: 예전엔 이 파일이
+그래프를 거치지 않고 retrieve/generate/verify를 직접 재구현해서 app/rag/graph.py와 로직이
+중복돼 있었다.
 
 stream_chat_response는 라우터가 넘겨준 Depends(get_session) 세션을 쓰지 않고 자체적으로
 get_session_factory()로 세션을 연다 — FastAPI는 StreamingResponse를 반환하는 라우터 함수가
@@ -36,6 +40,7 @@ from app.schemas.chat import (
     CitationsEventData,
     DoneEventData,
     ErrorEventData,
+    RetryEventData,
     TokenEventData,
     VerificationEventData,
 )
@@ -105,6 +110,7 @@ async def stream_chat_response(
             "answer": "",
             "verdict": "",
             "verification_reason": "",
+            "retry_count": 0,
         }
         config = {"configurable": {"session": session, "settings": settings}}
 
@@ -127,7 +133,10 @@ async def stream_chat_response(
                     initial_state, config, stream_mode=["custom", "values"]
                 ):
                     if mode == "custom":
-                        yield _sse("token", TokenEventData(delta=chunk["delta"]))
+                        if chunk["type"] == "token":
+                            yield _sse("token", TokenEventData(delta=chunk["delta"]))
+                        elif chunk["type"] == "retry":
+                            yield _sse("retry", RetryEventData(reason=chunk["reason"]))
                     else:
                         final_state = chunk
             except RateLimitError as exc:
