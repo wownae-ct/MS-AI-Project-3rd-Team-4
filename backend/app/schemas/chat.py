@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.schemas.common import CategoryCode, ChatRole, SourceTier, Verdict
+from app.schemas.common import CategoryCode, ChatRole, ChatStage, SourceTier, Verdict
 
 
 class ChatSessionCreate(BaseModel):
@@ -57,6 +57,14 @@ class ChatMessageCreate(BaseModel):
 
 class TokenEventData(BaseModel):
     delta: str
+
+
+class StageEventData(BaseModel):
+    """그래프(retrieve→generate→verify) 노드 진입 시점마다 오는 진행 단계 알림 — 최종 결과
+    (answer/context/verdict)엔 영향 없는 순수 UX용 이벤트라, 프론트가 이 이벤트를 무시해도
+    token/citations/verification/done은 그대로 온다."""
+
+    stage: ChatStage
 
 
 class RetryEventData(BaseModel):

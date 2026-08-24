@@ -3,13 +3,13 @@
 stream_chat_response가 #22의 핵심이다. app/rag/graph.py의 그래프(retrieve→generate→verify,
 verify가 WEAK/GENERAL이면 최대 1회 retrieve로 되돌아가는 CRAG 조건부 루프 포함)를
 graph.astream(..., stream_mode=["custom", "values"])로 순회하는 얇은 래퍼다 — "custom" 청크는
-generate_node/retrieve_node가 get_stream_writer()로 흘려보낸 것으로, chunk["type"]에 따라
-"token"(델타 텍스트, SSE token 이벤트)과 "retry"(재검색 시작 알림, SSE retry 이벤트, 최대 1회)
-둘로 나뉜다. "values" 청크는 매 노드가 끝날 때마다의 상태 스냅샷이라 마지막 것만 최종
-answer/context/verdict로 쓴다 — 재검색이 일어나도 이 방식은 자동으로 "마지막 시도" 결과만
-남긴다(따로 처리 불필요). 그래프와 로직을 분리하지 않고 하나로 합친 이유: 예전엔 이 파일이
-그래프를 거치지 않고 retrieve/generate/verify를 직접 재구현해서 app/rag/graph.py와 로직이
-중복돼 있었다.
+세 노드가 get_stream_writer()로 흘려보낸 것으로, chunk["type"]에 따라 "token"(델타 텍스트,
+SSE token 이벤트), "stage"(노드 진입 알림, SSE stage 이벤트), "retry"(재검색 시작 알림, SSE
+retry 이벤트, 최대 1회) 셋으로 나뉜다. "values" 청크는 매 노드가 끝날 때마다의 상태 스냅샷이라
+마지막 것만 최종 answer/context/verdict로 쓴다 — 재검색이 일어나도 이 방식은 자동으로 "마지막
+시도" 결과만 남긴다(따로 처리 불필요). 그래프와 로직을 분리하지 않고 하나로 합친 이유: 예전엔
+이 파일이 그래프를 거치지 않고 retrieve/generate/verify를 직접 재구현해서 app/rag/graph.py와
+로직이 중복돼 있었다.
 
 stream_chat_response는 라우터가 넘겨준 Depends(get_session) 세션을 쓰지 않고 자체적으로
 get_session_factory()로 세션을 연다 — FastAPI는 StreamingResponse를 반환하는 라우터 함수가
@@ -41,6 +41,7 @@ from app.schemas.chat import (
     DoneEventData,
     ErrorEventData,
     RetryEventData,
+    StageEventData,
     TokenEventData,
     VerificationEventData,
 )
@@ -122,19 +123,22 @@ async def stream_chat_response(
             session_id=str(chat_session.id),
         ) as trace:
             try:
-                # 그래프(retrieve→generate→verify)를 실시간으로 순회한다. 두 종류의 조각이
-                # 섞여서 나온다:
-                #   - "custom": generate_node가 writer()로 흘려보낸 토큰 하나 → 곧바로 SSE로
-                #     전달(진짜 실시간)
+                # 그래프(retrieve→generate→verify, verify→retrieve 조건부 재검색 포함)를
+                # 실시간으로 순회한다. 두 종류의 조각이 섞여서 나온다:
+                #   - "custom": 노드가 writer()로 흘려보낸 것 — type="token"이면 델타 하나
+                #     (진짜 실시간), type="stage"면 노드 진입 알림(3부: 검색/생성/검증 중),
+                #     type="retry"면 재검색 시작 알림(최대 1회, retrieve_node가 재시도
+                #     감지 시 stage보다 먼저 emit)
                 #   - "values": 노드가 하나 끝날 때마다의 "전체 상태 스냅샷" → 계속 덮어써서
-                #     마지막 것만 남김(retrieve 끝나면 context 채워진 스냅샷, verify 끝나면
-                #     verdict까지 채워진 스냅샷 순으로 옴)
+                #     마지막 것만 남김(재검색이 일어나도 마지막 시도 결과만 자동으로 남음)
                 async for mode, chunk in _GRAPH.astream(
                     initial_state, config, stream_mode=["custom", "values"]
                 ):
                     if mode == "custom":
                         if chunk["type"] == "token":
                             yield _sse("token", TokenEventData(delta=chunk["delta"]))
+                        elif chunk["type"] == "stage":
+                            yield _sse("stage", StageEventData(stage=chunk["stage"]))
                         elif chunk["type"] == "retry":
                             yield _sse("retry", RetryEventData(reason=chunk["reason"]))
                     else:
