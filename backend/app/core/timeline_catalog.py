@@ -1,4 +1,5 @@
-"""타임라인 결정론적 카탈로그 — docs/wedding/ing/ds7-timeline-seed-data-prep.md 완성본 55항목.
+"""타임라인 결정론적 카탈로그 — docs/wedding/ing/ds7-timeline-seed-data-prep.md 완성본 55항목 +
+ETC/HOMENEW 신규 저작 10항목(2026-08-24 버그 수정, 아래 참고).
 
 v4.0에서 이 상수는 두 가지 역할을 겸한다: (1) `13_personalization_router_agent_design.md` §2가
 정의하는 개인화 라우터 에이전트의 `validate` 실패 시 타임라인 폴백, (2) 개인화 라우터 에이전트
@@ -8,7 +9,19 @@ v4.0에서 이 상수는 두 가지 역할을 겸한다: (1) `13_personalization
 된다(스키마 변경 없음, `origin` 컬럼이 이미 이 구분을 담을 준비가 돼 있음).
 
 phase_label(구 "D-11M" 라벨)은 컬럼으로 저장하지 않는다 — 프론트가 default_dday_offset_days로
-공식 계산한다(2026-08-23 세션 결정, 13번 문서 §3). 그래서 이 카탈로그도 offset만 갖고 있다."""
+공식 계산한다(2026-08-23 세션 결정, 13번 문서 §3). 그래서 이 카탈로그도 offset만 갖고 있다.
+
+**2026-08-24 버그 수정**: 원본 55항목엔 ETC/HOMENEW 카테고리 항목이 0개였다. 이 카탈로그가
+`app/personalization/prompts.py::_build_timeline_few_shot()`의 LLM few-shot 예시로도 쓰이기
+때문에, ETC/HOMENEW가 활성 카테고리인 웨딩은 few-shot에 두 카테고리 예시가 전혀 없어 LLM이
+해당 카테고리 항목을 만들지 않았고, `app/personalization/validation.py`의 카테고리 커버리지
+규칙(활성 카테고리마다 항목 ≥1개)을 통과 못 해 `validate`가 거의 항상 BLOCKED로 떨어져
+`run_personalization`이 도메인 전체를 이 카탈로그 그대로(개인화 없이) 폴백시키는 버그가 있었다
+(`ai_invocations.error_message`로 실증: "TIMELINE: 활성 카테고리 ETC/HOMENEW에 생성된 항목이
+없습니다"). `CHECKLIST_FALLBACK_CATALOG`가 24→59항목 확장으로 이미 고친 것과 같은 문제라 같은
+패턴(CONSENSUS 항목, 카테고리당 5개)으로 대응한다. 새 항목은 기존 55항목을 재배치하지 않고
+끝에 추가했다(display_order 56~65) — 실제 표시 순서는 API가 `target_date` 기준으로 정렬하므로
+(`app/services/timeline.py::list_timeline_items`) 파일 내 물리적 위치는 기능에 영향 없다."""
 
 from dataclasses import dataclass
 
@@ -97,4 +110,16 @@ TIMELINE_CATALOG: tuple[TimelineTemplateItem, ...] = (
     TimelineTemplateItem(None, "혼인신고", 3, 53),
     TimelineTemplateItem("INVITATION", "답례품 발송/전달", 7, 54),
     TimelineTemplateItem(None, "신혼여행 후 감사인사·리뷰 작성", 14, 55),
+    # ===== HOMENEW — CONSENSUS 5개(v4.0 신규 카테고리, 2026-08-24 버그 수정으로 추가) =====
+    TimelineTemplateItem("HOMENEW", "신혼집 예산·희망 지역 설정", -270, 56),
+    TimelineTemplateItem("HOMENEW", "신혼집 매물 투어 시작", -240, 57),
+    TimelineTemplateItem("HOMENEW", "등기부등본·중개수수료 확인 후 계약", -90, 58),
+    TimelineTemplateItem("HOMENEW", "인테리어·도배·장판 시공", -45, 59),
+    TimelineTemplateItem("HOMENEW", "신혼집 잔금 납부", -14, 60),
+    # ===== ETC — CONSENSUS 5개(v4.0 신규 카테고리, 2026-08-24 버그 수정으로 추가) =====
+    TimelineTemplateItem("ETC", "예산 관리 방식(앱·스프레드시트) 정하기", -330, 61),
+    TimelineTemplateItem("ETC", "결혼 준비 진행 상황 중간 점검", -180, 62),
+    TimelineTemplateItem("ETC", "업체별 담당자 연락처 정리", -14, 63),
+    TimelineTemplateItem("ETC", "우천 등 돌발상황 대비 대안 확인", -7, 64),
+    TimelineTemplateItem("ETC", "계약서·영수증 자료 최종 정리", -1, 65),
 )
