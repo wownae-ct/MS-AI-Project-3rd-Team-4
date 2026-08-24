@@ -8,10 +8,13 @@ from app.services.timeline import generate_timeline_items, is_overdue, recalcula
 
 
 class TestGenerateTimelineItems:
-    def test_returns_all_55_items_when_all_categories_active(self):
+    def test_returns_all_58_items_when_original_7_categories_active(self):
+        # 2026-08-24 버그 수정으로 MEETING 2개·GIFT 1개가 추가돼(few-shot 표본 보강) 이 7개
+        # 카테고리(ETC/HOMENEW 제외) 기준 총계가 55 → 58로 바뀌었다 — app/core/timeline_catalog.py
+        # 모듈 docstring "버그 수정 2" 참고.
         active = {"MEETING", "VENUE", "SDM", "GIFT", "HOMEWARE", "INVITATION", "HONEYMOON"}
         rows = generate_timeline_items(date(2027, 5, 15), active, None, date(2026, 8, 24))
-        assert len(rows) == 55
+        assert len(rows) == 58
 
     def test_universal_items_always_included_even_with_no_active_categories(self):
         rows = generate_timeline_items(date(2027, 5, 15), set(), None, date(2026, 8, 24))

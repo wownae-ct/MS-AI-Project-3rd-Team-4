@@ -85,13 +85,21 @@ def validate_personalization_draft(
     affected_domains: list[str],
     checklist_draft: list[dict] | None,
     timeline_draft: list[dict] | None,
-) -> list[str]:
+) -> dict[str, list[str]]:
     """affected_domains에 실제로 포함된 도메인만 검증한다 — route가 CHECKLIST만 골랐으면
     TIMELINE 기존 행은 이번 실행의 검증 대상이 아니다(온보딩만 다루는 이번 라운드는 항상
-    양쪽 다 포함되지만, 그래프 자체는 FIELD_UPDATED의 부분 선택도 지원하도록 일반적으로 짠다)."""
-    errors: list[str] = []
+    양쪽 다 포함되지만, 그래프 자체는 FIELD_UPDATED의 부분 선택도 지원하도록 일반적으로 짠다).
+
+    반환값은 {"CHECKLIST": [...], "TIMELINE": [...]} — affected_domains에 포함된 도메인만
+    키로 존재하고, 각 값은 그 도메인만의 에러 리스트다. **도메인별로 독립된 결과를 유지하는 게
+    이 함수의 핵심 계약**이다(2026-08-24 버그 수정: 이전엔 두 도메인 에러를 하나의 flat list로
+    합쳐 반환해서, 호출자가 "에러가 하나라도 있으면 전부 BLOCKED"로 판단할 수밖에 없었다 —
+    CHECKLIST만 실패해도 이미 정상 통과한 TIMELINE까지 폴백 카탈로그로 버려지는 버그로 이어졌다.
+    호출자(`app/personalization/graph.py::validate_node`)가 이 딕셔너리를 그대로 도메인별
+    validation_status로 변환해 두 도메인의 SUCCESS/BLOCKED 판정을 서로 독립적으로 유지한다."""
+    result: dict[str, list[str]] = {}
     if "CHECKLIST" in affected_domains:
-        errors += validate_checklist_items(active_categories, checklist_draft or [])
+        result["CHECKLIST"] = validate_checklist_items(active_categories, checklist_draft or [])
     if "TIMELINE" in affected_domains:
-        errors += validate_timeline_items(active_categories, timeline_draft or [])
-    return errors
+        result["TIMELINE"] = validate_timeline_items(active_categories, timeline_draft or [])
+    return result
