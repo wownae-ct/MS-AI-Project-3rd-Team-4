@@ -49,6 +49,7 @@ class ChatMessage(Base):
     __tablename__ = "chat_messages"
     __table_args__ = (
         CheckConstraint("role IN ('user','assistant')", name="ck_chat_messages_role"),
+        CheckConstraint("user_rating IN ('GOOD','BAD')", name="ck_chat_messages_user_rating"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -69,6 +70,9 @@ class ChatMessage(Base):
     verification: Mapped[dict | None] = mapped_column(JSONB)
     latency_ms: Mapped[int | None] = mapped_column(Integer)
     trace_ref: Mapped[str | None] = mapped_column(Text)
+    # 사용자가 답변에 남긴 GOOD/BAD. 재평가 시 덮어쓴다(마지막 값이 최종). trace_ref가 있으면
+    # 같은 값이 Langfuse Score로도 전송된다(app/services/chat.py::rate_chat_message).
+    user_rating: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )

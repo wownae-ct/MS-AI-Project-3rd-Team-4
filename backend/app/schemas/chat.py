@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.schemas.common import CategoryCode, ChatRole, ChatStage, SourceTier, Verdict
+from app.schemas.common import CategoryCode, ChatRating, ChatRole, ChatStage, SourceTier, Verdict
 
 
 class ChatSessionCreate(BaseModel):
@@ -41,6 +41,7 @@ class ChatMessageOut(BaseModel):
     content: str
     citations: list[CitationOut] | None = None
     verification: VerificationOut | None = None
+    user_rating: ChatRating | None = None
     created_at: datetime
 
 
@@ -50,6 +51,15 @@ class ChatMessageListOut(BaseModel):
 
 class ChatMessageCreate(BaseModel):
     content: str
+
+
+class ChatMessageRatingCreate(BaseModel):
+    rating: ChatRating
+
+
+class ChatMessageRatingOut(BaseModel):
+    message_id: str
+    rating: ChatRating
 
 
 # --- #22 SSE 이벤트 데이터 페이로드 (05_RAG_design.md §7) ---

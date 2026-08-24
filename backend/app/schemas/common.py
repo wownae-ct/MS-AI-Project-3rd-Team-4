@@ -55,6 +55,7 @@ MilestoneStatus = Literal["TODO", "DONE"]
 CaseType = Literal["GOOD", "BAD"]
 Verdict = Literal["SUPPORTED", "WEAK", "GENERAL"]
 ChatRole = Literal["user", "assistant"]
+ChatRating = Literal["GOOD", "BAD"]  # chat_messages.user_rating CHECK 제약과 1:1
 # 챗 그래프(app/rag/graph.py) 노드 이름과 1:1 — SSE stage 이벤트로 그대로 나간다.
 ChatStage = Literal["retrieve", "generate", "verify"]
 FeedbackTargetType = Literal["CHAT_MESSAGE", "CHECKLIST_ITEM", "TIMELINE_ITEM"]

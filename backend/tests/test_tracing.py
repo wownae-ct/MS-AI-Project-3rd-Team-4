@@ -11,6 +11,7 @@ from app.core.tracing import (
     get_langfuse_client,
     is_tracing_enabled,
     resolve_azure_openai_class,
+    score_trace,
     traced_span,
 )
 
@@ -77,3 +78,17 @@ class TestTracedSpan:
         with pytest.raises(ValueError, match="boom"):
             async with traced_span("test", settings=_make_settings()):
                 raise ValueError("boom")
+
+    async def test_disabled_accepts_tags_kwarg_without_error(self):
+        # 회귀 방지: tags=(작업 2, 질의 품질 태깅)가 비활성 경로에서도 예외 없이 무시돼야 한다.
+        async with traced_span(
+            "test", settings=_make_settings(), user_id="u-1", tags=["short_query"]
+        ) as trace:
+            assert trace.trace_id is None
+
+
+class TestScoreTrace:
+    def test_disabled_is_noop_without_error(self):
+        # 이 레포 기본 .env는 트레이싱 off(TestGetLangfuseClient 참고) — get_langfuse_client()가
+        # None을 반환해 score_trace가 아무 것도 하지 않고 조용히 리턴해야 한다.
+        score_trace("trace-1", name="user_rating", value=1.0)
