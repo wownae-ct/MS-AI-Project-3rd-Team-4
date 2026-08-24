@@ -52,15 +52,24 @@ _CHECKLIST_RULES = """웨딩 프로필(활성 카테고리·우선순위·스타
 - protected_items에 있는 항목은 다시 만들지 마세요(사용자가 이미 직접 수정함) — 중복 방지용
   참고만 하세요.
 - 활성 카테고리마다 최소 2개 이상 항목을 만드세요.
-- category_code는 활성 카테고리 안에서만 쓰세요."""
+- category_code는 활성 카테고리 안에서만 쓰세요.
+- 아래 few-shot은 형식·수준을 보여주는 예시일 뿐입니다. 그대로 베끼지 말고, 이 웨딩의 예산
+  규모·취향·우선순위·primary_goals에 맞춰 제목·내용을 실제로 다르게 쓰세요. 예산이나
+  취향(taste_preference/venue_priority/sdm_priority)에 비춰 의미가 있다면 few-shot에 없는
+  항목을 새로 만들어도 됩니다."""
 
-_TIMELINE_RULES = """아래 표준 55항목 카탈로그(few-shot)를 참고해 이 커플에게 맞는 타임라인을 만드세요.
+_TIMELINE_RULES = """아래 표준 카탈로그(few-shot)를 참고해 이 커플에게 맞는 타임라인을 만드세요.
 
 - 활성 카테고리에 해당하는 항목만 포함하세요. 비활성 카테고리 항목은 만들지 마세요.
 - category_code가 필요 없는 범용 항목(혼인신고·본식 등)은 null로 두세요.
 - default_dday_offset_days는 본식 기준 며칠 전(음수)/후(양수)인지 정수로, -400~60 범위
   안에서만 쓰세요.
-- protected_items는 다시 만들지 마세요."""
+- protected_items는 다시 만들지 마세요.
+- **few-shot을 그대로 베끼지 마세요.** few-shot은 표준적인 일정 흐름과 타이밍 감각을 보여주는
+  참고 자료일 뿐, 정답이 아닙니다. 이 웨딩의 예산 규모·취향(taste_preference)·우선순위·
+  primary_goals에 맞춰 항목 제목이나 타이밍(default_dday_offset_days)을 실제로 조정하고,
+  필요하면 few-shot에 없는 항목을 프로필에 맞게 추가하세요. 활성 카테고리 커버리지·오프셋
+  범위 같은 구조적 제약만 지키면 되고, few-shot과 내용이 대부분 동일할 필요는 전혀 없습니다."""
 
 _CHECKLIST_OUTPUT_SCHEMA = """체크리스트 항목은 각각 이 필드만 채우세요(그 외 필드는 응답에 포함하지
 마세요 — group_label/status는 서비스 레이어가 결정론적으로 채웁니다):
@@ -95,9 +104,28 @@ def _build_checklist_few_shot() -> str:
 
 
 def _build_timeline_few_shot() -> str:
-    lines = ["[타임라인 few-shot — 표준 55항목 카탈로그]"]
+    """VENUE/SDM/범용(category_code=None) 항목은 전체 그대로 보여준다 — 이 항목들이 전체
+    일정의 시간축 뼈대를 이루므로 줄이면 LLM이 타이밍 감각을 잃는다. 반면 MOCKUP 7개
+    카테고리는 카테고리당 _MOCKUP_FEW_SHOT_SAMPLE_SIZE개로 제한한다(2026-08-24 버그 수정:
+    원래 카탈로그 68항목 전체를 그대로 보여줘서, 서로 다른 프로필의 웨딩 두 건이 67개 중
+    66개가 완전히 동일한 타임라인을 받는 사례가 실계정 재현으로 확인됐다 — LLM이 "그대로
+    베낄 답"을 통째로 받으면 개인화할 유인이 사실상 없어지는 문제. `_TIMELINE_RULES`의
+    명시적 "베끼지 마세요" 지시와 함께 적용한다). 카탈로그 순서(연대순)는 그대로 유지해
+    시간 흐름 감각이 깨지지 않게 한다."""
+    lines = [
+        (
+            "[타임라인 few-shot — VENUE/SDM/범용 항목 전체 + 나머지 카테고리 대표 예시 "
+            f"{_MOCKUP_FEW_SHOT_SAMPLE_SIZE}개씩]"
+        )
+    ]
+    mockup_shown_count: dict[str, int] = {}
     for item in TIMELINE_CATALOG:
         category_label = item.category_code or "범용"
+        if item.category_code in _MOCKUP_CATEGORY_CODES:
+            already_shown = mockup_shown_count.get(item.category_code, 0)
+            if already_shown >= _MOCKUP_FEW_SHOT_SAMPLE_SIZE:
+                continue
+            mockup_shown_count[item.category_code] = already_shown + 1
         lines.append(f"- [{category_label}] {item.title} (D{item.dday_offset_days:+d})")
     return "\n".join(lines)
 
