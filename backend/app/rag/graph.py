@@ -17,6 +17,12 @@ writer가 기본 no-op이라(langgraph.runtime.Runtime.stream_writer 기본값) 
 용도에도 그대로 쓸 수 있다 — app/services/chat.py의 실시간 SSE 스트리밍과 이 그래프가 같은 코드
 경로를 공유한다(과거엔 두 곳에 로직이 중복돼 있었음).
 
+세 노드 모두 진입 직후 {"type": "stage", "stage": "retrieve"/"generate"/"verify"}를 먼저
+흘려보낸다 — 토큰과 같은 writer() 채널(stream_mode="custom")을 타므로 그래프 토폴로지나
+State 스키마는 그대로다. 최종 결과(answer/context/verdict)엔 전혀 영향 없는 순수 UX용
+신호로, app/services/chat.py가 SSE stage 이벤트로 그대로 전달한다. retrieve_node는 재시도
+호출이면 이 stage 이벤트보다 먼저 {"type": "retry", "reason": ...}를 한 번 더 흘려보낸다.
+
 retrieve_node가 재시도 여부를 판단할 때 state["verdict"]가 아니라 state.get("verdict")를 쓴다
 — run_rag_eval.py가 verdict/retry_count 키 없이 불완전한 초기 state로 graph.ainvoke()를
 호출하는데, LangGraph는 한 번도 안 쓰인 채널 키를 아예 안 넘겨줘서(read_channels(skip_empty=True))
@@ -70,14 +76,20 @@ class ChatState(TypedDict):
 # 그대로 두고, 그 판정 사유를 근거로 LLM이 재구성한 검색어로만 다시 검색한다(CRAG).
 async def retrieve_node(state: ChatState, config: RunnableConfig) -> dict:
     is_retry = state.get("verdict") in ("WEAK", "GENERAL")
+    writer = get_stream_writer()
+    if is_retry:
+        # 프론트에 "1차 답변은 버리고 새로 시작한다"를 알리는 신호 — stage/token 이벤트와
+        # 같은 커스텀 스트림 채널을 탄다(app/services/chat.py가 event: retry로 전달). stage
+        # 이벤트보다 먼저 보내서, 프론트가 이 스트림이 재시도라는 걸 곧바로 알 수 있게 한다.
+        writer({"type": "retry", "reason": state["verification_reason"]})
+    # 노드 진입 직후 곧바로 "지금 이 단계다"를 흘려보낸다 — generate_node가 이미 쓰는
+    # get_stream_writer() 패턴 그대로, 노드가 실제로 뭘 하기 전에 먼저 알린다.
+    writer({"type": "stage", "stage": "retrieve"})
     session = config["configurable"]["session"]
     settings: Settings = config["configurable"].get("settings") or get_settings()
     search_query = state["query"]
     async with traced_span("chat.retrieve", settings=settings, input=state["query"]):
         if is_retry:
-            # 프론트에 "1차 답변은 버리고 새로 시작한다"를 알리는 신호 — stage/token 이벤트와
-            # 같은 커스텀 스트림 채널을 탄다(app/services/chat.py가 event: retry로 전달).
-            get_stream_writer()({"type": "retry", "reason": state["verification_reason"]})
             client = get_azure_openai_client(settings)
             search_query = await reformulate_query(
                 client, settings, state["query"], state["verification_reason"]
@@ -95,6 +107,7 @@ async def retrieve_node(state: ChatState, config: RunnableConfig) -> dict:
 async def generate_node(state: ChatState, config: RunnableConfig) -> dict:
     # 스트리밍 중이 아니면(배치 실행 등) writer는 그냥 아무 일도 안 하는 함수가 된다.
     writer = get_stream_writer()
+    writer({"type": "stage", "stage": "generate"})
     settings: Settings = config["configurable"].get("settings") or get_settings()
 
     async with traced_span("chat.generate", settings=settings, input=state["query"]):
@@ -124,6 +137,7 @@ async def generate_node(state: ChatState, config: RunnableConfig) -> dict:
 # ③ verify: 방금 쓴 답변이 근거 자료로 실제 뒷받침되는지 AI에게 한 번 더 물어본다("셀프 채점").
 #    근거가 없으면(0건 검색) 굳이 다시 물어볼 것도 없이 곧바로 GENERAL로 확정.
 async def verify_node(state: ChatState, config: RunnableConfig) -> dict:
+    get_stream_writer()({"type": "stage", "stage": "verify"})
     settings: Settings = config["configurable"].get("settings") or get_settings()
     async with traced_span("chat.verify", settings=settings, input=state["answer"]):
         if not state["context"]:
