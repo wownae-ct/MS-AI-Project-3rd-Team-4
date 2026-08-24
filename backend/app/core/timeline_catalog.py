@@ -1,5 +1,5 @@
 """타임라인 결정론적 카탈로그 — docs/wedding/ing/ds7-timeline-seed-data-prep.md 완성본 55항목 +
-ETC/HOMENEW 신규 저작 10항목(2026-08-24 버그 수정, 아래 참고).
+ETC/HOMENEW 신규 저작 10항목 + MEETING/GIFT 표본 보강 3항목(2026-08-24 버그 수정 2건, 아래 참고).
 
 v4.0에서 이 상수는 두 가지 역할을 겸한다: (1) `13_personalization_router_agent_design.md` §2가
 정의하는 개인화 라우터 에이전트의 `validate` 실패 시 타임라인 폴백, (2) 개인화 라우터 에이전트
@@ -21,7 +21,15 @@ phase_label(구 "D-11M" 라벨)은 컬럼으로 저장하지 않는다 — 프�
 없습니다"). `CHECKLIST_FALLBACK_CATALOG`가 24→59항목 확장으로 이미 고친 것과 같은 문제라 같은
 패턴(CONSENSUS 항목, 카테고리당 5개)으로 대응한다. 새 항목은 기존 55항목을 재배치하지 않고
 끝에 추가했다(display_order 56~65) — 실제 표시 순서는 API가 `target_date` 기준으로 정렬하므로
-(`app/services/timeline.py::list_timeline_items`) 파일 내 물리적 위치는 기능에 영향 없다."""
+(`app/services/timeline.py::list_timeline_items`) 파일 내 물리적 위치는 기능에 영향 없다.
+
+**2026-08-24 버그 수정 2**: 위 수정을 실계정으로 재검증하는 중 별개의 문제가 드러났다 —
+`_build_timeline_few_shot()`는 이 카탈로그 전체를 그대로 few-shot으로 흘려보내는데, 원래
+MEETING이 1개(display_order 2)·GIFT가 2개(11, 18)뿐이라 노출되는 예시가 너무 적어 LLM이
+두 카테고리를 통째로 누락시키는 사례가 나왔다(ETC/HOMENEW가 0개였던 것의 완화판 — 개수가
+0은 아니지만 표본이 적어 확률적으로 계속 재현됨). MEETING 2개·GIFT 1개를 추가해 각각 3개로
+맞췄다(display_order 66~68) — `CHECKLIST_FALLBACK_CATALOG`의 MOCKUP 카테고리당 5개 기준엔
+못 미치지만, few-shot 노출 표본을 늘려 누락 확률을 낮추는 게 목적이라 3개로 충분하다고 판단."""
 
 from dataclasses import dataclass
 
@@ -122,4 +130,11 @@ TIMELINE_CATALOG: tuple[TimelineTemplateItem, ...] = (
     TimelineTemplateItem("ETC", "업체별 담당자 연락처 정리", -14, 63),
     TimelineTemplateItem("ETC", "우천 등 돌발상황 대비 대안 확인", -7, 64),
     TimelineTemplateItem("ETC", "계약서·영수증 자료 최종 정리", -1, 65),
+    # ===== MEETING/GIFT few-shot 표본 보강(2026-08-24, 별도 버그 수정) — 원래 MEETING 1개/
+    # GIFT 2개뿐이라 app/personalization/prompts.py::_build_timeline_few_shot()(카탈로그 전체를
+    # 그대로 few-shot으로 씀)에 노출되는 예시가 너무 적어, LLM이 이 두 카테고리를 통째로 누락시켜
+    # validate의 카테고리 커버리지 규칙에 걸리는 사례가 실계정 재현으로 확인됐다. =====
+    TimelineTemplateItem("MEETING", "상견례 날짜·장소 조율", -365, 66),
+    TimelineTemplateItem("MEETING", "상견례 후 준비 로드맵 공유", -350, 67),
+    TimelineTemplateItem("GIFT", "예물 각인·사이즈 최종 확인", -120, 68),
 )
