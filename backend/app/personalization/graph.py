@@ -86,16 +86,21 @@ async def generate_node(state: PersonalizationState, config: RunnableConfig) -> 
 
 
 # ③ validate: 순수 코드, LLM 호출 없음(§1-4) — app/personalization/validation.py의 4규칙을
-# 도메인별 독립 적용한다.
+# 도메인별 독립 적용한다. validation_status/validation_errors는 도메인별 딕셔너리다
+# (2026-08-24 버그 수정 — 이전엔 단일 status라 한쪽 도메인만 실패해도 둘 다 BLOCKED
+# 폴백됐다. app/services/personalization.py가 이 딕셔너리를 도메인별로 독립 적용한다).
 async def validate_node(state: PersonalizationState, config: RunnableConfig) -> dict:
     active_categories = set(state["profile"].get("active_categories", []))
-    errors = validate_personalization_draft(
+    domain_errors = validate_personalization_draft(
         active_categories,
         state["affected_domains"],
         state["checklist_draft"],
         state["timeline_draft"],
     )
-    return {"validation_status": "BLOCKED" if errors else "SUCCESS", "validation_errors": errors}
+    validation_status = {
+        domain: "BLOCKED" if errors else "SUCCESS" for domain, errors in domain_errors.items()
+    }
+    return {"validation_status": validation_status, "validation_errors": domain_errors}
 
 
 def build_graph() -> CompiledStateGraph:

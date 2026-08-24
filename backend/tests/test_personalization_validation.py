@@ -61,13 +61,15 @@ class TestCategoryCoverage:
         ]
 
         # Act
-        errors = validate_personalization_draft(
+        result = validate_personalization_draft(
             active_categories, ["CHECKLIST", "TIMELINE"], checklist_draft, timeline_draft
         )
 
-        # Assert: TIMELINE 쪽만 실패해야 하고, CHECKLIST는 언급되지 않아야 한다(도메인별 독립).
-        assert any("TIMELINE" in e and "SDM" in e for e in errors)
-        assert not any(e.startswith("CHECKLIST") for e in errors)
+        # Assert: 반환값 자체가 도메인별로 분리돼 있어야 한다(2026-08-24 버그 회귀 방지) — TIMELINE
+        # 키에만 에러가 있고, CHECKLIST 키는 빈 리스트여야 한다. 호출자가 이걸 flat list로 합쳐서
+        # "하나라도 있으면 전부 BLOCKED" 판단을 할 수 없는 구조라는 게 이 테스트의 핵심.
+        assert any("SDM" in e for e in result["TIMELINE"])
+        assert result["CHECKLIST"] == []
 
 
 class TestDdayOffsetRange:
@@ -123,11 +125,13 @@ class TestValidatePersonalizationDraft:
         checklist_draft = [{"category_code": "VENUE", "title": "체크1"}]
         timeline_draft = None
 
-        errors = validate_personalization_draft(
+        result = validate_personalization_draft(
             active_categories, ["CHECKLIST"], checklist_draft, timeline_draft
         )
 
-        assert not errors
+        # affected_domains에 없는 TIMELINE은 반환값에 키 자체가 없어야 한다.
+        assert result == {"CHECKLIST": []}
+        assert "TIMELINE" not in result
 
     def test_success_case_with_both_domains(self):
         active_categories = {"VENUE", "SDM"}
@@ -140,8 +144,8 @@ class TestValidatePersonalizationDraft:
             {"category_code": "SDM", "title": "타임2", "default_dday_offset_days": -270},
         ]
 
-        errors = validate_personalization_draft(
+        result = validate_personalization_draft(
             active_categories, ["CHECKLIST", "TIMELINE"], checklist_draft, timeline_draft
         )
 
-        assert not errors
+        assert result == {"CHECKLIST": [], "TIMELINE": []}
