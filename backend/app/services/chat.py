@@ -154,7 +154,14 @@ async def stream_chat_response(
             except Exception as exc:  # noqa: BLE001 — LLM 업스트림 실패는 종류를 가리지 않고 알려야 함
                 yield _sse("error", ErrorEventData(code="UPSTREAM_LLM_ERROR", message=str(exc)))
                 return
-            trace.update(output=final_state["answer"], metadata={"verdict": final_state["verdict"]})
+            trace.update(
+                output=final_state["answer"],
+                metadata={
+                    "verdict": final_state["verdict"],
+                    "retry_count": final_state["retry_count"],
+                    "retried": final_state["retry_count"] > 0,
+                },
+            )
 
         # 루프가 끝난 시점엔 final_state에 검색 근거(context)·최종 답변·검증 결과가 전부 들어있다.
         citations = [
