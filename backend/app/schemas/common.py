@@ -55,6 +55,7 @@ MilestoneStatus = Literal["TODO", "DONE"]
 CaseType = Literal["GOOD", "BAD"]
 Verdict = Literal["SUPPORTED", "WEAK", "GENERAL"]
 ChatRole = Literal["user", "assistant"]
+ChatRating = Literal["GOOD", "BAD"]  # chat_messages.user_rating CHECK 제약과 1:1
 FeedbackTargetType = Literal["CHAT_MESSAGE", "CHECKLIST_ITEM", "TIMELINE_ITEM"]
 # "편향/차별적"은 슬래시 포함 표기 그대로 — 04_DB_schema.sql/03_API_spec.md 둘 다 이 형태.
 FeedbackReasonCategory = Literal["부정확함", "부적절함", "도움안됨", "편향/차별적", "기타"]

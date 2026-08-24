@@ -22,6 +22,8 @@ from app.schemas.chat import (
     ChatMessageCreate,
     ChatMessageListOut,
     ChatMessageOut,
+    ChatMessageRatingCreate,
+    ChatMessageRatingOut,
     ChatSessionCreate,
     ChatSessionOut,
     CitationOut,
@@ -33,6 +35,7 @@ from app.services.chat import (
 from app.services.chat import (
     get_chat_session,
     list_chat_messages,
+    rate_chat_message,
     stream_chat_response,
 )
 
@@ -46,6 +49,7 @@ def _message_to_out(message: ChatMessage) -> ChatMessageOut:
         content=message.content,
         citations=[CitationOut(**c) for c in message.citations] if message.citations else None,
         verification=VerificationOut(**message.verification) if message.verification else None,
+        user_rating=message.user_rating,
         created_at=message.created_at,
     )
 
@@ -84,7 +88,24 @@ async def send_chat_message(
 ) -> StreamingResponse:
     await get_chat_session(session, wedding.id, session_id)  # 존재/소유 아니면 스트림 전 404
     return StreamingResponse(
-        stream_chat_response(session_id, wedding.id, payload),
+        stream_chat_response(
+            session_id, wedding.id, owner_user_id=wedding.owner_user_id, payload=payload
+        ),
         media_type="text/event-stream",
         headers={"X-Accel-Buffering": "no"},
     )
+
+
+@router.post(
+    "/chat/sessions/{session_id}/messages/{message_id}/feedback",
+    response_model=ChatMessageRatingOut,
+)
+async def rate_chat_message_route(
+    session_id: UUID,
+    message_id: UUID,
+    payload: ChatMessageRatingCreate,
+    wedding: Wedding = Depends(get_current_wedding),  # noqa: B008
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ChatMessageRatingOut:
+    message = await rate_chat_message(session, wedding.id, session_id, message_id, payload.rating)
+    return ChatMessageRatingOut(message_id=str(message.id), rating=message.user_rating)

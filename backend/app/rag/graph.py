@@ -28,6 +28,7 @@ from app.rag.generation import (
     build_chat_messages,
     verify_answer,
 )
+from app.rag.query_profile import profile_query
 from app.rag.retrieval import RetrievedChunk, retrieve
 
 
@@ -50,7 +51,15 @@ class ChatState(TypedDict):
 async def retrieve_node(state: ChatState, config: RunnableConfig) -> dict:
     session = config["configurable"]["session"]
     settings: Settings = config["configurable"].get("settings") or get_settings()
-    async with traced_span("chat.retrieve", settings=settings, input=state["query"]):
+    async with traced_span(
+        "chat.retrieve",
+        settings=settings,
+        input=state["query"],
+        metadata={
+            "category_code": state["category_code"] or "ALL",
+            **profile_query(state["query"]).as_metadata(),
+        },
+    ):
         chunks = await retrieve(session, state["query"], state["category_code"], settings)
         return {"context": chunks}
 

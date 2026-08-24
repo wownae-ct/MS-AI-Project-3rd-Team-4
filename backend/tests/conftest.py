@@ -8,7 +8,7 @@ pgvector/pgvector 서비스 컨테이너로 매 실행마다 빈 DB에 마이그
 
 from collections.abc import AsyncIterator, Callable, Coroutine
 from datetime import date
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -17,7 +17,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.db import get_session_factory
 from app.main import app
-from app.models import PriceBenchmark
+from app.models import ChatMessage, PriceBenchmark
 
 API_PREFIX = "/api/v1"
 
@@ -133,6 +133,48 @@ async def signed_up_client(client: AsyncClient) -> AsyncClient:
 async def wedding_client(client: AsyncClient) -> AsyncClient:
     """웨딩 종속 엔드포인트(chat 등) 스모크 테스트가 공유하는 단일 인증 클라이언트."""
     return await _signup_and_create_wedding(client)
+
+
+@pytest.fixture
+async def make_assistant_message() -> AsyncIterator[
+    Callable[..., Coroutine[None, None, tuple[str, str]]]
+]:
+    """(session_id, message_id) 문자열 쌍을 만들어 준다. 세션은 실제 API(POST /chat/sessions)로
+    만들어 소유권 배선을 그대로 타게 하고, 메시지 행만 직접 insert한다 — #29 실LLM 스트리밍은
+    비용/지연 때문에 자동 스모크 대상이 아니라(test_smoke.py TestChatSessionsSmoke docstring)
+    assistant 메시지를 API 호출만으로 만들 방법이 없기 때문. 직접 insert 자체는
+    total_budget_benchmark 픽스처와 동일한 패턴이다.
+
+    테스트가 끝나면 만든 메시지 행만 지운다(세션/유저/웨딩은 다른 픽스처들과 같은 컨벤션대로
+    남겨둔다)."""
+    created_ids: list[UUID] = []
+
+    async def _make(
+        ac: AsyncClient, *, role: str = "assistant", trace_ref: str | None = None
+    ) -> tuple[str, str]:
+        session_response = await ac.post("/chat/sessions", json={"category_code": "VENUE"})
+        session_id = session_response.json()["id"]
+
+        async with get_session_factory()() as session:
+            message = ChatMessage(
+                session_id=session_id,
+                role=role,
+                content="스모크 테스트 메시지",
+                trace_ref=trace_ref,
+            )
+            session.add(message)
+            await session.commit()
+            await session.refresh(message)
+            created_ids.append(message.id)
+            message_id = str(message.id)
+
+        return session_id, message_id
+
+    yield _make
+
+    async with get_session_factory()() as session:
+        await session.execute(delete(ChatMessage).where(ChatMessage.id.in_(created_ids)))
+        await session.commit()
 
 
 @pytest.fixture
