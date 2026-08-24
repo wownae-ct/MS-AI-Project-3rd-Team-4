@@ -8,10 +8,10 @@ from app.core.timeline_catalog import TIMELINE_CATALOG
 
 # CHECKLIST_FALLBACK_CATALOG가 이제 VENUE/SDM(OFFICIAL 24항목) + 나머지 7개 MOCKUP 카테고리
 # (CONSENSUS, 카테고리당 5항목)를 전부 커버한다(00_BASELINE.md §0-2 Should "MOCKUP 7개 카테고리
-# 얇은 시드"). few-shot에는 VENUE/SDM 24항목 전체 + MOCKUP 카테고리별 대표 예시 1개씩만 쓴다
-# (설계 문서 §1-3 "대표 예시" — 59항목 전체 전사는 few-shot 취지에 비해 과함). 대표 예시를
-# 하드코딩 문자열로 따로 들고 있으면 카탈로그가 바뀔 때 드리프트가 나므로 카탈로그에서 매번
-# 동적으로 뽑는다.
+# 얇은 시드"). few-shot에는 VENUE/SDM 24항목 전체 + MOCKUP 카테고리별 대표 예시
+# _MOCKUP_FEW_SHOT_SAMPLE_SIZE개씩 쓴다(설계 문서 §1-3 "대표 예시" — 59항목 전체 전사는
+# few-shot 취지에 비해 과함). 대표 예시를 하드코딩 문자열로 따로 들고 있으면 카탈로그가 바뀔 때
+# 드리프트가 나므로 카탈로그에서 매번 동적으로 뽑는다.
 _MOCKUP_CATEGORY_CODES: tuple[str, ...] = (
     "MEETING",
     "GIFT",
@@ -21,6 +21,12 @@ _MOCKUP_CATEGORY_CODES: tuple[str, ...] = (
     "HOMENEW",
     "ETC",
 )
+
+# 카테고리당 대표 예시 1개(next() 한 건)만 주던 원래 설계는 그 카테고리를 LLM이 확률적으로
+# 통째로 누락시키는 위험을 안고 있었다(2026-08-24 버그 수정 — MEETING/GIFT가 실계정에서 실제로
+# 이렇게 BLOCKED됨, app/core/timeline_catalog.py 모듈 docstring "버그 수정 2" 참고). 카탈로그가
+# MOCKUP 카테고리당 5개씩 있으니 3개까지 늘려 누락 확률을 낮춘다.
+_MOCKUP_FEW_SHOT_SAMPLE_SIZE = 3
 
 ROUTE_PROMPT_TEMPLATE = """당신은 메리맵의 개인화 콘텐츠 라우터입니다. 어떤 필드가 바뀌었는지 보고
 체크리스트(CHECKLIST)·타임라인(TIMELINE) 중 실제로 다시 만들어야 하는 도메인만 고르세요.
@@ -68,19 +74,23 @@ _TIMELINE_OUTPUT_SCHEMA = """타임라인 항목은 각각 이 필드만 채우�
 
 def _build_checklist_few_shot() -> str:
     lines = [
-        "[체크리스트 few-shot — VENUE/SDM 표준약관 근거 항목 전체 + 나머지 카테고리 대표 예시 1개씩]"
+        (
+            "[체크리스트 few-shot — VENUE/SDM 표준약관 근거 항목 전체 + 나머지 카테고리 대표 예시 "
+            f"{_MOCKUP_FEW_SHOT_SAMPLE_SIZE}개씩]"
+        )
     ]
     for item in CHECKLIST_FALLBACK_CATALOG:
         if item.category_code in ("VENUE", "SDM"):
             lines.append(f"- [{item.category_code}] ({item.item_type}) {item.title}")
     for category_code in _MOCKUP_CATEGORY_CODES:
-        representative = next(
+        representatives = [
             item for item in CHECKLIST_FALLBACK_CATALOG if item.category_code == category_code
-        )
-        lines.append(
-            f"- [{representative.category_code}] ({representative.item_type}) "
-            f"{representative.title}"
-        )
+        ][:_MOCKUP_FEW_SHOT_SAMPLE_SIZE]
+        for representative in representatives:
+            lines.append(
+                f"- [{representative.category_code}] ({representative.item_type}) "
+                f"{representative.title}"
+            )
     return "\n".join(lines)
 
 
