@@ -3,6 +3,8 @@ verbatim(규칙 원문 그대로), few-shot만 이 모듈이 조립한다. `app/
 프롬프트를 그래프·SSE 스트리밍 두 소비처가 공유하듯, 이 모듈도 route_node/generate_node 두 곳이
 가져다 쓴다 — 프롬프트가 노드 안에 흩어지면 드리프트가 생기기 쉽다."""
 
+import json
+
 from app.core.checklist_catalog import CHECKLIST_FALLBACK_CATALOG
 from app.core.timeline_catalog import TIMELINE_CATALOG
 
@@ -61,8 +63,9 @@ _CHECKLIST_RULES = """웨딩 프로필(활성 카테고리·우선순위·스타
 _TIMELINE_RULES = """아래 표준 카탈로그(few-shot)를 참고해 이 커플에게 맞는 타임라인을 만드세요.
 
 - 활성 카테고리에 해당하는 항목만 포함하세요. 비활성 카테고리 항목은 만들지 마세요.
-- category_code가 필요 없는 범용 항목(혼인신고·본식 등)은 JSON null로 두세요 — "범용" 같은
-  한글 단어를 category_code 값으로 쓰지 마세요, ENUM에 없는 값이라 오류가 납니다.
+- category_code가 필요 없는 범용 항목(혼인신고·본식 등)은 JSON의 따옴표 없는 null 타입으로
+  두세요. "null"이라는 문자열이든 다른 어떤 한글/영문 단어든, category_code 자리에 텍스트
+  값을 쓰면 ENUM에 없는 값이라 오류가 납니다 — 아래 few-shot의 JSON 예시를 그대로 참고하세요.
 - default_dday_offset_days는 본식 기준 며칠 전(음수)/후(양수)인지 정수로, -400~60 범위
   안에서만 쓰세요.
 - protected_items는 다시 만들지 마세요.
@@ -114,29 +117,34 @@ def _build_timeline_few_shot() -> str:
     명시적 "베끼지 마세요" 지시와 함께 적용한다). 카탈로그 순서(연대순)는 그대로 유지해
     시간 흐름 감각이 깨지지 않게 한다.
 
-    범용 항목의 category_code 표기는 "category_code=null"로 스키마의 JSON null 표기와 똑같이
-    맞춘다 — 사람이 읽기 편하라고 "범용" 같은 한글 플레이스홀더를 썼다가, LLM이 그 라벨 자체를
-    실제 category_code 값으로 착각해 "category_code": "범용"이라는 존재하지 않는 문자열을
-    그대로 출력하는 회귀가 실제로 발생했다(2026-08-24, few-shot 축소+"베끼지 마세요" 지시 추가
-    직후 재현). 실제 카테고리도 같은 "category_code=X" 형식으로 통일해 예시 표기 자체가
-    출력 필드명과 값의 관계를 직접 보여주게 한다."""
-    lines = [
-        (
-            "[타임라인 few-shot — VENUE/SDM/null 항목 전체 + 나머지 카테고리 대표 예시 "
-            f"{_MOCKUP_FEW_SHOT_SAMPLE_SIZE}개씩]"
-        )
-    ]
+    **출력을 사람이 읽는 불릿 텍스트가 아니라 실제 출력 스키마와 동일한 JSON 한 줄씩으로
+    보여준다**(2026-08-24 버그 수정 3 — 이전 두 시도, "범용" 라벨 → "null" 라벨, 둘 다 같은
+    클래스의 버그로 재발했다: null 항목을 사람이 읽는 텍스트 라벨(`[범용]`/`(category_code=null)`)
+    로 표시하면, 라벨 단어를 뭘로 바꾸든 LLM이 그 라벨을 "category_code 자리에 넣을 문자열
+    값"으로 착각해 `"category_code": "범용"`/`"category_code": "null"`(둘 다 존재하지 않는
+    ENUM 값, 후자는 파이썬 None이 아니라 4글자 문자열)을 그대로 출력했다 — 실계정 재현으로
+    2연속 확인됨. 텍스트 라벨 방식 자체가 근본 원인이라, `json.dumps`로 실제 JSON null
+    토큰(따옴표 없음)을 그대로 보여주는 방식으로 바꿔 이 클래스의 버그를 구조적으로 차단한다
+    — LLM이 "이 예시를 그대로 따라 쓰면" 자동으로 올바른 JSON null이 나온다."""
+    header = (
+        "[타임라인 few-shot — 실제 출력과 동일한 JSON 한 줄씩. VENUE/SDM/null 항목 전체 + "
+        f"나머지 카테고리 대표 예시 {_MOCKUP_FEW_SHOT_SAMPLE_SIZE}개씩. category_code가 "
+        "null인 항목은 예시처럼 따옴표 없는 JSON null 그대로 쓰세요.]"
+    )
+    lines = [header]
     mockup_shown_count: dict[str, int] = {}
     for item in TIMELINE_CATALOG:
-        category_label = item.category_code or "null"
         if item.category_code in _MOCKUP_CATEGORY_CODES:
             already_shown = mockup_shown_count.get(item.category_code, 0)
             if already_shown >= _MOCKUP_FEW_SHOT_SAMPLE_SIZE:
                 continue
             mockup_shown_count[item.category_code] = already_shown + 1
-        lines.append(
-            f"- (category_code={category_label}) {item.title} (D{item.dday_offset_days:+d})"
-        )
+        entry = {
+            "category_code": item.category_code,
+            "title": item.title,
+            "default_dday_offset_days": item.dday_offset_days,
+        }
+        lines.append(json.dumps(entry, ensure_ascii=False))
     return "\n".join(lines)
 
 
