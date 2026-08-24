@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.schemas.common import CategoryCode, ChatRating, ChatRole, SourceTier, Verdict
+from app.schemas.common import CategoryCode, ChatRating, ChatRole, ChatStage, SourceTier, Verdict
 
 
 class ChatSessionCreate(BaseModel):
@@ -67,6 +67,24 @@ class ChatMessageRatingOut(BaseModel):
 
 class TokenEventData(BaseModel):
     delta: str
+
+
+class StageEventData(BaseModel):
+    """그래프(retrieve→generate→verify) 노드 진입 시점마다 오는 진행 단계 알림 — 최종 결과
+    (answer/context/verdict)엔 영향 없는 순수 UX용 이벤트라, 프론트가 이 이벤트를 무시해도
+    token/citations/verification/done은 그대로 온다."""
+
+    stage: ChatStage
+
+
+class RetryEventData(BaseModel):
+    """CRAG 조건부 재검색 루프(2026-08-24 결정, app/rag/graph.py) — verify가 WEAK/GENERAL
+    판정을 내려 재구성된 질의로 retrieve를 다시 돌 때 딱 한 번(최대 1회) 발생한다. 이 이벤트를
+    받으면 그 시점까지 스트리밍된 답변(token 누적분)은 버리고 새로 시작해야 한다 — 뒤이어 오는
+    token들은 새 답변의 처음부터다. 완전 additive라 무시해도 기존 token/citations/verification/
+    done 흐름은 깨지지 않는다(재시도 시 1차+2차 답변이 이어붙어 보이는 어색함만 생김)."""
+
+    reason: str
 
 
 class CitationsEventData(BaseModel):
