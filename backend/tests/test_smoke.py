@@ -98,6 +98,186 @@ class TestChatSessionsSmoke:
 
         assert response.status_code == 401
 
+    async def test_send_message_passes_owner_user_id_to_tracing_entrypoint(
+        self, wedding_client, monkeypatch
+    ):
+        """실LLM 스트리밍은 자동 스모크 대상이 아니므로(클래스 docstring) 서비스 진입점만
+        기록용으로 바꿔치기해 라우터→서비스 인자 배선을 검증한다 — DB/외부 API는 모킹하지
+        않는다(웨딩/세션/유저 id는 전부 실제 API로 만들고 읽는다). app/routers/chat.py가
+        `from app.services.chat import stream_chat_response`로 심볼을 직접 import하므로
+        app.routers.chat 네임스페이스를 패치해야 한다."""
+        recorded: list[tuple[tuple, dict]] = []
+
+        def _recording_stream(*args, **kwargs):
+            recorded.append((args, kwargs))
+
+            async def _empty_stream():
+                return
+                yield  # pragma: no cover
+
+            return _empty_stream()
+
+        monkeypatch.setattr("app.routers.chat.stream_chat_response", _recording_stream)
+
+        me = await wedding_client.get("/auth/me")
+        created = await wedding_client.post("/chat/sessions", json={"category_code": "VENUE"})
+        session_id = created.json()["id"]
+
+        response = await wedding_client.post(
+            f"/chat/sessions/{session_id}/messages", json={"content": "안녕하세요"}
+        )
+
+        assert response.status_code == 200
+        assert len(recorded) == 1
+        _, kwargs = recorded[0]
+        assert str(kwargs["owner_user_id"]) == me.json()["id"]
+
+
+class TestChatMessageRatingSmoke:
+    """작업 3 — POST /chat/sessions/{id}/messages/{message_id}/feedback. 실LLM 스트리밍이
+    필요 없어 make_assistant_message 픽스처로 assistant 메시지 행을 직접 만들어 쓴다(#29와
+    동일하게 실LLM 경로는 자동 스모크 대상이 아님). trace_ref가 있는 케이스는 실제로 Langfuse
+    Score API를 호출한다(이 프로젝트 컨벤션: 가짜 점수를 스크립트로 밀어넣지 않고 실제 엔드포인트
+    호출로만 검증)."""
+
+    async def test_rate_own_assistant_message_returns_200(
+        self, wedding_client, make_assistant_message
+    ):
+        session_id, message_id = await make_assistant_message(
+            wedding_client, trace_ref=f"smoke-trace-{uuid4().hex}"
+        )
+
+        response = await wedding_client.post(
+            f"/chat/sessions/{session_id}/messages/{message_id}/feedback",
+            json={"rating": "GOOD"},
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"message_id": message_id, "rating": "GOOD"}
+
+    async def test_rating_is_overwritten_on_second_call(
+        self, wedding_client, make_assistant_message
+    ):
+        session_id, message_id = await make_assistant_message(
+            wedding_client, trace_ref=f"smoke-trace-{uuid4().hex}"
+        )
+
+        first = await wedding_client.post(
+            f"/chat/sessions/{session_id}/messages/{message_id}/feedback",
+            json={"rating": "GOOD"},
+        )
+        second = await wedding_client.post(
+            f"/chat/sessions/{session_id}/messages/{message_id}/feedback",
+            json={"rating": "BAD"},
+        )
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert second.json()["rating"] == "BAD"
+
+    async def test_rate_message_without_trace_ref_still_returns_200(
+        self, wedding_client, make_assistant_message
+    ):
+        session_id, message_id = await make_assistant_message(wedding_client, trace_ref=None)
+
+        response = await wedding_client.post(
+            f"/chat/sessions/{session_id}/messages/{message_id}/feedback",
+            json={"rating": "GOOD"},
+        )
+
+        assert response.status_code == 200
+
+    async def test_rate_user_role_message_returns_400(self, wedding_client, make_assistant_message):
+        session_id, message_id = await make_assistant_message(wedding_client, role="user")
+
+        response = await wedding_client.post(
+            f"/chat/sessions/{session_id}/messages/{message_id}/feedback",
+            json={"rating": "GOOD"},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "CHAT_MESSAGE_NOT_RATABLE"
+
+    async def test_rate_nonexistent_message_returns_404(
+        self, wedding_client, make_assistant_message
+    ):
+        session_id, _ = await make_assistant_message(wedding_client)
+
+        response = await wedding_client.post(
+            f"/chat/sessions/{session_id}/messages/{uuid4()}/feedback",
+            json={"rating": "GOOD"},
+        )
+
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "CHAT_MESSAGE_NOT_FOUND"
+
+    async def test_rate_message_from_another_session_of_same_wedding_returns_404(
+        self, wedding_client, make_assistant_message
+    ):
+        _, message_id = await make_assistant_message(wedding_client)
+        other_session_id, _ = await make_assistant_message(wedding_client)
+
+        response = await wedding_client.post(
+            f"/chat/sessions/{other_session_id}/messages/{message_id}/feedback",
+            json={"rating": "GOOD"},
+        )
+
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "CHAT_MESSAGE_NOT_FOUND"
+
+    async def test_rate_other_users_message_returns_404(
+        self, wedding_client, make_assistant_message, make_wedding_client
+    ):
+        session_id, message_id = await make_assistant_message(wedding_client)
+        other_client = await make_wedding_client()
+
+        response = await other_client.post(
+            f"/chat/sessions/{session_id}/messages/{message_id}/feedback",
+            json={"rating": "GOOD"},
+        )
+
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "CHAT_MESSAGE_NOT_FOUND"
+
+    async def test_rate_without_cookie_returns_401(self, client):
+        response = await client.post(
+            f"/chat/sessions/{uuid4()}/messages/{uuid4()}/feedback",
+            json={"rating": "GOOD"},
+        )
+
+        assert response.status_code == 401
+
+    async def test_invalid_rating_value_returns_422(self, wedding_client, make_assistant_message):
+        session_id, message_id = await make_assistant_message(wedding_client)
+
+        response = await wedding_client.post(
+            f"/chat/sessions/{session_id}/messages/{message_id}/feedback",
+            json={"rating": "MEH"},
+        )
+
+        assert response.status_code == 422
+
+    async def test_missing_rating_field_returns_422(self, wedding_client, make_assistant_message):
+        session_id, message_id = await make_assistant_message(wedding_client)
+
+        response = await wedding_client.post(
+            f"/chat/sessions/{session_id}/messages/{message_id}/feedback", json={}
+        )
+
+        assert response.status_code == 422
+
+    async def test_list_messages_includes_user_rating(self, wedding_client, make_assistant_message):
+        session_id, message_id = await make_assistant_message(wedding_client)
+        await wedding_client.post(
+            f"/chat/sessions/{session_id}/messages/{message_id}/feedback",
+            json={"rating": "GOOD"},
+        )
+
+        response = await wedding_client.get(f"/chat/sessions/{session_id}/messages")
+
+        rated = next(m for m in response.json()["messages"] if m["id"] == message_id)
+        assert rated["user_rating"] == "GOOD"
+
 
 class TestFeedbackReportsSmoke:
     """#30 — POST /weddings가 온보딩 시 timeline_items 55개를 결정론적으로 생성하므로,

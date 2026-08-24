@@ -19,9 +19,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.embeddings import embed_query, get_azure_openai_client, to_pgvector_literal
+from app.rag.query_profile import needs_contract_term_bonus
 
 # F9: 질문이 이 키워드를 포함하면 계약조건(item_type='CONTRACT_TERM') 청크에 RRF 점수를 가산한다.
-_CONTRACT_TERM_KEYWORDS = ("계약", "위약금", "해지")
+# 키워드 판별 자체(needs_contract_term_bonus)는 app/rag/query_profile.py로 옮겼다 — 트레이싱의
+# 질의 태깅(contract_term_query)이 같은 판별을 재사용하기 때문. 가산 폭(RRF 점수 가중치)은
+# 검색 랭킹 튜닝값이라 여기 그대로 둔다.
 _CONTRACT_TERM_BONUS = 0.1
 
 
@@ -101,10 +104,6 @@ _SEARCH_SQL = text("""
 """)
 
 
-def _needs_contract_term_bonus(query: str) -> bool:
-    return any(keyword in query for keyword in _CONTRACT_TERM_KEYWORDS)
-
-
 async def retrieve(
     session: AsyncSession,
     query: str,
@@ -126,7 +125,7 @@ async def retrieve(
             "tsvector_top_k": settings.rag_tsvector_top_k,
             "rrf_k": settings.rag_rrf_k,
             "context_top_k": settings.rag_context_top_k,
-            "apply_contract_bonus": _needs_contract_term_bonus(query),
+            "apply_contract_bonus": needs_contract_term_bonus(query),
             "contract_bonus": _CONTRACT_TERM_BONUS,
         },
     )

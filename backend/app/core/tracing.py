@@ -90,12 +90,16 @@ async def traced_span(
     metadata: dict[str, Any] | None = None,
     session_id: str | None = None,
     user_id: str | None = None,
+    tags: list[str] | None = None,
 ) -> AsyncIterator[TraceHandle]:
     """비활성이면 trace_id=None인 no-op 핸들을 즉시 yield한다 — 활성/비활성이 동일 인터페이스라
-    호출부에 if 분기가 새지 않는다. session_id/user_id는 진입점(run_personalization/
+    호출부에 if 분기가 새지 않는다. session_id/user_id/tags는 진입점(run_personalization/
     stream_chat_response)에서만 넘긴다 — 그래프 내부 자식 span은 생략해도 컨텍스트 전파로
     자동 상속된다(langfuse.propagate_attributes 문서 — 트레이스 레벨 속성은 루트에서 한 번만
-    설정하면 됨)."""
+    설정하면 됨). tags는 app/rag/query_profile.py가 분류한 질의 품질 리스크 패턴(예:
+    short_query)을 트레이스 목록에서 바로 필터링할 수 있게 하려는 용도 — Langfuse 대시보드
+    위젯은 커스텀 메타데이터를 차원으로 못 쓰지만(2026-08-24-langfuse-tracing-completion.md
+    §"한계"), 네이티브 tags는 트레이스 목록 필터에서 직접 지원된다."""
     if not is_tracing_enabled(settings):
         yield TraceHandle(trace_id=None)
         return
@@ -110,10 +114,12 @@ async def traced_span(
                 name=name, as_type="span", input=input, metadata=metadata
             )
         )
-        if session_id is not None or user_id is not None:
+        if session_id is not None or user_id is not None or tags:
             from langfuse import propagate_attributes
 
-            stack.enter_context(propagate_attributes(user_id=user_id, session_id=session_id))
+            stack.enter_context(
+                propagate_attributes(user_id=user_id, session_id=session_id, tags=tags)
+            )
     except Exception:  # noqa: BLE001 — Langfuse SDK 자체 실패(네트워크 등)가 비즈니스 로직을
         # 막으면 안 된다. 이 트라이는 "span을 여는" 설정 단계만 감싼다 — 아래 yield 이후
         # 호출부(async with 블록) 안에서 발생하는 예외는 여기서 안 잡고 그대로 전파시킨다.
@@ -132,3 +138,36 @@ def flush_tracing(settings: Settings) -> None:
     client = get_langfuse_client()
     if client is not None:
         client.flush()
+
+
+def score_trace(
+    trace_id: str,
+    *,
+    name: str,
+    value: float,
+    data_type: str = "BOOLEAN",
+    comment: str | None = None,
+    score_id: str | None = None,
+) -> None:
+    """Langfuse 트레이스에 사용자 평가 점수를 붙인다. 트레이싱이 꺼져 있으면(get_langfuse_client()가
+    None을 반환하면) 아무것도 하지 않는다 — traced_span/flush_tracing과 동일한 no-op 컨벤션이라
+    호출부에 if 분기가 새지 않는다.
+
+    v4 SDK의 client.create_score()를 쓴다(레거시 v2 client.score()가 아님, 실 소스로 시그니처
+    확인). create_score()는 동기 호출이지만 내부적으로 백그라운드 큐에 이벤트를 적재만 하고
+    즉시 반환한다(langfuse/_client/client.py 실측 — self._resources.add_score_task) — 블로킹
+    네트워크 호출이 아니므로 asyncio.to_thread로 감쌀 필요가 없다. score_id를 주면 같은
+    메시지를 여러 번 평가해도(app/services/chat.py::rate_chat_message) 스코어 행이 계속
+    쌓이지 않고 갱신된다. create_score() 자체가 내부에서 예외를 잡아 로깅만 하고 삼키므로
+    (SDK 소스 확인) 이 함수도 추가로 예외를 던지지 않는다."""
+    client = get_langfuse_client()
+    if client is None:
+        return
+    client.create_score(
+        trace_id=trace_id,
+        name=name,
+        value=value,
+        data_type=data_type,
+        comment=comment,
+        score_id=score_id,
+    )
