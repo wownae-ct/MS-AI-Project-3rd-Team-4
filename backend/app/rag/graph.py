@@ -88,7 +88,13 @@ async def retrieve_node(state: ChatState, config: RunnableConfig) -> dict:
     session = config["configurable"]["session"]
     settings: Settings = config["configurable"].get("settings") or get_settings()
     search_query = state["query"]
-    async with traced_span("chat.retrieve", settings=settings, input=state["query"]):
+    # 재시도 시엔 span 이름 자체를 다르게 지어(chat.retrieve_retry) Langfuse에서 재시도를 셀 수
+    # 있게 한다 — 대시보드 위젯 API는 커스텀 metadata를 집계 차원으로 못 쓰고 name 같은 OTel
+    # 표준 필드만 지원한다(2026-08-24-langfuse-tracing-completion.md에서 실제 400 에러로 확인된
+    # 제약). trace.update(metadata={"retry_count": ...})는 트레이스 목록 수동 필터링용으로 별도
+    # 유지한다(app/services/chat.py).
+    span_name = "chat.retrieve_retry" if is_retry else "chat.retrieve"
+    async with traced_span(span_name, settings=settings, input=state["query"]):
         if is_retry:
             client = get_azure_openai_client(settings)
             search_query = await reformulate_query(
