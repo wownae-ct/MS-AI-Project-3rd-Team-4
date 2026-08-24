@@ -44,7 +44,8 @@ _SEARCH_SQL = text("""
         FROM rag_chunks
         -- category_code IS NULL이면(카테고리 무관 전역 상담) 이 필터를 건너뛰고 전체 카테고리를
         -- 대상으로 검색한다 — 아니면 지금 카테고리(예: VENUE) 밖 자료는 애초에 제외.
-        WHERE :category_code IS NULL OR category_codes @> ARRAY[:category_code]
+        WHERE CAST(:category_code AS TEXT) IS NULL
+           OR category_codes @> ARRAY[CAST(:category_code AS TEXT)]
         ORDER BY embedding <=> CAST(:query_embedding AS vector)
         LIMIT :vector_top_k
     ),
@@ -56,7 +57,8 @@ _SEARCH_SQL = text("""
                    ORDER BY ts_rank(tsv, plainto_tsquery('simple', :query_text)) DESC
                ) AS rank
         FROM rag_chunks
-        WHERE category_codes @> ARRAY[:category_code]
+        WHERE (CAST(:category_code AS TEXT) IS NULL
+               OR category_codes @> ARRAY[CAST(:category_code AS TEXT)])
           AND tsv @@ plainto_tsquery('simple', :query_text)
         LIMIT :tsvector_top_k
     ),
