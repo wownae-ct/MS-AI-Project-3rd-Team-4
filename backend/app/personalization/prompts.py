@@ -61,7 +61,8 @@ _CHECKLIST_RULES = """웨딩 프로필(활성 카테고리·우선순위·스타
 _TIMELINE_RULES = """아래 표준 카탈로그(few-shot)를 참고해 이 커플에게 맞는 타임라인을 만드세요.
 
 - 활성 카테고리에 해당하는 항목만 포함하세요. 비활성 카테고리 항목은 만들지 마세요.
-- category_code가 필요 없는 범용 항목(혼인신고·본식 등)은 null로 두세요.
+- category_code가 필요 없는 범용 항목(혼인신고·본식 등)은 JSON null로 두세요 — "범용" 같은
+  한글 단어를 category_code 값으로 쓰지 마세요, ENUM에 없는 값이라 오류가 납니다.
 - default_dday_offset_days는 본식 기준 며칠 전(음수)/후(양수)인지 정수로, -400~60 범위
   안에서만 쓰세요.
 - protected_items는 다시 만들지 마세요.
@@ -111,22 +112,31 @@ def _build_timeline_few_shot() -> str:
     66개가 완전히 동일한 타임라인을 받는 사례가 실계정 재현으로 확인됐다 — LLM이 "그대로
     베낄 답"을 통째로 받으면 개인화할 유인이 사실상 없어지는 문제. `_TIMELINE_RULES`의
     명시적 "베끼지 마세요" 지시와 함께 적용한다). 카탈로그 순서(연대순)는 그대로 유지해
-    시간 흐름 감각이 깨지지 않게 한다."""
+    시간 흐름 감각이 깨지지 않게 한다.
+
+    범용 항목의 category_code 표기는 "category_code=null"로 스키마의 JSON null 표기와 똑같이
+    맞춘다 — 사람이 읽기 편하라고 "범용" 같은 한글 플레이스홀더를 썼다가, LLM이 그 라벨 자체를
+    실제 category_code 값으로 착각해 "category_code": "범용"이라는 존재하지 않는 문자열을
+    그대로 출력하는 회귀가 실제로 발생했다(2026-08-24, few-shot 축소+"베끼지 마세요" 지시 추가
+    직후 재현). 실제 카테고리도 같은 "category_code=X" 형식으로 통일해 예시 표기 자체가
+    출력 필드명과 값의 관계를 직접 보여주게 한다."""
     lines = [
         (
-            "[타임라인 few-shot — VENUE/SDM/범용 항목 전체 + 나머지 카테고리 대표 예시 "
+            "[타임라인 few-shot — VENUE/SDM/null 항목 전체 + 나머지 카테고리 대표 예시 "
             f"{_MOCKUP_FEW_SHOT_SAMPLE_SIZE}개씩]"
         )
     ]
     mockup_shown_count: dict[str, int] = {}
     for item in TIMELINE_CATALOG:
-        category_label = item.category_code or "범용"
+        category_label = item.category_code or "null"
         if item.category_code in _MOCKUP_CATEGORY_CODES:
             already_shown = mockup_shown_count.get(item.category_code, 0)
             if already_shown >= _MOCKUP_FEW_SHOT_SAMPLE_SIZE:
                 continue
             mockup_shown_count[item.category_code] = already_shown + 1
-        lines.append(f"- [{category_label}] {item.title} (D{item.dday_offset_days:+d})")
+        lines.append(
+            f"- (category_code={category_label}) {item.title} (D{item.dday_offset_days:+d})"
+        )
     return "\n".join(lines)
 
 
