@@ -230,8 +230,14 @@ async def run_personalization(
         try:
             result = await _GRAPH.ainvoke(initial_state, {"configurable": {"settings": settings}})
             affected_domains = result["affected_domains"]
-            if result["validation_status"] == "SUCCESS":
-                if "CHECKLIST" in affected_domains:
+            domain_statuses: dict[str, str] = result["validation_status"]
+            domain_errors: dict[str, list[str]] = result["validation_errors"]
+
+            # 도메인별로 완전히 독립 적용한다 — 한쪽이 BLOCKED라고 다른 쪽까지 폴백시키지
+            # 않는다(2026-08-24 버그 수정: 이전엔 result["validation_status"]가 단일 값이라
+            # CHECKLIST만 실패해도 이미 통과한 TIMELINE까지 폴백 카탈로그로 버려졌다).
+            if "CHECKLIST" in affected_domains:
+                if domain_statuses.get("CHECKLIST") == "SUCCESS":
                     checklist_rows = [
                         row
                         for row in (
@@ -240,22 +246,30 @@ async def run_personalization(
                         )
                         if row is not None
                     ]
-                if "TIMELINE" in affected_domains:
+                else:
+                    checklist_rows = _checklist_fallback_rows(active_categories)
+            if "TIMELINE" in affected_domains:
+                if domain_statuses.get("TIMELINE") == "SUCCESS":
                     timeline_rows = [
                         _timeline_row_from_draft(
                             wedding.wedding_date, done_categories, today, idx, item
                         )
                         for idx, item in enumerate(result["timeline_draft"] or [], start=1)
                     ]
-            else:
-                status = "BLOCKED"
-                error_message = "; ".join(result["validation_errors"])[:2000]
-                if "CHECKLIST" in affected_domains:
-                    checklist_rows = _checklist_fallback_rows(active_categories)
-                if "TIMELINE" in affected_domains:
+                else:
                     timeline_rows = _timeline_fallback_rows(
                         wedding.wedding_date, active_categories, done_so_far, today
                     )
+
+            # ai_invocations.status/error_message는 이 실행 전체를 요약하는 감사로그다 —
+            # 도메인 중 하나라도 BLOCKED면 "완전히 깨끗한 성공은 아니었다"를 남긴다. 표시되는
+            # 에러는 실제로 BLOCKED된 도메인의 것만(성공한 도메인의 빈 에러 리스트는 안 섞임).
+            blocked_domains = [d for d in affected_domains if domain_statuses.get(d) != "SUCCESS"]
+            if blocked_domains:
+                status = "BLOCKED"
+                error_message = "; ".join(
+                    error for domain in blocked_domains for error in domain_errors.get(domain, [])
+                )[:2000]
         except Exception as exc:  # noqa: BLE001
             # 이 그래프(app/personalization/graph.py)는 챗 그래프와 같은 "재시도 없음" 원칙이라
             # 노드 안에서 예외를 잡지 않는다 — LLM 호출 실패·JSON 파싱 실패 등 모든 예외가 여기까지

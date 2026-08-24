@@ -19,5 +19,8 @@ class PersonalizationState(TypedDict):
     route_reasoning: str  # 감사로그용(화면 비노출)
     checklist_draft: list[dict] | None
     timeline_draft: list[dict] | None
-    validation_status: str  # SUCCESS | BLOCKED
-    validation_errors: list[str]
+    # 도메인별 독립(2026-08-24 버그 수정) — {"CHECKLIST": "SUCCESS"|"BLOCKED", "TIMELINE": ...},
+    # affected_domains에 포함된 도메인만 키로 존재. 한쪽 도메인의 BLOCKED가 다른 쪽의
+    # SUCCESS/BLOCKED 판정에 전혀 영향을 주지 않는다.
+    validation_status: dict[str, str]
+    validation_errors: dict[str, list[str]]
