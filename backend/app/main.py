@@ -32,6 +32,7 @@ from app.routers import (
     category,
     chat,
     checklist,
+    client_error,
     dashboard,
     feedback,
     health,
@@ -166,3 +167,4 @@ app.include_router(chat.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")
 app.include_router(feedback.router, prefix="/api/v1")
 app.include_router(personalization.router, prefix="/api/v1")
+app.include_router(client_error.router, prefix="/api/v1")
