@@ -52,6 +52,8 @@ def approximate_wedding_date(today: date, wedding_date_precision: str) -> date:
         return date(year + 1, 3, 15)
     if wedding_date_precision == "APPROX_H2_NEXT_YEAR":
         return date(year + 1, 9, 15)
+    if wedding_date_precision == "APPROX_H1_YEAR_AFTER_NEXT":
+        return date(year + 2, 3, 15)
     # NO_PLAN: 오늘로부터 18개월 뒤(04_DB_schema.sql §4-③) — 월 단위 가산이라 timedelta(days=...)
     # 대신 연/월을 직접 계산한다(달마다 일수가 달라 days=548 같은 근사는 오차가 누적됨).
     total_month = today.month - 1 + 18

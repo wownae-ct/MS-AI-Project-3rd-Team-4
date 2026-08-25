@@ -27,6 +27,11 @@ class TestApproximateWeddingDate:
             2027, 9, 15
         )
 
+    def test_h1_year_after_next_is_mar_15(self):
+        assert approximate_wedding_date(date(2026, 8, 24), "APPROX_H1_YEAR_AFTER_NEXT") == date(
+            2028, 3, 15
+        )
+
     def test_no_plan_is_18_months_out(self):
         assert approximate_wedding_date(date(2026, 8, 24), "NO_PLAN") == date(2028, 2, 1)
 

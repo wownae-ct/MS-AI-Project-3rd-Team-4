@@ -94,7 +94,7 @@ ROUTE_PROMPT_TEMPLATE = """당신은 메리맵의 개인화 콘텐츠 라우터�
    영향받을 수 있습니다. 타임라인 항목 자체는 예산과 무관합니다.
 3. 본식일(wedding_date)만 바뀌었다면 어떤 도메인도 선택하지 마세요 — 날짜 재계산은
    이 판단과 무관하게 서비스 레이어에서 항상 결정론적으로 처리됩니다.
-4. 스타일·우선순위(taste_preference/venue_priority/sdm_priority/priorities)가 바뀌었다면
+4. 스타일·우선순위(taste_preference/venue_priority/sdm_priority)가 바뀌었다면
    체크리스트만 선택하세요.
 5. 애매하면 더 넓게(두 도메인 다) 선택하세요 — 과소생성보다 과다생성이 안전합니다.
 
@@ -112,6 +112,10 @@ _CHECKLIST_RULES = """웨딩 프로필(활성 카테고리·우선순위·스타
   참고만 하세요.
 - 활성 카테고리마다 최소 2개 이상 항목을 만드세요.
 - category_code는 활성 카테고리 안에서만 쓰세요.
+- 프로필의 selected_options는 카테고리 안에서도 사용자가 일부 옵션만 선택했다는 뜻입니다
+  (예: SDM에서 ["드레스","메이크업"]만 선택 = 포토그래퍼 관련 항목은 제외). selected_options에
+  없는 옵션과 관련된 항목은 만들지 마세요. 어떤 카테고리가 selected_options에 아예 없으면
+  그 카테고리는 전체 선택으로 간주하고 평소대로 만드세요.
 - 아래 few-shot은 형식·수준을 보여주는 예시일 뿐입니다. 그대로 베끼지 말고, 이 웨딩의 예산
   규모·취향·우선순위·primary_goals에 맞춰 제목·내용을 실제로 다르게 쓰세요. 예산이나
   취향(taste_preference/venue_priority/sdm_priority)에 비춰 의미가 있다면 few-shot에 없는
@@ -126,6 +130,10 @@ _TIMELINE_RULES = """아래 표준 카탈로그(few-shot)를 참고해 이 커�
 - default_dday_offset_days는 본식 기준 며칠 전(음수)/후(양수)인지 정수로, -400~60 범위
   안에서만 쓰세요.
 - protected_items는 다시 만들지 마세요.
+- 프로필의 selected_options는 카테고리 안에서도 사용자가 일부 옵션만 선택했다는 뜻입니다
+  (예: SDM에서 ["드레스","메이크업"]만 선택 = 포토그래퍼 관련 일정은 제외). selected_options에
+  없는 옵션과 관련된 항목은 만들지 마세요. 어떤 카테고리가 selected_options에 아예 없으면
+  그 카테고리는 전체 선택으로 간주하고 평소대로 만드세요.
 - **few-shot을 그대로 베끼지 마세요.** few-shot은 표준적인 일정 흐름과 타이밍 감각을 보여주는
   참고 자료일 뿐, 정답이 아닙니다. 이 웨딩의 예산 규모·취향(taste_preference)·우선순위·
   primary_goals에 맞춰 항목 제목이나 타이밍(default_dday_offset_days)을 실제로 조정하고,
