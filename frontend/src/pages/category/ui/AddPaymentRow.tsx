@@ -48,6 +48,10 @@ export function AddPaymentRow({ categoryCode, onAdded }: { categoryCode: string;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // 진행 중인 OCR 요청을 취소하기 위한 컨트롤러 — 이전엔 취소 수단이 없어, "취소"로 폼을 닫아도
+  // 요청은 계속 진행되다가 나중에 도착한 결과가 이미 닫은(리셋된) 폼 상태를 조용히 채웠다
+  // (레드팀 감사).
+  const receiptAbortRef = useRef<AbortController | null>(null);
 
   function reset() {
     setItemName("");
@@ -76,17 +80,20 @@ export function AddPaymentRow({ categoryCode, onAdded }: { categoryCode: string;
 
     setIsExtracting(true);
     setError(null);
+    const abortController = new AbortController();
+    receiptAbortRef.current = abortController;
     try {
-      const result = await getReceiptExtract(file);
+      const result = await getReceiptExtract(file, abortController.signal);
       if (result.item_name !== null) setItemName(result.item_name);
       if (result.vendor_name !== null) setVendorName(result.vendor_name);
       if (result.amount !== null) setAmount(String(result.amount));
       if (result.paid_date !== null) setPaidDate(result.paid_date);
       setReceiptUrl(result.receipt_url);
     } catch (err) {
+      if (abortController.signal.aborted) return;
       setError(err instanceof ApiError ? err.message : "영수증을 읽지 못했습니다. 직접 입력해 주세요.");
     } finally {
-      setIsExtracting(false);
+      if (!abortController.signal.aborted) setIsExtracting(false);
     }
   }
 

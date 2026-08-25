@@ -86,12 +86,35 @@ describe("계약 4 — 에러는 ApiError 로 던진다", () => {
   });
 });
 
-describe("계약 4-a — signal 을 그대로 넘긴다", () => {
-  it("호출자가 준 AbortSignal 이 fetch 까지 간다 — 안 넘기면 철 지난 응답이 새 화면을 덮어쓴다", async () => {
+describe("계약 4-a — 호출자 signal 이 fetch 까지 전달된다(+ 기본 타임아웃과 합성)", () => {
+  it("호출자가 준 AbortSignal 을 끊으면 fetch 에 전달된 signal 도 끊긴다 — 안 넘기면 철 지난 응답이 새 화면을 덮어쓴다", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ ok: true }));
     const controller = new AbortController();
     await apiFetch("/api/v1/x", { signal: controller.signal });
-    expect(lastInit().signal).toBe(controller.signal);
+    // 이제 기본 타임아웃과 합성되므로 controller.signal 그 자체(reference 동일성)는 아니지만,
+    // 호출자가 끊으면 fetch 로 전달된 합성 signal 도 함께 끊겨야 한다.
+    const forwarded = lastInit().signal as AbortSignal;
+    expect(forwarded).not.toBe(controller.signal);
+    expect(forwarded.aborted).toBe(false);
+    controller.abort(new Error("caller aborted"));
+    expect(forwarded.aborted).toBe(true);
+  });
+});
+
+describe("타임아웃 — 응답이 안 오면 스스로 끊는다 (리뷰 finding: AbortController/timeout 부재)", () => {
+  it("fetch 가 타임아웃(TimeoutError)으로 abort 되면 TIMEOUT ApiError 로 던진다", async () => {
+    fetchMock.mockImplementation((_url: string, init: RequestInit) => {
+      const signal = init.signal as AbortSignal;
+      return new Promise((_, reject) => {
+        signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      });
+    });
+    const controller = new AbortController();
+    const promise = apiFetch("/api/v1/x", { signal: controller.signal });
+    // AbortSignal.timeout() 이 실제로 붙이는 reason 과 같은 모양(DOMException, name="TimeoutError")
+    // 으로 끊어 시간 경과 자체를 기다리지 않고 같은 경로를 재현한다.
+    controller.abort(new DOMException("시간 초과", "TimeoutError"));
+    await expect(promise).rejects.toSatisfy((e: unknown) => isApiError(e) && e.code === "TIMEOUT");
   });
 });
 

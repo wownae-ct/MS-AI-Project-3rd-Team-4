@@ -58,7 +58,9 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
     let cancelled = false;
     getChecklistItems({ categoryCode })
       .then((res) => {
-        if (!cancelled) setItems(res.items);
+        if (cancelled) return;
+        setItems(res.items);
+        setError(null);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -73,7 +75,12 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
   // 대체하는 동작이라 낙관적 갱신 대신 재조회가 맞다.
   function refetchItems() {
     getChecklistItems({ categoryCode })
-      .then((res) => setItems(res.items))
+      .then((res) => {
+        setItems(res.items);
+        // 이전 실패로 뜬 에러가 있었다면 지운다 — 안 지우면 이후 성공해도 화면 전체가 영구히
+        // 에러 문구로 남는다(레드팀 감사 교차 패턴 02, 이 파일의 HIGH 항목).
+        setError(null);
+      })
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "체크리스트를 불러오지 못했습니다.");
       });
@@ -99,6 +106,7 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
     setItems((cur) => cur?.map((i) => (i.id === item.id ? { ...i, status: next } : i)) ?? cur);
     try {
       await patchChecklistItem(item.id, { status: next });
+      setError(null);
     } catch (err) {
       // 실패하면 낙관적 갱신을 되돌린다 — 서버 상태와 화면이 어긋난 채 남지 않게 한다.
       setItems(prevItems);
@@ -106,7 +114,10 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
     }
   }
 
-  if (error) {
+  // items 를 한 번도 못 받은 상태(최초 로드 실패)에서는 보여줄 콘텐츠 자체가 없으니 에러만
+  // 낸다. 이미 items 가 있는데 이후 동작(상태 변경 등)이 실패한 경우는 아래에서 배너로만
+  // 보여준다 — 화면 전체를 에러 문구로 영구 대체하지 않는다(레드팀 감사 HIGH 항목).
+  if (error && items === null) {
     return (
       <p role="alert" className="rounded-md border border-line bg-primary-soft px-3 py-2 text-sm text-primary">
         {error}
@@ -123,6 +134,12 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
 
   return (
     <div className="flex flex-col gap-4">
+      {error && (
+        <p role="alert" className="rounded-md border border-line bg-primary-soft px-3 py-2 text-sm text-primary">
+          {error}
+        </p>
+      )}
+
       {categoryMeta?.has_vendor_cases ? (
         vendorCases && <VendorCaseSection response={vendorCases} />
       ) : (
@@ -155,7 +172,7 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
                 {groupItems.map((item) => (
                   <li key={item.id} className="flex flex-col gap-1 border-b border-line pb-3 last:border-0 last:pb-0">
                     <div className="flex items-start justify-between gap-3">
-                      <p className="text-sm font-bold text-ink">{item.title}</p>
+                      <p className="min-w-0 truncate text-sm font-bold text-ink">{item.title}</p>
                       {/* origin/source_tier는 독립 필드다(entities/checklist/model.ts 머리말) —
                           사용자가 직접 추가한 항목(origin=USER)은 출처 등급이 없는 게 정상이라
                           "내가 추가"로 명시하고, source_tier가 null인데 LLM 생성 항목이면(카탈로그
@@ -166,7 +183,7 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
                         item.source_tier !== null && <Badge>{item.source_tier}</Badge>
                       )}
                     </div>
-                    <p className="text-xs text-ink-soft">{item.body}</p>
+                    <p className="break-words text-xs text-ink-soft">{item.body}</p>
                     <div className="mt-1 flex items-center gap-2">
                       <select
                         value={item.status}

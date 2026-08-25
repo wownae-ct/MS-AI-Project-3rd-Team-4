@@ -2,7 +2,7 @@
 // 인라인으로 펼치는 이 저장소 관례(AddPaymentRow.tsx)를 따른다. group_label 기본값은 item_type의
 // 그룹 라벨(ChecklistTab.tsx GROUP_LABEL)로 채워서, 굳이 고르지 않아도 자연스러운 값이 들어가게 한다.
 import { useState } from "react";
-import { createChecklistItem, type ChecklistItemType, type ChecklistPriority } from "@/entities/checklist";
+import { CHECKLIST_TITLE_MAX_LENGTH, createChecklistItem, type ChecklistItemType, type ChecklistPriority } from "@/entities/checklist";
 import { ApiError } from "@/shared/api";
 
 const ADD_BTN =
@@ -78,7 +78,13 @@ export function AddChecklistItemRow({ categoryCode, onAdded }: AddChecklistItemR
           </option>
         ))}
       </select>
-      <input className={FORM_INPUT} placeholder="항목 이름" value={title} onChange={(e) => setTitle(e.target.value)} />
+      <input
+        className={FORM_INPUT}
+        placeholder="항목 이름"
+        value={title}
+        maxLength={CHECKLIST_TITLE_MAX_LENGTH}
+        onChange={(e) => setTitle(e.target.value)}
+      />
       <select className={FORM_INPUT} value={priority} onChange={(e) => setPriority(e.target.value as ChecklistPriority)}>
         {Object.entries(PRIORITY_LABEL).map(([value, label]) => (
           <option key={value} value={value}>

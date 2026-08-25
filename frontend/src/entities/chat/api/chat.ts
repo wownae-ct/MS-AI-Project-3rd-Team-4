@@ -1,4 +1,4 @@
-import { apiBase, apiFetch } from "@/shared/api";
+import { apiBase, apiFetch, notifyUnauthorized } from "@/shared/api";
 import { parseApiError } from "@/shared/api/errors";
 import type {
   ChatCitation,
@@ -93,38 +93,58 @@ function dispatchSseFrame(frame: string, handlers: SendMessageHandlers): void {
 // POST 요청이라 EventSource 를 못 쓴다(커스텀 바디 전송 불가, API 스펙 §6-2 "구현 노트") —
 // fetch + ReadableStream 으로 SSE 프레임을 직접 파싱한다. apiFetch 를 태우지 않는 이유는
 // apiFetchMultipart 와 같다 — 응답이 JSON 한 덩어리가 아니라 스트림이라 body 를 직접 읽어야 한다.
-export async function sendChatMessage(sessionId: string, content: string, handlers: SendMessageHandlers): Promise<void> {
-  const res = await fetch(`${apiBase()}/api/v1/chat/sessions/${sessionId}/messages`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
-  });
+//
+// `signal` 은 옵셔널이다 — 호출자(ChatPanel)가 컴포넌트 언마운트 시 이 스트림을 스스로 끊을 수
+// 있게 열어둔 자리다(레드팀 감사: 탭 이동으로 언마운트돼도 스트림이 abort 없이 계속 실행되던
+// 문제). 호출자가 abort 하면 이건 진짜 에러가 아니라 "더 이상 안 봐도 된다"는 뜻이라 onError 를
+// 부르지 않고 조용히 끝낸다 — 언마운트된 컴포넌트에 에러 상태를 던져봐야 아무도 안 본다.
+export async function sendChatMessage(
+  sessionId: string,
+  content: string,
+  handlers: SendMessageHandlers,
+  signal?: AbortSignal,
+): Promise<void> {
+  try {
+    const res = await fetch(`${apiBase()}/api/v1/chat/sessions/${sessionId}/messages`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+      signal,
+    });
 
-  if (!res.ok || !res.body) {
-    const body: unknown = await res.json().catch(() => null);
-    const error = parseApiError(res.status, body);
-    handlers.onError({ code: error.code, message: error.message });
-    return;
-  }
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  let streamDone = false;
-  while (!streamDone) {
-    // 스트림 청크는 순서가 있고 이전 read() 결과(버퍼)에 의존한다 — Promise.all 로 병렬화 불가.
-    // eslint-disable-next-line no-await-in-loop
-    const { done, value } = await reader.read();
-    streamDone = done;
-    buffer += decoder.decode(value, { stream: true });
-
-    const frames = buffer.split("\n\n");
-    buffer = frames.pop() ?? "";
-
-    for (const frame of frames) {
-      dispatchSseFrame(frame, handlers);
+    if (!res.ok || !res.body) {
+      const body: unknown = await res.json().catch(() => null);
+      const error = parseApiError(res.status, body);
+      // 이 엔드포인트는 apiFetch 를 안 태우므로(스트림 응답이라 위 머리말 참고), 공용
+      // 401 무효화 경로도 스스로 태워야 한다 — 안 그러면 채팅에서만 세션 만료가 조용히
+      // 일반 에러로 표시되고 앱 나머지는 세션이 여전히 유효하다고 믿는다(레드팀 감사).
+      notifyUnauthorized(error);
+      handlers.onError({ code: error.code, message: error.message });
+      return;
     }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    let streamDone = false;
+    while (!streamDone) {
+      // 스트림 청크는 순서가 있고 이전 read() 결과(버퍼)에 의존한다 — Promise.all 로 병렬화 불가.
+      // eslint-disable-next-line no-await-in-loop
+      const { done, value } = await reader.read();
+      streamDone = done;
+      buffer += decoder.decode(value, { stream: true });
+
+      const frames = buffer.split("\n\n");
+      buffer = frames.pop() ?? "";
+
+      for (const frame of frames) {
+        dispatchSseFrame(frame, handlers);
+      }
+    }
+  } catch (err) {
+    if (signal?.aborted) return;
+    throw err;
   }
 }

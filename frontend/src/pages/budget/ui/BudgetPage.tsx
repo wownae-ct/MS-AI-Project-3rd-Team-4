@@ -30,6 +30,7 @@ import { ApiError } from "@/shared/api";
 import { manwonToWon, wonToManwon } from "@/shared/lib/money";
 import { Card, Money, Page } from "@/shared/ui";
 import { CategoryAllocationRow } from "./CategoryAllocationRow";
+import { UpcomingPaymentsCard } from "./UpcomingPaymentsCard";
 
 // 서버가 D-day까지 계산해 준다(backend/app/routers/budget.py) — 프론트에서 날짜 계산을 다시 하지 않는다.
 const UPCOMING_PAYMENT_WINDOW_DAYS = 30;
@@ -58,10 +59,16 @@ export function BudgetPage() {
   // 고치지 않고 사본을 따로 들고 있어야 "‹ 뒤로"(취소)가 저장 없이 원래 값으로 돌아갈 수 있다.
   const [scenarioDraft, setScenarioDraft] = useState<WeddingCategory[] | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  // 저장 실패 시 백엔드가 준 구체적 사유(예: "배정 합계가 예산을 3,000,000원 초과합니다.")를
+  // 담는다 — 이전엔 catch가 이 메시지를 버리고 항상 같은 범용 문구만 보여줬다(레드팀 감사 HIGH,
+  // 교차 패턴 04). 초기 로드 catch는 이미 ApiError.message를 쓰는 관례가 있었는데 저장 함수
+  // 두 곳만 그 관례를 안 따르고 있었다.
+  const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
 
   // 총예산 인라인 편집 — 카테고리 시나리오와 무관한 별도 액션(위 머리말 참조).
   const [totalBudgetDraft, setTotalBudgetDraft] = useState<string | null>(null);
   const [totalBudgetSaveState, setTotalBudgetSaveState] = useState<"idle" | "saving" | "error">("idle");
+  const [totalBudgetErrorMessage, setTotalBudgetErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -103,11 +110,13 @@ export function BudgetPage() {
     if (!data) return;
     setScenarioDraft(data.categories.map((category) => ({ ...category })));
     setSaveState("idle");
+    setSaveErrorMessage(null);
   }
 
   function cancelScenario() {
     setScenarioDraft(null);
     setSaveState("idle");
+    setSaveErrorMessage(null);
   }
 
   function updateDraftBudget(categoryCode: string, plannedBudget: number) {
@@ -119,11 +128,13 @@ export function BudgetPage() {
         : prev,
     );
     setSaveState("idle"); // 다시 건드리면 "저장됨" 표시를 지운다 — 이후 값은 아직 저장 전이므로.
+    setSaveErrorMessage(null);
   }
 
   async function handleSaveScenario() {
     if (!data || !scenarioDraft) return;
     setSaveState("saving");
+    setSaveErrorMessage(null);
     try {
       // PUT은 카테고리 배열 전체를 요구한다(부분 갱신 아님) — 편집하지 않은 필드는 조회값 그대로
       // 되돌려 보낸다. `selected_options`/`skip_reason`은 이 화면이 다루지 않으므로 원본을 보존한다.
@@ -139,8 +150,9 @@ export function BudgetPage() {
       setData((prev) => (prev ? { ...prev, categories: scenarioDraft } : prev));
       setScenarioDraft(null); // 저장 성공 시 보기 모드로 복귀 — 목업의 "이 배분으로 저장" 커밋과 같은 의미.
       setSaveState("saved");
-    } catch {
+    } catch (err) {
       setSaveState("error");
+      setSaveErrorMessage(err instanceof ApiError ? err.message : "저장하지 못했어요. 다시 시도해 주세요.");
     }
   }
 
@@ -148,24 +160,28 @@ export function BudgetPage() {
     if (!data) return;
     setTotalBudgetDraft(String(wonToManwon(data.totalBudget)));
     setTotalBudgetSaveState("idle");
+    setTotalBudgetErrorMessage(null);
   }
 
   function cancelEditTotalBudget() {
     setTotalBudgetDraft(null);
     setTotalBudgetSaveState("idle");
+    setTotalBudgetErrorMessage(null);
   }
 
   async function handleSaveTotalBudget() {
     if (!data || totalBudgetDraft === null) return;
     const nextTotal = manwonToWon(Number(totalBudgetDraft));
     setTotalBudgetSaveState("saving");
+    setTotalBudgetErrorMessage(null);
     try {
       await updateMyWedding({ total_budget: nextTotal });
       setData((prev) => (prev ? { ...prev, totalBudget: nextTotal } : prev));
       setTotalBudgetDraft(null);
       setTotalBudgetSaveState("idle");
-    } catch {
+    } catch (err) {
       setTotalBudgetSaveState("error");
+      setTotalBudgetErrorMessage(err instanceof ApiError ? err.message : "총예산을 저장하지 못했어요. 다시 시도해 주세요.");
     }
   }
 
@@ -230,7 +246,15 @@ export function BudgetPage() {
                 >
                   {totalBudgetSaveState === "saving" ? "저장 중…" : "저장"}
                 </button>
-                <button type="button" onClick={cancelEditTotalBudget} className={GHOST_BUTTON}>
+                {/* 저장 진행 중엔 취소를 막는다 — 안 막으면 draft 를 null 로 되돌린 뒤에도
+                    이미 시작된 저장 함수가 클릭 시점 draft 로 계속 진행해 성공 시 그 값을
+                    되살린다(레드팀 감사 HIGH, BudgetPage.tsx:285 와 같은 패턴). */}
+                <button
+                  type="button"
+                  onClick={cancelEditTotalBudget}
+                  disabled={totalBudgetSaveState === "saving"}
+                  className={GHOST_BUTTON}
+                >
                   취소
                 </button>
               </span>
@@ -238,25 +262,13 @@ export function BudgetPage() {
           </div>
           {totalBudgetSaveState === "error" && (
             <p role="alert" className="mt-1.5 text-xs text-primary">
-              총예산을 저장하지 못했어요. 다시 시도해 주세요.
+              {totalBudgetErrorMessage}
             </p>
           )}
         </Card>
 
-        {upcomingPayments !== null && upcomingPayments.length > 0 && (
-          <Card title={`다가오는 결제 · ${UPCOMING_PAYMENT_WINDOW_DAYS}일 이내`}>
-            <ul className="flex flex-col gap-2">
-              {upcomingPayments.map((payment) => (
-                <li key={payment.id} className="flex items-center justify-between gap-3 text-sm">
-                  <span className="min-w-0 flex-1 truncate text-ink">{payment.item_name}</span>
-                  <span className="flex-none text-xs text-ink-soft">
-                    {payment.d_day === 0 ? "오늘" : payment.d_day > 0 ? `D-${payment.d_day}` : `D+${-payment.d_day}`}
-                  </span>
-                  <Money value={payment.amount} className="flex-none text-sm" />
-                </li>
-              ))}
-            </ul>
-          </Card>
+        {upcomingPayments !== null && (
+          <UpcomingPaymentsCard payments={upcomingPayments} windowDays={UPCOMING_PAYMENT_WINDOW_DAYS} />
         )}
 
         <Card title="카테고리별 배정">
@@ -282,7 +294,14 @@ export function BudgetPage() {
 
         {isEditingScenario ? (
           <div className="flex items-center gap-3">
-            <button type="button" onClick={cancelScenario} className="text-sm font-bold text-ink-soft hover:text-primary">
+            {/* 저장 진행 중엔 뒤로가기를 막는다 — 안 막으면 이미 시작된 저장 요청이 취소된 뒤에도
+                진행돼, 성공 시 취소했던 배분 결과가 그대로 되살아난다(레드팀 감사 HIGH). */}
+            <button
+              type="button"
+              onClick={cancelScenario}
+              disabled={saveState === "saving"}
+              className="text-sm font-bold text-ink-soft hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+            >
               ‹ 뒤로
             </button>
             <button
@@ -296,7 +315,7 @@ export function BudgetPage() {
             {/* D6 — 상태색 없이 텍스트만으로 저장 결과를 전달한다. */}
             {saveState === "error" && (
               <span role="alert" className="text-sm text-primary">
-                저장하지 못했어요. 다시 시도해 주세요.
+                {saveErrorMessage}
               </span>
             )}
           </div>
