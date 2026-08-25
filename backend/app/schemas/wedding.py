@@ -11,7 +11,12 @@ from pydantic import BaseModel, Field, model_validator
 from app.schemas.common import CategoryCode, CategoryTier
 
 DatePrecision = Literal[
-    "EXACT", "APPROX_H2_THIS_YEAR", "APPROX_H1_NEXT_YEAR", "APPROX_H2_NEXT_YEAR", "NO_PLAN"
+    "EXACT",
+    "APPROX_H2_THIS_YEAR",
+    "APPROX_H1_NEXT_YEAR",
+    "APPROX_H2_NEXT_YEAR",
+    "APPROX_H1_YEAR_AFTER_NEXT",
+    "NO_PLAN",
 ]
 UserRole = Literal["BRIDE", "GROOM"]
 TastePreference = Literal["MINIMAL", "BUDGET", "GRAND", "BALANCED"]
