@@ -51,7 +51,12 @@ async def get_wedding(wedding: Wedding = Depends(get_current_wedding)) -> Weddin
 
 
 @router.patch("/weddings/me", response_model=WeddingOut)
+@limiter.limit("10/minute", key_func=user_or_ip_key)
+# 2026-08-26 레드팀 감사 3라운드 HIGH #3 — 날짜 외 필드 변경은 개인화 라우터 에이전트(LLM 호출,
+# app/services/wedding.py::update_wedding의 FIELD_UPDATED 재트리거)를 부를 수 있는데도 전역
+# 60/분 기본값만 적용받고 있었다. POST /weddings(#6)와 같은 계정당 10/분으로 맞춘다.
 async def update_wedding(
+    request: Request,
     payload: WeddingUpdate,
     wedding: Wedding = Depends(get_current_wedding),  # noqa: B008
     session: AsyncSession = Depends(get_session),  # noqa: B008
@@ -68,7 +73,12 @@ async def list_wedding_categories(
 
 
 @router.put("/wedding-categories", response_model=WeddingCategoriesOut)
+@limiter.limit("10/minute", key_func=user_or_ip_key)
+# 2026-08-26 레드팀 감사 3라운드 HIGH #4 — 카테고리 토글마다 개인화 라우터 에이전트(LLM 호출,
+# app/services/wedding.py::update_wedding_categories의 FIELD_UPDATED 재트리거)가 불릴 수 있어
+# update_wedding과 동일한 이유로 계정당 10/분을 건다.
 async def update_wedding_categories(
+    request: Request,
     payload: WeddingCategoriesUpdate,
     wedding: Wedding = Depends(get_current_wedding),  # noqa: B008
     session: AsyncSession = Depends(get_session),  # noqa: B008
