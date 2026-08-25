@@ -55,8 +55,9 @@ async def dashboard_summary(
     today = datetime.now(UTC).date()
     all_categories = await list_wedding_categories_out(session, wedding.id)
     active_categories = [c for c in all_categories if c.is_active]
+    active_category_codes = {c.category_code for c in active_categories}
     progress_by_category = await get_checklist_progress_by_category(session, wedding.id)
-    upcoming_items = await list_upcoming_items(session, wedding.id, today)
+    upcoming_items = await list_upcoming_items(session, wedding.id, today, active_category_codes)
 
     total_paid = sum(c.paid_amount for c in active_categories)
     total_planned = sum(c.planned_budget for c in active_categories)
@@ -92,11 +93,12 @@ async def get_my_report(
     today = datetime.now(UTC).date()
     all_categories = await list_wedding_categories_out(session, wedding.id)
     active_categories = [c for c in all_categories if c.is_active]
+    active_category_codes = {c.category_code for c in active_categories}
     progress_by_category = await get_checklist_progress_by_category(session, wedding.id)
     upcoming_payments = await list_upcoming_payments_service(
         session, wedding.id, REPORT_UPCOMING_PAYMENTS_DAYS, today
     )
-    recommended = await list_next_recommended_checks(session, wedding.id)
+    recommended = await list_next_recommended_checks(session, wedding.id, active_category_codes)
 
     total_paid = sum(c.paid_amount for c in active_categories)
 
