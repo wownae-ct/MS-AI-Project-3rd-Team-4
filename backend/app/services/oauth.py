@@ -123,8 +123,12 @@ async def find_or_create_social_user(
     if existing is not None:
         return existing
 
+    # 이메일 로컬파트도 대소문자 구분 없이 취급 — app/schemas/auth.py의 _normalize_email과
+    # 같은 이유(2026-08-26 레드팀 감사 대응). IdP가 대문자 섞인 이메일을 돌려줘도 자체 로그인
+    # 계정과 같은 사람으로 정확히 연동돼야 한다.
+    normalized_email = profile.email.strip().lower()
     by_email = (
-        await session.execute(select(User).where(User.email == profile.email))
+        await session.execute(select(User).where(User.email == normalized_email))
     ).scalar_one_or_none()
     if by_email is not None:
         if by_email.auth_provider is not None:
@@ -140,7 +144,7 @@ async def find_or_create_social_user(
         return by_email
 
     user = User(
-        email=profile.email,
+        email=normalized_email,
         auth_provider=provider,
         auth_provider_id=profile.provider_user_id,
         display_name=profile.display_name,
