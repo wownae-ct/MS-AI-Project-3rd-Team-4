@@ -53,7 +53,8 @@ class Wedding(Base):
         CheckConstraint("user_role IN ('BRIDE','GROOM')", name="ck_weddings_user_role"),
         CheckConstraint(
             "wedding_date_precision IN "
-            "('EXACT','APPROX_H2_THIS_YEAR','APPROX_H1_NEXT_YEAR','APPROX_H2_NEXT_YEAR','NO_PLAN')",
+            "('EXACT','APPROX_H2_THIS_YEAR','APPROX_H1_NEXT_YEAR','APPROX_H2_NEXT_YEAR',"
+            "'APPROX_H1_YEAR_AFTER_NEXT','NO_PLAN')",
             name="ck_weddings_date_precision",
         ),
         CheckConstraint(
