@@ -159,7 +159,8 @@ module staticwebapp 'modules/staticwebapp.bicep' = {
   }
 }
 
-// 8) 범용 Blob 저장소 — 답변 오디오 저장용으로 재사용 예정(컨테이너/RBAC는 미구현, storage.bicep TODO 참고)
+// 8) 범용 Blob 저장소 — 2026-08-25부로 영수증 OCR 자동채움(payments) 원본 이미지 저장용 실사용
+// 확정(receipts 컨테이너, Contributor RBAC, storage.bicep 참고)
 module storage 'modules/storage.bicep' = {
   name: 'storage'
   params: {
@@ -168,6 +169,7 @@ module storage 'modules/storage.bicep' = {
     tags: tags
     backendIdentityPrincipalId: aks.outputs.backendIdentityPrincipalId
     logAnalyticsWorkspaceId: monitor.outputs.logAnalyticsId
+    keyVaultName: keyvault.outputs.keyVaultName
   }
 }
 

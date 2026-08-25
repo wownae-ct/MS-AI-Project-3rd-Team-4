@@ -1,7 +1,11 @@
 """#18-21 — 03_API_spec.md §3-④. 지출 기록 + 납부 예정일(payments 통합 테이블).
 
 contact_name/contact_phone/receipt_url 3개는 [프로토타입 반영] 컬럼(04_DB_spec.md §4-⑥) —
-계약 분쟁 시 실무상 필요, 영수증은 파일 업로드 대신 URL 입력."""
+계약 분쟁 시 실무상 필요. receipt_url은 v4.0 최초 설계 당시 "파일 업로드 대신 URL 입력"이었으나,
+2026-08-25 영수증 OCR 자동채움 결정(docs/AI-Sessions/wiki/decisions/
+2026-08-25-receipt-ocr-payment-autofill-decision.md)으로 그 판단이 뒤집혔다 — 이제
+"백엔드가 POST /payments/receipt-extract에서 Blob에 업로드한 뒤 반환하는 URL"이다. 컬럼 자체
+(TEXT)는 재사용, 값의 출처만 바뀌었다."""
 
 from datetime import date
 from uuid import UUID
@@ -40,6 +44,12 @@ class PaymentCreate(BaseModel):
     contact_phone: str | None = None
     amount: int = Field(gt=0)
     due_date: date | None = None
+    # 영수증 OCR 자동채움(2026-08-25 결정) — 영수증은 "이미 결제 완료" 증빙이라 생성 시점에
+    # paid_date를 받을 수 있어야 한다. status는 별도 필드로 안 열고 app/services/payment.py::
+    # create_payment()가 paid_date 유무로 자동 유도한다(클라이언트가 생성 시점에 CANCELED
+    # 같은 임의 상태를 넣을 수 있게 API 표면을 넓히지 않기 위함).
+    paid_date: date | None = None
+    receipt_url: str | None = None
 
 
 class PaymentUpdate(BaseModel):
@@ -59,6 +69,21 @@ class PaymentUpdate(BaseModel):
     status: PaymentStatus | None = None
     receipt_url: str | None = None
     memo: str | None = None
+
+
+class ReceiptExtractOut(BaseModel):
+    """POST /payments/receipt-extract 응답 — 2026-08-25 영수증 OCR 자동채움 결정. DB 반영
+    없음(추출만), 프론트가 이 값으로 폼을 프리필하고 사용자가 확인/수정한 뒤 PaymentCreate로
+    POST /payments를 호출한다. category_code는 포함하지 않는다 — 상호명만으로 카테고리를
+    신뢰할 수 없어 여전히 사용자가 직접 선택(결정 문서 참고). item_name/vendor_name/amount/
+    paid_date는 LLM이 읽지 못했으면 null일 수 있다 — receipt_url만 항상 값이 있다(업로드는
+    추출 성공 여부와 무관하게 항상 먼저 끝남)."""
+
+    item_name: str | None
+    vendor_name: str | None
+    amount: int | None
+    paid_date: date | None
+    receipt_url: str
 
 
 class UpcomingPaymentOut(BaseModel):

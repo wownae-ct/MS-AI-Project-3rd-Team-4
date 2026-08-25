@@ -101,6 +101,14 @@ spec:
                             secretKeyRef:
                                 name: backend-kv-secrets
                                 key: NAVER_CLIENT_SECRET
+                      # 영수증 OCR 자동채움(2026-08-25 결정, payments) — 컨테이너 이름은
+                      # app/core/config.py의 기본값("receipts")을 그대로 쓴다(환경마다 다를
+                      # 이유가 없어 rag_corpus_path와 동일하게 여기 env로 안 둠).
+                      - name: AZURE_STORAGE_BLOB_ENDPOINT
+                        valueFrom:
+                            secretKeyRef:
+                                name: backend-kv-secrets
+                                key: AZURE_STORAGE_BLOB_ENDPOINT
                   volumeMounts:
                       - name: kv-secrets
                         mountPath: /mnt/secrets
