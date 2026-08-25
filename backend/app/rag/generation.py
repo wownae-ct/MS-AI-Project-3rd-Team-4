@@ -4,6 +4,7 @@
 생기기 쉽다(05_RAG_design.md §6 프롬프트 원문 그대로)."""
 
 import json
+import logging
 from typing import get_args
 
 from openai import AsyncAzureOpenAI
@@ -11,6 +12,8 @@ from openai import AsyncAzureOpenAI
 from app.core.config import Settings
 from app.rag.retrieval import RetrievedChunk
 from app.schemas.common import Verdict
+
+logger = logging.getLogger(__name__)
 
 # 2026-08-26 레드팀 감사 3라운드 HIGH #1 — LLM이 스키마 밖 문자열을 verdict로 낼 수 있다(예:
 # "PARTIALLY_SUPPORTED"). 여기서 안 걸러지면 app/services/chat.py가 이 값으로 그대로
@@ -21,7 +24,13 @@ _VALID_VERDICTS: frozenset[str] = frozenset(get_args(Verdict))
 
 
 def _normalize_verdict(raw: str | None) -> str:
-    return raw if raw in _VALID_VERDICTS else "GENERAL"
+    if raw in _VALID_VERDICTS:
+        return raw
+    # 2026-08-26 레드팀 감사 4라운드 항목 9 — 이 정상화가 실제로 발동하는지(=LLM이 실제로
+    # 스키마 밖 verdict를 냈는지) 무로깅이었다. 발동 자체가 드물어야 정상이므로, 남으면 LLM
+    # 프롬프트/모델 쪽 회귀 신호다.
+    logger.warning("LLM emitted invalid verdict value %r — normalizing to GENERAL", raw)
+    return "GENERAL"
 
 
 SOURCE_TIER_LABELS = {

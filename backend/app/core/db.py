@@ -3,6 +3,7 @@
 AAD 인증 모드는 동일한 패턴 유지: DSN에 비밀번호가 없으면 연결 시점마다 do_connect 이벤트에서
 DefaultAzureCredential 토큰을 password로 주입한다(토큰은 ~1시간 후 만료되므로 커넥션마다 새로 받음)."""
 
+import logging
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import event
@@ -15,6 +16,8 @@ from sqlalchemy.ext.asyncio import (
 
 from app.core.auth import get_credential
 from app.core.config import Settings, get_settings
+
+logger = logging.getLogger(__name__)
 
 AAD_PG_SCOPE = "https://ossrdbms-aad.database.windows.net/.default"
 
@@ -63,7 +66,13 @@ def create_engine(settings: Settings) -> AsyncEngine:
             # asyncio.run()을 쓰면 "cannot be called from a running event loop"로 항상 깨진다
             # (실제로 rag-reindex CronJob에서 재현됨). get_token()은 원래 동기 함수라 그냥 직접
             # 호출하면 된다 — asyncio로 감쌀 이유가 없다.
-            cparams["password"] = get_credential().get_token(AAD_PG_SCOPE).token
+            # 2026-08-26 레드팀 감사 4라운드 항목 16 — 토큰 발급 자체가 실패하면(Managed
+            # Identity 미부여 등) 이전엔 무로깅이라 DB 자체 장애와 구분이 안 됐다.
+            try:
+                cparams["password"] = get_credential().get_token(AAD_PG_SCOPE).token
+            except Exception:
+                logger.exception("Failed to acquire AAD token for Postgres connection")
+                raise
 
     return engine
 

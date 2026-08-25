@@ -2,6 +2,7 @@
 
 get_current_wedding으로 wedding_id를 세션에서 유도한다(app/routers/checklist.py와 동일 원칙)."""
 
+import logging
 from datetime import UTC, date, datetime
 
 from fastapi import APIRouter, Depends
@@ -26,6 +27,8 @@ from app.services.timeline import (
     list_timeline_items,
     update_timeline_item,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["timeline"])
 
@@ -69,6 +72,9 @@ async def patch_timeline_item(
 ) -> TimelineItemOut:
     item = await get_timeline_item(session, wedding.id, item_id)
     if item is None:
+        # 2026-08-26 레드팀 감사 4라운드 LOW 항목 — 웨딩 소유 범위 밖 리소스 404가 무로깅이면
+        # ID 스캐닝/IDOR 탐지 목적을 놓친다(app/routers/checklist.py와 동일 패턴).
+        logger.info("Timeline item not found for wedding_id=%s item_id=%s", wedding.id, item_id)
         raise api_error(404, "TIMELINE_ITEM_NOT_FOUND", "해당 타임라인 항목을 찾을 수 없습니다.")
     updated = await update_timeline_item(session, item, payload.target_date, payload.status)
     return _to_out(updated, datetime.now(UTC).date())

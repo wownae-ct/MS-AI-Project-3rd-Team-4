@@ -5,6 +5,7 @@
 호출 방식이 달라 OpenAPI 스키마에 노출하지 않는다(`include_in_schema=False`)."""
 
 import json
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
@@ -39,6 +40,8 @@ from app.services.oauth import (
     fetch_oauth_profile,
     find_or_create_social_user,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -232,11 +235,16 @@ async def oauth_callback(
         await session.rollback()
         detail = exc.detail if isinstance(exc.detail, dict) else {}
         error_code = detail.get("error", {}).get("code", "UNKNOWN_ERROR")
+        # 2026-08-26 레드팀 감사 4라운드 항목 17 — 계정 연동 충돌(이미 다른 방식으로 가입된
+        # 이메일 등)이 무로깅이었다.
+        logger.warning("OAuth account link conflict for provider=%s: %s", provider, error_code)
         return RedirectResponse(f"{login_page}?oauth_error={error_code}")
-    except Exception:  # noqa: BLE001
+    except Exception:
         # IdP 쪽 네트워크/타임아웃/응답형식 오류 — 브라우저 리다이렉트 흐름이라 로그인 화면으로
         # 안전하게 돌려보낸다(app/services/chat.py의 SSE event:error와 같은 이유로, 이 경계
-        # 하나에서만 광범위 캐치).
+        # 하나에서만 광범위 캐치). 2026-08-26 레드팀 감사 4라운드 항목 3 — 이 경계가 CI로
+        # 커버 안 되는(수동 검증만 하는) 토큰 교환 경로라 무로깅이면 실전 장애를 놓친다.
+        logger.exception("OAuth callback upstream failure for provider=%s", provider)
         await session.rollback()
         return RedirectResponse(f"{login_page}?oauth_error=upstream_failed")
 

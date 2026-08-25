@@ -19,6 +19,7 @@ get_session_factory()로 세션을 연다 — FastAPI는 StreamingResponse를 �
 회귀 검증 중 발견 — SSE로 메시지 저장까지 다 되는데 바로 이어지는 GET .../messages가 방금 저장한
 답변을 못 읽음). 이 함수가 자기 완결적으로 세션을 열고 닫으면 이 레이스가 사라진다."""
 
+import logging
 import time
 from collections.abc import AsyncIterator
 from uuid import UUID
@@ -46,6 +47,8 @@ from app.schemas.chat import (
     TokenEventData,
     VerificationEventData,
 )
+
+logger = logging.getLogger(__name__)
 
 _GRAPH = build_graph()
 
@@ -293,6 +296,10 @@ async def stream_chat_response(
                 # 추가됨), 그래프 실패로 죽은 세션이 계속 열려 있지 않도록 여기서 스트림을
                 # 끝낸다. generate까지 성공해 답변이 이미 스트리밍됐다면 그 답변은 최선을 다해
                 # 저장한다(HIGH #2/MEDIUM #11 — _finish_after_upstream_failure 참고).
+                # 2026-08-26 레드팀 감사 4라운드 항목 10 — 이 지점이 RAG 그래프(retrieve/
+                # generate/verify) 전체 예외의 유일한 포집 지점인데 클라이언트 SSE 응답만
+                # 만들고 서버엔 무로깅이었다.
+                logger.warning("Chat RAG graph rate-limited for session_id=%s", chat_session.id)
                 async for evt in _finish_after_upstream_failure(
                     session,
                     chat_session,
@@ -305,7 +312,8 @@ async def stream_chat_response(
                 ):
                     yield evt
                 return
-            except Exception as exc:  # noqa: BLE001 — LLM 업스트림 실패는 종류를 가리지 않고 알려야 함
+            except Exception as exc:
+                logger.exception("Chat RAG graph failed for session_id=%s", chat_session.id)
                 async for evt in _finish_after_upstream_failure(
                     session,
                     chat_session,
@@ -329,6 +337,15 @@ async def stream_chat_response(
             )
 
         # 루프가 끝난 시점엔 final_state에 검색 근거(context)·최종 답변·검증 결과가 전부 들어있다.
+        # 2026-08-26 레드팀 감사 4라운드 항목 8 — 3라운드에서 찾은 verify verdict 크래시
+        # 지점(app/rag/generation.py가 이미 정상화하지만, Langfuse trace는 항목 11처럼 자체
+        # 실패할 수 있어 독립적인 stdout 기록도 남긴다)이 무로깅이었다.
+        logger.info(
+            "Chat response verdict=%s retry_count=%s session_id=%s",
+            final_state["verdict"],
+            final_state["retry_count"],
+            chat_session.id,
+        )
         citations = _build_citations(final_state["context"])
         yield _sse("citations", CitationsEventData(citations=citations))
         yield _sse(
