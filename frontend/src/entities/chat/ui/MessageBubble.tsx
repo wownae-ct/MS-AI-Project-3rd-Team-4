@@ -33,7 +33,12 @@ export function MessageBubble({ message, onRate, renderReportAction }: MessageBu
           항상 표시한다(HANDOFF.md §4 S3). verification 이 아직 안 왔으면(스트리밍 중) 아무것도
           내지 않는다 — 이 시점엔 "근거 없음" 조차 확정된 사실이 아니다. */}
       {!isUser && message.verification && (
-        <div className="flex items-center gap-1.5">
+        // max-w-[85%]로 말풍선과 같은 폭 제한을 주고 flex-wrap을 켠다 — 출처가 여러 개거나
+        // 제목이 길면 한 줄로 욱여넣던 예전 레이아웃이 카드 폭을 뚫고 나가 깨져 보였다
+        // (사용자 리포트 2026-08-26 "화면이 깨져보여 · 박스가 커"). rounded-pill 배지는 원래
+        // 한 줄짜리 짧은 라벨 전용이라 title이 줄바꿈되면 모양 자체가 일그러진다 — 그래서 개별
+        // 배지도 truncate로 한 줄을 강제한다.
+        <div className="flex max-w-[85%] flex-wrap items-center gap-1.5">
           <Badge>
             {/* 문구는 목업 그대로다(s3-category-detail.html:355,361) — "출처"가 아니라 "근거", 체크마크 포함.
                 verdict 3종은 backend/app/schemas/common.py:56 원본 그대로("WEAK"가 실제 값 — 이전엔
@@ -45,9 +50,10 @@ export function MessageBubble({ message, onRate, renderReportAction }: MessageBu
                 : "일반 정보 · 근거 없음"}
           </Badge>
           {message.citations?.map((c) => (
-            <Badge key={c.chunk_id} className="bg-bg text-ink-soft">
+            <Badge key={c.chunk_id} className="max-w-[220px] truncate bg-bg text-ink-soft" title={`${c.source_tier} · ${c.title}`}>
               {/* 목업 형식(s3-category-detail.html:352-353): "{티어} · {제목}" — 티어만 보여주면
-                  어떤 근거인지 사람이 알 수 없다. */}
+                  어떤 근거인지 사람이 알 수 없다. 전체 제목은 title 속성(hover 툴팁)으로 남긴다 —
+                  잘린 텍스트만으로는 무슨 근거인지 못 알아볼 수 있어서다. */}
               {c.source_tier} · {c.title}
             </Badge>
           ))}
