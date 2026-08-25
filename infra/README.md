@@ -96,12 +96,19 @@ backend와 rag는 **같은 브랜치(backend/main), 같은 Docker 이미지**를
 
 ## ArgoCD (GitOps)
 
-`infra/k8s/argocd/`(설치) + `infra/k8s/apps/`(app-of-apps, 이 4개 Application 정의) + `infra/k8s/root-app.yaml`
-(app-of-apps 루트 — `infra/k8s/apps/`를 관리) 구조. root-app을 apps/ 폴더 밖에 두는 이유: root-app이 자기 자신이
-관리하는 폴더 안에 있으면 ArgoCD가 자기 자신을 대상으로 sync/prune하게 돼서(자기참조), `prune: true`인 상태에서
-누군가 폴더 구조를 바꾸면 root-app이 스스로를 지워버릴 수 있음(2026-08-13, 리뷰 중 발견해서 분리).
-기존 홈랩 프로젝트(`k3s-repo`)의 app-of-apps 패턴을 재사용하되, 시크릿 백엔드만 SealedSecrets → Key Vault CSI+Workload Identity로 교체했다.
-프론트는 ArgoCD 범위 밖(SWA로 별도 배포).
+`infra/k8s/argocd/`(설치) + `infra/k8s/apps/{staging,production}/`(app-of-apps, 이 6개 Application
+정의) + `infra/k8s/root-app-{staging,production}.yaml`(app-of-apps 루트 2개) 구조. root-app을
+apps/ 폴더 밖에 두는 이유: root-app이 자기 자신이 관리하는 폴더 안에 있으면 ArgoCD가 자기 자신을
+대상으로 sync/prune하게 돼서(자기참조), `prune: true`인 상태에서 누군가 폴더 구조를 바꾸면
+root-app이 스스로를 지워버릴 수 있음(2026-08-13, 리뷰 중 발견해서 분리). **2026-08-26 root-app
+분리**: 원래는 root-app 하나가 `main` 기준으로 `infra/k8s/apps/` 전체를 읽어서, staging용
+Application을 추가해도 main 승격 전까지는 못 봤다 — root-app을 staging(`backend` 브랜치 추적)/
+production(`main` 브랜치 추적)으로 나눠 staging Application 추가/변경이 main 승격 없이 즉시
+반영되게 했다. 기존 홈랩 프로젝트(`k3s-repo`)의 app-of-apps 패턴을 재사용하되, 시크릿 백엔드만
+SealedSecrets → Key Vault CSI+Workload Identity로 교체했다.
+프론트는 **2026-08-26부터 ArgoCD 범위 안**(`frontend-{staging,production}` Application,
+같은 AKS Ingress 호스트에 nginx 컨테이너로 same-origin 배포) — SWA는 폐기 아니고 PR
+프리뷰/로컬용으로 병행.
 
 **Image Updater**가 ACR 신규 태그를 폴링해 `backend-staging`/`backend-production` Application의 이미지를
 자동 갱신한다(git write-back 아니라 Application 파라미터 override). ACR 인증은 전용 Workload Identity
@@ -114,7 +121,8 @@ backend와 rag는 **같은 브랜치(backend/main), 같은 Docker 이미지**를
 2. `az bicep build --file infra/bicep/main.bicep` — 로컬 검증
 3. `az deployment group what-if ...` — 드라이런
 4. `az deployment group create ...` — 실배포 (또는 `infra-deploy.yml` workflow_dispatch)
-5. ArgoCD 설치 (`infra/k8s/argocd/README.md` 참고) → `kubectl apply -f infra/k8s/root-app.yaml`
+5. ArgoCD 설치 (`infra/k8s/argocd/README.md` 참고) → `kubectl apply -f infra/k8s/root-app-staging.yaml`
+   → `kubectl apply -f infra/k8s/root-app-production.yaml`
 6. Bicep 출력값(`backendIdentityClientId`, `keyVaultUri`, `storageAccountName` 등)으로 `infra/k8s/base/**/*.yaml`의 `<PLACEHOLDER>` 값 채워서 재커밋
 
 ## 알려진 트레이드오프 (시간/예산 제약)
