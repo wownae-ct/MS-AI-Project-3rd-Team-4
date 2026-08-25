@@ -18,6 +18,7 @@
 // 필요 없어 걷어냈다.
 import { useState } from "react";
 import { ChatPanel } from "@/entities/chat";
+import { ReportButton } from "@/entities/feedback";
 import { Page } from "@/shared/ui";
 
 export function ChatPage() {
@@ -25,7 +26,11 @@ export function ChatPage() {
 
   return (
     <Page title="AI상담" subtitle="결혼 준비 중 궁금한 점을 자유롭게 물어보세요.">
-      <ChatPanel sessionId={sessionId} onSessionCreated={setSessionId} />
+      <ChatPanel
+        sessionId={sessionId}
+        onSessionCreated={setSessionId}
+        renderReportAction={(messageId) => <ReportButton targetType="CHAT_MESSAGE" targetId={messageId} />}
+      />
     </Page>
   );
 }

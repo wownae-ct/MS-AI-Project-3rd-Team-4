@@ -12,7 +12,7 @@
 // 나가는 방문마다 세션이 쌓이는 것을 막는다). 세션 id는 호출자(CategoryPage/ChatPage)가 들고
 // 있다가 이 컴포넌트에 내려준다 — Base UI Tabs.Panel이 비활성 탭을 언마운트할 수 있어(keepMounted
 // 기본값 미확인), 이 컴포넌트 로컬 state에만 두면 탭을 나갔다 돌아올 때 세션을 잃을 수 있다.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ApiError } from "@/shared/api";
 import { Card } from "@/shared/ui";
 import { createChatSession, getChatMessages, rateChatMessage, sendChatMessage } from "../api/chat";
@@ -41,6 +41,9 @@ interface ChatPanelProps {
   categoryCode?: string;
   sessionId: string | null;
   onSessionCreated: (id: string) => void;
+  /** entities 레이어 교차import 제약 때문에 pages(CategoryPage/ChatPage)가 내려주는 신고(F13)
+      버튼 렌더러 — 자세한 이유는 MessageBubble.tsx 머리말 참고. */
+  renderReportAction?: (messageId: string) => ReactNode;
 }
 
 // 스트리밍 중인 답변을 완결된 ChatMessage 처럼 다루기 위한 임시 형태 — id 는 아직 서버가
@@ -51,7 +54,7 @@ interface DraftAssistantMessage {
   verification?: ChatVerification;
 }
 
-export function ChatPanel({ categoryCode, sessionId, onSessionCreated }: ChatPanelProps) {
+export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderReportAction }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState<DraftAssistantMessage | null>(null);
   const [input, setInput] = useState("");
@@ -232,7 +235,7 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated }: ChatPan
           />
         )}
         {messages.map((m) => (
-          <MessageBubble key={m.id} message={m} onRate={handleRate} />
+          <MessageBubble key={m.id} message={m} onRate={handleRate} renderReportAction={renderReportAction} />
         ))}
         {draft &&
           (draft.content === "" ? (
