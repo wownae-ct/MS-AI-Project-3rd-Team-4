@@ -21,6 +21,7 @@ from app.core.oauth_providers import (
     generate_oauth_state,
     generate_pkce_pair,
     get_provider_config,
+    is_safe_relative_redirect,
 )
 from app.core.rate_limit import limiter
 from app.deps import get_current_user
@@ -136,14 +137,20 @@ async def get_me(
 
 
 @router.get("/{provider}/login", include_in_schema=False)
-async def oauth_login(provider: str) -> RedirectResponse:
+async def oauth_login(provider: str, redirect_to: str | None = None) -> RedirectResponse:
     """구글/네이버 로그인 시작 — IdP 인가 화면으로 307 리다이렉트한다. state(+구글만 PKCE
     code_verifier)를 짧은 httponly 쿠키에 담아 콜백까지 왕복시킨다(서버 세션 저장소가 없는
     이 프로젝트에서 CSRF 방어를 위한 가장 단순한 방법 — Redis 등 별도 저장소 도입 금지
-    원칙과도 맞는다)."""
+    원칙과도 맞는다).
+
+    redirect_to(선택, 2026-08-26 레드팀 감사 대응)는 로그인 전 있던 화면으로 돌아가기 위한
+    앱 내부 상대경로다 — is_safe_relative_redirect가 거부하면(오픈 리다이렉트 위험 또는
+    형식 오류) 조용히 무시하고 기존처럼 루트로 보낸다(로그인 자체를 막을 이유는 아니다)."""
     config = get_provider_config(provider)
     if config is None:
         raise api_error(404, "NOT_FOUND", f"지원하지 않는 로그인 방식입니다: {provider}")
+    if redirect_to is not None and not is_safe_relative_redirect(redirect_to):
+        redirect_to = None
 
     settings = get_settings()
     client_id, _ = _OAUTH_CLIENT_CREDENTIALS[config.code](settings)
@@ -163,7 +170,9 @@ async def oauth_login(provider: str) -> RedirectResponse:
     )
     response.set_cookie(
         key=OAUTH_STATE_COOKIE_NAME,
-        value=json.dumps({"state": state, "code_verifier": code_verifier}),
+        value=json.dumps(
+            {"state": state, "code_verifier": code_verifier, "redirect_to": redirect_to}
+        ),
         httponly=True,
         secure=True,
         samesite="lax",
@@ -241,7 +250,11 @@ async def oauth_callback(
     )
     await session.commit()
 
-    response = RedirectResponse(url=settings.frontend_base_url)
+    redirect_to = state_payload.get("redirect_to")
+    destination = (
+        f"{settings.frontend_base_url}{redirect_to}" if redirect_to else settings.frontend_base_url
+    )
+    response = RedirectResponse(url=destination)
     _set_session_cookie(response, raw_token)
     response.delete_cookie(key=OAUTH_STATE_COOKIE_NAME)
     return response

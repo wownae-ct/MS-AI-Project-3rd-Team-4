@@ -59,6 +59,13 @@ def generate_oauth_state() -> str:
     return secrets.token_urlsafe(32)
 
 
+def is_safe_relative_redirect(redirect_to: str) -> bool:
+    """로그인 전 페이지로 돌아가기 위한 redirect_to가 오픈 리다이렉트로 악용되지 않도록
+    "이 앱 내부의 상대경로"만 허용한다 — 절대 URL(`https://evil.com/...`)이나 프로토콜
+    상대경로(`//evil.com/...`)는 브라우저가 origin을 바꿔 이동시킬 수 있어 거부한다."""
+    return redirect_to.startswith("/") and not redirect_to.startswith("//")
+
+
 def generate_pkce_pair() -> tuple[str, str]:
     """(code_verifier, code_challenge) — RFC 7636 S256. code_verifier는 콜백 때 토큰 교환
     요청에 그대로 실어 보내야 하므로 state와 함께 임시 쿠키에 담아 왕복시킨다."""
