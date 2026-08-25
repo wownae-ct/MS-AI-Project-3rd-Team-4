@@ -183,9 +183,13 @@ const LazyCategoryPage = lazy(() => import("@/pages/category").then((mod) => ({ 
 
 function CategoryRouteComponent() {
   const { id } = categoryRoute.useParams();
+  // 2026-08-26 사용자 피드백: URL은 소문자(CategoryRow.tsx가 `id.toLowerCase()`로 링크를 만든다),
+  // 그러나 `categoryCode`는 백엔드 계약값(VENUE 등, UPPER_SNAKE_CASE) 그대로여야 한다 — CategoryPage
+  // 아래 모든 API 호출·`categories?.find((c) => c.code === categoryCode)` 비교가 이 값을 원본
+  // 그대로 기대한다. 여기서 한 번만 되돌리면 하위 트리는 URL 대소문자를 아예 모른다.
   return (
     <Suspense fallback={null}>
-      <LazyCategoryPage categoryCode={id} />
+      <LazyCategoryPage categoryCode={id.toUpperCase()} />
     </Suspense>
   );
 }

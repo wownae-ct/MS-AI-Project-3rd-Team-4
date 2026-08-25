@@ -114,11 +114,11 @@ describe("카테고리별 예산", () => {
     expect(names).toContain("예식장 예산 집행률");
   });
 
-  it("카테고리 행이 상세 화면(/category/$id)으로 가는 링크다", async () => {
+  it("카테고리 행이 상세 화면(/category/$id)으로 가는 링크다 — URL은 소문자다", async () => {
     await renderDashboard();
 
     const link = screen.getByRole("link", { name: /예식장/u });
-    expect(link).toHaveAttribute("href", "/category/VENUE");
+    expect(link).toHaveAttribute("href", "/category/venue");
   });
 
   it("체크리스트 진행률을 비율(%)로 보여준다 — 개수(3/5)가 아니다", async () => {

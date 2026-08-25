@@ -1,5 +1,6 @@
 // 1단계: 역할 + 결혼예정일. 시각 스펙 s1-onboarding.html:190-230.
 import type { UserRole, WeddingDatePrecision } from "@/entities/wedding";
+import type { UnsurePrecisionOption } from "@/shared/lib/wedding-date";
 import {
   CHIP_BASE,
   CHIP_GROUP,
@@ -16,15 +17,13 @@ import {
   MODE_TOGGLE_TRACK,
 } from "../onboarding-styles";
 
-/** `WeddingDatePrecision`에서 "정확한 날짜"를 뺀 나머지 — 미정 칩 4개가 여기 대응한다. */
+/** `WeddingDatePrecision`에서 "정확한 날짜"를 뺀 나머지 — 미정 칩이 여기 대응한다. */
 export type UnsurePrecision = Exclude<WeddingDatePrecision, "EXACT">;
 
-const UNSURE_CHIPS: { value: UnsurePrecision; label: string }[] = [
-  { value: "APPROX_H2_THIS_YEAR", label: "올해 하반기" },
-  { value: "APPROX_H1_NEXT_YEAR", label: "내년 상반기" },
-  { value: "APPROX_H2_NEXT_YEAR", label: "내년 하반기" },
-  { value: "NO_PLAN", label: "계획 없음" },
-];
+// "계획 없음"만 날짜와 무관한 고정 칩이다 — 나머지(올해/내년 하반기 등)는 OnboardingPage가
+// `computeUnsurePrecisionOptions(today)`로 계산해 `unsurePrecisionOptions`로 내려준다
+// (2026-08-26 사용자 결정: 항상 "오늘이 속한 반기 다음 연속 반기들"을 보여준다).
+const NO_PLAN_CHIP: { value: UnsurePrecision; label: string } = { value: "NO_PLAN", label: "계획 없음" };
 
 export interface Step1Props {
   userRole: UserRole;
@@ -33,6 +32,7 @@ export interface Step1Props {
   onDateModeChange: (isExact: boolean) => void;
   weddingDate: string;
   onWeddingDateChange: (date: string) => void;
+  unsurePrecisionOptions: UnsurePrecisionOption[];
   unsurePrecision: UnsurePrecision;
   onUnsurePrecisionChange: (precision: UnsurePrecision) => void;
 }
@@ -44,9 +44,11 @@ export function Step1RoleDate({
   onDateModeChange,
   weddingDate,
   onWeddingDateChange,
+  unsurePrecisionOptions,
   unsurePrecision,
   onUnsurePrecisionChange,
 }: Step1Props) {
+  const chips: { value: UnsurePrecision; label: string }[] = [...unsurePrecisionOptions, NO_PLAN_CHIP];
   return (
     <div className="flex flex-col gap-5">
       <div className={FIELD_LABEL}>
@@ -102,7 +104,7 @@ export function Step1RoleDate({
         ) : (
           <>
             <div className={CHIP_GROUP}>
-              {UNSURE_CHIPS.map((chip) => (
+              {chips.map((chip) => (
                 <button
                   key={chip.value}
                   type="button"

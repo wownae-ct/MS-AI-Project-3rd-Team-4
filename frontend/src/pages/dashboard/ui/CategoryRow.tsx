@@ -27,10 +27,14 @@ export function CategoryRow({ category }: CategoryRowProps) {
   // 12_final_prototype_mockup.html의 renderHome()은 이 행 전체를 카테고리 상세로 가는 진입점으로
   // 쓴다(대시보드에서 카테고리 상세로 갈 유일한 경로). 문구/디자인 토큰은 그대로 두고 클릭 가능하다는
   // 최소 신호(화살표)만 얹는다 — 목업의 CSS를 그대로 옮기지 않는다.
+  //
+  // 2026-08-26 사용자 피드백: URL에 `category_code`(VENUE 등, 백엔드 계약값) 대문자가 그대로
+  // 노출되는 게 거슬린다 — 여기서만 소문자로 바꿔 링크를 만든다. 백엔드 enum 자체는 그대로다,
+  // 대칭 변환(router.tsx의 `id.toUpperCase()`)이 route param을 읽을 때 원래 값으로 되돌린다.
   return (
     <Link
       to="/category/$id"
-      params={{ id }}
+      params={{ id: id.toLowerCase() }}
       className="block border-b border-line py-3 first:pt-0 last:border-b-0 last:pb-0"
     >
       <div className={budget === null ? TOP_ROW : TOP_ROW_WITH_BAR}>

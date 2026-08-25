@@ -9,7 +9,8 @@
 // 여지를 만든다).
 import type { DoneSoFarCategory } from "@/entities/wedding";
 
-const PROGRESS_ITEMS: { value: DoneSoFarCategory; label: string }[] = [
+// export하는 이유 — Step9Review가 DoneSoFarCategory→한글 라벨 변환에 재사용한다.
+export const PROGRESS_ITEMS: { value: DoneSoFarCategory; label: string }[] = [
   { value: "MEETING", label: "상견례 완료" },
   { value: "VENUE", label: "예식장 예약 완료" },
   { value: "SDM", label: "스드메 계약 완료" },

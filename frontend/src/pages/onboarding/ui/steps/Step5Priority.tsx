@@ -9,13 +9,14 @@
 import type { SdmPriority, VenuePriority } from "@/entities/wedding";
 import { CHIP_BASE, CHIP_GROUP, CHIP_SELECTED } from "../onboarding-styles";
 
-const SDM_CHIPS: { value: SdmPriority; label: string }[] = [
+// export하는 이유 — Step9Review가 SdmPriority/VenuePriority→한글 라벨 변환에 재사용한다.
+export const SDM_CHIPS: { value: SdmPriority; label: string }[] = [
   { value: "DRESS", label: "추가금 있어도 예쁜 드레스" },
   { value: "PHOTO", label: "추억으로 남는 사진" },
   { value: "MAKEUP", label: "그날은 내가 공주(메이크업)" },
 ];
 
-const VENUE_CHIPS: { value: VenuePriority; label: string }[] = [
+export const VENUE_CHIPS: { value: VenuePriority; label: string }[] = [
   { value: "FOOD", label: "맛있는 식사" },
   { value: "LOCATION", label: "편한 위치" },
   { value: "PARKING", label: "넉넉한 주차" },
