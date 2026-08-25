@@ -10,13 +10,16 @@
 //   2. 카드 제목을 `<p>` 가 아니라 `<h2>` 로 낸다 — WCAG 1.3.1 F2 (a11y.md §4).
 //   3. 금액은 총액까지 굵은 `ink` 다 — "금액은 항상 tabular-nums + 700"(docs/design/README.md).
 //
-// **아직 없는 것 — 지어내지 않았다**
-//   · 로딩·빈·오류 상태: layout.md §9 에 6화면 전부 0건이다. 지금은 합성 데이터가 항상 존재한다.
-//   · 카테고리 → S3 상세 진입: layout.md §1 은 "카테고리 상세는 홈에서 진입하는 하위 화면"이라 하지만
-//     목업에 어떤 진입 어포던스도 없다(커서·호버·chevron 0건). S3 착수 때 함께 정한다.
-//   · 데스크톱 상단바(제목·D-Day·주요 액션, layout.md §4): 미구현이라 D-Day 히어로를 모든 폭에서 낸다.
-import { BUDGET, CATEGORY_BUDGETS, UPCOMING_PAYMENTS, WEDDING } from "@/entities/wedding";
+// **실API 연동 이후 생긴 것들**
+//   · 로딩/에러 상태: 실 fetch 는 실패할 수 있어 최소 텍스트만 추가했다("불러오는 중…",
+//     `role="alert"` — 로그인/온보딩 화면이 이미 쓰는 관례 그대로).
+//   · "다가오는 납부" → "다가오는 할 일": `PaymentRow.tsx` 머리말 참고 — API 응답에 금액이 없다.
+//   · 카테고리 → S3 상세 진입: `CategoryRow.tsx`가 행 전체를 `/category/$id` 링크로 감싼다.
+import { useEffect, useMemo, useState } from "react";
+import { getDashboardSummary, type DashboardSummary } from "@/entities/dashboard";
+import { ApiError } from "@/shared/api";
 import { Card, Page } from "@/shared/ui";
+import { adaptBudgetSummary, adaptCategories, adaptHeadline } from "./adapt-summary";
 import { BudgetDonut } from "./BudgetDonut";
 import { CategoryRow } from "./CategoryRow";
 import { PaymentRow } from "./PaymentRow";
@@ -26,29 +29,83 @@ import { PaymentRow } from "./PaymentRow";
 const ROWS = "flex flex-col";
 
 export function DashboardPage() {
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getDashboardSummary()
+      .then((data) => {
+        if (!cancelled) setSummary(data);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setError(err instanceof ApiError ? err.message : "대시보드를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      });
+    // 언마운트 후 setState 를 막는다 — 탭 전환이 빨라 응답이 늦게 와도 경고 없이 무시된다.
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // category_code → name_ko 맵. `PaymentRow` 가 `upcoming_items` 의 category_code 를 사람이
+  // 읽는 이름으로 보여줄 때 쓴다 — 같은 응답 안의 `categories[]` 가 이미 그 매핑을 갖고 있으므로
+  // 별도 조회 없이 재사용한다(§25 "이 응답 하나로 전부 그려진다" 원칙 유지).
+  const categoryLabelByCode = useMemo(() => {
+    const map = new Map<string, string>();
+    summary?.categories.forEach((category) => map.set(category.category_code, category.name_ko));
+    return map;
+  }, [summary]);
+
+  if (error !== null) {
+    return (
+      <Page title="대시보드" width="max-w-none">
+        <p role="alert" className="rounded-md border border-line bg-primary-soft px-3 py-2 text-sm text-primary">
+          {error}
+        </p>
+      </Page>
+    );
+  }
+
+  if (summary === null) {
+    return (
+      <Page title="대시보드" width="max-w-none">
+        <p className="text-sm text-ink-soft">불러오는 중…</p>
+      </Page>
+    );
+  }
+
+  const headline = adaptHeadline(summary);
+  const budget = adaptBudgetSummary(summary);
+  const categories = adaptCategories(summary.categories);
+
   return (
     <Page title="대시보드" width="max-w-none">
       <div className="flex flex-col gap-0.5">
-        <p className="text-4xl font-bold tracking-tight text-ink tabular-nums">D-{WEDDING.dDay}</p>
-        <p className="text-sm text-ink-soft">{WEDDING.dateLabel} 결혼식</p>
+        <p className="text-4xl font-bold tracking-tight text-ink tabular-nums">D-{headline.dDay}</p>
+        <p className="text-sm text-ink-soft">{headline.dateLabel} 결혼식</p>
       </div>
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] gap-5">
         <Card title="예산 현황">
-          <BudgetDonut summary={BUDGET} />
+          <BudgetDonut summary={budget} />
         </Card>
 
-        <Card title="다가오는 납부">
+        <Card title="다가오는 할 일">
           <div className={ROWS}>
-            {UPCOMING_PAYMENTS.map((payment) => (
-              <PaymentRow key={payment.id} payment={payment} />
+            {summary.upcoming_items.map((item) => (
+              <PaymentRow
+                key={item.id}
+                item={item}
+                categoryLabel={categoryLabelByCode.get(item.category_code) ?? item.category_code}
+              />
             ))}
           </div>
         </Card>
 
         <Card title="카테고리별 예산">
           <div className={ROWS}>
-            {CATEGORY_BUDGETS.map((category) => (
+            {categories.map((category) => (
               <CategoryRow key={category.id} category={category} />
             ))}
           </div>

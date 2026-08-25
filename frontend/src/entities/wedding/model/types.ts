@@ -55,8 +55,9 @@ export interface CategoryBudget {
    */
   budget: number | null;
   spent: number;
-  checklistDone: number;
-  checklistTotal: number;
+  /** 체크리스트 준비 진행률(0~1 비율). API가 실제 개수가 아니라 비율만 준다(§25) — 화면이
+      표시 시점에 그 비율을 그대로 반올림한다(개수처럼 보이는 분모를 지어내지 않는다). */
+  checklistProgress: number;
 }
 
 export interface WeddingHeadline {
@@ -66,23 +67,109 @@ export interface WeddingHeadline {
   dateLabel: string;
 }
 
-/**
- * 체크리스트 항목의 **근거 출처 티어**. 목업이 쓰는 3종이 전부다 —
- * `s3-category-detail.html:217,227,237` · `s5-report.html:107,122`.
- *
- * 뜻은 목업이 한 곳에서만 풀어 준다: `s3:352` 의 `OFFICIAL · 공정위 예식장 표준약관`.
- * 나머지 두 티어의 정의는 아직 어느 문서에도 없으므로 **여기서 지어내지 않는다.**
- */
-export type SourceTier = "OFFICIAL" | "CONSENSUS" | "INDUSTRY";
+// ── 아래부터는 백엔드 실연동(§2, local/frontend-e2e)을 위해 추가된 API 계약 타입.
+// 03_API_spec.md #6/#7/#8/#9/#10/#31 응답·요청 스키마 그대로.
 
-/** 리포트의 「다음에 확인하면 좋아요」 한 줄 (`s5-report.html:104-128`). */
-export interface RecommendedCheck {
+export type UserRole = "BRIDE" | "GROOM";
+export type WeddingDatePrecision =
+  | "EXACT"
+  | "APPROX_H2_THIS_YEAR"
+  | "APPROX_H1_NEXT_YEAR"
+  | "APPROX_H2_NEXT_YEAR"
+  // 2026-08-26 백엔드에 추가된 4번째 근사 버킷("오늘 기준 2년 뒤 해의 상반기") — dev-4a 세션이
+  // `backend/app/schemas/wedding.py:14`(DatePrecision Literal)에 추가, 로컬 브랜치
+  // `backend-bug-fix`(아직 미병합) 기준. `shared/lib/wedding-date.ts::computeUnsurePrecisionOptions`
+  // 가 오늘이 하반기일 때의 세 번째 "미정" 칩에 이 값을 쓴다.
+  | "APPROX_H1_YEAR_AFTER_NEXT"
+  | "NO_PLAN";
+export type TastePreference = "MINIMAL" | "BUDGET" | "GRAND" | "BALANCED";
+export type VenuePriority = "FOOD" | "LOCATION" | "PARKING" | "CAPACITY";
+export type SdmPriority = "DRESS" | "PHOTO" | "MAKEUP";
+export type DoneSoFarCategory = "MEETING" | "VENUE" | "SDM";
+
+export interface WeddingCreateInput {
+  user_role: UserRole;
+  wedding_date?: string;
+  wedding_date_precision: WeddingDatePrecision;
+  total_budget?: number;
+  total_budget_unsure: boolean;
+  region_code: string;
+  guest_count?: number;
+  guest_count_unsure: boolean;
+  taste_preference?: TastePreference;
+  venue_priority?: VenuePriority;
+  sdm_priority?: SdmPriority;
+  primary_goals?: string[];
+  done_so_far?: DoneSoFarCategory[];
+}
+
+export type WeddingUpdateInput = Partial<
+  Pick<WeddingCreateInput, "wedding_date" | "wedding_date_precision" | "total_budget" | "region_code" | "guest_count">
+>;
+
+export interface WeddingProfile extends WeddingCreateInput {
   id: string;
-  /**
-   * `CategoryBudget["id"]` 를 참조한다. **카테고리명을 복제하지 않는다** —
-   * 이름이 바뀌면 두 곳이 조용히 갈린다. 해석은 화면이 하고, 해석 실패는 테스트가 잡는다.
-   */
-  categoryId: string;
-  title: string;
-  source: SourceTier;
+  created_at: string;
+}
+
+// 실측 enum(FOCUS|MOCKUP) 2값뿐이다 — `dashboard/model.ts`의 `DashboardCategorySummary.tier`와
+// 동일 근거(backend-analysis/06-deployed-contract.md). 스캐폴드 원본의 CUSTOM은 근거 없이
+// 추가된 3번째 값이라 제외한다.
+export type CategoryTier = "FOCUS" | "MOCKUP";
+
+export interface WeddingCategory {
+  category_code: string;
+  name_ko: string;
+  tier: CategoryTier;
+  is_active: boolean;
+  planned_budget: number;
+  paid_amount: number;
+  remaining: number;
+  selected_options: string[] | null;
+  display_order: number;
+  has_benchmark: boolean;
+  has_vendor_cases: boolean;
+}
+
+export interface WeddingCategoriesResponse {
+  categories: WeddingCategory[];
+}
+
+export interface WeddingCategoryUpdateInput {
+  category_code: string;
+  is_active: boolean;
+  planned_budget: number;
+  selected_options?: string[] | null;
+  skip_reason?: string;
+  display_order: number;
+}
+
+export interface TotalAverageBenchmark {
+  region_code: string;
+  survey_month: string;
+  median_price: number;
+  min_price: number;
+  max_price: number;
+  sample_count: number;
+  source_url: string;
+}
+
+// #11 GET /categories(03_API_spec.md:244-257) — 개별 웨딩과 무관한 카테고리 상수. 온보딩 6단계
+// (카테고리별 예산 배분)가 이 응답으로 행을 그린다. **7개를 하드코딩하지 않는다** — 목업
+// (s1-onboarding.html:365-373)은 HOMENEW 추가(v4.0) 이전에 얼어붙어 7행뿐이지만 실제 ENUM은
+// 9개다(CLAUDE.md, `04_DB_spec.md` §3). `has_cost=false`인 카테고리(현재는 MEETING)만 "비용
+// 없음"으로 표시해야 그 판단도 하드코딩이 아니라 서버 값을 따른다.
+export interface CategoryConstant {
+  code: string;
+  name_ko: string;
+  display_order: number;
+  tier: CategoryTier;
+  has_cost: boolean;
+  has_benchmark: boolean;
+  has_vendor_cases: boolean;
+  allows_custom_tag: boolean;
+}
+
+export interface CategoriesResponse {
+  categories: CategoryConstant[];
 }

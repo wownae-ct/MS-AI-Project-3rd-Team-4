@@ -2,7 +2,7 @@
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import { checkApiBase, isLoopbackApiBase } from "./src/shared/api/api-base.ts";
+import { checkApiBase, isLocalOnlyApiBase } from "./src/shared/api/api-base.ts";
 
 /**
  * 프로덕션 빌드가 개발 시맨틱으로 도는 것을 막는다.
@@ -53,8 +53,8 @@ function assertProductionBuild(): Plugin {
 /**
  * VITE_API_BASE 게이트 — 두 단계로 나눈다.
  *
- *   ① 형식 검사   항상. 루프백 허용(로컬 개발이 성립해야 한다)
- *   ② 배포 검사   CI 빌드에서만. **루프백이면 실패**
+ *   ① 형식 검사   항상. 루프백·사설 LAN 허용(로컬/같은 와이파이 개발이 성립해야 한다)
+ *   ② 배포 검사   CI 빌드에서만. **http:// 면(루프백이든 사설 LAN 이든) 실패**
  *
  * ②가 없으면 .env.example 의 로컬 기본값(http://localhost:8000)을 그대로 둔 채 배포 빌드를
  * 돌려도 초록불이 나온다 — 앱은 아무 데도 못 붙는데 빌드는 성공한다. 조용한 실패다.
@@ -95,10 +95,10 @@ function assertApiBase(): Plugin {
       // true."). 배포가 CI 에서만 일어나므로 판정이 정확하고, 잊어서 빠질 설정이 없다.
       const ci = loadEnv(config.mode, config.envDir, "CI").CI;
       const isCI = ci !== undefined && ci !== "" && ci !== "false";
-      if (isCI && isLoopbackApiBase(raw)) {
+      if (isCI && isLocalOnlyApiBase(raw)) {
         throw new Error(
-          `[assert-api-base] 배포(CI) 빌드에 루프백 주소가 들어 있다: ${raw}\n` +
-            "  로컬 값을 그대로 두고 배포하면 앱이 아무 데도 붙지 못한다. 운영 오리진(https://…)으로 바꾼다.",
+          `[assert-api-base] 배포(CI) 빌드에 로컬 전용 주소(루프백·사설 LAN)가 들어 있다: ${raw}\n` +
+            "  로컬/LAN 값을 그대로 두고 배포하면 앱이 아무 데도 붙지 못한다. 운영 오리진(https://…)으로 바꾼다.",
         );
       }
     },

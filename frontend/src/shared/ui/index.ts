@@ -11,10 +11,13 @@ export { Tabs, type TabsRootProps } from "./Tabs";
 export {
   IconCalendar,
   IconChart,
+  IconChat,
   IconCheck,
   IconChevronDown,
+  IconGoogle,
   IconHome,
   IconInfo,
+  IconNaver,
   IconWallet,
   type IconProps,
 } from "./icons";
