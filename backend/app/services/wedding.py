@@ -16,7 +16,7 @@ update_wedding()(날짜 외 필드 변경)과 update_wedding_categories()(카테
 
 from datetime import UTC, date, datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -156,6 +156,22 @@ async def update_wedding(
     session: AsyncSession, settings: Settings, wedding: Wedding, payload: WeddingUpdate
 ) -> Wedding:
     changed = payload.model_dump(exclude_unset=True)
+
+    if "total_budget" in changed and changed["total_budget"] != wedding.total_budget:
+        # 03_API_spec.md #8/#10: PUT /wedding-categories의 검증 1(Σ planned_budget <=
+        # total_budget)과 대칭 — 반대 방향(total_budget을 배정 합계보다 낮춤)도 여기서 막아야
+        # remaining_budget(#25/#26)이 조용히 음수가 되는 걸 막는다.
+        total_planned = (
+            await session.execute(
+                select(func.coalesce(func.sum(WeddingCategory.planned_budget), 0)).where(
+                    WeddingCategory.wedding_id == wedding.id
+                )
+            )
+        ).scalar_one()
+        if changed["total_budget"] < total_planned:
+            over = total_planned - changed["total_budget"]
+            raise api_error(400, "BUDGET_EXCEEDED", f"배정 합계가 예산을 {over:,}원 초과합니다.")
+
     for field, value in changed.items():
         setattr(wedding, field, value)
 
