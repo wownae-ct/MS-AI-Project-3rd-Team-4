@@ -1,7 +1,8 @@
 /// <reference types="vitest/config" />
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { checkApiBase, isLoopbackApiBase } from "./src/shared/api/api-base.ts";
 
 /**
  * 프로덕션 빌드가 개발 시맨틱으로 도는 것을 막는다.
@@ -49,6 +50,61 @@ function assertProductionBuild(): Plugin {
   };
 }
 
+/**
+ * VITE_API_BASE 게이트 — 두 단계로 나눈다.
+ *
+ *   ① 형식 검사   항상. 루프백 허용(로컬 개발이 성립해야 한다)
+ *   ② 배포 검사   CI 빌드에서만. **루프백이면 실패**
+ *
+ * ②가 없으면 .env.example 의 로컬 기본값(http://localhost:8000)을 그대로 둔 채 배포 빌드를
+ * 돌려도 초록불이 나온다 — 앱은 아무 데도 못 붙는데 빌드는 성공한다. 조용한 실패다.
+ * 판정 로직을 두 벌 두지 않으려고 assert-production-build 와 같은 형태의 게이트로 둔다.
+ *
+ * `process.cwd()`/`process.env` 대신 `configResolved`+`loadEnv` 로 값을 얻는 이유 —
+ * `@types/node` 가 이 저장소에 없다(설치돼 있지 않다, 실측 확인). 우연이 아니라 기존 결정이다
+ * — `resolve.alias` 대신 `resolve.tsconfigPaths` 를 쓴 이유가 같은 회피다. 두 문서가 각자
+ * 말한 것을 각각 인용한다(짜깁기하지 않는다) — `docs/architecture/toolchain.md:272`
+ * "수동 `alias`는 절대 경로가 필요해 `@types/node` 의존을 부른다" · `layers.md:94` "`node:url`
+ * → `@types/node` 의존을 부르는데, 네이티브 옵션이 그 대가를 없앤다". 여기서도 같은 원칙을 지킨다.
+ * `ResolvedConfig.env` 는 Vite 가 이미 `envPrefix`(기본 `VITE_`)로 계산해 둔 값이라 그대로 쓰면
+ * 되고, `CI` 는 `loadEnv(mode, envDir, "CI")` 로 얻는다 — `loadEnv` 는 `process.env` 를 이미
+ * 병합해서 돌려준다. Vite 공식 문서(https://vite.dev/guide/env-and-mode) 원문: "environment
+ * variables that already exist when Vite is executed have the highest priority and will not
+ * be overwritten by `.env` files." 두 값 모두 `vite` 패키지가 이미 타입을 내주는 API 라 새
+ * 의존성이 필요 없다.
+ */
+function assertApiBase(): Plugin {
+  return {
+    name: "assert-api-base",
+    apply: "build",
+    configResolved(config) {
+      const raw = config.env.VITE_API_BASE;
+      const reason = checkApiBase(raw);
+      if (reason !== null) {
+        throw new Error(`[assert-api-base] VITE_API_BASE: ${reason}`);
+      }
+
+      // 배포 검사는 mode 가 아니라 CI 로 판정한다.
+      //
+      // `vite build` 는 기본 mode 가 production 이다(Vite 공식: "the `build` command runs in
+      // `production` mode"). mode 로 판정하면 개발자가 로컬에서 4게이트를 돌릴 때마다 로컬
+      // .env 값 때문에 빌드가 죽는다 — 막아야 할 것은 배포될 산출물이지 로컬 검증 빌드가 아니다.
+      //
+      // 전용 플래그(DEPLOY_BUILD 등)를 쓰지 않는 이유는 워크플로가 켜는 것을 잊으면 게이트가
+      // 조용히 사라지기 때문이다. CI 는 GitHub Actions 가 항상 넣는다(공식: CI — "Always set to
+      // true."). 배포가 CI 에서만 일어나므로 판정이 정확하고, 잊어서 빠질 설정이 없다.
+      const ci = loadEnv(config.mode, config.envDir, "CI").CI;
+      const isCI = ci !== undefined && ci !== "" && ci !== "false";
+      if (isCI && isLoopbackApiBase(raw)) {
+        throw new Error(
+          `[assert-api-base] 배포(CI) 빌드에 루프백 주소가 들어 있다: ${raw}\n` +
+            "  로컬 값을 그대로 두고 배포하면 앱이 아무 데도 붙지 못한다. 운영 오리진(https://…)으로 바꾼다.",
+        );
+      }
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
     react(),
@@ -61,6 +117,7 @@ export default defineConfig({
     // Tailwind 쪽을 끄면 타깃의 단일 출처가 아래 build.target 하나로 유지된다.
     tailwindcss({ optimize: false }),
     assertProductionBuild(),
+    assertApiBase(),
   ],
   resolve: {
     // tsconfig.app.json의 paths("@/*")를 그대로 쓴다 — 별칭 정의를 두 곳에 두지 않기 위해서다.
@@ -68,14 +125,37 @@ export default defineConfig({
     tsconfigPaths: true,
   },
   build: {
-    // 지원 매트릭스 — Chromium 111 하한 명시 배열.
+    // 지원 매트릭스 — Chromium 126 하한 명시 배열. 근거는 ADR 0007 §D3·§D6.
     // Vite 기본값('baseline-widely-available')은 타깃이 암묵적으로 바뀌므로 위임하지 않는다.
     //
-    // ⚠️ 이 값은 **이전 주제에서 상속된 것이고 현재 제품 기준으로 재검토되지 않았다.**
-    //    Safari 를 뺀 근거가 지금은 남아 있지 않다 — 지원 범위 결정은 화면 스펙과 함께 확정한다.
-    //    포함하기로 하면 "safari16.4" 를 더한다(Tailwind v4 의 하한과 정확히 일치).
-    //    그때 입력 필드 16px 규칙(shared/ui/README.md)이 선택이 아니라 필수가 된다.
-    target: ["chrome111", "edge111"],
+    // ## 왜 Chromium 전용인가 (§D3)
+    //
+    // 인증이 크로스 사이트 쿠키에 의존한다(백엔드가 다른 등록 도메인에 있다). 그래서 지원 범위는
+    // "어떤 CSS 를 쓸 수 있나" 가 아니라 **"로그인이 되나"** 의 문제다.
+    //   - Safari: ITP 가 서드파티 쿠키를 전면 차단한다 — WebKit 공식 "There are no exceptions to
+    //     this blocking." 지원하려면 Storage Access API(사용자 제스처+프롬프트)를 도입하거나
+    //     same-site 토폴로지로 인프라를 갈아야 한다.
+    //   - Firefox: Total Cookie Protection 이 "a separate cookie jar per site" 로 격리한다(MDN).
+    //   - Chrome/Edge: 기본 허용. Edge 의 추적 방지는 disconnect.me 목록 대조라 우리 호스트는 무관.
+    // → 둘을 빼는 대신 **미지원 환경을 조용히 실패시키지 않는다**. 감지는 UA 가 아니라 행동으로
+    //   한다(로그인 직후 /auth/me 가 401 이면 쿠키가 왕복하지 못한 것) — UA 로는 Chrome 시크릿과
+    //   Edge Strict 를 못 잡는다. 상세: docs/architecture/backend-integration.md §4
+    //
+    // ## 왜 126 인가 — 번들이 줄어서가 아니다 (§D6)
+    //
+    // 🚨 **타깃을 올려도 번들은 줄지 않는다.** 111/120/126/134/esnext 를 실제로 빌드해 재 봤다:
+    //    JS 합계는 오히려 +8~+23 B **늘고** CSS 만 −20 B 줄며, 그 −20 B 는 126 에서 전부 나온다.
+    //    「타깃을 올려 예산을 벌자」는 가설은 측정으로 기각됐다 — 다시 시도하지 말 것.
+    // 올리는 진짜 이유는 **조용한 실패 경로를 없애는 것**이다. 하한 초과 CSS 기능은 빌드도 린트도
+    // 잡지 않고 그냥 무시되는데(CLAUDE.md §5.6), 그 대상이던 @starting-style(117)·light-dark()(123)·
+    // anchor-*(125) 가 126 하한 안으로 전부 들어온다.
+    //
+    // esnext 를 쓰지 않는 이유는 위 2행의 Vite 기본값을 거부한 이유와 **같다** — 하한이 "빌드 시점의
+    // 최신" 으로 떠다녀 재현성이 깨진다. (참고: 안정판은 151 이라 126 은 25 버전 뒤다.)
+    //
+    // Safari 를 넣기로 뒤집으면 "safari16.4" 를 더하는 것으로 끝나지 않는다 — 전송 계층과 배포
+    // 토폴로지를 함께 바꿔야 하고, 입력 필드 16px 규칙(shared/ui/README.md)도 필수가 된다.
+    target: ["chrome126", "edge126"],
   },
   test: {
     environment: "jsdom",
