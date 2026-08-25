@@ -32,6 +32,15 @@ describe("응답 매핑", () => {
   });
 });
 
+describe("형식 밖 응답은 조용히 통과시키지 않는다", () => {
+  it("id 가 빠지면 \"undefined\" 문자열을 지어내지 않고 ApiError 를 던진다", async () => {
+    fetchMock.mockResolvedValue(json({ email: "a@b.c", display_name: null, has_wedding: false }));
+    await expect(getMe()).rejects.toSatisfy(
+      (e: unknown) => isApiError(e) && e.code === "MALFORMED_USER",
+    );
+  });
+});
+
 describe("signup 의 has_wedding 은 신뢰하지 않는다", () => {
   it("서버가 true 를 줘도 false 로 강제한다 — 백엔드가 항상 false 를 하드코딩하고 있어 값이 의미 없다", async () => {
     fetchMock.mockResolvedValue(json({ ...RAW, has_wedding: true }, 201));
