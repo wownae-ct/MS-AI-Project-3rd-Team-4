@@ -1,6 +1,6 @@
 # frontend/docs — 프론트엔드 구현 문서
 
-> **최종 갱신** 2026-08-22 (S5 구현 · D2 종결 · 배포 설정 게이트 신설 반영)
+> **최종 갱신** 2026-08-25 (백엔드 연동 설계 — ADR 0007 + architecture 3종 신설)
 >
 > ✅ 이 폴더는 커밋된다 (`!frontend/docs/` 예외). 여기 두는 문서는 팀 전체에 공유되는 공개 문서다 —
 > 로컬 메모·시크릿·개인 기록은 두지 않는다.
@@ -23,6 +23,9 @@
 | [architecture/README.md](architecture/README.md) | 폴더 빠른 길잡이 |
 | [architecture/toolchain.md](architecture/toolchain.md) | 런타임(Node 24 고정) · TypeScript 7 단독 채택 · 의존성 스펙 · 빌드/타입 설정 · CI 게이트 · 환경변수 |
 | [architecture/layers.md](architecture/layers.md) | FSD 레이어 규범 · 현재 배치 진단 · 경로 별칭 설계 · oxlint 경계 강제 설계와 검증 기록 |
+| [architecture/backend-integration.md](architecture/backend-integration.md) | **백엔드 연동** — 전송 계층 5계약 · `VITE_API_BASE` 형식 게이트 · 세션/라우트 가드 · 브라우저 지원 매트릭스 · **로컬이 가리는 것 4건** · 백엔드에 요구하는 변경 |
+| [architecture/api-contract.md](architecture/api-contract.md) | **API 계약 발췌** — 프론트가 부르는 엔드포인트 · 계약 어휘(Literal) · **TS 이관 함정 7종** · 드리프트 감지 · OpenAPI로 못 잡는 것 |
+| [architecture/chat-streaming.md](architecture/chat-streaming.md) | **SSE 상담(S3)** — 와이어·파서 계약(명세 원문) · 이벤트 7종 상태 기계 · 종료 판정 · 실패 모드 · 테스트 픽스처 |
 
 ### design/ — 디자인 규범
 
@@ -58,6 +61,7 @@
 | [adr/0004-접근성-프리미티브로-base-ui를-채택한다.md](adr/0004-접근성-프리미티브로-base-ui를-채택한다.md) | 접근성 프리미티브로 Base UI 채택(Tabs·Progress) — **승인·적용 완료** |
 | [adr/0005-라우터로-tanstack-router를-채택한다.md](adr/0005-라우터로-tanstack-router를-채택한다.md) | 라우터 TanStack Router 채택 + 라우트 단위 코드 분할 — **제안**(R1~R6 충족 · **R7만 미충족** — Slow 4G 콜드 캐시 실측 대기) |
 | [adr/0006-디자인-규범의-ssot를-프론트엔드-안에-둔다.md](adr/0006-디자인-규범의-ssot를-프론트엔드-안에-둔다.md) | 디자인 규범 SSOT를 프론트엔드 안에 두고 네임스페이스 폐기·빌드 게이트로 강제 — **승인** |
+| [adr/0007-백엔드-연동-아키텍처를-확정한다.md](adr/0007-백엔드-연동-아키텍처를-확정한다.md) | 백엔드 연동 아키텍처 — 인증 우선 수직 관통 · 라우터 로더(라이브러리 미도입) · Chromium 전용 · 3층 예산 — **제안**(결정자 승인 대기) |
 
 ## 적용 로드맵
 
@@ -93,6 +97,9 @@ ADR 0001·0002 승인(2026-08-20)에 따른 실행 순서다. **각 항목은 �
 | 글자 크기 · 터치 타겟 · 대비 기준 | [design/a11y.md](design/a11y.md) |
 | 어떤 화면을 만드나 | [mockups/README.md](mockups/README.md) |
 | 이 결정이 어떻게 나왔나 · 뒤집으려면 | [adr/](adr/README.md) |
+| 백엔드에 어떻게 붙나 · 로그인이 왜 안 되나 | [architecture/backend-integration.md](architecture/backend-integration.md) |
+| 이 엔드포인트를 어떻게 부르나 · 이 필드 타입이 뭔가 | [architecture/api-contract.md](architecture/api-contract.md) |
+| 상담 스트림을 어떻게 읽나 | [architecture/chat-streaming.md](architecture/chat-streaming.md) |
 
 ## 기술 스펙의 소재지 (2026-08-21 갱신)
 
