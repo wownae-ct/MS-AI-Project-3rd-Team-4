@@ -42,6 +42,7 @@ export async function apiFetchMultipart(path: string, form: FormData): Promise<u
 | 2 | **`...init`을 먼저 펼치고 `headers`를 뒤에 둔다** | [layers.md 부록 A](layers.md#부록--배치-조사-중-함께-발견한-결함)가 **똑같은 버그로 한 번 데였다.** 당시엔 아무도 헤더를 안 넘겨 잠복이었지만 지금은 즉시 발현한다 |
 | 3 | **응답 타입은 `unknown`** — 좁히는 것은 슬라이스의 몫 | 백엔드 스펙을 그대로 믿지 않는다. 근거는 [api-contract.md](api-contract.md) §6.2 |
 | 4 | **에러는 `status`가 아니라 `code`로 분기한다** | 같은 코드가 두 status로 온다 — `TOTAL_BUDGET_UNAVAILABLE`이 한 곳에서는 404, 다른 곳에서는 422 |
+| 4-a | **`signal`을 받아 넘긴다** | 라우터가 `loader({ abortController })`로 취소 신호를 준다. 안 넘기면 사용자가 빠르게 이동할 때 **철 지난 응답이 뒤늦게 도착해 새 화면을 덮어쓴다** |
 | 5 | **멀티파트는 `apiFetch`를 태우지 않는다** | `FormData`는 브라우저가 boundary를 포함한 `Content-Type`을 **자동 설정해야** 한다. JSON 래퍼를 태우면 깨진다. 부록 A가 이것을 *"의도된 설계"*로 명시했다 |
 
 **#5는 이제 가정이 아니라 실제 수요다** — 백엔드에 `POST /payments/receipt-extract`(영수증 이미지 업로드)가 신설됐다.
@@ -74,13 +75,54 @@ class ApiError extends Error {
 
 ## 2. 환경변수 — `VITE_API_BASE`
 
-### 2.1 폴백하지 않는다
+### 2.1 폴백하지 않는다 — 다만 **모듈 초기화에서 던지지도 않는다**
 
 과거 코드에 `import.meta.env.VITE_API_BASE ?? ""`가 있었고, 이 폴백은 **값 부재를 조용히 삼켜 요청을 상대 경로로 떨어뜨린다.** 복원하지 않는다.
 
 - 값이 없으면 **빌드가 실패한다** (`vite.config.ts` 게이트)
 - 형식이 틀려도 **빌드가 실패한다**
-- 런타임에서도 같은 함수로 한 번 더 검사한다 — 빌드 시점과 실행 시점의 값이 다를 수 있는 경로(주입 오류·수동 편집)를 남기지 않는다
+- 런타임에서도 같은 함수로 한 번 더 검사한다 — 빌드 시점과 실행 시점의 값이 갈릴 수 있는 경로(주입 오류·수동 편집)를 남기지 않는다
+
+🚨 **그런데 그 런타임 검사를 모듈 최상위에 두면 안 된다.** 초판 설계가 이랬다:
+
+```ts
+// ❌ 이렇게 하면 안 된다
+const raw = import.meta.env.VITE_API_BASE;
+if (checkApiBase(raw) !== null) throw new Error(...);
+export const API_BASE: string = raw;
+```
+
+**세 가지가 깨진다.**
+
+| 무엇 | 왜 |
+|---|---|
+| **CI 테스트가 전멸한다** | `frontend-ci.yml`의 Test 스텝에는 `env:`가 **없다**(Build 스텝에만 있다). CI에는 `.env`도 없다 — `.env.example`은 Vite가 읽지 않는다. 그래서 `VITE_API_BASE`가 `undefined`가 되고, **`shared/api`를 거치는 모든 테스트가 import 단계에서 죽는다.** 네트워크를 쓰지 않는 테스트까지 함께 죽는다 |
+| **`ErrorBoundary`가 못 잡는다** | 바운더리는 렌더 중 예외를 잡는다. **모듈 평가 단계의 예외는 통과한다** — 사용자에게는 흰 화면이다. 「조용한 실패 금지」를 지키려던 코드가 가장 조용한 실패를 만든다 |
+| **`vite.config.ts`가 이 파일을 못 읽는다** | Node가 모듈을 평가할 때 `import.meta.env` 접근이 함께 실행된다 |
+
+**계약 — 검증을 최초 사용 시점으로 늦춘다.**
+
+```ts
+let resolved: string | undefined;
+
+/** API 오리진. 최초 호출에서 검증한다. 모듈 평가 단계에서는 아무것도 하지 않는다. */
+export function apiBase(): string {
+  if (resolved !== undefined) return resolved;
+  const raw = import.meta.env.VITE_API_BASE;
+  const reason = checkApiBase(raw);
+  if (reason !== null) {
+    throw new ApiError({ code: "API_BASE_INVALID", message: `VITE_API_BASE: ${reason}`, status: 0, extra: {} });
+  }
+  resolved = raw as string;
+  return resolved;
+}
+```
+
+- **`ApiError`로 던진다** — 화면이 이미 아는 형태다. 별도 처리 경로를 만들지 않는다
+- **요청을 보내는 코드만 이 함수를 부른다.** 네트워크를 안 쓰는 테스트는 값이 없어도 통과한다
+- 실질적으로 이 예외는 **일어날 수 없다** — 빌드 게이트가 같은 함수로 먼저 막는다. 그래도 남겨 두는 이유는 빌드와 실행의 값이 갈리는 경로(수동 편집·잘못된 주입)를 조용히 넘기지 않기 위해서다
+
+**`API_BASE`를 상수로 내보내지 않는다.** 상수는 모듈 평가 시점에 값을 요구하고, 그게 위 세 문제의 원인이다.
 
 ### 2.2 형식 규칙과 그 근거
 
@@ -157,6 +199,50 @@ export function checkApiBase(v: unknown): string | null {
 `frontend/.env.example`은 **프론트 전용이 아니라 저장소 공용 템플릿**이다(Azure · PostgreSQL · AKS · SWA · 백엔드 변수가 함께 있다). 프론트 변수만 남기자고 정리하지 않는다.
 
 프론트가 읽는 변수는 **`VITE_API_BASE` 하나뿐**이다(`src/vite-env.d.ts`). Vite는 `VITE_` 접두사만 클라이언트에 노출하므로 나머지 변수는 프론트 빌드에 아무 영향이 없다 — **거기에 값을 채워도 백엔드가 읽지 않는다**(백엔드는 `backend/.env`를 읽는다).
+
+---
+
+### 2.6 🚨 CI 는 이 값을 **빌드 스텝에만** 준다
+
+`frontend-ci.yml` 실측(2026-08-25):
+
+| 스텝 | `env:` | 결과 |
+|---|---|---|
+| Typecheck · Lint · **Test** | **없음** | `VITE_API_BASE`가 `undefined` |
+| Build | `VITE_API_BASE: ${{ secrets.VITE_API_BASE }}` | 주입됨 |
+
+**CI 러너에는 `.env`도 없다** — `.env.example`은 Vite가 읽지 않는다(`.env` · `.env.local` · `.env.[mode]` 계열만 읽는다). 로컬에서는 `.env`가 있어 vitest도 값을 보므로(`MODE="test"`로 실측) **이 차이가 로컬에서 드러나지 않는다.**
+
+→ **테스트가 `apiBase()`를 호출하지 않게 짜는 것이 계약이다.** §2.1의 지연 검증이 이걸 성립시킨다. 네트워크를 스텁하는 테스트는 `fetch`를 가로채므로 실제로 오리진이 필요 없다.
+
+#### 포크 PR — 새 게이트가 만드는 새 실패
+
+시크릿은 **존재한다**(`gh secret list` 확인, 2026-08-21 생성). 그래서 일반 PR·푸시 빌드는 값을 받는다. **포크에서 온 PR에는 GitHub이 시크릿을 전달하지 않는다** — 지금 CI는 그 경우 경고만 남기고 통과시킨다:
+
+> `::warning::VITE_API_BASE가 비어 있다 — 포크 PR이거나 시크릿 미설정. API 호출이 상대 경로로 나간다.`
+
+**이 문구는 이제 거짓이다.** 「상대 경로로 나간다」는 `?? ""` 폴백을 전제한 서술인데 폴백을 없앴다. 그리고 §2.2의 게이트는 빈 값이면 **빌드를 실패시킨다** → 포크 PR CI가 빨간불이 된다.
+
+**계약 — 포크는 더미 오리진으로 빌드만 검증한다.** 포크 PR은 어차피 배포되지 않으므로 산출물의 오리진이 의미 없다. 대신 **비포크에서 값이 비면 경고가 아니라 실패**여야 한다 — 그건 배포되는 산출물이 아무 데도 못 붙는다는 뜻이다.
+
+```yaml
+- name: Build
+  env:
+      VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
+  run: |
+      if [ -z "$VITE_API_BASE" ]; then
+        if [ "${{ github.event.pull_request.head.repo.fork }}" = "true" ]; then
+          echo "::warning::포크 PR — 시크릿이 없어 더미 오리진으로 빌드만 검증한다(배포되지 않는다)."
+          export VITE_API_BASE="https://fork-pr.invalid"
+        else
+          echo "::error::VITE_API_BASE 시크릿이 없다 — 배포 산출물이 아무 데도 붙지 못한다."
+          exit 1
+        fi
+      fi
+      npm run build
+```
+
+⚠️ **게이트를 켜기 전에 시크릿 **값**이 새 형식 규칙을 통과하는지 확인해야 한다.** 시크릿 값은 읽을 수 없으므로(설계상 그렇다) `workflow_dispatch`로 한 번 돌려 확인한다. 끝 슬래시나 경로가 붙어 있으면 **그 순간부터 모든 빌드가 실패**한다.
 
 ---
 
@@ -251,6 +337,63 @@ beforeLoad: async ({ location }) => {
 
 ---
 
+### 3.7 🚨 `beforeLoad`는 캐시되지 않는다 — 세션 조회를 그대로 두면 네비게이션마다 왕복한다
+
+TanStack Router 내부 문서 원문:
+
+> *"The beforeLoad context is **not a cache**. A completed client preload never stores reusable beforeLoad output; when loader data enters the route cache, the merged context is discarded. **A subsequent navigation rebuilds merged context from the parent and reruns beforeLoad**, even when reusing completed loader data."*
+
+→ §3.5처럼 `_authed.beforeLoad`에서 `getMe()`를 그냥 부르면 **탭을 옮길 때마다 `GET /auth/me` 왕복이 하나씩 붙는다.** 로컬에서는 수 ms라 안 보이고, 배포에서는 매 이동에 수백 ms가 얹힌다.
+
+(`loader`는 다르다 — `staleTime`/`gcTime`으로 캐시된다. 그런데 리다이렉트 판정은 자식 로더가 돌기 **전에** 끝나야 하므로 `beforeLoad`에 있어야 한다.)
+
+**계약 — 세션 조회에 캐시를 씌우고, 가드는 그 캐시를 읽는다.**
+
+```ts
+// entities/session/model/session-cache.ts
+let cached: { user: AuthUser; at: number } | null = null;
+const TTL_MS = 60_000;
+
+export async function loadSession(): Promise<AuthUser> {
+  if (cached !== null && Date.now() - cached.at < TTL_MS) return cached.user;
+  const user = await getMe();
+  cached = { user, at: Date.now() };   // 성공만 캐시한다
+  return user;
+}
+
+export function invalidateSession(): void {
+  cached = null;
+}
+```
+
+| 규칙 | 이유 |
+|---|---|
+| **성공만 캐시한다** | 실패를 캐시하면 로그인 직후에도 TTL 동안 튕긴다. 실패 시 재조회는 낭비가 아니다 — 어차피 곧바로 `/login`으로 가고 거기엔 가드가 없다 |
+| **TTL 60초** | 세션 수명은 30일이지만, 다른 탭에서 로그아웃한 경우가 이 창만큼 늦게 반영된다. 네비게이션 왕복 제거와 신선도의 절충값이다 |
+| **`login`·`signup`·`logout`이 무효화한다** | 상태가 바뀌는 지점이 명시적이다 |
+| **401을 만나면 무효화한다** | 세션이 사용 중 만료되면(30일째) 캐시가 거짓을 말한다 |
+
+#### 401 무효화 배선 — 레이어를 거스르지 않는 방법
+
+`shared/api`가 `entities/session`을 import하면 **하향 규칙을 어긴다**(oxlint가 막는다). 구독으로 뒤집는다.
+
+```ts
+// shared/api/client.ts — shared 는 누가 듣는지 모른다
+const unauthorizedHandlers = new Set<() => void>();
+export function onUnauthorized(handler: () => void): () => void {
+  unauthorizedHandlers.add(handler);
+  return () => unauthorizedHandlers.delete(handler);
+}
+// send() 안에서 401 일 때: unauthorizedHandlers.forEach((h) => h());
+
+// app/main.tsx — 배선은 조립 레이어가 한다
+onUnauthorized(invalidateSession);
+```
+
+**`entities/session`이 모듈 로드 부작용으로 스스로 등록하지 않는다.** 그러면 배선이 import 순서에 숨고, 트리셰이킹으로 조용히 사라질 수 있다. 조립은 `app`의 일이다.
+
+---
+
 ## 4. 브라우저 지원
 
 ### 4.1 매트릭스
@@ -295,6 +438,22 @@ UA 스니핑을 쓰지 않는 이유 셋:
 `["chrome126", "edge126"]` — 근거는 [ADR 0007 §D6](../adr/0007-백엔드-연동-아키텍처를-확정한다.md).
 
 **번들 이득 때문이 아니다.** 5개 타깃을 실제로 빌드해 재 본 결과 JS는 오히려 8~23 B 늘고 CSS만 20 B 준다. 올리는 이유는 `@starting-style`(117) · `light-dark()`(123) · `anchor-*`(125)가 **하한 안으로 들어와 「조용히 무시되는」 실패 경로가 사라지는 것**이다.
+
+---
+
+### 4.5 로딩·에러 화면 — 계약은 정하고 시각은 미정으로 남긴다
+
+`staleTime`의 **기본값은 0**이다(공식: *"The default staleTime is 0, causing background reloads on every route match."*). 그리고 라우터는 **`defaultPendingComponent`가 없으면 펜딩 타이머를 시작조차 하지 않고 Suspense 경계도 만들지 않는다**(ADR 0005가 기록해 둔 사실).
+
+지금까지는 데이터가 합성 상수라 문제가 없었다. **실제 네트워크가 붙으면 모든 라우트에 대기 구간이 생기고, 그동안 화면은 이전 화면 그대로 멈춰 있는다** — 사용자에게는 「눌렀는데 아무 일도 안 일어난다」로 보인다.
+
+| 정한 것 | 미정 |
+|---|---|
+| 라우트마다 `staleTime`을 **명시한다** — 기본값 0에 기대지 않는다 | 각 라우트의 구체값(데이터 성격별) |
+| `defaultPendingComponent` · `defaultErrorComponent`를 **둔다** | 그 시각 디자인 |
+| 로더는 `abortController.signal`을 전송 계층에 넘긴다(§1.2 #4-a) | — |
+
+🚨 **시각 디자인을 여기서 지어내지 않는다.** 로딩·에러 상태의 근거가 `design/layout.md`에 **0건**이고, 값을 발명하는 것은 이 저장소가 금지한 행위다. **디자인 오너 결정이 선행되어야 한다** — 그전까지는 접근성만 지키는 최소 형태(`role="status"` / `role="alert"` + 텍스트)로 둔다.
 
 ---
 
