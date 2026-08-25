@@ -17,8 +17,13 @@ patches:
         value:
           name: LANGFUSE_ENVIRONMENT
           value: production
-  # 소셜 로그인(구글/네이버, 00_BASELINE.md §0-2 Should) — backend-staging/kustomization.yaml과
-  # 대칭(값만 다름).
+  # 소셜 로그인(구글/네이버, 00_BASELINE.md §0-2 Should) — OAUTH_BACKEND_BASE_URL은
+  # backend-staging/kustomization.yaml과 대칭(값만 다름), same-origin 전환 후에도 불변.
+  #
+  # FRONTEND_BASE_URL은 2026-08-26 same-origin 전환(ingress.yaml의 `/api`·`/` 경로 분기 참고)으로
+  # 예전 SWA 주소 대신 이 배포의 Ingress 호스트를 가리킨다 — backend-staging/kustomization.yaml과
+  # 동일한 이유(auth.py의 OAuth 리다이렉트 목적지). CORS(app/main.py의 SWA_ORIGIN_REGEX)는
+  # PR 프리뷰(SWA)·로컬 개발용으로 별개 유지, same-origin 요청과는 무관.
   - target:
       kind: Deployment
       name: backend
@@ -32,4 +37,4 @@ patches:
         path: /spec/template/spec/containers/0/env/-
         value:
           name: FRONTEND_BASE_URL
-          value: https://polite-island-0bb189700.7.azurestaticapps.net
+          value: https://merrymap-production.koreacentral.cloudapp.azure.com

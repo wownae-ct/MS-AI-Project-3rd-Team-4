@@ -10,6 +10,13 @@
 # ingress-nginx 설치 후 실제 IP를 확인해서 아래 호스트를
 # "<IP를-하이픈으로-치환>.nip.io"로 채울 것 — 예: IP가 20.1.2.3이면 20-1-2-3.nip.io.
 # TLS: cert-manager가 letsencrypt-nginx ClusterIssuer로 자동 발급(infra/k8s/cert-manager/README.md).
+#
+# 경로 분기(2026-08-26): 같은 호스트 아래 `/api`는 backend Service로, 그 외 전부(`/`)는 frontend
+# Service(nginx 정적 서빙, base/frontend)로 보낸다 — 프론트·백엔드를 완전 same-origin으로 만들어
+# 사파리(ITP)/브레이브(Shields)의 서드파티 쿠키 차단을 우회하기 위함(SWA cross-origin 배포는
+# frontend-ci.yml이 PR 프리뷰용으로 계속 병행). ingress-nginx는 경로 길이 기준으로 더 구체적인
+# 규칙을 우선 매칭하므로 `/api`가 `/`보다 항상 먼저 매치된다 — 선언 순서는 무관하지만 가독성을
+# 위해 구체적인 규칙을 먼저 적는다.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -26,10 +33,17 @@ spec:
     - host: "20-249-52-148.nip.io"
       http:
         paths:
-          - path: /
+          - path: /api
             pathType: Prefix
             backend:
               service:
                 name: backend
+                port:
+                  number: 80
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
                 port:
                   number: 80
