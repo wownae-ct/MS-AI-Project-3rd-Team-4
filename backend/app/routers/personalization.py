@@ -6,6 +6,8 @@ get_current_wedding으로 wedding_id를 세션에서 유도한다 — URL/바디
 패턴). done_so_far는 넘기지 않는다 — 온보딩 1회성 신호라는 기존 원칙(app/models/wedding.py) 그대로,
 FIELD_UPDATED 재트리거들과 동일하게 생략한다."""
 
+import logging
+
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +22,8 @@ from app.schemas.personalization import (
 )
 from app.services.personalization import run_personalization
 from app.services.timeline import get_active_category_codes
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["personalization"])
 
@@ -42,6 +46,15 @@ async def regenerate_personalization(
         trigger="MANUAL_REGENERATE",
         requested_domains=payload.domains,
     )
+    if ai_invocation.status != "SUCCESS":
+        # 2026-08-26 레드팀 감사 4라운드 항목 24 — 수동 재생성 결과가 BLOCKED/FAILED여도
+        # 무로깅이었다.
+        logger.warning(
+            "Manual personalization regenerate ended with status=%s for wedding_id=%s: %s",
+            ai_invocation.status,
+            wedding.id,
+            ai_invocation.error_message,
+        )
     await session.commit()
     return PersonalizationRegenerateOut(
         ai_invocation_id=ai_invocation.id,
