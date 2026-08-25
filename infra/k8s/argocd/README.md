@@ -74,9 +74,16 @@ token으로 직접 교환하는 스크립트가 필요하다(스크립트 원본
 ## 배포
 
 ```bash
-kubectl apply -f infra/k8s/root-app.yaml
+kubectl apply -f infra/k8s/root-app-staging.yaml
+kubectl apply -f infra/k8s/root-app-production.yaml
 ```
 
-이후 `infra/k8s/apps/*.yaml`에 Application을 추가하면 자동으로 동기화된다(app-of-apps). `root-app.yaml`이
-`infra/k8s/apps/` 밖에 있는 이유는 자기참조(root-app이 관리하는 폴더 안에 자기 자신이 있으면 `prune: true`일 때
-스스로를 지울 수 있음) 방지 — [../../README.md](../../README.md) 참고.
+이후 `infra/k8s/apps/staging/*.yaml`(root-app-staging, `backend` 브랜치 추적) 또는
+`infra/k8s/apps/production/*.yaml`(root-app-production, `main` 브랜치 추적)에 Application을 추가하면
+자동으로 동기화된다(app-of-apps). **2026-08-26 분리**: 예전엔 root-app 하나가 `main` 기준으로
+`infra/k8s/apps/` 전체를 읽어서, staging용 Application을 새로 추가해도 main 승격 전까지는 반영이
+안 되는 비대칭이 있었다 — root-app을 staging/production 둘로 나눠 staging은 `backend`를 직접
+추적하게 해서 해결했다. `root-app-{staging,production}.yaml`이 각자 관리하는
+`infra/k8s/apps/{staging,production}/` 밖에 있는 이유는 자기참조(root-app이 관리하는 폴더 안에
+자기 자신이 있으면 `prune: true`일 때 스스로를 지울 수 있음) 방지 —
+[../../README.md](../../README.md) 참고.
