@@ -45,10 +45,29 @@ def _validate_category_coverage(
     ]
 
 
-def _validate_no_duplicate_titles(domain_label: str, items: list[dict]) -> list[str]:
-    """규칙 (4): 같은 카테고리 내 제목 중복이 없는가."""
+def _validate_has_title(domain_label: str, items: list[dict]) -> list[str]:
+    """규칙 (5, 2026-08-26 레드팀 감사 3라운드 MEDIUM #6 추가): title이 비어 있지 않은가.
+    이전엔 이 규칙이 없어 LLM이 title을 빠뜨린 항목도 SUCCESS로 통과시켰다 — 그 뒤
+    app/services/personalization.py의 row 생성 코드가 item["title"]을 직접 인덱싱하다
+    KeyError로 죽고, 그 예외가 run_personalization의 광범위 except에 잡혀 도메인 전체가
+    validate→generate 재시도 기회 없이 곧장 카탈로그 폴백으로 버려졌다. 여기서 먼저 걸러야
+    재시도 루프(retry_feedback)가 "title을 채워서 다시 만들라"고 정확히 교정 요청할 수 있다."""
+    return [
+        f"{domain_label}: title이 비어 있는 항목이 있습니다(인덱스 {i})."
+        for i, item in enumerate(items)
+        if not item.get("title")
+    ]
+
+
+def _validate_no_duplicate_titles(
+    domain_label: str, items: list[dict], protected_titles: set[tuple] | None = None
+) -> list[str]:
+    """규칙 (4): 같은 카테고리 내 제목 중복이 없는가 — protected_titles(사용자가 이미 직접
+    수정한 기존 행의 (category_code, title))도 처음부터 seen에 넣어 같이 검사한다
+    (2026-08-26 레드팀 감사 3라운드 MEDIUM #7 — 이전엔 새로 만든 항목끼리만 중복을 봐서,
+    LLM이 보호 항목과 제목이 겹치는 새 항목을 만들어도 안 걸러졌다)."""
     errors = []
-    seen: set[tuple] = set()
+    seen: set[tuple] = set(protected_titles or ())
     for item in items:
         key = (item.get("category_code"), item.get("title"))
         if key in seen:
@@ -57,19 +76,25 @@ def _validate_no_duplicate_titles(domain_label: str, items: list[dict]) -> list[
     return errors
 
 
-def validate_checklist_items(active_categories: set[str], items: list[dict]) -> list[str]:
+def validate_checklist_items(
+    active_categories: set[str], items: list[dict], protected_titles: set[tuple] | None = None
+) -> list[str]:
     errors = _validate_category_membership("CHECKLIST", active_categories, items)
     errors += _validate_category_coverage("CHECKLIST", active_categories, items)
-    errors += _validate_no_duplicate_titles("CHECKLIST", items)
+    errors += _validate_has_title("CHECKLIST", items)
+    errors += _validate_no_duplicate_titles("CHECKLIST", items, protected_titles)
     return errors
 
 
-def validate_timeline_items(active_categories: set[str], items: list[dict]) -> list[str]:
-    """체크리스트 3규칙 + 규칙 (3): default_dday_offset_days가 -400~60 범위인가(타임라인 전용
+def validate_timeline_items(
+    active_categories: set[str], items: list[dict], protected_titles: set[tuple] | None = None
+) -> list[str]:
+    """체크리스트 규칙 + 규칙 (3): default_dday_offset_days가 -400~60 범위인가(타임라인 전용
     필드라 이 도메인에만 적용)."""
     errors = _validate_category_membership("TIMELINE", active_categories, items)
     errors += _validate_category_coverage("TIMELINE", active_categories, items)
-    errors += _validate_no_duplicate_titles("TIMELINE", items)
+    errors += _validate_has_title("TIMELINE", items)
+    errors += _validate_no_duplicate_titles("TIMELINE", items, protected_titles)
     for item in items:
         offset = item.get("default_dday_offset_days")
         if offset is not None and not (MIN_DDAY_OFFSET_DAYS <= offset <= MAX_DDAY_OFFSET_DAYS):
@@ -80,11 +105,16 @@ def validate_timeline_items(active_categories: set[str], items: list[dict]) -> l
     return errors
 
 
+def _protected_titles(protected_items: dict, domain: str) -> set[tuple]:
+    return {(item["category_code"], item["title"]) for item in protected_items.get(domain) or []}
+
+
 def validate_personalization_draft(
     active_categories: set[str],
     affected_domains: list[str],
     checklist_draft: list[dict] | None,
     timeline_draft: list[dict] | None,
+    protected_items: dict | None = None,
 ) -> dict[str, list[str]]:
     """affected_domains에 실제로 포함된 도메인만 검증한다 — route가 CHECKLIST만 골랐으면
     TIMELINE 기존 행은 이번 실행의 검증 대상이 아니다(온보딩만 다루는 이번 라운드는 항상
@@ -97,9 +127,16 @@ def validate_personalization_draft(
     CHECKLIST만 실패해도 이미 정상 통과한 TIMELINE까지 폴백 카탈로그로 버려지는 버그로 이어졌다.
     호출자(`app/personalization/graph.py::validate_node`)가 이 딕셔너리를 그대로 도메인별
     validation_status로 변환해 두 도메인의 SUCCESS/BLOCKED 판정을 서로 독립적으로 유지한다."""
+    protected_items = protected_items or {}
     result: dict[str, list[str]] = {}
     if "CHECKLIST" in affected_domains:
-        result["CHECKLIST"] = validate_checklist_items(active_categories, checklist_draft or [])
+        result["CHECKLIST"] = validate_checklist_items(
+            active_categories,
+            checklist_draft or [],
+            _protected_titles(protected_items, "CHECKLIST"),
+        )
     if "TIMELINE" in affected_domains:
-        result["TIMELINE"] = validate_timeline_items(active_categories, timeline_draft or [])
+        result["TIMELINE"] = validate_timeline_items(
+            active_categories, timeline_draft or [], _protected_titles(protected_items, "TIMELINE")
+        )
     return result

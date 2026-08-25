@@ -148,6 +148,75 @@ def _sse(event: str, data: BaseModel) -> str:
     return f"event: {event}\ndata: {data.model_dump_json()}\n\n"
 
 
+def _build_citations(context: list) -> list[CitationOut]:
+    return [
+        CitationOut(
+            chunk_id=c.chunk_id, title=c.title, source_tier=c.source_tier, source_url=c.source_url
+        )
+        for c in context
+    ]
+
+
+# 2026-08-26 레드팀 감사 3라운드 MEDIUM #10 — 다른 에러 경로(예: app/services/oauth.py의
+# UPSTREAM_LLM_ERROR)는 전부 정제된 한국어 문구를 쓰는데, 여기만 openai SDK 원본 예외 문자열을
+# 그대로 SSE로 노출했다. 원인 진단용 상세는 trace.update(metadata=...)의 error_detail로만 남긴다.
+_RATE_LIMITED_MESSAGE = "지금 요청이 많아 답변 생성이 지연되고 있습니다. 잠시 후 다시 시도해주세요."
+_UPSTREAM_LLM_ERROR_MESSAGE = (
+    "일시적인 오류로 답변을 완성하지 못했습니다. 잠시 후 다시 시도해주세요."
+)
+
+
+async def _finish_after_upstream_failure(
+    session: AsyncSession,
+    chat_session: ChatSession,
+    final_state: ChatState,
+    trace,
+    span_metadata: dict,
+    start: float,
+    error_code: str,
+    error_detail: str,
+) -> AsyncIterator[str]:
+    """2026-08-26 레드팀 감사 3라운드 HIGH #2/MEDIUM #11 — generate_node가 이미 답변을 만들어
+    SSE token으로 사용자에게 스트리밍한 뒤(예: verify 또는 CRAG 재시도 단계에서 Azure OpenAI가
+    429/타임아웃으로 실패하면), 그 답변을 DB에도 Langfuse trace에도 전혀 못 남기고 사라졌다 —
+    astream 루프의 except가 바로 return해서 뒤쪽 커밋/trace.update 코드에 아예 안 갔기 때문.
+    final_state에 answer가 남아있는 한(=generate가 최소 한 번은 성공) 그 결과를 최선으로
+    저장한다 — 완전히 잃어버리는 것보다, verdict 미검증 상태로라도 남기는 편이 낫다."""
+    answer = final_state.get("answer") or ""
+    verdict = final_state.get("verdict") or "GENERAL"
+    reason = final_state.get("verification_reason") or "업스트림 오류로 근거 검증을 완료하지 못함"
+    trace.update(
+        output=answer or None,
+        metadata={
+            **span_metadata,
+            "verdict": verdict,
+            "retry_count": final_state.get("retry_count", 0),
+            "error_code": error_code,
+            "error_detail": error_detail,
+        },
+    )
+    if answer:
+        citations = _build_citations(final_state.get("context") or [])
+        latency_ms = int((time.monotonic() - start) * 1000)
+        assistant_message = ChatMessage(
+            session_id=chat_session.id,
+            role="assistant",
+            content=answer,
+            citations=[c.model_dump() for c in citations],
+            verification={"verdict": verdict, "reason": reason},
+            latency_ms=latency_ms,
+            trace_ref=trace.trace_id,
+        )
+        session.add(assistant_message)
+        await session.commit()
+        yield _sse("citations", CitationsEventData(citations=citations))
+        yield _sse("verification", VerificationEventData(verdict=verdict, reason=reason))
+    error_message = (
+        _RATE_LIMITED_MESSAGE if error_code == "RATE_LIMITED" else _UPSTREAM_LLM_ERROR_MESSAGE
+    )
+    yield _sse("error", ErrorEventData(code=error_code, message=error_message))
+
+
 async def stream_chat_response(
     chat_session_id: UUID,
     wedding_id: UUID,
@@ -222,11 +291,32 @@ async def stream_chat_response(
                 # 시작해서 HTTP 상태코드를 더 못 바꾸므로 event: error로만 알린다. 사용자
                 # 메시지는 이미 커밋됐으니 그대로 두고(재시도 시 새 어시스턴트 메시지만
                 # 추가됨), 그래프 실패로 죽은 세션이 계속 열려 있지 않도록 여기서 스트림을
-                # 끝낸다.
-                yield _sse("error", ErrorEventData(code="RATE_LIMITED", message=str(exc)))
+                # 끝낸다. generate까지 성공해 답변이 이미 스트리밍됐다면 그 답변은 최선을 다해
+                # 저장한다(HIGH #2/MEDIUM #11 — _finish_after_upstream_failure 참고).
+                async for evt in _finish_after_upstream_failure(
+                    session,
+                    chat_session,
+                    final_state,
+                    trace,
+                    span_metadata,
+                    start,
+                    "RATE_LIMITED",
+                    str(exc),
+                ):
+                    yield evt
                 return
             except Exception as exc:  # noqa: BLE001 — LLM 업스트림 실패는 종류를 가리지 않고 알려야 함
-                yield _sse("error", ErrorEventData(code="UPSTREAM_LLM_ERROR", message=str(exc)))
+                async for evt in _finish_after_upstream_failure(
+                    session,
+                    chat_session,
+                    final_state,
+                    trace,
+                    span_metadata,
+                    start,
+                    "UPSTREAM_LLM_ERROR",
+                    str(exc),
+                ):
+                    yield evt
                 return
             trace.update(
                 output=final_state["answer"],
@@ -239,15 +329,7 @@ async def stream_chat_response(
             )
 
         # 루프가 끝난 시점엔 final_state에 검색 근거(context)·최종 답변·검증 결과가 전부 들어있다.
-        citations = [
-            CitationOut(
-                chunk_id=c.chunk_id,
-                title=c.title,
-                source_tier=c.source_tier,
-                source_url=c.source_url,
-            )
-            for c in final_state["context"]
-        ]
+        citations = _build_citations(final_state["context"])
         yield _sse("citations", CitationsEventData(citations=citations))
         yield _sse(
             "verification",
