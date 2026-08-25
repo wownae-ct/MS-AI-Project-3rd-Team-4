@@ -4,11 +4,25 @@
 생기기 쉽다(05_RAG_design.md §6 프롬프트 원문 그대로)."""
 
 import json
+from typing import get_args
 
 from openai import AsyncAzureOpenAI
 
 from app.core.config import Settings
 from app.rag.retrieval import RetrievedChunk
+from app.schemas.common import Verdict
+
+# 2026-08-26 레드팀 감사 3라운드 HIGH #1 — LLM이 스키마 밖 문자열을 verdict로 낼 수 있다(예:
+# "PARTIALLY_SUPPORTED"). 여기서 안 걸러지면 app/services/chat.py가 이 값으로 그대로
+# VerificationEventData(Verdict Literal)를 만들다 pydantic ValidationError로 죽는데, 그 시점엔
+# 이미 답변 전체가 SSE token으로 스트리밍된 뒤라 사용자는 답을 봤는데 DB엔 저장 안 되는 버그로
+# 이어진다. 파싱 경계에서 미리 정상화해 그 상황 자체가 생기지 않게 한다.
+_VALID_VERDICTS: frozenset[str] = frozenset(get_args(Verdict))
+
+
+def _normalize_verdict(raw: str | None) -> str:
+    return raw if raw in _VALID_VERDICTS else "GENERAL"
+
 
 SOURCE_TIER_LABELS = {
     "OFFICIAL": "공식 통계",
@@ -116,7 +130,7 @@ async def verify_answer(
         ],
     )
     verdict_json = json.loads(response.choices[0].message.content)
-    return verdict_json.get("verdict", "GENERAL"), verdict_json.get("reason", "")
+    return _normalize_verdict(verdict_json.get("verdict")), verdict_json.get("reason", "")
 
 
 async def reformulate_query(
