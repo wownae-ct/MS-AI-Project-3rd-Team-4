@@ -18,6 +18,14 @@ from app.core.config import Settings, get_settings
 
 AAD_PG_SCOPE = "https://ossrdbms-aad.database.windows.net/.default"
 
+# SQLAlchemy 기본값(pool_size=5, max_overflow=10 → 최대 15개)은 25명 동접 부하테스트에서
+# 저렴한 CRUD 조회조차 커넥션 대기로 p95가 3~4.4초까지 치솟는 원인이었다(2026-08-25,
+# 17_qa_e2e_test_plan.md §16). 실측 Postgres max_connections=429(당시 활성 연결 21개)라
+# 여유가 충분해, 레플리카당 50개(=20+30)로 올려도 staging+production이 같은 인스턴스를
+# 공유해도 안전하다.
+_DB_POOL_SIZE = 20
+_DB_POOL_MAX_OVERFLOW = 30
+
 
 def _to_asyncpg_url(database_url: str) -> str:
     if database_url.startswith("postgresql://"):
@@ -39,7 +47,12 @@ def _wants_ssl(database_url: str) -> bool:
 
 def create_engine(settings: Settings) -> AsyncEngine:
     connect_args = {"ssl": "require"} if _wants_ssl(settings.database_url) else {}
-    engine = create_async_engine(_to_asyncpg_url(settings.database_url), connect_args=connect_args)
+    engine = create_async_engine(
+        _to_asyncpg_url(settings.database_url),
+        connect_args=connect_args,
+        pool_size=_DB_POOL_SIZE,
+        max_overflow=_DB_POOL_MAX_OVERFLOW,
+    )
 
     if settings.database_auth_mode == "aad":
 
