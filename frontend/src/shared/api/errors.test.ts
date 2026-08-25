@@ -32,6 +32,18 @@ describe("parseApiError", () => {
     expect(e.message).not.toBe("");
   });
 
+  it("포맷 밖 응답의 원본 바디를 extra.rawBody 로 보존한다 (로깅 관측성 감사, 2026-08-26)", () => {
+    const e = parseApiError(502, "<html>Bad Gateway</html>");
+    expect(e.extra.rawBody).toBe("<html>Bad Gateway</html>");
+  });
+
+  it("원본 바디가 길면 잘라서 보존한다", () => {
+    const huge = "x".repeat(1000);
+    const e = parseApiError(502, huge);
+    expect(typeof e.extra.rawBody).toBe("string");
+    expect((e.extra.rawBody as string).length).toBeLessThan(huge.length);
+  });
+
   it("본문이 null 이어도 던지지 않는다", () => {
     expect(() => parseApiError(500, null)).not.toThrow();
   });
