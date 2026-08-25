@@ -32,12 +32,15 @@ function unauthorized() {
   return new ApiError({ code: "UNAUTHORIZED", message: "로그인이 필요합니다.", status: 401, extra: {} });
 }
 
+// 반환값(router)은 대부분의 호출자가 무시한다 — 화면 제목만 보는 테스트는 그걸로 충분하다.
+// redirect 검색 파라미터처럼 **화면에 안 보이는 값**을 검증할 때만 router.state 를 읽는다.
 function renderAt(path: string) {
   const router = createRouter({
     routeTree,
     history: createMemoryHistory({ initialEntries: [path] }),
   });
   render(<RouterProvider router={router} />);
+  return router;
 }
 
 /** 제목으로 화면을 식별한다 — 클래스명이나 testid 가 아니라 사용자가 보는 것으로 검증한다. */
@@ -144,5 +147,47 @@ describe("가드 — 세션과 웨딩을 두 층으로 나눈다", () => {
     getMeMock.mockRejectedValue(new ApiError({ code: "NETWORK_ERROR", message: "x", status: 0, extra: {} }));
     renderAt("/");
     await expectScreen("로그인");
+  });
+});
+
+// 리뷰 Finding 2 — `?redirect=` 는 밖에서 들어오는 값이라 무방비로 통과시키면 열린 리다이렉트가 된다.
+// 앱 스스로 만드는 값(authedRoute.beforeLoad 의 location.href)은 항상 "/"로 시작하는 내부 경로라
+// 여기 안 걸리고, 공격자가 URL 에 심는 값만 이 경계에서 걸러져야 한다.
+describe("redirect 검색 파라미터 — 열린 리다이렉트를 /login 경계에서 막는다", () => {
+  it("내부 경로는 그대로 통과한다", async () => {
+    const router = renderAt("/login?redirect=%2Ftimeline");
+    await expectScreen("로그인");
+    expect(router.state.location.search.redirect).toBe("/timeline");
+  });
+
+  it("스킴이 있는 외부 URL 은 버려진다", async () => {
+    const router = renderAt(`/login?redirect=${encodeURIComponent("https://evil.example")}`);
+    await expectScreen("로그인");
+    expect(router.state.location.search.redirect).toBeUndefined();
+  });
+
+  // "/"로 시작해서 언뜻 내부 경로처럼 보이지만, 두 번째 슬래시가 스킴을 현재 것으로 물려받는
+  // 프로토콜 상대 URL 을 만든다 — 흔히 놓치는 함정이라 이름을 박아 둔다.
+  it("프로토콜 상대 URL(//evil.example) 은 버려진다", async () => {
+    const router = renderAt(`/login?redirect=${encodeURIComponent("//evil.example")}`);
+    await expectScreen("로그인");
+    expect(router.state.location.search.redirect).toBeUndefined();
+  });
+
+  it("백슬래시로 시작하는 값도 버려진다 — 일부 브라우저가 슬래시로 취급한다", async () => {
+    const router = renderAt(`/login?redirect=${encodeURIComponent("\\evil.example")}`);
+    await expectScreen("로그인");
+    expect(router.state.location.search.redirect).toBeUndefined();
+  });
+});
+
+// Minor — sanitizeRedirectTarget 이 값을 거르는 것과, _authed 가 애초에 올바른 값을 채워 넣는 것은
+// 별개다. 이 메커니즘 자체가 이번 태스크 산출물이라 실제로 채워지는지 확인해 둔다.
+describe("redirect 검색 파라미터 — _authed 가드가 실제로 채운다", () => {
+  it("미인증으로 /timeline 에 들어오면 그 경로가 redirect 로 실린다", async () => {
+    getMeMock.mockRejectedValue(unauthorized());
+    const router = renderAt("/timeline");
+    await expectScreen("로그인");
+    expect(router.state.location.search.redirect).toBe("/timeline");
   });
 });
