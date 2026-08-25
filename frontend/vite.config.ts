@@ -158,6 +158,18 @@ export default defineConfig({
     target: ["chrome126", "edge126"],
   },
   test: {
+    // 테스트는 VITE_API_BASE 를 **스스로 세운다** — 개발자의 .env 나 CI 시크릿에 의존하지 않는다.
+    //
+    // 왜 필요한가 (2026-08-25 에 실제로 CI 를 빨간불로 만든 결함이다):
+    // apiBase() 는 값이 없으면 폴백하지 않고 ApiError 를 던진다(조용한 실패를 막으려는 의도).
+    // 그런데 frontend-ci.yml 의 Test 스텝에는 env 가 없고(Build 스텝에만 있다) 러너에는 .env 도
+    // 없어서, apiBase() 를 호출하는 테스트가 전부 죽었다 — 네트워크를 쓰지도 않는 테스트까지.
+    // 로컬에서는 .env 가 값을 채워 줘서 초록불이라 **푸시 전에는 드러나지 않았다.**
+    //
+    // 여기서 세우면 포크 PR 에서도 통과한다(GitHub 은 포크에 시크릿을 전달하지 않는다).
+    // vi.unstubAllEnvs() 는 이 값을 원본으로 보고 되돌리므로, 개별 테스트가 stubEnv 로
+    // 잠시 다른 값을 넣었다 풀어도 이 기본값으로 복귀한다.
+    env: { VITE_API_BASE: "https://api.test" },
     environment: "jsdom",
     globals: true,
     setupFiles: "./src/setupTests.ts",
