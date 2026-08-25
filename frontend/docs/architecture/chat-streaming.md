@@ -2,7 +2,7 @@
 
 > **성격** 적용 설계. S3 상담 화면이 백엔드 스트림을 어떻게 읽는지에 대한 계약.
 > **결정 근거** [ADR 0007](../adr/0007-백엔드-연동-아키텍처를-확정한다.md) · **짝 문서** [backend-integration.md](backend-integration.md) · [api-contract.md](api-contract.md)
-> **최종 갱신** 2026-08-25 · 백엔드 기준 커밋 `faf91b8`
+> **최종 갱신** 2026-08-25 · 백엔드 기준 커밋 **`474800c`** (계약 표면은 `faf91b8` 대비 무변경 — 바뀐 것은 개인화 프롬프트뿐)
 >
 > ⚠️ 인용값은 관측 시점의 사실이다. 갱신 절차는 [backend-integration.md](backend-integration.md) §7.
 

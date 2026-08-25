@@ -3,7 +3,7 @@
 > **성격** 적용 설계. 규범이 아니라 **이 저장소가 백엔드에 어떻게 붙기로 했는지와 그 근거**다.
 > **결정 근거** [ADR 0007](../adr/0007-백엔드-연동-아키텍처를-확정한다.md)
 > **짝 문서** [api-contract.md](api-contract.md) (무엇을 부르는가) · [chat-streaming.md](chat-streaming.md) (SSE)
-> **최종 갱신** 2026-08-25 · 백엔드 기준 커밋 `faf91b8`
+> **최종 갱신** 2026-08-25 · 백엔드 기준 커밋 **`474800c`** (계약 표면은 `faf91b8` 대비 무변경 — 바뀐 것은 개인화 프롬프트뿐)
 >
 > ⚠️ 이 문서는 **`frontend/` 밖을 규범적 근거로 인용하지 않는다.** 백엔드 소스에서 확인한 사실은
 > 파일·줄 번호를 **인용값으로** 적되, 그것이 규범이 아니라 **관측된 사실**임을 명시한다.
@@ -170,7 +170,7 @@ export function checkApiBase(v: unknown): string | null {
 | 값 형태 | 불투명 랜덤 토큰 — **JWT가 아니다** |
 | `HttpOnly` | **true** → **JS로 읽을 수 없다** |
 | `Secure` | true |
-| `SameSite` | **`lax` (현재)** → `none` 으로 변경 요청 중, §6 |
+| `SameSite` | **`none`** — 2026-08-25 적용됨(§6.1). `Secure` 필수 조건은 이미 충족돼 있었다 |
 | `Domain` | 미지정 → host-only |
 | `Max-Age` | 2,592,000초 = **30일** |
 
@@ -313,11 +313,11 @@ UA 스니핑을 쓰지 않는 이유 셋:
 
 ---
 
-## 6. 백엔드에 요구하는 변경 2건
+## 6. 백엔드 변경 2건 — ✅ 적용 완료 (2026-08-25)
 
-프론트가 고칠 수 없는 것이다.
+프론트가 고칠 수 없는 것이었고, 백엔드 워크트리(`feature/linked_frontend`)에서 **적용했다.** 아래는 무엇을 왜 바꿨는지의 기록이다 — 되돌리려는 사람이 이유를 알 수 있어야 한다.
 
-### 6.1 `samesite="lax"` → `"none"` (발급 · 삭제 양쪽)
+### 6.1 ✅ `samesite="lax"` → `"none"` (발급 · 삭제 양쪽)
 
 - **발급** — 세션 쿠키를 내리는 곳 한 군데(`routers/auth.py`의 `_set_session_cookie`). 이미 `secure=True`라 조건은 충족된다
   > MDN: *"Send the cookie with both cross-site and same-site requests. **The `Secure` attribute must also be set when using this value.**"*
@@ -336,11 +336,18 @@ UA 스니핑을 쓰지 않는 이유 셋:
 결과: 실려 온다 (Chrome 151). document.cookie 는 빈 문자열 — HttpOnly 정상.
 ```
 
-### 6.2 `backend/.env.example`의 OAuth 백엔드 URL 오타
+### 6.2 ✅ `backend/.env.example`의 OAuth 백엔드 URL 오타
 
 템플릿이 `http://localhost:8001`을 적고 있으나 코드 기본값과 원본 브랜치는 **8000**이다. 이 값은 IdP 콘솔의 redirect URI와 **문자 그대로** 일치해야 하므로, 템플릿을 복사해 `.env`를 만들고 8000으로 서버를 띄우면 **소셜 로그인이 IdP 단계에서 `redirect_uri_mismatch`로 멈춘다.**
 
 ---
+
+### 6.3 적용 시 함께 처리한 것
+
+- **`main.py` 독스트링**이 쿠키를 `SameSite=Lax`로 서술하고 있어 함께 고쳤다. 코드만 바꾸면 문서가 조용히 거짓말을 한다
+- **`wr_oauth_state`는 건드리지 않았다** — IdP→백엔드 top-level 네비게이션 전용이라 Lax로 정상 동작하고, `none`으로 바꾸면 보안만 느슨해진다
+- **환경변수 손잡이(`SESSION_COOKIE_SAMESITE`)를 만들지 않았다.** 그 유일한 논거였던 「로컬에서 문제가 생기면 회피」가 실측으로 사라졌기 때문이다(§6.1). 손잡이는 되돌릴 구멍만 만든다
+- 검증: `ruff check`/`ruff format` 통과 · `pytest`가 **수정 전후 동일**(`15 failed / 180 passed / 26 errors` — 전부 로컬 `DATABASE_URL` 미설정 탓임을 stash 대조로 확인)
 
 ## 7. 이 문서의 갱신
 
