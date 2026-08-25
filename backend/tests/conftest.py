@@ -64,7 +64,10 @@ async def _signup(client: AsyncClient) -> AsyncClient:
         "/auth/signup",
         json={
             "email": f"smoke-{unique}@example.com",
-            "password": "smoke-test-password",
+            # 2026-08-26 레드팀 감사 대응으로 SignupRequest.password에 영문+숫자+특수문자
+            # 조합 검증이 생겨, 조합 없는 값이던 기존 픽스처가 422로 막혀 이 픽스처를 쓰는
+            # 모든 테스트가 401로 줄줄이 실패했었다 — 조합 요건을 만족하는 값으로 교체.
+            "password": "smoke-test-password-1!",
             "display_name": "스모크테스트",
         },
     )

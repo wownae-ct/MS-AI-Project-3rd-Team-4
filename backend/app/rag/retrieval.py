@@ -63,6 +63,7 @@ _SEARCH_SQL = text("""
         WHERE (CAST(:category_code AS TEXT) IS NULL
                OR category_codes @> ARRAY[CAST(:category_code AS TEXT)])
           AND tsv @@ plainto_tsquery('simple', :query_text)
+        ORDER BY ts_rank(tsv, plainto_tsquery('simple', :query_text)) DESC
         LIMIT :tsvector_top_k
     ),
     -- ③ ①·② 두 순위표를 하나로 합친다(RRF, Reciprocal Rank Fusion). 공식은 "1 ÷ (상수 + 그

@@ -53,14 +53,27 @@ async def get_checklist_progress_by_category(
     return {code: dones[code] / total for code, total in totals.items() if total > 0}
 
 
-async def list_upcoming_items(session: AsyncSession, wedding_id: UUID, today: date) -> list[dict]:
+async def list_upcoming_items(
+    session: AsyncSession, wedding_id: UUID, today: date, active_category_codes: set[str]
+) -> list[dict]:
     """#25 upcoming_items — timeline_items(TODO, target_date 임박순)와 checklist_items(진행
     중)를 합쳐 최대 5개. 두 소스는 정렬 기준이 되는 정보가 다르다(날짜 vs 진행상태)는 게 스펙에
     명시된 전부라 교차 정렬 규칙은 없음 — 타임라인(날짜 임박순)을 먼저 채우고 남는 자리를
-    체크리스트로 채우는 단순한 순서를 택했다."""
+    체크리스트로 채우는 단순한 순서를 택했다.
+
+    사용자가 끈(is_active=false) 카테고리의 항목은 제외한다 — 안 그러면 `categories` 필드에
+    없는 category_code가 여기 섞여 들어와 프론트가 한글 라벨(name_ko)을 못 찾고 원문 ENUM을
+    노출하게 된다(app/services/timeline.py::list_timeline_items와 동일 원칙). LIMIT 전에
+    걸러야 상위 N개가 실제로 활성 카테고리 기준 상위 N개가 된다 — 조회 후 파이썬에서 거르면
+    비활성 항목만큼 결과가 5개 미만으로 줄어들 수 있다."""
     timeline_stmt = (
         select(TimelineItem)
-        .where(TimelineItem.wedding_id == wedding_id, TimelineItem.status == "TODO")
+        .where(
+            TimelineItem.wedding_id == wedding_id,
+            TimelineItem.status == "TODO",
+            (TimelineItem.category_code.is_(None))
+            | (TimelineItem.category_code.in_(active_category_codes)),
+        )
         .order_by(TimelineItem.target_date)
         .limit(DASHBOARD_UPCOMING_ITEMS_LIMIT)
     )
@@ -69,6 +82,7 @@ async def list_upcoming_items(session: AsyncSession, wedding_id: UUID, today: da
         .where(
             ChecklistItem.wedding_id == wedding_id,
             ChecklistItem.status.in_(UPCOMING_CHECKLIST_STATUSES),
+            ChecklistItem.category_code.in_(active_category_codes),
         )
         .order_by(ChecklistItem.display_order)
         .limit(DASHBOARD_UPCOMING_ITEMS_LIMIT)
@@ -100,12 +114,14 @@ async def list_upcoming_items(session: AsyncSession, wedding_id: UUID, today: da
 
 
 async def list_next_recommended_checks(
-    session: AsyncSession, wedding_id: UUID
+    session: AsyncSession, wedding_id: UUID, active_category_codes: set[str]
 ) -> list[ChecklistItem]:
     """#26 next_recommended_checks — priority='high'이면서 미완료 상태(일반: DONE/SKIP 아님,
     혼수: DELIVERED 아님)인 항목을 display_order 순으로 최대 5개. priority가 이미 'high' 하나로
     필터링돼 그 안에서 다시 priority로 정렬할 의미가 없어 display_order만 쓴다(03_API_spec.md
-    #26: "priority, display_order 순"이지만 필터 후엔 사실상 display_order 단독과 동치)."""
+    #26: "priority, display_order 순"이지만 필터 후엔 사실상 display_order 단독과 동치).
+
+    비활성 카테고리 항목은 제외 — list_upcoming_items와 동일 이유(ENUM 노출 방지)."""
     incomplete = (
         (ChecklistItem.category_code == "HOMEWARE") & (ChecklistItem.status != "DELIVERED")
     ) | (
@@ -116,6 +132,7 @@ async def list_next_recommended_checks(
         .where(
             ChecklistItem.wedding_id == wedding_id,
             ChecklistItem.priority == "high",
+            ChecklistItem.category_code.in_(active_category_codes),
             incomplete,
         )
         .order_by(ChecklistItem.display_order)

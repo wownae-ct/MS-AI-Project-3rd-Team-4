@@ -31,7 +31,7 @@ class WeddingCreate(BaseModel):
     total_budget: int | None = Field(default=None, gt=0)
     total_budget_unsure: bool = False
     region_code: str
-    guest_count: int | None = None
+    guest_count: int | None = Field(default=None, ge=0)
     guest_count_unsure: bool = False
     taste_preference: TastePreference | None = None
     venue_priority: VenuePriority | None = None
@@ -59,7 +59,7 @@ class WeddingUpdate(BaseModel):
     total_budget: int | None = Field(default=None, gt=0)
     total_budget_unsure: bool | None = None
     region_code: str | None = None
-    guest_count: int | None = None
+    guest_count: int | None = Field(default=None, ge=0)
     guest_count_unsure: bool | None = None
     taste_preference: TastePreference | None = None
     venue_priority: VenuePriority | None = None

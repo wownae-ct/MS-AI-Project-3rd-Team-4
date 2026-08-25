@@ -7,9 +7,15 @@ status가 직접 있다(app/models/checklist.py). id가 int(구 마스터 PK)에
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas.common import CategoryCode, ChecklistStatus, ItemType, Origin, SourceTier
+
+# 사용자가 POST /checklist-items(#14)로 직접 만드는 항목(origin=USER)의 길이 상한 — LLM
+# 생성 항목(origin=LLM)은 이 스키마를 거치지 않아 영향 없다. 프론트(dev-b4)도 입력 폼에
+# 동일 값으로 maxLength+truncate를 맞춘다(2026-08-26 인터페이스 합의).
+CHECKLIST_TITLE_MAX_LENGTH = 200
+CHECKLIST_BODY_MAX_LENGTH = 2000
 
 
 class ChecklistItemOut(BaseModel):
@@ -50,8 +56,8 @@ class ChecklistItemCreate(BaseModel):
     category_code: CategoryCode
     item_type: ItemType
     group_label: str
-    title: str
-    body: str | None = None
+    title: str = Field(max_length=CHECKLIST_TITLE_MAX_LENGTH)
+    body: str | None = Field(default=None, max_length=CHECKLIST_BODY_MAX_LENGTH)
     priority: str = "mid"
     option_group: str | None = None
     tag: str | None = None
