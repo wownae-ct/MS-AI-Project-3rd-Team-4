@@ -14,14 +14,11 @@ dependencies = [
     "pydantic-settings>=2.4",
     "azure-identity>=1.17",
     "azure-keyvault-secrets>=4.8",
-    # 영수증 OCR 자동채움(2026-08-25 결정, payments) — app/core/storage.py가 azure-identity의
-    # 기존 DefaultAzureCredential(get_credential())을 그대로 재사용해 disableLocalAuth로
-    # 붙는다. aiohttp는 azure-storage-blob의 비동기(.aio) 클라이언트가 쓰는 기본 전송 계층 —
-    # 패키지에 번들되지 않아 별도 명시 필요.
-    "azure-storage-blob>=12.19",
-    "aiohttp>=3.9",
-    # 영수증 OCR 자동채움의 multipart 업로드(UploadFile) — Starlette가 폼/파일 파싱에
-    # python-multipart를 요구한다(누락 시 런타임 500, import 시점엔 안 걸림).
+    # 영수증 OCR 자동채움(2026-08-25 결정, payments)의 multipart 업로드(UploadFile) —
+    # Starlette가 폼/파일 파싱에 python-multipart를 요구한다(누락 시 런타임 500, import
+    # 시점엔 안 걸림). Blob 업로드 자체는 새 SDK/전송계층 의존성 없이 기존 httpx로 REST API를
+    # 직접 호출한다(app/core/storage.py 모듈 docstring 참고) — azure-storage-blob/aiohttp
+    # 불필요.
     "python-multipart>=0.0.9",
     "openai>=1.40",
     "langgraph>=0.2",
