@@ -10,10 +10,27 @@
 //
 // 왜 `findBy*` 인가 — 첫 화면 말고는 전부 `lazyRouteComponent` 라 **비동기로 도착**한다.
 // `getBy*` 로 잡으면 lazy 화면에서 실패하고, 그 실패는 "라우팅이 틀렸다"로 오독되기 쉽다.
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
+import { ApiError } from "@/shared/api";
 import { routeTree } from "./router";
+
+const getMeMock = vi.fn();
+vi.mock("@/entities/session", async (orig) => ({
+  ...(await orig<typeof import("@/entities/session")>()),
+  // 가드가 부르는 것은 loadSession 이다 — 캐시를 거치지 않으면 네비게이션마다 왕복한다.
+  loadSession: () => getMeMock(),
+}));
+
+beforeEach(() => {
+  getMeMock.mockReset();
+  getMeMock.mockResolvedValue({ id: "u", email: "a@b.c", displayName: null, hasWedding: true });
+});
+
+function unauthorized() {
+  return new ApiError({ code: "UNAUTHORIZED", message: "로그인이 필요합니다.", status: 401, extra: {} });
+}
 
 function renderAt(path: string) {
   const router = createRouter({
@@ -66,15 +83,66 @@ describe("셸의 소재 (layout.md §1)", () => {
 
   // 온보딩만 크롬이 없다. 이건 AppShell 안의 조건 분기가 아니라 **트리 구조**로 표현돼 있다 —
   // 온보딩 라우트가 `_shell` 밖에 있다. 그 구조가 유지되는지를 여기서 고정한다.
+  //
+  // ⚠️ 웨딩이 있으면(beforeEach 기본값) 이제 `/onboarding` 자체가 `/` 로 리다이렉트된다
+  //    (§가드 테스트). 그래서 여기서는 온보딩 화면에 실제로 도달하는 상태 — 웨딩 없음 —
+  //    을 명시로 준다. 이 테스트가 보는 것은 가드가 아니라 "온보딩 화면에 셸이 없다"이다.
   it("온보딩에는 크롬이 없다 — 탭바도 사이드바도 붙지 않는다", async () => {
+    getMeMock.mockResolvedValue({ id: "u", email: "a@b.c", displayName: null, hasWedding: false });
     renderAt("/onboarding");
     await expectScreen("온보딩");
     expect(screen.queryAllByRole("navigation")).toHaveLength(0);
   });
 
   it("셸이 없어도 스킵 링크는 있다 — 본문 건너뛰기는 온보딩에도 필요하다", async () => {
+    getMeMock.mockResolvedValue({ id: "u", email: "a@b.c", displayName: null, hasWedding: false });
     renderAt("/onboarding");
     await expectScreen("온보딩");
     expect(screen.getByRole("link", { name: "본문으로 건너뛰기" })).toBeInTheDocument();
+  });
+});
+
+describe("가드 — 세션과 웨딩을 두 층으로 나눈다", () => {
+  it("미인증으로 / 에 들어오면 /login 으로 간다", async () => {
+    getMeMock.mockRejectedValue(unauthorized());
+    renderAt("/");
+    await expectScreen("로그인");
+  });
+
+  it("로그인했지만 웨딩이 없으면 온보딩으로 간다", async () => {
+    getMeMock.mockResolvedValue({ id: "u", email: "a@b.c", displayName: null, hasWedding: false });
+    renderAt("/");
+    await expectScreen("온보딩");
+  });
+
+  it("웨딩이 있으면 대시보드가 그대로 보인다", async () => {
+    getMeMock.mockResolvedValue({ id: "u", email: "a@b.c", displayName: null, hasWedding: true });
+    renderAt("/");
+    await expectScreen("대시보드");
+  });
+
+  // 한 층으로 합치면 여기서 무한 리다이렉트가 난다 — 그 회귀를 고정한다.
+  it("웨딩이 있는 사용자가 /onboarding 에 들어오면 홈으로 되돌아온다", async () => {
+    getMeMock.mockResolvedValue({ id: "u", email: "a@b.c", displayName: null, hasWedding: true });
+    renderAt("/onboarding");
+    await expectScreen("대시보드");
+  });
+
+  it("웨딩이 없는 사용자는 온보딩에 머무른다 — 되돌려 보내면 루프다", async () => {
+    getMeMock.mockResolvedValue({ id: "u", email: "a@b.c", displayName: null, hasWedding: false });
+    renderAt("/onboarding");
+    await expectScreen("온보딩");
+  });
+
+  it("/login 은 세션이 있어도 열린다 — 가입 직후 자동 채움 경로가 여기를 지난다", async () => {
+    getMeMock.mockResolvedValue({ id: "u", email: "a@b.c", displayName: null, hasWedding: true });
+    renderAt("/login");
+    await expectScreen("로그인");
+  });
+
+  it("네트워크 실패는 로그인으로 보낸다 — 흰 화면으로 두지 않는다", async () => {
+    getMeMock.mockRejectedValue(new ApiError({ code: "NETWORK_ERROR", message: "x", status: 0, extra: {} }));
+    renderAt("/");
+    await expectScreen("로그인");
   });
 });

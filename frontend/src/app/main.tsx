@@ -1,8 +1,16 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { invalidateSession } from "@/entities/session";
+import { onUnauthorized } from "@/shared/api";
 import { ErrorBoundary } from "@/shared/ui";
 import "@/shared/ui/styles.css";
 import App from "./App";
+
+// 세션이 사용 중 만료되면(슬라이딩 갱신이 없어 30일째 반드시 온다) 캐시된 세션이 거짓을 말한다.
+// shared/api 는 entities 를 import 할 수 없으므로(하향 규칙) 구독으로 뒤집고, 배선은 조립
+// 레이어인 여기서 한다. entities/session 이 모듈 로드 부작용으로 스스로 등록하지 않는 이유는
+// 그러면 배선이 import 순서에 숨고 트리셰이킹으로 조용히 사라질 수 있기 때문이다.
+onUnauthorized(invalidateSession);
 
 // 마운트 지점이 없으면 여기서 원인을 말하고 멈춘다.
 // non-null 단언(`!`)으로 넘기면 createRoot가 내부에서 불투명한 오류를 던져 원인이 지워진다.
