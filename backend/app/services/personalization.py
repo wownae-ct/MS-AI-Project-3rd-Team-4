@@ -10,6 +10,7 @@ protected_items(user_edited_at 있는 행)는 DB에서 직접 조회해 그래�
 하고, 최종 commit은 호출자가 한다(온보딩 시 wedding_categories 등 다른 행들과 원자적으로 함께
 커밋되어야 하므로)."""
 
+import logging
 from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
@@ -24,6 +25,8 @@ from app.personalization.graph import build_graph
 from app.personalization.state import PersonalizationState
 from app.services.checklist import default_status_for_category
 from app.services.timeline import generate_timeline_items
+
+logger = logging.getLogger(__name__)
 
 _GRAPH = build_graph()
 
@@ -275,6 +278,17 @@ async def run_personalization(
                         if row is not None
                     ]
                 else:
+                    # 2026-08-26 레드팀 감사 4라운드 항목 5 — validate BLOCKED→카탈로그 폴백
+                    # 전환이 무로깅이었다. CLAUDE.md에 기록된 "timeline category_code null-string
+                    # bug 3rd recurrence"가 정확히 이 경로라, 로그가 있었으면 1~2번째 재발에서
+                    # 잡혔을 사안 — BLOCKED 사유를 그대로 남긴다.
+                    logger.warning(
+                        "Personalization CHECKLIST BLOCKED for wedding_id=%s trigger=%s, "
+                        "falling back to catalog: %s",
+                        wedding.id,
+                        trigger,
+                        domain_errors.get("CHECKLIST"),
+                    )
                     checklist_rows = _checklist_fallback_rows(active_categories)
             if "TIMELINE" in affected_domains:
                 if domain_statuses.get("TIMELINE") == "SUCCESS":
@@ -285,6 +299,13 @@ async def run_personalization(
                         for idx, item in enumerate(result["timeline_draft"] or [], start=1)
                     ]
                 else:
+                    logger.warning(
+                        "Personalization TIMELINE BLOCKED for wedding_id=%s trigger=%s, "
+                        "falling back to catalog: %s",
+                        wedding.id,
+                        trigger,
+                        domain_errors.get("TIMELINE"),
+                    )
                     timeline_rows = _timeline_fallback_rows(
                         wedding.wedding_date, active_categories, done_so_far, today
                     )
@@ -298,11 +319,15 @@ async def run_personalization(
                 error_message = "; ".join(
                     error for domain in blocked_domains for error in domain_errors.get(domain, [])
                 )[:2000]
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             # 이 그래프(app/personalization/graph.py)는 챗 그래프와 같은 "재시도 없음" 원칙이라
             # 노드 안에서 예외를 잡지 않는다 — LLM 호출 실패·JSON 파싱 실패 등 모든 예외가 여기까지
             # 전파되면 이 경계에서 한 번만 잡아 FAILED 기록 + 결정론적 폴백으로 안전하게 내려간다
-            # (의도적 광범위 캐치 — 이 함수가 유일한 예외 경계).
+            # (의도적 광범위 캐치 — 이 함수가 유일한 예외 경계). 2026-08-26 레드팀 감사 4라운드
+            # 항목 4 — 이전엔 DB 컬럼(ai_invocations.error_message)에만 남고 stdout엔 안 남았다.
+            logger.exception(
+                "Personalization graph failed for wedding_id=%s trigger=%s", wedding.id, trigger
+            )
             status = "FAILED"
             error_message = str(exc)[:2000]
             if trigger == "ONBOARDING_INITIAL":
@@ -334,28 +359,42 @@ async def run_personalization(
     # affected_domains에 든 도메인은 SUCCESS/BLOCKED/FAILED 경로 어느 쪽이든 이미 새 내용으로
     # 대체하기로 결정된 상태다 — protected(user_edited_at 있음) 행만 남기고 나머지 기존 행을
     # 지운 뒤 아래에서 새 행을 꽂는다. ONBOARDING_INITIAL은 기존 행 자체가 없어 no-op.
-    await _delete_unprotected_items(session, wedding.id, affected_domains)
+    #
+    # 2026-08-26 레드팀 감사 4라운드 항목 13 — 이 구간(삭제→ai_invocations insert→flush→행
+    # insert)이 위 try/except 밖이라, 여기서 실패하면 무로깅으로 호출자까지 그대로 전파됐다
+    # (app/main.py의 catch-all 핸들러가 결국 500으로 받아내긴 하지만, "개인화 DB 반영 단계에서
+    # 실패했다"는 구체적 맥락은 안 남는다). 동작은 그대로(재전파) 두고 그 맥락만 남긴다.
+    try:
+        await _delete_unprotected_items(session, wedding.id, affected_domains)
 
-    ai_invocation = AiInvocation(
-        wedding_id=wedding.id,
-        trigger=trigger,
-        changed_fields=changed_fields,
-        affected_domains=affected_domains,
-        status=status,
-        error_message=error_message,
-        trace_ref=trace.trace_id,
-    )
-    session.add(ai_invocation)
-    # checklist_rows/timeline_rows.generated_by_run_id가 이 id를 참조해야 해서 커밋 전에 flush.
-    await session.flush()
+        ai_invocation = AiInvocation(
+            wedding_id=wedding.id,
+            trigger=trigger,
+            changed_fields=changed_fields,
+            affected_domains=affected_domains,
+            status=status,
+            error_message=error_message,
+            trace_ref=trace.trace_id,
+        )
+        session.add(ai_invocation)
+        # checklist_rows/timeline_rows.generated_by_run_id가 이 id를 참조해야 해서 커밋 전에 flush.
+        await session.flush()
 
-    for row in checklist_rows:
-        row.wedding_id = wedding.id
-        row.generated_by_run_id = ai_invocation.id
-        session.add(row)
-    for row in timeline_rows:
-        row.wedding_id = wedding.id
-        row.generated_by_run_id = ai_invocation.id
-        session.add(row)
+        for row in checklist_rows:
+            row.wedding_id = wedding.id
+            row.generated_by_run_id = ai_invocation.id
+            session.add(row)
+        for row in timeline_rows:
+            row.wedding_id = wedding.id
+            row.generated_by_run_id = ai_invocation.id
+            session.add(row)
+    except Exception:
+        logger.exception(
+            "Personalization DB write failed for wedding_id=%s trigger=%s affected_domains=%s",
+            wedding.id,
+            trigger,
+            affected_domains,
+        )
+        raise
 
     return ai_invocation

@@ -14,6 +14,7 @@ app/services/personalization.py의 몫이다.
 부분 재시도는 스코프 밖(단순함 유지, 결정 문서 참고)."""
 
 import json
+import logging
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, StateGraph
@@ -25,6 +26,8 @@ from app.core.tracing import traced_span
 from app.personalization.prompts import build_generate_prompt, build_route_prompt
 from app.personalization.state import PersonalizationState
 from app.personalization.validation import validate_personalization_draft
+
+logger = logging.getLogger(__name__)
 
 
 # ① route: ONBOARDING_INITIAL/MANUAL_REGENERATE는 판단할 게 없어 LLM 호출 없이 즉시 도메인을
@@ -109,6 +112,15 @@ def _normalize_timeline_category_code(item: dict) -> dict:
     검증만 하고, "무엇을 null로 볼지"는 여기 한 곳에서만 결정한다."""
     code = item.get("category_code")
     if isinstance(code, str) and code.strip() in _NULL_STRING_VALUES:
+        # 2026-08-26 레드팀 감사 4라운드 항목 23 — 이 정규화가 발동하는 빈도가 무로깅이었다.
+        # 3번째 재발(2026-08-25, CLAUDE.md 기록)이 있었던 버그라, 발동 자체를 남겨둬야 4번째
+        # 재발을 조기에 감지할 수 있다.
+        logger.warning(
+            "LLM emitted null-like category_code string %r for timeline item %r — normalizing "
+            "to None",
+            code,
+            item.get("title"),
+        )
         return {**item, "category_code": None}
     return item
 
