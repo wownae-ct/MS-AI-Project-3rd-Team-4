@@ -18,15 +18,18 @@ from app.services.personalization import (
 
 def _make_wedding(**overrides) -> Wedding:
     defaults = {
+        "user_role": "BRIDE",
         "wedding_date": date(2027, 5, 15),
         "wedding_date_precision": "EXACT",
         "total_budget": 45_000_000,
+        "total_budget_unsure": False,
         "region_code": "SEOUL_GANGNAM",
+        "guest_count": 200,
+        "guest_count_unsure": False,
         "taste_preference": "BALANCED",
         "venue_priority": "LOCATION",
         "sdm_priority": "DRESS",
         "primary_goals": ["BUDGET_CONTROL"],
-        "priorities": None,
     }
     defaults.update(overrides)
     return Wedding(**defaults)
@@ -36,16 +39,45 @@ class TestBuildProfile:
     def test_includes_active_categories_sorted(self):
         wedding = _make_wedding()
 
-        profile = _build_profile(wedding, {"SDM", "VENUE"})
+        profile = _build_profile(wedding, {"SDM", "VENUE"}, {})
 
         assert profile["active_categories"] == ["SDM", "VENUE"]
 
     def test_wedding_date_is_isoformat_string(self):
         wedding = _make_wedding()
 
-        profile = _build_profile(wedding, {"VENUE"})
+        profile = _build_profile(wedding, {"VENUE"}, {})
 
         assert profile["wedding_date"] == "2027-05-15"
+
+    def test_includes_user_role(self):
+        wedding = _make_wedding(user_role="GROOM")
+
+        profile = _build_profile(wedding, {"VENUE"}, {})
+
+        assert profile["user_role"] == "GROOM"
+
+    def test_includes_guest_count_fields(self):
+        wedding = _make_wedding(guest_count=150, guest_count_unsure=False)
+
+        profile = _build_profile(wedding, {"VENUE"}, {})
+
+        assert profile["guest_count"] == 150
+        assert profile["guest_count_unsure"] is False
+
+    def test_includes_total_budget_unsure(self):
+        wedding = _make_wedding(total_budget_unsure=True)
+
+        profile = _build_profile(wedding, {"VENUE"}, {})
+
+        assert profile["total_budget_unsure"] is True
+
+    def test_includes_selected_options_passed_in(self):
+        wedding = _make_wedding()
+
+        profile = _build_profile(wedding, {"SDM"}, {"SDM": ["드레스", "메이크업"]})
+
+        assert profile["selected_options"] == {"SDM": ["드레스", "메이크업"]}
 
 
 class TestTimelineStatus:

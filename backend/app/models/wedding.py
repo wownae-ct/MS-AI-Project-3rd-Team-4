@@ -94,7 +94,6 @@ class Wedding(Base):
     venue_priority: Mapped[str | None] = mapped_column(Text)
     sdm_priority: Mapped[str | None] = mapped_column(Text)
     primary_goals: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
-    priorities: Mapped[dict | None] = mapped_column(JSONB)
     # done_so_far: 온보딩 요청의 "지금까지 진행한 것" 신호는 timeline_items 초기 상태에 1회성으로만
     # 반영되고 저장되지 않는다(03_API_spec.md #6) — 이 컬럼은 그것과 별개로, 화면에 보여줄 캐시
     # 용도로만 쓰이는 자리다(04_DB_schema.sql). timeline_items가 아직 없어(별도 태스크) 지금은
