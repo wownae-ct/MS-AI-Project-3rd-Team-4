@@ -22,6 +22,7 @@ from app.core.oauth_providers import (
     generate_pkce_pair,
     get_provider_config,
 )
+from app.core.rate_limit import limiter
 from app.deps import get_current_user
 from app.models import User
 from app.schemas.auth import AuthUserOut, LoginRequest, SignupRequest
@@ -59,6 +60,7 @@ def _set_session_cookie(response: Response, token: str) -> None:
 
 
 @router.post("/signup", response_model=AuthUserOut, status_code=status.HTTP_201_CREATED)
+@limiter.limit("5/minute")  # 17_qa_e2e_test_plan.md §14-2 — 크리덴셜 스터핑/봇 가입 방어
 async def signup(
     payload: SignupRequest,
     request: Request,
@@ -83,6 +85,7 @@ async def signup(
 
 
 @router.post("/login", response_model=AuthUserOut)
+@limiter.limit("5/minute")  # 17_qa_e2e_test_plan.md §14-2 — 무차별 대입 방어(신규 발견, 최우선)
 async def login(
     payload: LoginRequest,
     request: Request,

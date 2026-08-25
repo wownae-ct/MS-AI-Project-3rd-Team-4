@@ -16,10 +16,22 @@ from sqlalchemy import delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.db import get_session_factory
+from app.core.rate_limit import limiter
 from app.main import app
 from app.models import ChatMessage, PriceBenchmark
 
 API_PREFIX = "/api/v1"
+
+# 스모크 테스트는 같은 ASGITransport 클라이언트로 회원가입/로그인/웨딩 생성을 매 테스트마다
+# 반복 호출한다(위 독스트링 — 테스트 DB 정리/롤백 인프라가 아직 없어 실DB에 계속 쌓는 방식).
+# ASGITransport 하에서는 request.client가 없어(또는 고정값) app/core/rate_limit.py의 IP 키가
+# 테스트 전체에서 사실상 하나로 묶이므로, app/core/rate_limit.py::limiter의 실 rate limit이
+# 그대로 켜져 있으면 무관한 테스트끼리 서로의 호출 횟수를 갉아먹어 순서에 따라 간헐적으로
+# 429가 나는 깨지기 쉬운 테스트가 된다. 이 프로젝트에 아직 "테스트 전용 설정 오버라이드"
+# 컨벤션이 없어(app/core/config.py에 그런 필드가 없음) slowapi 자체가 제공하는 런타임
+# on/off 스위치(limiter.enabled)로 세션 전체에서 끈다 — 실 서버(uvicorn 기동)는 이 모듈을
+# import하지 않으므로 프로덕션 동작에는 영향이 없다.
+limiter.enabled = False
 
 # scripts/seed_price_benchmarks.py가 ETL로 채우는 실 데이터는 로컬 dev DB에만 있고, CI
 # (backend-ci.yml)는 마이그레이션만 적용된 빈 DB로 돈다 — GET /benchmarks/total-average
