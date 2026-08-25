@@ -28,9 +28,11 @@ export const CHIP_SM_BASE =
   "transition-colors duration-150";
 export const CHIP_SM_SELECTED = "cursor-pointer rounded-pill border border-primary bg-primary px-2.5 py-1 text-xs font-bold text-surface";
 
-export const MODE_TOGGLE_TRACK = "flex gap-0.5 rounded-pill border border-line bg-surface p-[3px]";
-export const MODE_TOGGLE_LABEL = "flex-1 rounded-pill py-2 text-center text-sm font-bold text-ink-soft transition-colors duration-150";
-export const MODE_TOGGLE_LABEL_ACTIVE = "flex-1 rounded-pill bg-primary py-2 text-center text-sm font-bold text-surface";
+// 2026-08-26 사용자 피드백: 캡슐형(rounded-pill)이 이 토글엔 과했다 — 같은 필드의 날짜 <input>이
+// 이미 rounded-md라, 토글도 같은 단계로 낮춰 형태 스케일을 맞춘다.
+export const MODE_TOGGLE_TRACK = "flex gap-0.5 rounded-md border border-line bg-surface p-[3px]";
+export const MODE_TOGGLE_LABEL = "flex-1 rounded-sm py-2 text-center text-sm font-bold text-ink-soft transition-colors duration-150";
+export const MODE_TOGGLE_LABEL_ACTIVE = "flex-1 rounded-sm bg-primary py-2 text-center text-sm font-bold text-surface";
 
 export const INPUT =
   "min-h-tap w-full rounded-md border border-line bg-surface px-3 text-sm text-ink " +

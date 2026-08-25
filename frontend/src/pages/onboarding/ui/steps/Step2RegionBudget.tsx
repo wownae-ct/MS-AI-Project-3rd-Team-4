@@ -18,16 +18,35 @@
 // 의미를 바꾸면 그쪽 제출 로직도 같이 손대야 해서 범위가 커진다. 대신 이 컴포넌트가 입력 경계에서만
 // 원↔만원을 변환한다 — 사용자는 "4500"을 입력하고 이 필드는 부모에게 "45000000"을 돌려준다.
 import type { TotalAverageBenchmark } from "@/entities/wedding";
+import { REGION_CODES, type RegionCode } from "@/shared/api";
 import { manwonInputToWonString, wonStringToManwonDisplay } from "@/shared/lib/money";
 import { FIELD_LABEL, FIELD_NOTE, INPUT, SELECT } from "../onboarding-styles";
 
-const REGION_OPTIONS: { value: string; label: string }[] = [
-  { value: "SEOUL_GANGNAM", label: "서울(강남)" },
-  { value: "SEOUL_OTHER", label: "서울(강남 외)" },
-  { value: "GYEONGGI", label: "경기" },
-  { value: "INCHEON", label: "인천" },
-  { value: "BUSAN", label: "부산" },
-];
+// 2026-08-26 사용자 피드백: 5개(서울강남/서울외/경기/인천/부산)만 노출돼 있었다 — 지역 14개
+// 전체를 보여야 한다. `REGION_CODES`(17값)에서 실제 지역이 아닌 폴백 3개(전국/수도권/비수도권,
+// 벤치마크 응답 전용)만 제외해 파생시킨다 — 목록을 따로 손으로 관리하면 계약이 늘 때마다 또 갈린다.
+const FALLBACK_REGION_CODES: ReadonlySet<RegionCode> = new Set(["NATIONWIDE", "METRO", "NON_METRO"]);
+
+const REGION_LABELS: Record<Exclude<RegionCode, "NATIONWIDE" | "METRO" | "NON_METRO">, string> = {
+  SEOUL_GANGNAM: "서울(강남)",
+  SEOUL_OTHER: "서울(강남 외)",
+  BUSAN: "부산",
+  INCHEON: "인천",
+  DAEGU: "대구",
+  DAEJEON: "대전",
+  GWANGJU: "광주",
+  ULSAN: "울산",
+  GYEONGGI: "경기",
+  CHUNGCHEONG: "충청",
+  JEOLLA: "전라",
+  GYEONGSANG: "경상",
+  GANGWON: "강원",
+  JEJU: "제주",
+};
+
+const REGION_OPTIONS: { value: string; label: string }[] = REGION_CODES.filter(
+  (code) => !FALLBACK_REGION_CODES.has(code),
+).map((code) => ({ value: code, label: REGION_LABELS[code as keyof typeof REGION_LABELS] }));
 
 const GUEST_COUNT_DEFAULT = "200";
 
