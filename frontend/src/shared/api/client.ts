@@ -29,11 +29,13 @@ export function notifyUnauthorized(error: ApiError): void {
   for (const handler of unauthorizedHandlers) {
     try {
       handler();
-    } catch {
+    } catch (cause) {
       // 구독자 쪽 버그를 여기서 삼킨다 — 원본 UNAUTHORIZED ApiError 는 이 함수 밖에서
       // 그대로 throw 되므로 호출자 입장에서는 조용하지 않다. 삼키지 않으면 한 구독자의
       // 실패가 나머지 구독자 호출과 원본 에러 전파를 함께 막는다(Set.forEach 는 콜백이
-      // 던지면 그 지점에서 중단된다).
+      // 던지면 그 지점에서 중단된다). 다만 삼킨 실패 자체는 흔적을 남긴다 — 안 남기면
+      // 유일한 구독자(invalidateSession)가 깨져도 아무도 모른다(로깅 관측성 감사, 2026-08-26).
+      console.error("[client] onUnauthorized 구독자 실패:", cause);
     }
   }
 }
@@ -70,6 +72,7 @@ async function send(path: string, init: RequestInit): Promise<unknown> {
     response = await fetch(url, { ...init, signal });
   } catch (cause) {
     if (isTimeoutAbort(signal)) {
+      console.warn(`[client] 타임아웃(${DEFAULT_TIMEOUT_MS}ms): ${init.method ?? "GET"} ${url}`);
       throw new ApiError({
         code: "TIMEOUT",
         message: "요청이 시간 초과되었습니다. 잠시 후 다시 시도해 주세요.",
@@ -78,7 +81,10 @@ async function send(path: string, init: RequestInit): Promise<unknown> {
       });
     }
     // 네트워크 실패를 그대로 흘리면 화면이 ApiError 와 TypeError 두 종류를 다뤄야 한다.
-    // 한 종류로 모으고 code 로 구분한다.
+    // 한 종류로 모으고 code 로 구분한다. 화면엔 사용자용 메시지만 뜨고 원인은 아무 데도
+    // 안 남았었다 — 30개 넘는 호출부 중 콘솔에 남기는 곳이 ErrorBoundary 하나뿐이라
+    // 여기 이 한 지점만 고치면 전체가 커버된다(로깅 관측성 감사, 2026-08-26).
+    console.error(`[client] 네트워크 실패: ${init.method ?? "GET"} ${url}`, cause);
     throw new ApiError({
       code: "NETWORK_ERROR",
       message: "서버에 연결하지 못했습니다. 네트워크를 확인해 주세요.",
@@ -90,6 +96,7 @@ async function send(path: string, init: RequestInit): Promise<unknown> {
   const body = await readBody(response);
   if (!response.ok) {
     const error = parseApiError(response.status, body);
+    console.error(`[client] HTTP ${response.status}: ${init.method ?? "GET"} ${url}`, error.code, error.extra);
     // 세션이 사용 중 만료되면(슬라이딩 갱신이 없어 30일째 반드시 온다) 캐시된 세션이
     // 거짓을 말한다. 여기서 알리고, 무효화는 구독자가 한다.
     notifyUnauthorized(error);
