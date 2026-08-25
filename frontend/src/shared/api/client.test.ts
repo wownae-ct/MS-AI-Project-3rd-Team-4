@@ -95,6 +95,27 @@ describe("계약 4-a — signal 을 그대로 넘긴다", () => {
   });
 });
 
+describe("설정 오류는 네트워크 오류로 둔갑하지 않는다 (리뷰 finding 1)", () => {
+  it("VITE_API_BASE 형식 위반은 API_BASE_INVALID 로 던진다 — fetch 는 시도조차 되지 않는다", async () => {
+    // apiBase() 는 성공한 값만 캐시한다(env.ts) — 이 파일의 다른 테스트가 이미 정상 값으로
+    // 캐시를 채워 놓았으므로, 위반을 재현하려면 모듈을 새로 불러와야 한다.
+    vi.resetModules();
+    vi.stubEnv("VITE_API_BASE", "not-a-valid-url");
+    // "./errors" 도 이 시점의 모듈 그래프에서 다시 불러온다 — resetModules() 뒤에는
+    // "./client" 가 참조하는 ApiError 가 파일 상단에서 정적 import 한 것과 **다른 클래스
+    // 인스턴스**다. 상단의 isApiError 로 instanceof 를 검사하면 항상 false 가 나온다.
+    const fresh = await import("./client");
+    const freshErrors = await import("./errors");
+    await expect(fresh.apiFetch("/api/v1/x")).rejects.toSatisfy(
+      (e: unknown) => freshErrors.isApiError(e) && e.code === "API_BASE_INVALID",
+    );
+    // apiBase() 검증은 fetch 호출 이전에 던져야 한다 — 아니면 catch(cause) 가 이 예외를
+    // NETWORK_ERROR 로 재포장한다(리뷰 finding 1). fetch 가 호출되지 않았다는 것이 그 증거다.
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.unstubAllEnvs();
+  });
+});
+
 describe("401 구독 — shared 는 누가 듣는지 모른다", () => {
   it("401 이 오면 등록된 핸들러를 부른다", async () => {
     const seen = vi.fn();
@@ -120,6 +141,23 @@ describe("401 구독 — shared 는 누가 듣는지 모른다", () => {
     await expect(apiFetch("/api/v1/x")).rejects.toThrow();
     expect(seen).not.toHaveBeenCalled();
     off();
+  });
+
+  it("구독자 하나가 던져도 나머지 구독자가 호출되고 원본 UNAUTHORIZED 가 그대로 던져진다 (리뷰 finding 2)", async () => {
+    const broken = vi.fn(() => {
+      throw new Error("구독자 쪽 버그 — 이 예외가 send() 밖으로 새면 안 된다");
+    });
+    const healthy = vi.fn();
+    const offBroken = onUnauthorized(broken);
+    const offHealthy = onUnauthorized(healthy);
+    fetchMock.mockResolvedValue(jsonResponse({ error: { code: "UNAUTHORIZED", message: "x" } }, 401));
+    await expect(apiFetch("/api/v1/x")).rejects.toSatisfy(
+      (e: unknown) => isApiError(e) && e.code === "UNAUTHORIZED",
+    );
+    expect(broken).toHaveBeenCalledTimes(1);
+    expect(healthy).toHaveBeenCalledTimes(1);
+    offBroken();
+    offHealthy();
   });
 });
 

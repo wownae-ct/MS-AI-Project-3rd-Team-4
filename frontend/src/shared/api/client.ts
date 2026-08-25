@@ -26,9 +26,13 @@ async function readBody(response: Response): Promise<unknown> {
 }
 
 async function send(path: string, init: RequestInit): Promise<unknown> {
+  // apiBase() 를 try 밖에서 부른다. 안에 두면 VITE_API_BASE 형식 위반으로 던지는
+  // ApiError(API_BASE_INVALID) 가 같은 catch 에 잡혀 NETWORK_ERROR 로 재포장된다 —
+  // 설정 오류가 "네트워크를 확인하라"는 오진으로 둔갑한다(client.test.ts 가 고정한다).
+  const url = `${apiBase()}${path}`;
   let response: Response;
   try {
-    response = await fetch(`${apiBase()}${path}`, init);
+    response = await fetch(url, init);
   } catch (cause) {
     // 네트워크 실패를 그대로 흘리면 화면이 ApiError 와 TypeError 두 종류를 다뤄야 한다.
     // 한 종류로 모으고 code 로 구분한다.
@@ -45,7 +49,18 @@ async function send(path: string, init: RequestInit): Promise<unknown> {
     const error = parseApiError(response.status, body);
     // 세션이 사용 중 만료되면(슬라이딩 갱신이 없어 30일째 반드시 온다) 캐시된 세션이
     // 거짓을 말한다. 여기서 알리고, 무효화는 구독자가 한다.
-    if (error.code === "UNAUTHORIZED") unauthorizedHandlers.forEach((handler) => handler());
+    if (error.code === "UNAUTHORIZED") {
+      for (const handler of unauthorizedHandlers) {
+        try {
+          handler();
+        } catch {
+          // 구독자 쪽 버그를 여기서 삼킨다 — 원본 UNAUTHORIZED ApiError 는 이 블록 밖에서
+          // 그대로 throw 되므로 호출자 입장에서는 조용하지 않다. 삼키지 않으면 한 구독자의
+          // 실패가 나머지 구독자 호출과 원본 에러 전파를 함께 막는다(Set.forEach 는 콜백이
+          // 던지면 그 지점에서 중단된다).
+        }
+      }
+    }
     throw error;
   }
   return body;
