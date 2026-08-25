@@ -40,10 +40,21 @@ from app.routers import (
     wedding,
 )
 
-LOCAL_DEV_ORIGIN = "http://localhost:5173"
+_PRIVATE_LAN_HOST = (
+    r"(?:localhost"
+    r"|10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+    r"|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"
+    r"|192\.168\.\d{1,3}\.\d{1,3})"
+)
+# 로컬 Vite 기본 포트(5173) 기준 — localhost 외에 사설망 대역(RFC1918)도 허용해서, 다른 기기
+# (휴대폰 등)나 LAN IP로 접속해 테스트할 때도 CORS가 막히지 않게 한다. 팀원마다 IP가 달라
+# 하드코딩 대신 대역 전체를 정규식으로 허용 — allow_credentials=True라 와일드카드 오리진(*)은
+# 못 쓰므로, 범위를 사설망으로만 좁혀 명시적 화이트리스트를 유지한다.
+LOCAL_DEV_ORIGIN_REGEX = rf"^http://{_PRIVATE_LAN_HOST}:5173$"
 # team4hc-swa(Free tier)의 defaultHostname. PR 프리뷰 환경은 "<defaultHostname>-<식별자>.7.azurestaticapps.net"
 # 형태로 뜨므로(Azure 문서 기준) 접미사까지 정규식으로 허용 — 값이 바뀌면(SWA 재생성 등) 여기도 갱신할 것.
 SWA_ORIGIN_REGEX = r"^https://polite-island-0bb189700(-[a-zA-Z0-9]+)?\.7\.azurestaticapps\.net$"
+ALLOWED_ORIGIN_REGEX = rf"(?:{LOCAL_DEV_ORIGIN_REGEX}|{SWA_ORIGIN_REGEX})"
 
 
 @asynccontextmanager
@@ -58,8 +69,7 @@ app = FastAPI(title="메리맵 API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[LOCAL_DEV_ORIGIN],
-    allow_origin_regex=SWA_ORIGIN_REGEX,
+    allow_origin_regex=ALLOWED_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
