@@ -92,7 +92,9 @@ export function AddPaymentRow({ categoryCode, onAdded }: { categoryCode: string;
 
   async function handleSubmit() {
     const parsedAmount = Number(amount);
-    if (!itemName || !vendorName || !dueDate || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+    // due_date는 무조건 필수가 아니다 — backend PaymentCreate.due_date도 optional이고, 영수증
+    // OCR로 결제일(paidDate)이 이미 채워진 건은 "언제까지 낼지"가 더 이상 의미가 없을 수 있다.
+    if (!itemName || !vendorName || (!dueDate && !paidDate) || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
       setError("모든 항목을 올바르게 입력해 주세요.");
       return;
     }
@@ -105,7 +107,7 @@ export function AddPaymentRow({ categoryCode, onAdded }: { categoryCode: string;
         payment_type: paymentType,
         vendor_name: vendorName,
         amount: parsedAmount,
-        due_date: dueDate,
+        due_date: dueDate === "" ? undefined : dueDate,
         paid_date: paidDate === "" ? undefined : paidDate,
         receipt_url: receiptUrl ?? undefined,
       });
@@ -168,7 +170,7 @@ export function AddPaymentRow({ categoryCode, onAdded }: { categoryCode: string;
         onChange={(e) => setAmount(e.target.value)}
       />
       <label className="flex flex-col gap-1">
-        <span className={FIELD_NOTE}>납부 예정일</span>
+        <span className={FIELD_NOTE}>납부 예정일{paidDate !== "" && "(선택 — 이미 결제했다면 비워둬도 돼요)"}</span>
         <input className={FORM_INPUT} type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
       </label>
       <label className="flex flex-col gap-1">
