@@ -18,9 +18,12 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.config import get_settings
+from app.core.rate_limit import limiter
 from app.core.tracing import flush_tracing
 from app.routers import (
     auth,
@@ -61,6 +64,27 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# app/core/rate_limit.py 참고 — CORS 다음(=CORS보다 안쪽)에 붙여야 rate limit이 걸려도 응답에
+# CORS 헤더가 정상적으로 실려서, 브라우저가 429를 진짜 429가 아니라 CORS 에러로 오인하지 않는다.
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    """03_API_spec.md §2 에러 포맷에 맞춘다 — slowapi 기본 핸들러는 {"error": "..."} 문자열
+    포맷이라 이 프로젝트의 {"error":{"code":...,"message":...}} 포맷과 다르다."""
+    response = JSONResponse(
+        status_code=429,
+        content={
+            "error": {
+                "code": "RATE_LIMIT_EXCEEDED",
+                "message": f"요청이 너무 많습니다. 잠시 후 다시 시도해주세요. ({exc.detail})",
+            }
+        },
+    )
+    return limiter._inject_headers(response, request.state.view_rate_limit)
 
 
 @app.exception_handler(StarletteHTTPException)

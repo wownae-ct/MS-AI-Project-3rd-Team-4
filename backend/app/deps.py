@@ -26,6 +26,10 @@ async def get_current_user(
     user = await get_user_by_session_token(session, raw_token)
     if user is None:
         raise api_error(401, "UNAUTHORIZED", "세션이 만료됐거나 유효하지 않습니다.")
+    # app/core/rate_limit.py::user_or_ip_key가 계정 단위 rate limit 키로 읽는다 — 인증된
+    # 요청은 IP가 아니라 계정 기준으로 제한해야 한 계정이 여러 IP를 돌려써도 LLM 비용
+    # 유발 엔드포인트를 무제한 호출 못 한다.
+    request.state.user_id = str(user.id)
     return user
 
 

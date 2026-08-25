@@ -11,11 +11,12 @@ RAG 로직(app/services/chat.py)으로 교체 완료. 05_RAG_design.md §7 이�
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
+from app.core.rate_limit import limiter, user_or_ip_key
 from app.deps import get_current_wedding
 from app.models import ChatMessage, Wedding
 from app.schemas.chat import (
@@ -80,7 +81,11 @@ async def list_chat_messages_route(
 
 
 @router.post("/chat/sessions/{session_id}/messages")
+@limiter.limit("20/minute", key_func=user_or_ip_key)
+# 17_qa_e2e_test_plan.md §10-2/§14-2 — 메시지당 RAG LLM 호출 1회 이상(CRAG 재시도 시 최대 2회).
+# 실사용 다중 메시지 흐름을 고려해 create_wedding/regenerate보다 여유 있게 잡음.
 async def send_chat_message(
+    request: Request,
     session_id: UUID,
     payload: ChatMessageCreate,
     wedding: Wedding = Depends(get_current_wedding),  # noqa: B008
