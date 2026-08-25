@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.checklist_catalog import CHECKLIST_FALLBACK_CATALOG, GROUP_LABEL_BY_ITEM_TYPE
 from app.core.config import Settings
 from app.core.tracing import traced_span
-from app.models import AiInvocation, ChecklistItem, TimelineItem, Wedding
+from app.models import AiInvocation, ChecklistItem, TimelineItem, Wedding, WeddingCategory
 from app.personalization.graph import build_graph
 from app.personalization.state import PersonalizationState
 from app.services.checklist import default_status_for_category
@@ -83,18 +83,27 @@ async def _delete_unprotected_items(
         )
 
 
-def _build_profile(wedding: Wedding, active_categories: set[str]) -> dict:
+def _build_profile(
+    wedding: Wedding, active_categories: set[str], selected_options: dict[str, list[str]]
+) -> dict:
+    """selected_options는 호출자(run_personalization)가 미리 조회해 넘긴다 — 이 함수는 순수
+    로직으로 유지(DB 세션 없이 임의의 값으로 결정론적 테스트 가능, services/wedding.py::
+    approximate_wedding_date()와 같은 컨벤션)."""
     return {
         "active_categories": sorted(active_categories),
         "wedding_date": wedding.wedding_date.isoformat(),
         "wedding_date_precision": wedding.wedding_date_precision,
+        "user_role": wedding.user_role,
         "total_budget": wedding.total_budget,
+        "total_budget_unsure": wedding.total_budget_unsure,
         "region_code": wedding.region_code,
+        "guest_count": wedding.guest_count,
+        "guest_count_unsure": wedding.guest_count_unsure,
         "taste_preference": wedding.taste_preference,
         "venue_priority": wedding.venue_priority,
         "sdm_priority": wedding.sdm_priority,
         "primary_goals": wedding.primary_goals,
-        "priorities": wedding.priorities,
+        "selected_options": selected_options,
     }
 
 
@@ -198,12 +207,22 @@ async def run_personalization(
     today = datetime.now(UTC).date()
     protected_items = await _fetch_protected_items(session, wedding.id)
     done_categories = set(done_so_far or [])
+    selected_options_rows = (
+        await session.execute(
+            select(WeddingCategory.category_code, WeddingCategory.selected_options).where(
+                WeddingCategory.wedding_id == wedding.id,
+                WeddingCategory.category_code.in_(active_categories),
+                WeddingCategory.selected_options.is_not(None),
+            )
+        )
+    ).all()
+    selected_options = {code: options for code, options in selected_options_rows if options}
 
     initial_state: PersonalizationState = {
         "wedding_id": str(wedding.id),
         "trigger": trigger,
         "changed_fields": changed_fields or [],
-        "profile": _build_profile(wedding, active_categories),
+        "profile": _build_profile(wedding, active_categories, selected_options),
         "protected_items": protected_items,
         "requested_domains": requested_domains or [],
         "affected_domains": [],
