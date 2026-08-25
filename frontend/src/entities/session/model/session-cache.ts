@@ -1,4 +1,5 @@
-// 🚨 beforeLoad 는 캐시되지 않는다. TanStack Router 내부 문서 원문:
+// 🚨 beforeLoad 는 캐시되지 않는다. TanStack Router 내부 문서 원문
+//    (packages/router-core/INTERNALS.md):
 //    "The beforeLoad context is **not a cache** ... A subsequent navigation rebuilds merged
 //     context from the parent and reruns beforeLoad, even when reusing completed loader data."
 //    → 가드에서 getMe() 를 그냥 부르면 **탭을 옮길 때마다** GET /auth/me 왕복이 붙는다.

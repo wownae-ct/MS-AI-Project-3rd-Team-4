@@ -5,14 +5,25 @@
 //    가 `getMe` 를 얻으려 이미 이 파일을 import 하고 있어서다 — 반대 방향으로 또 import 하면
 //    순환 참조가 되고, 실제로 `import/no-cycle` 이 이를 잡아 lint 를 깬다(빌드 게이트가 우회를
 //    허용하지 않는다). 그래서 무효화 호출은 이 파일이 아니라 화면 쪽 몫이다.
-import { apiBase, apiFetch } from "@/shared/api";
+import { ApiError, apiBase, apiFetch } from "@/shared/api";
 import type { AuthUser } from "../model/types";
 
 function toAuthUser(raw: unknown): AuthUser {
   const r = raw as Record<string, unknown>;
+  if (typeof r?.id !== "string" || typeof r.email !== "string") {
+    // 형식 밖 응답을 조용히 통과시키지 않는다 — id·email 이 문자열이 아니면 `String(undefined)`
+    // 가 리터럴 "undefined" 를 만들어 유효해 보이는 AuthUser 를 지어낸다(값 지어내기 금지).
+    // HTTP 는 이미 2xx 였으므로 이건 전송 실패가 아니라 응답 "형식" 위반이다 — status 는 0.
+    throw new ApiError({
+      code: "MALFORMED_USER",
+      message: "서버가 돌려준 사용자 정보의 형식이 예상과 다릅니다.",
+      status: 0,
+      extra: {},
+    });
+  }
   return {
-    id: String(r.id),
-    email: String(r.email),
+    id: r.id,
+    email: r.email,
     displayName: typeof r.display_name === "string" ? r.display_name : null,
     hasWedding: r.has_wedding === true,
   };
