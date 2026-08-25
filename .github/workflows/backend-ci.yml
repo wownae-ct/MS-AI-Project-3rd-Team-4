@@ -82,6 +82,9 @@ jobs:
             GOOGLE_CLIENT_SECRET: ci-dummy-google-client-secret
             NAVER_CLIENT_ID: ci-dummy-naver-client-id
             NAVER_CLIENT_SECRET: ci-dummy-naver-client-secret
+            # 영수증 OCR 자동채움(2026-08-25 결정, payments) — 스모크 테스트가 실 Blob Storage를
+            # 호출하지 않으니(업로드 경로는 별도 수동 검증 대상) 더미 값으로 충분하다.
+            AZURE_STORAGE_BLOB_ENDPOINT: https://ci-dummy-not-called.blob.core.windows.net/
         steps:
             - uses: actions/checkout@v7
 
