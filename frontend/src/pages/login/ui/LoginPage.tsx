@@ -189,7 +189,16 @@ export function LoginPage() {
       </Card>
 
       <div className="flex flex-col gap-2">
-        <Button variant="secondary" block onClick={() => { window.location.href = socialLoginUrl("google"); }}>
+        <Button
+          variant="secondary"
+          block
+          onClick={() => { window.location.href = socialLoginUrl("google"); }}
+          // secondary 변이는 기본적으로 호버 시 배경(bg-bg)·보더(border-ink-soft)가 옅게 바뀐다
+          // (Button.tsx VARIANT.secondary) — 구글 버튼은 그 변화 없이 항상 자기 색(흰 배경 +
+          // 라인 보더) 그대로 보이길 원해서, 네이버 버튼과 같은 방식(인라인 style로 고정)으로
+          // 고정한다. 인라인 style은 클래스 기반 :hover 유틸리티보다 항상 우선한다.
+          style={{ backgroundColor: "#FFFFFF", borderColor: "#E7E3DE" }}
+        >
           <IconGoogle size={18} />
           구글로 계속하기
         </Button>
