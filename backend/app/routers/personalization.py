@@ -6,11 +6,12 @@ get_current_wedding으로 wedding_id를 세션에서 유도한다 — URL/바디
 패턴). done_so_far는 넘기지 않는다 — 온보딩 1회성 신호라는 기존 원칙(app/models/wedding.py) 그대로,
 FIELD_UPDATED 재트리거들과 동일하게 생략한다."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.db import get_session
+from app.core.rate_limit import limiter, user_or_ip_key
 from app.deps import get_current_wedding
 from app.models import Wedding
 from app.schemas.personalization import (
@@ -24,7 +25,10 @@ router = APIRouter(tags=["personalization"])
 
 
 @router.post("/personalization/regenerate", response_model=PersonalizationRegenerateOut)
+@limiter.limit("10/minute", key_func=user_or_ip_key)
+# 17_qa_e2e_test_plan.md §14-2 — LLM 호출 엔드포인트, 계정 기준 제한(create_wedding과 동일 근거).
 async def regenerate_personalization(
+    request: Request,
     payload: PersonalizationRegenerateRequest,
     wedding: Wedding = Depends(get_current_wedding),  # noqa: B008
     session: AsyncSession = Depends(get_session),  # noqa: B008
