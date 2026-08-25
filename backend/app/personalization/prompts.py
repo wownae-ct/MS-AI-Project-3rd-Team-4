@@ -222,12 +222,26 @@ def build_route_prompt(changed_fields: list[str], profile_summary: str) -> str:
     )
 
 
+def _format_protected_items(items: list[dict]) -> str:
+    """[카테고리] 제목 형태로 렌더링 — UUID만 줘서는 LLM이 "이 항목을 다시 만들지 마라"는
+    지시를 지킬 방법이 없었다(2026-08-26 레드팀 감사 3라운드 MEDIUM #7). 실제 제목을 보여줘야
+    같은 제목의 항목을 새로 만들지 않을 수 있다."""
+    return ", ".join(f"[{item['category_code']}] {item['title']}" for item in items)
+
+
 def _protected_items_note(protected_items: dict) -> str:
-    checklist_ids = protected_items.get("CHECKLIST") or []
-    timeline_ids = protected_items.get("TIMELINE") or []
-    if not checklist_ids and not timeline_ids:
+    checklist_items = protected_items.get("CHECKLIST") or []
+    timeline_items = protected_items.get("TIMELINE") or []
+    if not checklist_items and not timeline_items:
         return "protected_items: 없음(사용자가 직접 수정한 기존 항목이 아직 없습니다)."
-    return f"protected_items: CHECKLIST={checklist_ids}, TIMELINE={timeline_ids}"
+    parts = [
+        "protected_items(사용자가 이미 직접 수정한 기존 항목 — 같은 제목으로 다시 만들지 마세요):"
+    ]
+    if checklist_items:
+        parts.append(f"- CHECKLIST: {_format_protected_items(checklist_items)}")
+    if timeline_items:
+        parts.append(f"- TIMELINE: {_format_protected_items(timeline_items)}")
+    return "\n".join(parts)
 
 
 def _retry_feedback_note(

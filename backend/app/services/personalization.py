@@ -28,36 +28,40 @@ from app.services.timeline import generate_timeline_items
 _GRAPH = build_graph()
 
 
-async def _fetch_protected_items(session: AsyncSession, wedding_id: UUID) -> dict[str, list[str]]:
+async def _fetch_protected_items(session: AsyncSession, wedding_id: UUID) -> dict[str, list[dict]]:
     """설계 문서 §1-1: protected_items = user_edited_at이 있는(=사용자가 PATCH로 한 번이라도
-    건드린) 행의 id. ONBOARDING_INITIAL은 아직 행 자체가 없어 항상 빈 리스트를 반환한다."""
-    checklist_ids = (
-        (
-            await session.execute(
-                select(ChecklistItem.id).where(
-                    ChecklistItem.wedding_id == wedding_id,
-                    ChecklistItem.user_edited_at.is_not(None),
-                )
+    건드린) 행. ONBOARDING_INITIAL은 아직 행 자체가 없어 항상 빈 리스트를 반환한다.
+
+    id뿐 아니라 category_code/title도 같이 담는다(2026-08-26 레드팀 감사 3라운드 MEDIUM #7 —
+    이전엔 id만 넘겨서 "이 UUID는 다시 만들지 마라"는 프롬프트 지시를 LLM이 지킬 방법이 아예
+    없었다: UUID만으로는 그게 무슨 항목인지 알 수 없다. title/category_code가 있어야 프롬프트가
+    구체적으로 "이 제목은 다시 만들지 마라"를 전달할 수 있고, validate도 새 항목이 이미 보호된
+    항목과 제목이 겹치는지 검증할 수 있다."""
+    checklist_rows = (
+        await session.execute(
+            select(ChecklistItem.id, ChecklistItem.category_code, ChecklistItem.title).where(
+                ChecklistItem.wedding_id == wedding_id,
+                ChecklistItem.user_edited_at.is_not(None),
             )
         )
-        .scalars()
-        .all()
-    )
-    timeline_ids = (
-        (
-            await session.execute(
-                select(TimelineItem.id).where(
-                    TimelineItem.wedding_id == wedding_id,
-                    TimelineItem.user_edited_at.is_not(None),
-                )
+    ).all()
+    timeline_rows = (
+        await session.execute(
+            select(TimelineItem.id, TimelineItem.category_code, TimelineItem.title).where(
+                TimelineItem.wedding_id == wedding_id,
+                TimelineItem.user_edited_at.is_not(None),
             )
         )
-        .scalars()
-        .all()
-    )
+    ).all()
     return {
-        "CHECKLIST": [str(item_id) for item_id in checklist_ids],
-        "TIMELINE": [str(item_id) for item_id in timeline_ids],
+        "CHECKLIST": [
+            {"id": str(row.id), "category_code": row.category_code, "title": row.title}
+            for row in checklist_rows
+        ],
+        "TIMELINE": [
+            {"id": str(row.id), "category_code": row.category_code, "title": row.title}
+            for row in timeline_rows
+        ],
     }
 
 
@@ -306,7 +310,13 @@ async def run_personalization(
             elif trigger == "MANUAL_REGENERATE":
                 affected_domains = requested_domains or []
             else:
-                affected_domains = []
+                # FIELD_UPDATED는 route 노드가 실행조차 못 됐으니 실제로 어느 도메인이
+                # 재생성 대상이었는지 알 방법이 없다(2026-08-26 레드팀 감사 3라운드 MEDIUM #5 —
+                # 이전엔 여기서 affected_domains=[]로 둬서 다른 두 트리거와 달리 카탈로그
+                # 폴백조차 없이 아무 것도 안 하고 조용히 끝났다). ROUTE_PROMPT_TEMPLATE 규칙
+                # 5("애매하면 더 넓게 — 과소생성보다 과다생성이 안전")를 그대로 따라 두 도메인
+                # 다 폴백 대상으로 삼는다.
+                affected_domains = ["CHECKLIST", "TIMELINE"]
             if "CHECKLIST" in affected_domains:
                 checklist_rows = _checklist_fallback_rows(active_categories)
             if "TIMELINE" in affected_domains:

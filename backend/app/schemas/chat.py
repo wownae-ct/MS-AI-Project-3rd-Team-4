@@ -3,9 +3,14 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas.common import CategoryCode, ChatRating, ChatRole, ChatStage, SourceTier, Verdict
+
+# 2026-08-26 레드팀 감사 3라운드 MEDIUM #9 — 길이 제한이 전혀 없어 원문 그대로 임베딩 API에
+# 전달됐다(app/rag/retrieval.py::retrieve → embed_query). app/schemas/checklist.py의 title/body
+# 길이 제한과 같은 취지 — 임베딩/LLM 컨텍스트 낭비 및 과금 폭증을 API 경계에서 먼저 막는다.
+CHAT_MESSAGE_CONTENT_MAX_LENGTH = 2000
 
 
 class ChatSessionCreate(BaseModel):
@@ -50,7 +55,7 @@ class ChatMessageListOut(BaseModel):
 
 
 class ChatMessageCreate(BaseModel):
-    content: str
+    content: str = Field(min_length=1, max_length=CHAT_MESSAGE_CONTENT_MAX_LENGTH)
 
 
 class ChatMessageRatingCreate(BaseModel):
