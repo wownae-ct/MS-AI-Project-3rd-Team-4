@@ -212,6 +212,7 @@ async def run_personalization(
         "timeline_draft": None,
         "validation_status": "",
         "validation_errors": [],
+        "retry_count": 0,
     }
 
     status = "SUCCESS"
@@ -219,6 +220,9 @@ async def run_personalization(
     affected_domains: list[str] = []
     checklist_rows: list[ChecklistItem] = []
     timeline_rows: list[TimelineItem] = []
+    # 2026-08-25 결정 — validate→generate 재시도가 실제로 몇 번 일어났는지 Langfuse에 남긴다
+    # (그래프 실행 후 result["retry_count"]로 갱신, 예외 경로는 0 그대로 — 재시도까지 못 갔으므로).
+    retry_count = 0
 
     async with traced_span(
         "personalization",
@@ -232,6 +236,7 @@ async def run_personalization(
             affected_domains = result["affected_domains"]
             domain_statuses: dict[str, str] = result["validation_status"]
             domain_errors: dict[str, list[str]] = result["validation_errors"]
+            retry_count = result.get("retry_count", 0)
 
             # 도메인별로 완전히 독립 적용한다 — 한쪽이 BLOCKED라고 다른 쪽까지 폴백시키지
             # 않는다(2026-08-24 버그 수정: 이전엔 result["validation_status"]가 단일 값이라
@@ -289,7 +294,13 @@ async def run_personalization(
                 timeline_rows = _timeline_fallback_rows(
                     wedding.wedding_date, active_categories, done_so_far, today
                 )
-        trace.update(metadata={"status": status, "affected_domains": affected_domains})
+        trace.update(
+            metadata={
+                "status": status,
+                "affected_domains": affected_domains,
+                "retry_count": retry_count,
+            }
+        )
 
     # affected_domains에 든 도메인은 SUCCESS/BLOCKED/FAILED 경로 어느 쪽이든 이미 새 내용으로
     # 대체하기로 결정된 상태다 — protected(user_edited_at 있음) 행만 남기고 나머지 기존 행을

@@ -13,6 +13,7 @@ from app.personalization.prompts import (
     _MOCKUP_FEW_SHOT_SAMPLE_SIZE,
     _build_checklist_few_shot,
     _build_timeline_few_shot,
+    build_generate_prompt,
 )
 
 
@@ -75,3 +76,42 @@ class TestTimelineFewShotIsValidJson:
     def test_no_natural_language_placeholder_anywhere(self):
         few_shot = _build_timeline_few_shot()
         assert "범용" not in few_shot
+
+
+class TestGenerateRetryFeedback:
+    """2026-08-25 결정 — validate→generate 재시도 시 반려 사유를 프롬프트에 주입."""
+
+    def test_no_retry_feedback_by_default(self):
+        prompt = build_generate_prompt(["CHECKLIST"], {}, {})
+        assert "[재시도]" not in prompt
+
+    def test_retry_feedback_appears_when_provided_for_affected_domain(self):
+        prompt = build_generate_prompt(
+            ["CHECKLIST"],
+            {},
+            {},
+            retry_feedback={"CHECKLIST": ["활성 카테고리 MEETING에 생성된 항목이 없습니다"]},
+        )
+        assert "[재시도]" in prompt
+        assert "CHECKLIST: 활성 카테고리 MEETING에 생성된 항목이 없습니다" in prompt
+
+    def test_retry_feedback_omits_domains_not_affected_this_round(self):
+        # TIMELINE은 이번 재시도의 affected_domains에 없으므로(예: 이미 SUCCESS라 재생성 대상이
+        # 아님) 그 에러가 프롬프트에 섞이면 안 된다.
+        prompt = build_generate_prompt(
+            ["CHECKLIST"],
+            {},
+            {},
+            retry_feedback={
+                "CHECKLIST": ["문제 A"],
+                "TIMELINE": ["이건 안 보여야 함"],
+            },
+        )
+        assert "문제 A" in prompt
+        assert "이건 안 보여야 함" not in prompt
+
+    def test_empty_error_list_produces_no_feedback_section(self):
+        # SUCCESS였던 도메인은 validation_errors에 빈 리스트로 남아있을 수 있다 — 그런 경우
+        # [재시도] 섹션 자체가 안 생겨야 한다(빈 불릿만 찍히는 것 방지).
+        prompt = build_generate_prompt(["CHECKLIST"], {}, {}, retry_feedback={"CHECKLIST": []})
+        assert "[재시도]" not in prompt
