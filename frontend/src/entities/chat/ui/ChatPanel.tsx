@@ -90,6 +90,19 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
   // 표시해 그 1회의 히스토리 재조회만 건너뛴다 — 기존에 이미 있던 세션으로 진입할 때의 정상
   // 히스토리 복원(effect 최초 실행)은 그대로 동작한다.
   const skipNextHistoryFetchRef = useRef(false);
+  // 진행 중인 sendChatMessage SSE 스트림을 컴포넌트 언마운트 시 끊기 위한 컨트롤러 — 이전엔
+  // abort 수단이 전혀 없어, 하단 탭 이동으로 언마운트돼도 스트림이 조용히 계속 실행됐다
+  // (레드팀 감사 HIGH). 요청마다 새로 만들어 교체한다.
+  const abortControllerRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
+  // 평가(👍/👎) 연타 가드 — 메시지별 "가장 최근 요청" 일련번호. 응답이 보낸 순서와 다르게
+  // 도착해도, 이 메시지에 대해 자신이 아직 최신 요청일 때만 실패 롤백을 적용한다(레드팀 감사:
+  // 안 그러면 나중에 보낸 성공 결과를 먼저 보낸 요청의 실패 롤백이 덮어쓸 수 있다).
+  const ratingSeqRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     if (!sessionId) return;
@@ -119,11 +132,16 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
     if (!content || sendingRef.current) return;
     sendingRef.current = true;
 
+    const localMessageId = `local-${Date.now()}`;
+    function markLocalMessageFailed() {
+      setMessages((msgs) => msgs.map((m) => (m.id === localMessageId ? { ...m, failed: true } : m)));
+    }
+
     setError(null);
     setInput("");
     setMessages((cur) => [
       ...cur,
-      { id: `local-${Date.now()}`, role: "user", content, created_at: new Date(0).toISOString() },
+      { id: localMessageId, role: "user", content, created_at: new Date(0).toISOString() },
     ]);
     setSending(true);
     setStage(null);
@@ -131,6 +149,9 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
     const initialDraft = { content: "" };
     setDraft(initialDraft);
     draftRef.current = initialDraft;
+
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
 
     try {
       let activeSessionId = sessionId;
@@ -141,72 +162,79 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
         onSessionCreated(session.id);
       }
 
-      await sendChatMessage(activeSessionId, content, {
-        onToken: (delta) => {
-          setDraft((cur) => {
-            const next = cur ? { ...cur, content: cur.content + delta } : { content: delta };
-            draftRef.current = next;
-            return next;
-          });
+      await sendChatMessage(
+        activeSessionId,
+        content,
+        {
+          onToken: (delta) => {
+            setDraft((cur) => {
+              const next = cur ? { ...cur, content: cur.content + delta } : { content: delta };
+              draftRef.current = next;
+              return next;
+            });
+          },
+          onCitations: (citations) => {
+            setDraft((cur) => {
+              const next = cur ? { ...cur, citations } : { content: "", citations };
+              draftRef.current = next;
+              return next;
+            });
+          },
+          onVerification: (verification) => {
+            setDraft((cur) => {
+              const next = cur ? { ...cur, verification } : { content: "", verification };
+              draftRef.current = next;
+              return next;
+            });
+          },
+          onStage: (nextStage) => {
+            setStage(nextStage);
+          },
+          onRetry: () => {
+            // 1차 답변 토큰은 전부 버린다 — 2차 답변이 처음부터 다시 스트리밍된다. citations/
+            // verification은 항상 마지막 시도 결과 하나만 오므로 여기서 따로 지울 게 없다.
+            const freshDraft = { content: "" };
+            setDraft(freshDraft);
+            draftRef.current = freshDraft;
+            setStage(null);
+            setRetrying(true);
+          },
+          onDone: (payload) => {
+            const finalDraft = draftRef.current;
+            setMessages((msgs) => [
+              ...msgs,
+              {
+                id: payload.message_id,
+                role: "assistant",
+                content: finalDraft?.content ?? "",
+                citations: finalDraft?.citations,
+                verification: finalDraft?.verification,
+                created_at: new Date(0).toISOString(),
+              },
+            ]);
+            setDraft(null);
+            draftRef.current = null;
+            setStage(null);
+            setRetrying(false);
+            sendingRef.current = false;
+            setSending(false);
+          },
+          onError: (payload) => {
+            setError(payload.message);
+            markLocalMessageFailed();
+            setDraft(null);
+            draftRef.current = null;
+            setStage(null);
+            setRetrying(false);
+            sendingRef.current = false;
+            setSending(false);
+          },
         },
-        onCitations: (citations) => {
-          setDraft((cur) => {
-            const next = cur ? { ...cur, citations } : { content: "", citations };
-            draftRef.current = next;
-            return next;
-          });
-        },
-        onVerification: (verification) => {
-          setDraft((cur) => {
-            const next = cur ? { ...cur, verification } : { content: "", verification };
-            draftRef.current = next;
-            return next;
-          });
-        },
-        onStage: (nextStage) => {
-          setStage(nextStage);
-        },
-        onRetry: () => {
-          // 1차 답변 토큰은 전부 버린다 — 2차 답변이 처음부터 다시 스트리밍된다. citations/
-          // verification은 항상 마지막 시도 결과 하나만 오므로 여기서 따로 지울 게 없다.
-          const freshDraft = { content: "" };
-          setDraft(freshDraft);
-          draftRef.current = freshDraft;
-          setStage(null);
-          setRetrying(true);
-        },
-        onDone: (payload) => {
-          const finalDraft = draftRef.current;
-          setMessages((msgs) => [
-            ...msgs,
-            {
-              id: payload.message_id,
-              role: "assistant",
-              content: finalDraft?.content ?? "",
-              citations: finalDraft?.citations,
-              verification: finalDraft?.verification,
-              created_at: new Date(0).toISOString(),
-            },
-          ]);
-          setDraft(null);
-          draftRef.current = null;
-          setStage(null);
-          setRetrying(false);
-          sendingRef.current = false;
-          setSending(false);
-        },
-        onError: (payload) => {
-          setError(payload.message);
-          setDraft(null);
-          draftRef.current = null;
-          setStage(null);
-          setRetrying(false);
-          sendingRef.current = false;
-          setSending(false);
-        },
-      });
+        abortController.signal,
+      );
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "메시지를 보내지 못했습니다.");
+      markLocalMessageFailed();
       setDraft(null);
       draftRef.current = null;
       setStage(null);
@@ -221,19 +249,37 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
   // 낙관적 갱신 후 실패하면 되돌리고 에러를 보여준다(이 프로젝트 컨벤션 — 조용히 삼키지 않는다).
   async function handleRate(messageId: string, rating: MessageRating) {
     if (!sessionId) return;
+    const seq = (ratingSeqRef.current.get(messageId) ?? 0) + 1;
+    ratingSeqRef.current.set(messageId, seq);
     const previous = messages.find((m) => m.id === messageId)?.user_rating ?? null;
     setMessages((msgs) => msgs.map((m) => (m.id === messageId ? { ...m, user_rating: rating } : m)));
     try {
       await rateChatMessage(sessionId, messageId, rating);
     } catch (err) {
-      setMessages((msgs) => msgs.map((m) => (m.id === messageId ? { ...m, user_rating: previous } : m)));
+      // 이 요청이 이 메시지에 대한 "가장 최근" 평가 시도일 때만 되돌린다 — 그 사이 사용자가
+      // 이미 다른 평가를 다시 눌렀다면(더 최신 요청이 존재) 그 결과를 덮어쓰면 안 된다
+      // (레드팀 감사: 먼저 보낸 요청의 실패 롤백이 나중에 보낸 요청의 성공 상태를 덮어쓰던 경합).
+      if (ratingSeqRef.current.get(messageId) === seq) {
+        setMessages((msgs) => msgs.map((m) => (m.id === messageId ? { ...m, user_rating: previous } : m)));
+      }
       setError(err instanceof ApiError ? err.message : "평가를 저장하지 못했습니다.");
     }
   }
 
   return (
     <Card className="flex flex-col gap-3">
-      <div ref={listRef} className="flex max-h-[60vh] min-h-[240px] flex-col gap-3 overflow-y-auto">
+      {/* role="log" + aria-live="polite" — 스트리밍 토큰/출처 배지/검증 결과가 이 컨테이너에
+          조용히 추가되기만 해서, 이전엔 스크린리더가 답변이 도착한다는 사실 자체를 몰랐다
+          (레드팀 감사). aria-relevant="additions text" 로 텍스트 갱신까지 announce 한다 — 매
+          토큰마다 announce 되면 너무 시끄러우니 스트리밍 도중이 아니라 완결 단위(문단)로 뜨는
+          기본 동작에 맡긴다. */}
+      <div
+        ref={listRef}
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions text"
+        className="flex max-h-[60vh] min-h-[240px] flex-col gap-3 overflow-y-auto"
+      >
         {messages.length === 0 && !draft && (
           // 첫 진입 안내를 회색 텍스트가 아니라 어시스턴트 말풍선으로 보여준다(사용자 요청,
           // 2026-08-24) — 실제 대화 내역이 아니라 화면에서만 합성한 안내라 id="greeting"으로

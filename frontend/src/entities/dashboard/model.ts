@@ -15,11 +15,16 @@ export interface DashboardCategorySummary {
 }
 
 // discriminated union — source 로 timeline/checklist 두 변형을 구분한다.
+//
+// category_code 는 null 일 수 있다 — 온보딩 시 항상 생기는 카테고리 무관 "범용" 타임라인
+// 항목(예: "결혼 날짜 후보 확정")이 이 값을 null 로 준다(레드팀 감사 라운드 2, HIGH). 예전엔
+// non-nullable 로 선언돼 있어 컴파일 타임에도 안 걸러졌고, 화면에서 `?? item.category_code`
+// 폴백이 `undefined ?? null` 이 돼 문자열 "null" 이 그대로 찍혔다.
 export type DashboardUpcomingItem =
   | {
       source: "timeline";
       id: string;
-      category_code: string;
+      category_code: string | null;
       title: string;
       target_date: string;
       d_day: number;
@@ -27,7 +32,7 @@ export type DashboardUpcomingItem =
   | {
       source: "checklist";
       id: string;
-      category_code: string;
+      category_code: string | null;
       title: string;
       status: string;
     };
