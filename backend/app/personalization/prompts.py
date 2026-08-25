@@ -10,10 +10,15 @@ from app.core.timeline_catalog import TIMELINE_CATALOG
 
 # CHECKLIST_FALLBACK_CATALOG가 이제 VENUE/SDM(OFFICIAL 24항목) + 나머지 7개 MOCKUP 카테고리
 # (CONSENSUS, 카테고리당 5항목)를 전부 커버한다(00_BASELINE.md §0-2 Should "MOCKUP 7개 카테고리
-# 얇은 시드"). few-shot에는 VENUE/SDM 24항목 전체 + MOCKUP 카테고리별 대표 예시
-# _MOCKUP_FEW_SHOT_SAMPLE_SIZE개씩 쓴다(설계 문서 §1-3 "대표 예시" — 59항목 전체 전사는
-# few-shot 취지에 비해 과함). 대표 예시를 하드코딩 문자열로 따로 들고 있으면 카탈로그가 바뀔 때
-# 드리프트가 나므로 카탈로그에서 매번 동적으로 뽑는다.
+# 얇은 시드"). few-shot에는 VENUE/SDM은 이 24항목(전부 CONTRACT_TERM) + _VENUE_SDM_BALANCE_FEW_SHOT
+# (EXTRA_COST/PREP, 아래 정의)을 합쳐 DS6_CHECK 코퍼스의 VENUE/SDM 60항목 전체를 보여주고,
+# MOCKUP 카테고리는 카테고리별 대표 예시 _MOCKUP_FEW_SHOT_SAMPLE_SIZE개씩만 쓴다(설계 문서 §1-3
+# "대표 예시" — MOCKUP까지 59항목 전체 전사는 few-shot 취지에 비해 과함). VENUE/SDM은 대표 예시가
+# 아니라 전체를 보여주는 이유는 "40~60% CONTRACT_TERM" 규칙(F9_CONTRACT_FOCUS)을 지키려면 LLM이
+# EXTRA_COST/PREP 예시도 반드시 봐야 하기 때문(2026-08-25 버그 수정 — CONTRACT_TERM만 보여줬을 때
+# 실계정 재현으로 VENUE/SDM 체크리스트가 27/27 CONTRACT_TERM으로 나온 회귀 확인, 아래
+# _VENUE_SDM_BALANCE_FEW_SHOT 주석 참고). MOCKUP 대표 예시를 하드코딩 문자열로 따로 들고 있으면
+# 카탈로그가 바뀔 때 드리프트가 나므로 카탈로그에서 매번 동적으로 뽑는다.
 _MOCKUP_CATEGORY_CODES: tuple[str, ...] = (
     "MEETING",
     "GIFT",
@@ -29,6 +34,57 @@ _MOCKUP_CATEGORY_CODES: tuple[str, ...] = (
 # 이렇게 BLOCKED됨, app/core/timeline_catalog.py 모듈 docstring "버그 수정 2" 참고). 카탈로그가
 # MOCKUP 카테고리당 5개씩 있으니 3개까지 늘려 누락 확률을 낮춘다.
 _MOCKUP_FEW_SHOT_SAMPLE_SIZE = 3
+
+# CHECKLIST_FALLBACK_CATALOG의 VENUE/SDM 24항목은 전부 CONTRACT_TERM이다(그 카탈로그는 validate
+# BLOCKED 시 최후 폴백이라 "근거가 확실한 OFFICIAL 조문"만 담기로 설계됨,
+# app/core/checklist_catalog.py 모듈 독스트링 참고 — 폴백의 안전성을 위해 의도된 좁은 구성이라
+# 그 카탈로그 자체는 건드리지 않는다). 문제는 few-shot 예시로도 같은 카탈로그를 그대로 재사용하며,
+# LLM이 VENUE/SDM에서 EXTRA_COST/PREP 예시를 단 한 번도 보지 못한 채 "CONTRACT_TERM 40% 이상"
+# 규칙만 받는 상황이 됐다는 것 — "이상"을 만족하는 가장 쉬운 방법이 100%라, 실계정 재현으로
+# gtcA/gtcB 두 프로필(취향·우선순위가 정반대)의 VENUE/SDM 체크리스트 27/27항목이 전부
+# CONTRACT_TERM으로 나온 회귀가 확인됐다(2026-08-25). 아래 목록은 few-shot 균형용으로만 쓰는
+# 별도 소스이고, `data/rag_corpus/DS6_CHECK/checklist.md`(85청크, VENUE 25=10·10·5/SDM
+# 35=14·18·3 — 10_RAG_data_catalog.md §DS6_CHECK)의 EXTRA_COST/PREP 항목 제목을 그대로 옮겨왔다
+# (새로 저작하지 않음). CHECKLIST_FALLBACK_CATALOG와 합치면 VENUE/SDM few-shot이 그 코퍼스의
+# 60항목 전체를 보여주게 된다.
+_VENUE_SDM_BALANCE_FEW_SHOT: tuple[tuple[str, str, str], ...] = (
+    ("VENUE", "EXTRA_COST", "기본 예식비용에 포함된 항목과 별도 청구 항목을 구분해서 확인"),
+    ("VENUE", "EXTRA_COST", "최소 보증인원(개런티) 기준과 미달 시 정산 방식 확인"),
+    ("VENUE", "EXTRA_COST", "식대 단가가 성수기·비수기·요일별로 다른지 확인"),
+    ("VENUE", "EXTRA_COST", "대관시간 초과 시 추가 요금 기준 확인"),
+    ("VENUE", "EXTRA_COST", "폐백실·신부대기실 등 부대공간 이용료가 별도인지 확인"),
+    ("VENUE", "EXTRA_COST", "주차 지원 대수 초과 시 추가 비용 여부 확인"),
+    ("VENUE", "EXTRA_COST", "답례품·부케 등 예식장 자체 판매 물품의 강매 여부 확인"),
+    ("VENUE", "EXTRA_COST", "외부 음식·이바지 반입 가능 여부와 추가 비용 확인"),
+    ("VENUE", "EXTRA_COST", "온라인 중계(스트리밍) 서비스 추가 비용 확인"),
+    ("VENUE", "EXTRA_COST", "성수기 예약 시 할증(프리미엄) 요금 여부 확인"),
+    ("VENUE", "PREP", "최소 6개월 전부터 예식장 여러 곳을 투어하며 비교"),
+    ("VENUE", "PREP", "하객 규모에 맞는 홀의 최소·최대 보증인원을 계산해서 비교"),
+    ("VENUE", "PREP", "예식장 위치의 교통·주차 접근성을 하객 동선 기준으로 점검"),
+    ("VENUE", "PREP", "예식 당일 리허설 가능 여부와 소요 시간을 사전에 확인"),
+    ("VENUE", "PREP", "우천 시 야외 예식을 대체할 실내 공간(플랜B) 여부 확인"),
+    ("SDM", "EXTRA_COST", "드레스 피팅 횟수 제한과 초과 시 추가비용 기준 확인"),
+    ("SDM", "EXTRA_COST", "드레스 연장 대여(리허설·2부 촬영 등) 시 추가 요금 여부 확인"),
+    ("SDM", "EXTRA_COST", "드레스 파손·오염 시 배상 기준이 계약서에 명시됐는지 확인"),
+    ("SDM", "EXTRA_COST", "원본 파일·추가 앨범 페이지 비용이 별도인지 확인"),
+    ("SDM", "EXTRA_COST", "촬영 컨셉 변경(야외 로케이션 등) 시 추가 비용 확인"),
+    ("SDM", "EXTRA_COST", "앨범 표지·디자인 업그레이드 옵션 가격 확인"),
+    ("SDM", "EXTRA_COST", "원판(전체 촬영본) 구매 여부와 가격 확인"),
+    ("SDM", "EXTRA_COST", "서브스냅(보조 촬영작가) 추가 투입 비용 확인"),
+    ("SDM", "EXTRA_COST", "야간·공휴일 촬영 시 할증 요금 여부 확인"),
+    ("SDM", "EXTRA_COST", "로케이션 촬영 시 교통비 별도 청구 여부 확인"),
+    ("SDM", "EXTRA_COST", "리허설(헤메 테스트) 비용이 별도 청구되는지 확인"),
+    ("SDM", "EXTRA_COST", "부모님(혼주) 헤어메이크업이 패키지에 포함되는지 확인"),
+    ("SDM", "EXTRA_COST", "본식 당일 헬퍼(도우미) 인원·시간 초과 시 추가 요금 확인"),
+    ("SDM", "EXTRA_COST", "예복(턱시도) 사이즈 수선비가 기본 포함인지 확인"),
+    ("SDM", "EXTRA_COST", "혼주 한복이 패키지에 포함되는지, 별도 대여인지 확인"),
+    ("SDM", "EXTRA_COST", "취소·일정 변경 시 위약금이 촬영일에 가까울수록 급증하는 구조임을 인지"),
+    ("SDM", "EXTRA_COST", "패키지 가격에 포함된 항목과 별도 옵션 항목을 서면으로 구분해서 받기"),
+    ("SDM", "EXTRA_COST", "웨딩플래너 헬퍼비가 결혼식 당일 현금으로 요구되는지 사전 확인"),
+    ("SDM", "PREP", "스드메 투어는 최소 3~4개 업체를 비교한 뒤 계약"),
+    ("SDM", "PREP", "드레스 가봉 일정을 예식일과 충분히 간격을 두고 잡기(체형 변화 대비)"),
+    ("SDM", "PREP", "촬영 컨셉·의상 매수를 계약 전에 구체적으로 합의해 문서로 남기기"),
+)
 
 ROUTE_PROMPT_TEMPLATE = """당신은 메리맵의 개인화 콘텐츠 라우터입니다. 어떤 필드가 바뀌었는지 보고
 체크리스트(CHECKLIST)·타임라인(TIMELINE) 중 실제로 다시 만들어야 하는 도메인만 고르세요.
@@ -50,7 +106,8 @@ ROUTE_PROMPT_TEMPLATE = """당신은 메리맵의 개인화 콘텐츠 라우터�
 _CHECKLIST_RULES = """웨딩 프로필(활성 카테고리·우선순위·스타일·예산·primary_goals)에 맞춰 카테고리별
 체크리스트 항목을 만드세요.
 
-- FOCUS 카테고리(VENUE/SDM)는 CONTRACT_TERM 비중을 40% 이상으로 하세요(F9_CONTRACT_FOCUS).
+- FOCUS 카테고리(VENUE/SDM)는 CONTRACT_TERM 비중을 40~60% 정도로 하세요(F9_CONTRACT_FOCUS) —
+  EXTRA_COST/PREP도 반드시 섞으세요, CONTRACT_TERM 단일 구성은 이 기준을 어긴 것입니다.
 - protected_items에 있는 항목은 다시 만들지 마세요(사용자가 이미 직접 수정함) — 중복 방지용
   참고만 하세요.
 - 활성 카테고리마다 최소 2개 이상 항목을 만드세요.
@@ -88,13 +145,16 @@ _TIMELINE_OUTPUT_SCHEMA = """타임라인 항목은 각각 이 필드만 채우�
 def _build_checklist_few_shot() -> str:
     lines = [
         (
-            "[체크리스트 few-shot — VENUE/SDM 표준약관 근거 항목 전체 + 나머지 카테고리 대표 예시 "
+            "[체크리스트 few-shot — VENUE/SDM은 CONTRACT_TERM/EXTRA_COST/PREP 균형 잡힌 항목 "
+            "전체 + 나머지 카테고리 대표 예시 "
             f"{_MOCKUP_FEW_SHOT_SAMPLE_SIZE}개씩]"
         )
     ]
     for item in CHECKLIST_FALLBACK_CATALOG:
         if item.category_code in ("VENUE", "SDM"):
             lines.append(f"- [{item.category_code}] ({item.item_type}) {item.title}")
+    for category_code, item_type, title in _VENUE_SDM_BALANCE_FEW_SHOT:
+        lines.append(f"- [{category_code}] ({item_type}) {title}")
     for category_code in _MOCKUP_CATEGORY_CODES:
         representatives = [
             item for item in CHECKLIST_FALLBACK_CATALOG if item.category_code == category_code
