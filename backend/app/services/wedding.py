@@ -14,6 +14,7 @@ update_wedding()(날짜 외 필드 변경)과 update_wedding_categories()(카테
 연결했다 — wedding_date 단독 변경은 여전히 위 결정론적 재계산만 타고 에이전트를 부르지
 않는다(규칙 3)."""
 
+import logging
 from datetime import UTC, date, datetime
 
 from sqlalchemy import func, select, update
@@ -34,6 +35,8 @@ from app.services.benchmark import get_latest_benchmark
 from app.services.payment import get_paid_amounts_by_category
 from app.services.personalization import run_personalization
 from app.services.timeline import get_active_category_codes, recalculate_timeline_dates
+
+logger = logging.getLogger(__name__)
 
 # 13_personalization_router_agent_design.md §1-2 규칙 3: 본식일만 바뀌면 개인화 에이전트를
 # 아예 부르지 않는다(날짜 재계산은 아래에서 항상 결정론적으로 처리, 콘텐츠 재생성 판단은 불필요) —
@@ -69,6 +72,9 @@ async def _resolve_total_budget(session: AsyncSession, payload: WeddingCreate) -
 
     benchmark = await get_latest_benchmark(session, payload.region_code, "TOTAL", "TOTAL")
     if benchmark is None:
+        # 2026-08-26 레드팀 감사 4라운드 항목 7 — 이 422로 온보딩 자체가 막히는데 무로깅이면
+        # 어느 지역의 시드가 비어 있는지 사용자 문의 전엔 알 방법이 없다.
+        logger.warning("Total budget benchmark unavailable for region_code=%s", payload.region_code)
         raise api_error(
             422,
             "TOTAL_BUDGET_UNAVAILABLE",
@@ -116,7 +122,9 @@ async def create_wedding(
         await session.flush()
     except IntegrityError as exc:
         # owner_user_id UNIQUE 위반 — 위 select로 대부분 걸러지지만 동시 요청 레이스는 DB
-        # 제약이 최종 방어선.
+        # 제약이 최종 방어선. 2026-08-26 레드팀 감사 4라운드 항목 19 — 이 레이스 자체가
+        # 무로깅이라 실제로 얼마나 자주 일어나는지 관측할 방법이 없었다.
+        logger.warning("Concurrent wedding creation race for user_id=%s", user.id)
         await session.rollback()
         raise api_error(409, "WEDDING_ALREADY_EXISTS", "이미 웨딩 프로필이 있습니다.") from exc
 
@@ -170,6 +178,13 @@ async def update_wedding(
         ).scalar_one()
         if changed["total_budget"] < total_planned:
             over = total_planned - changed["total_budget"]
+            # 2026-08-26 레드팀 감사 4라운드 항목 18 — 예산 관련 거부(400)들이 무로깅이었다.
+            logger.info(
+                "BUDGET_EXCEEDED on update_wedding for wedding_id=%s: planned=%s new_total=%s",
+                wedding.id,
+                total_planned,
+                changed["total_budget"],
+            )
             raise api_error(400, "BUDGET_EXCEEDED", f"배정 합계가 예산을 {over:,}원 초과합니다.")
 
     for field, value in changed.items():
@@ -315,6 +330,13 @@ async def update_wedding_categories(
     total_planned = sum(row.planned_budget for row in existing_by_code.values())
     if total_planned > wedding.total_budget:
         over = total_planned - wedding.total_budget
+        logger.info(
+            "BUDGET_EXCEEDED on update_wedding_categories for wedding_id=%s: planned=%s "
+            "total_budget=%s",
+            wedding.id,
+            total_planned,
+            wedding.total_budget,
+        )
         raise api_error(400, "BUDGET_EXCEEDED", f"배정 합계가 예산을 {over:,}원 초과합니다.")
 
     # 검증 2: category_code별 planned_budget >= SUM(payments.amount WHERE status='PAID').
@@ -324,6 +346,12 @@ async def update_wedding_categories(
     if violation is not None:
         category_code, min_required = violation
         name_ko = CATEGORY_META_BY_CODE[category_code].name_ko
+        logger.info(
+            "BUDGET_BELOW_PAID for wedding_id=%s category_code=%s min_required=%s",
+            wedding.id,
+            category_code,
+            min_required,
+        )
         raise api_error(
             400,
             "BUDGET_BELOW_PAID",
@@ -338,6 +366,15 @@ async def update_wedding_categories(
     # 하드코딩하지 않음 — 설계 문서가 라우팅 자체를 에이전트 책임으로 둔 원칙 유지).
     newly_active = {code for code, row in existing_by_code.items() if row.is_active}
     if newly_active != previously_active:
+        # 2026-08-26 레드팀 감사 4라운드 항목 20 — 카테고리 활성/비활성 변경 시점이 무로깅이었다.
+        # 이전 감사가 찾은 "cascade 누락" 버그가 정확히 이 트리거 지점이라, 로그가 있었으면
+        # 더 일찍 잡혔을 사안 — 뭐가 켜지고/꺼졌는지 남긴다.
+        logger.info(
+            "Wedding categories changed for wedding_id=%s: %s -> %s",
+            wedding.id,
+            sorted(previously_active),
+            sorted(newly_active),
+        )
         await run_personalization(
             session,
             settings,
