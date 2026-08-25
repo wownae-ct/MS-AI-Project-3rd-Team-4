@@ -1,21 +1,22 @@
 # ============================================================
-# frontend same-origin 도커 이미지 CI/CD (2026-08-26)
-#   docker build(환경별 2개) → ACR push
+# frontend same-origin 도커 이미지 CI/CD — production 전용 (2026-08-26, root-app 분리에 맞춰 갱신)
+#   docker build → ACR push (:production-latest)
 #   → 배포는 ArgoCD Image Updater가 ACR 신규 태그 감지해 자동 반영(backend-ci.yml과 동일 GitOps)
 #
 # 이 워크플로는 frontend-ci.yml(Azure Static Web Apps 배포, PR 프리뷰용)을 대체하지 않고
 # 병행한다 — SWA는 계속 PR 프리뷰/로컬 크로스오리진 검증용, 이 경로는 AKS Ingress 아래
 # same-origin으로 서빙되는 "실사용/데모 전용" 배포다(infra/k8s/base/frontend 참고).
 #
-# 태그가 2개인 이유: Vite는 VITE_API_BASE를 빌드타임에 정적 번들에 굽는다. staging(nip.io)과
-# production(커스텀 도메인)은 서로 다른 호스트라 하나의 이미지로 공유할 수 없다 — backend처럼
-# 런타임 env로 환경을 나눌 수 없다(base/frontend/deployment.yaml 주석 참고).
+# 이미지가 환경별로 따로인 이유: Vite는 VITE_API_BASE를 빌드타임에 정적 번들에 굽는다.
+# staging(nip.io)과 production(커스텀 도메인)은 서로 다른 호스트라 하나의 이미지로 공유할 수
+# 없다 — backend처럼 런타임 env로 환경을 나눌 수 없다(base/frontend/deployment.yaml 주석 참고).
 #
-# 트리거: main 브랜치에 frontend/**가 바뀌었을 때만. frontend 브랜치엔 이 워크플로 파일 자체가
-# 없어(.github/는 root config, backend 브랜치 소유) frontend 브랜치 푸시로는 못 켠다 — frontend
-# 소스와 이 워크플로가 함께 존재하는 시점은 main 머지 이후뿐이라, staging/production 이미지 둘 다
-# main 머지 시점에 같이 갱신된다(오늘(8/26) 마감 기준 단순화한 트레이드오프 — 별도 스테이징
-# 파이프라인은 추후 필요해지면 frontend 브랜치에도 이 파일을 복사해서 push 트리거를 추가).
+# **2026-08-26 분리**: 원래 이 파일 하나가 main push에 staging/production 이미지를 둘 다
+# 빌드했는데, root-app을 staging(backend 추적)/production(main 추적)으로 나눈 것과 대칭되게
+# 이미지 빌드도 나눴다 — production은 여기(main 트리거, backend/main 브랜치 소유),
+# staging은 `frontend` 브랜치에 별도로 있는 `frontend-docker-ci-staging.yml`(frontend push
+# 트리거)이 담당한다. `.github/`는 backend/frontend 양쪽 브랜치 PR에서 다 허용되는
+# 경로라(path-guard) 두 워크플로 파일이 서로 다른 브랜치에 나눠 존재할 수 있다.
 name: frontend-docker-ci
 
 on:
@@ -31,9 +32,8 @@ permissions:
 env:
     ACR_NAME: ${{ vars.ACR_NAME }}
     IMAGE: ${{ vars.ACR_LOGIN_SERVER }}/frontend
-    # same-origin 호스트 — infra/k8s/overlays/backend-{staging,production}/ingress.yaml의 host와
-    # 문자 그대로 일치해야 한다(다르면 로그인 후 OAuth 리다이렉트/API 호출이 깨진다).
-    STAGING_ORIGIN: https://20-249-52-148.nip.io
+    # same-origin 호스트 — infra/k8s/overlays/backend-production/ingress.yaml의 host와 문자
+    # 그대로 일치해야 한다(다르면 로그인 후 OAuth 리다이렉트/API 호출이 깨진다).
     PRODUCTION_ORIGIN: https://merrymap-production.koreacentral.cloudapp.azure.com
 
 jobs:
@@ -78,18 +78,6 @@ jobs:
             # 커밋 SHA로도 태그 → 어떤 커밋이 배포됐는지 ArgoCD Application에서 바로 추적 가능.
             # Dockerfile은 VITE_API_BASE를 build-arg로 받아 `npm run build` 전에 env로 주입한다
             # (frontend/Dockerfile, 프론트 쪽 구현 — 이 워크플로는 그 계약에 의존).
-            - name: staging 이미지 빌드 & 푸시
-              env:
-                  DOCKER_BUILDKIT: "1"
-              run: |
-                  docker build \
-                    --build-arg VITE_API_BASE="${{ env.STAGING_ORIGIN }}" \
-                    -t "${{ env.IMAGE }}:staging-${{ github.sha }}" \
-                    -t "${{ env.IMAGE }}:staging-latest" \
-                    -f frontend/Dockerfile ./frontend
-                  docker push "${{ env.IMAGE }}:staging-${{ github.sha }}"
-                  docker push "${{ env.IMAGE }}:staging-latest"
-
             - name: production 이미지 빌드 & 푸시
               env:
                   DOCKER_BUILDKIT: "1"
