@@ -1,6 +1,7 @@
 // ChatPanel.tsx에서 분리(2026-08-24, eslint max-lines 300줄 제한) — 좋아요/싫어요 평가 버튼
 // 추가로 ChatPanel.tsx가 300줄을 넘겨서, 재사용 가능한 프레젠테이션 조각인 이 컴포넌트를
 // 별도 파일로 뺐다. entities/chat/ui/ 소속 유지(ChatPanel과 같은 슬라이스).
+import type { ReactNode } from "react";
 import { Badge } from "@/shared/ui";
 import type { ChatMessage, MessageRating } from "../model";
 
@@ -9,9 +10,13 @@ interface MessageBubbleProps {
   // greeting/draft 호출부는 안 넘긴다 — 아직 서버가 발급한 진짜 message_id가 없어서 평가할
   // 대상이 없다(백엔드 규칙: user 메시지·존재하지 않는 메시지 평가는 400/404).
   onRate?: (messageId: string, rating: MessageRating) => void;
+  // F13 신고 버튼은 entities/feedback 소속이라 같은 entities 레이어인 여기서 직접 import할 수
+  // 없다(.oxlintrc.json no-restricted-imports — entities는 다른 entity를 못 가져온다). 그래서
+  // 실제 버튼은 pages 레이어(CategoryPage/ChatPage)가 만들어 이 render prop으로 내려준다.
+  renderReportAction?: (messageId: string) => ReactNode;
 }
 
-export function MessageBubble({ message, onRate }: MessageBubbleProps) {
+export function MessageBubble({ message, onRate, renderReportAction }: MessageBubbleProps) {
   const isUser = message.role === "user";
   return (
     <div className={`flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
@@ -79,6 +84,7 @@ export function MessageBubble({ message, onRate }: MessageBubbleProps) {
           >
             👎
           </button>
+          {renderReportAction?.(message.id)}
         </div>
       )}
     </div>

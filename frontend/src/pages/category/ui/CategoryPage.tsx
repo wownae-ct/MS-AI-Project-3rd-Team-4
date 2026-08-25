@@ -7,6 +7,7 @@
 // (Tabs.Panel 이 비활성 탭을 언마운트하더라도) 세션을 잃지 않는다(ChatPanel.tsx 머리말 참조).
 import { useEffect, useState } from "react";
 import { ChatPanel } from "@/entities/chat";
+import { ReportButton } from "@/entities/feedback";
 import { getCategories, type CategoryConstant } from "@/entities/wedding";
 import { Page, Tabs } from "@/shared/ui";
 import { ChecklistTab } from "./ChecklistTab";
@@ -55,7 +56,12 @@ export function CategoryPage({ categoryCode }: CategoryPageProps) {
           <CostTab categoryCode={categoryCode} categoryMeta={categoryMeta} />
         </Tabs.Panel>
         <Tabs.Panel value="chat">
-          <ChatPanel categoryCode={categoryCode} sessionId={chatSessionId} onSessionCreated={setChatSessionId} />
+          <ChatPanel
+            categoryCode={categoryCode}
+            sessionId={chatSessionId}
+            onSessionCreated={setChatSessionId}
+            renderReportAction={(messageId) => <ReportButton targetType="CHAT_MESSAGE" targetId={messageId} />}
+          />
         </Tabs.Panel>
       </Tabs.Root>
     </Page>
