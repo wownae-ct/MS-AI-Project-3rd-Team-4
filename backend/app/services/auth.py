@@ -4,6 +4,7 @@ signup/login 둘 다 성공 시 세션을 발급해 즉시 로그인 상태로 �
 요구 없음"). login은 "이메일 없음"과 "비밀번호 틀림"을 구분하지 않는다(#3 — 계정 존재 여부
 노출 방지, user enumeration 방지)."""
 
+import logging
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -20,6 +21,8 @@ from app.core.security import (
     verify_password,
 )
 from app.models import AuthSession, User, Wedding
+
+logger = logging.getLogger(__name__)
 
 
 async def create_user(session: AsyncSession, email: str, password: str, display_name: str) -> User:
@@ -38,9 +41,13 @@ async def authenticate_user(session: AsyncSession, email: str, password: str) ->
     # "이메일 없음"과 "비밀번호 틀림"을 같은 메시지/같은 지연 경로로 응답한다 — 둘 중 어느 쪽인지
     # 알려주면 공격자가 가입된 이메일 목록을 무차별로 알아낼 수 있다(user enumeration).
     invalid = api_error(401, "INVALID_CREDENTIALS", "이메일 또는 비밀번호가 올바르지 않습니다.")
+    # 2026-08-26 레드팀 감사 4라운드 항목 15 — 로그인 실패 자체가 무로깅이라 rate limit(5/분)에
+    # 걸리기 전의 저강도 무차별 대입 시도가 완전히 무관측이었다.
     if user is None or user.password_hash is None:
+        logger.warning("Login failed for email=%s: no such account", email)
         raise invalid
     if not verify_password(password, user.password_hash):
+        logger.warning("Login failed for user_id=%s: wrong password", user.id)
         raise invalid
     return user
 
