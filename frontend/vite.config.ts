@@ -62,13 +62,16 @@ function assertProductionBuild(): Plugin {
  *
  * `process.cwd()`/`process.env` 대신 `configResolved`+`loadEnv` 로 값을 얻는 이유 —
  * `@types/node` 가 이 저장소에 없다(설치돼 있지 않다, 실측 확인). 우연이 아니라 기존 결정이다
- * — `resolve.alias` 대신 `resolve.tsconfigPaths` 를 쓴 이유가 바로 "수동 alias 는 절대 경로가
- * 필요해 `node:url` → `@types/node` 의존을 부르는데, 그 대가를 치를 이유가 없다"였다(이 파일
- * 위쪽 주석, `docs/architecture/toolchain.md:272`, `layers.md:94`). 여기서도 같은 원칙을 지킨다.
+ * — `resolve.alias` 대신 `resolve.tsconfigPaths` 를 쓴 이유가 같은 회피다. 두 문서가 각자
+ * 말한 것을 각각 인용한다(짜깁기하지 않는다) — `docs/architecture/toolchain.md:272`
+ * "수동 `alias`는 절대 경로가 필요해 `@types/node` 의존을 부른다" · `layers.md:94` "`node:url`
+ * → `@types/node` 의존을 부르는데, 네이티브 옵션이 그 대가를 없앤다". 여기서도 같은 원칙을 지킨다.
  * `ResolvedConfig.env` 는 Vite 가 이미 `envPrefix`(기본 `VITE_`)로 계산해 둔 값이라 그대로 쓰면
  * 되고, `CI` 는 `loadEnv(mode, envDir, "CI")` 로 얻는다 — `loadEnv` 는 `process.env` 를 이미
- * 병합해서 돌려준다(Vite 공식: "existing environment variables always take priority"). 두 값
- * 모두 `vite` 패키지가 이미 타입을 내주는 API 라 새 의존성이 필요 없다.
+ * 병합해서 돌려준다. Vite 공식 문서(https://vite.dev/guide/env-and-mode) 원문: "environment
+ * variables that already exist when Vite is executed have the highest priority and will not
+ * be overwritten by `.env` files." 두 값 모두 `vite` 패키지가 이미 타입을 내주는 API 라 새
+ * 의존성이 필요 없다.
  */
 function assertApiBase(): Plugin {
   return {
