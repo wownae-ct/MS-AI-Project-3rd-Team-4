@@ -339,7 +339,7 @@ beforeLoad: async ({ location }) => {
 
 ### 3.7 🚨 `beforeLoad`는 캐시되지 않는다 — 세션 조회를 그대로 두면 네비게이션마다 왕복한다
 
-TanStack Router 내부 문서 원문:
+TanStack Router 내부 문서 원문 (`packages/router-core/INTERNALS.md` 의 「beforeLoad: execution and hydration」 절):
 
 > *"The beforeLoad context is **not a cache**. A completed client preload never stores reusable beforeLoad output; when loader data enters the route cache, the merged context is discarded. **A subsequent navigation rebuilds merged context from the parent and reruns beforeLoad**, even when reusing completed loader data."*
 
