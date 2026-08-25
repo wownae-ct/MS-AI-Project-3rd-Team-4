@@ -1,10 +1,17 @@
 """LangGraph 3노드: route → generate → validate — 13_personalization_router_agent_design.md §1.
 `app/rag/graph.py`(챗 그래프, retrieve→generate→verify)와 완전히 분리된 별도 그래프다(CLAUDE.md:
-두 그래프는 서로 다른 그래프, 하나로 합치지 않는다). 재시도/재검색 루프 없음 — 챗 그래프와 같은
-"3노드 상한, 의도적 단순화" 원칙(05_RAG_design.md §5). LLM 호출의 구조화 출력은 이 레포의 유일한
+두 그래프는 서로 다른 그래프, 하나로 합치지 않는다). LLM 호출의 구조화 출력은 이 레포의 유일한
 기존 컨벤션(app/rag/generation.py::verify_answer)을 그대로 따른다: response_format={"type":
 "json_object"} + 수동 json.loads, try/except 없이 위로 전파 — 예외 처리는 이 그래프를 호출하는
-app/services/personalization.py의 몫이다."""
+app/services/personalization.py의 몫이다.
+
+**2026-08-25 결정**: validate가 BLOCKED을 내면 generate로 최대 1회 돌아간다(챗 그래프의 CRAG
+조건부 재검색 루프와 동일 패턴 — 새 노드가 아니라 조건부 엣지 하나만 추가, 노드는 여전히 3개).
+간헐적 few-shot 커버리지 누락·category_code 오염 등 "LLM이 한 번 잘못 만듦 → 바로 카탈로그
+폴백"으로 끝나던 버그들을 완화하려는 목적(docs/AI-Sessions/wiki/decisions/
+2026-08-25-personalization-validate-generate-retry-decision.md). generate는 결합 호출
+구조(§1-3)를 그대로 유지해 재시도 시에도 affected_domains 전체를 다시 만든다 — 도메인별
+부분 재시도는 스코프 밖(단순함 유지, 결정 문서 참고)."""
 
 import json
 
@@ -57,7 +64,9 @@ async def route_node(state: PersonalizationState, config: RunnableConfig) -> dic
 
 
 # ② generate: affected_domains가 둘 다면 단일 결합 LLM 호출로 두 도메인을 한 번에 만든다(§1-3
-# "결합 호출" 명시 — 특히 온보딩은 항상 양쪽 다라 이 경로가 상시 경로).
+# "결합 호출" 명시 — 특히 온보딩은 항상 양쪽 다라 이 경로가 상시 경로). retry_count > 0(=validate
+# 재시도로 다시 들어온 경우, 2026-08-25 결정)면 이전 validation_errors를 프롬프트에 피드백으로
+# 얹는다 — 단순 재시도가 아니라 CRAG처럼 실패 사유 기반 교정.
 async def generate_node(state: PersonalizationState, config: RunnableConfig) -> dict:
     settings: Settings = config["configurable"].get("settings") or get_settings()
     async with traced_span(
@@ -67,8 +76,9 @@ async def generate_node(state: PersonalizationState, config: RunnableConfig) -> 
             return {"checklist_draft": None, "timeline_draft": None}
 
         client = get_azure_openai_client(settings)
+        retry_feedback = state["validation_errors"] if state.get("retry_count", 0) > 0 else None
         prompt = build_generate_prompt(
-            state["affected_domains"], state["profile"], state["protected_items"]
+            state["affected_domains"], state["profile"], state["protected_items"], retry_feedback
         )
         response = await client.chat.completions.create(
             model=settings.azure_openai_chat_deployment,
@@ -118,7 +128,30 @@ async def validate_node(state: PersonalizationState, config: RunnableConfig) -> 
     validation_status = {
         domain: "BLOCKED" if errors else "SUCCESS" for domain, errors in domain_errors.items()
     }
-    return {"validation_status": validation_status, "validation_errors": domain_errors}
+    # 2026-08-25 결정 — BLOCKED일 때만 증가시킨다. _route_after_validate가 이 값으로 재시도
+    # 여부를 판단(1회 소진 후 두 번째도 BLOCKED면 더 안 늘어도 상관없음, 상한 판정만 통과하면 됨).
+    retry_count = state.get("retry_count", 0)
+    if any(status == "BLOCKED" for status in validation_status.values()):
+        retry_count += 1
+    return {
+        "validation_status": validation_status,
+        "validation_errors": domain_errors,
+        "retry_count": retry_count,
+    }
+
+
+# 2026-08-25 결정 — validate 직후 조건부 분기. BLOCKED 도메인이 하나라도 있고 아직 재시도를
+# 안 썼으면(retry_count <= 1, validate_node가 이번에 막 1로 올린 경우까지 포함) generate로
+# 되돌아간다. 그 외(전부 SUCCESS, 또는 이미 재시도까지 소진하고도 BLOCKED)는 그래프 종료 —
+# 후자는 app/services/personalization.py가 그대로 카탈로그 폴백으로 처리한다(기존 동작 그대로).
+_MAX_RETRIES = 1
+
+
+def _route_after_validate(state: PersonalizationState) -> str:
+    has_blocked = any(status == "BLOCKED" for status in state["validation_status"].values())
+    if has_blocked and state.get("retry_count", 0) <= _MAX_RETRIES:
+        return "generate"
+    return END
 
 
 def build_graph() -> CompiledStateGraph:
@@ -129,5 +162,7 @@ def build_graph() -> CompiledStateGraph:
     graph.set_entry_point("route")
     graph.add_edge("route", "generate")
     graph.add_edge("generate", "validate")
-    graph.add_edge("validate", END)
+    graph.add_conditional_edges(
+        "validate", _route_after_validate, {"generate": "generate", END: END}
+    )
     return graph.compile()

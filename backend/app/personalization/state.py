@@ -1,6 +1,7 @@
-"""개인화 라우터 에이전트 그래프 상태 — 13_personalization_router_agent_design.md §1-1 verbatim.
-`app/rag/graph.py::ChatState`와 완전히 분리된 별도 그래프의 상태다(CLAUDE.md: 두 그래프는
-서로 다른 그래프, 하나로 합치지 않는다)."""
+"""개인화 라우터 에이전트 그래프 상태 — 13_personalization_router_agent_design.md §1-1 verbatim
++ 2026-08-25 validate→generate 조건부 재시도 결정(retry_count 추가). `app/rag/graph.py::
+ChatState`와 완전히 분리된 별도 그래프의 상태다(CLAUDE.md: 두 그래프는 서로 다른 그래프,
+하나로 합치지 않는다)."""
 
 from typing import TypedDict
 
@@ -24,3 +25,8 @@ class PersonalizationState(TypedDict):
     # SUCCESS/BLOCKED 판정에 전혀 영향을 주지 않는다.
     validation_status: dict[str, str]
     validation_errors: dict[str, list[str]]
+    # 2026-08-25 결정 — validate가 BLOCKED이면 generate로 최대 1회 돌아간다(챗 그래프 CRAG
+    # 재시도와 동일 패턴, 새 노드 아님·조건부 엣지만). validate_node가 BLOCKED 판정 시에만
+    # 증가시킨다 — generate_node는 이 값이 0보다 크면 validation_errors를 피드백으로 프롬프트에
+    # 주입한다(app/personalization/prompts.py::build_generate_prompt의 retry_feedback 인자).
+    retry_count: int

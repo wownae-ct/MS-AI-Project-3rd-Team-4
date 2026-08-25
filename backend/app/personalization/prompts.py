@@ -162,15 +162,45 @@ def _protected_items_note(protected_items: dict) -> str:
     return f"protected_items: CHECKLIST={checklist_ids}, TIMELINE={timeline_ids}"
 
 
-def build_generate_prompt(affected_domains: list[str], profile: dict, protected_items: dict) -> str:
+def _retry_feedback_note(
+    affected_domains: list[str], retry_feedback: dict[str, list[str]]
+) -> str | None:
+    """2026-08-25 결정 — validate가 BLOCKED을 낸 이유를 다음 generate 호출에 그대로 알려준다
+    (단순 재시도가 아니라 CRAG처럼 실패 사유 기반 교정). affected_domains에 포함된 도메인 중
+    실제로 에러가 있는 것만 보여준다 — 이미 SUCCESS였던 도메인의 빈 에러 리스트는 안 섞는다."""
+    lines = [
+        f"- {domain}: {'; '.join(errors)}"
+        for domain in affected_domains
+        if (errors := retry_feedback.get(domain))
+    ]
+    if not lines:
+        return None
+    return (
+        "[재시도] 이전 시도가 다음 이유로 반려됐습니다. 같은 문제를 반복하지 말고 반드시 "
+        "고쳐서 다시 만드세요:\n" + "\n".join(lines)
+    )
+
+
+def build_generate_prompt(
+    affected_domains: list[str],
+    profile: dict,
+    protected_items: dict,
+    retry_feedback: dict[str, list[str]] | None = None,
+) -> str:
     """affected_domains가 한쪽뿐이면 해당 단독 규칙+few-shot+출력 스키마만, 둘 다면 두 블록을
     하나의 프롬프트 문자열에 순서대로 이어붙이고 응답 JSON 스키마를 두 키
     {"checklist_items": [...], "timeline_items": [...]}로 통합해 요청한다 — 런타임에 두 문자열을
-    단순 concat하는 게 아니라 이 함수가 매번 완결된 프롬프트를 조립한다."""
+    단순 concat하는 게 아니라 이 함수가 매번 완결된 프롬프트를 조립한다. retry_feedback은
+    validate→generate 재시도 때만(2026-08-25 결정) 채워지며, 있으면 프롬프트 맨 앞에 반려
+    사유를 덧붙인다."""
     include_checklist = "CHECKLIST" in affected_domains
     include_timeline = "TIMELINE" in affected_domains
 
     parts = [f"웨딩 프로필: {profile}", _protected_items_note(protected_items)]
+    if retry_feedback:
+        note = _retry_feedback_note(affected_domains, retry_feedback)
+        if note:
+            parts.insert(0, note)
 
     if include_checklist:
         parts += [_CHECKLIST_RULES, _build_checklist_few_shot()]
