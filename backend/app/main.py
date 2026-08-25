@@ -11,6 +11,7 @@ Azure Functions/App Service/Container Apps/API Management만 지원하고 AKS는
 03_API_spec.md §1 갱신 완료, 상세 근거는
 docs/AI-Sessions/wiki/decisions/2026-08-21-cors-not-linked-backend.md 참고."""
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -39,6 +40,13 @@ from app.routers import (
     vendor_case,
     wedding,
 )
+
+# 2026-08-26 레드팀 감사 4라운드(로깅/관측성) 항목 1 — app/ 전체에 logging 모듈이 한 번도 안
+# 쓰이고 있었다(예외를 삼키는 경계마다 print()조차 없음). 앱 생성 전, 딱 한 번 여기서 설정하고
+# 이후 각 모듈은 logging.getLogger(__name__)만 쓴다. App Insights 같은 새 관측 플랫폼은
+# CLAUDE.md YAGNI 금지목록 때문에 도입하지 않는다 — stdout(지금 인프라가 이미 받는 경로)로 충분.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logger = logging.getLogger(__name__)
 
 _PRIVATE_LAN_HOST = (
     r"(?:localhost"
@@ -85,6 +93,9 @@ app.add_middleware(SlowAPIMiddleware)
 async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
     """03_API_spec.md §2 에러 포맷에 맞춘다 — slowapi 기본 핸들러는 {"error": "..."} 문자열
     포맷이라 이 프로젝트의 {"error":{"code":...,"message":...}} 포맷과 다르다."""
+    # 2026-08-26 레드팀 감사 4라운드 항목 14 — 어떤 키(계정/IP)·경로가 rate limit에 걸렸는지
+    # 무로깅이면 브루트포스/크리덴셜 스터핑 탐지 목적 자체가 무력화된다.
+    logger.warning("Rate limit exceeded: %s %s (%s)", request.method, request.url.path, exc.detail)
     response = JSONResponse(
         status_code=429,
         content={
@@ -103,6 +114,12 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
     {"error":{"code":...,"message":...}} 포맷과 어긋나므로, app.core.errors.api_error가 만든
     detail을 그대로 바디로 내려준다. 그 형태가 아닌 HTTPException(예: 라우팅 자체 404)은
     INTERNAL_ERROR로 감싼다."""
+    # 2026-08-26 레드팀 감사 4라운드 LOW 항목 — 5xx HTTPException(예: 라우팅 자체 404가 아닌
+    # 실제 서버측 오류)은 클라이언트 응답만 만들고 서버 로그엔 안 남았다.
+    if exc.status_code >= 500:
+        logger.error(
+            "HTTP %s on %s %s: %s", exc.status_code, request.method, request.url.path, exc.detail
+        )
     if isinstance(exc.detail, dict) and "error" in exc.detail:
         return JSONResponse(status_code=exc.status_code, content=exc.detail)
     return JSONResponse(
@@ -120,6 +137,20 @@ async def validation_exception_handler(
     message = errors[0]["msg"] if errors else "요청 검증에 실패했습니다."
     return JSONResponse(
         status_code=422, content={"error": {"code": "VALIDATION_ERROR", "message": message}}
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """2026-08-26 레드팀 감사 4라운드 항목 2 — 위 3개 핸들러(RateLimitExceeded/HTTPException/
+    RequestValidationError) 밖의 예외는 잡는 곳이 없어 라우터/서비스 계층의 광범위 except가
+    아닌 곳에서 뭔가 터지면 Starlette 기본 500(평문, 이 프로젝트의 {"error":{...}} 포맷과
+    다름)으로 새 나갔다. 마지막 방어선으로 하나 추가하고, 이 경계를 타는 예외는 전부
+    스택트레이스와 함께 남긴다 — 여기까지 온다는 것 자체가 이미 어딘가의 로직 결함이므로."""
+    logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"error": {"code": "INTERNAL_ERROR", "message": "서버 오류가 발생했습니다."}},
     )
 
 
