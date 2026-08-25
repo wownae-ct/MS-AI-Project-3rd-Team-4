@@ -60,3 +60,8 @@ export interface ChecklistItemCreateInput {
   priority: ChecklistPriority;
   tag?: string;
 }
+
+// 백엔드 ChecklistItemCreate 스키마(dev-35, 03_API_spec.md #14)가 강제하는 길이 상한과 값을
+// 맞춘다 — 프론트에서 먼저 막아야 422 왕복 없이 사용자가 바로 알 수 있다(레드팀 감사 CROSS 항목).
+export const CHECKLIST_TITLE_MAX_LENGTH = 200;
+export const CHECKLIST_BODY_MAX_LENGTH = 2000;

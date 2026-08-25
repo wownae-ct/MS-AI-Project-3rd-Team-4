@@ -95,32 +95,44 @@ export function ReportPage() {
         </Card>
 
         <Card title="카테고리별 진행률">
-          <div className={ROWS}>
-            {byCompletion.map((category) => (
-              <CompletionRow key={category.id} category={category} />
-            ))}
-          </div>
+          {byCompletion.length === 0 ? (
+            <p className="text-sm text-ink-soft">진행률을 계산할 카테고리가 아직 없습니다.</p>
+          ) : (
+            <div className={ROWS}>
+              {byCompletion.map((category) => (
+                <CompletionRow key={category.id} category={category} />
+              ))}
+            </div>
+          )}
         </Card>
 
         <Card title="다음에 확인하면 좋아요" subtitle="우선순위가 높은 순으로 최대 5개예요">
-          <div className="flex flex-col gap-2.5">
-            {report.next_recommended_checks.map((check) => (
-              <RecoRow
-                key={check.checklist_item_id}
-                title={check.title}
-                priority={check.priority}
-                categoryName={categoryNameById.get(check.category_code) ?? check.category_code}
-              />
-            ))}
-          </div>
+          {report.next_recommended_checks.length === 0 ? (
+            <p className="text-sm text-ink-soft">추천할 항목이 아직 없습니다.</p>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {report.next_recommended_checks.map((check) => (
+                <RecoRow
+                  key={check.checklist_item_id}
+                  title={check.title}
+                  priority={check.priority}
+                  categoryName={categoryNameById.get(check.category_code) ?? check.category_code}
+                />
+              ))}
+            </div>
+          )}
         </Card>
 
         <Card title="다가오는 납부">
-          <div className={ROWS}>
-            {upcomingPayments.map((payment) => (
-              <CompactPaymentRow key={payment.id} payment={payment} />
-            ))}
-          </div>
+          {upcomingPayments.length === 0 ? (
+            <p className="text-sm text-ink-soft">다가오는 납부가 없습니다.</p>
+          ) : (
+            <div className={ROWS}>
+              {upcomingPayments.map((payment) => (
+                <CompactPaymentRow key={payment.id} payment={payment} />
+              ))}
+            </div>
+          )}
         </Card>
       </div>
     </Page>

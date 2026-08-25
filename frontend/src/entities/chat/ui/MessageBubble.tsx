@@ -29,6 +29,13 @@ export function MessageBubble({ message, onRate, renderReportAction }: MessageBu
       >
         {message.content || "…"}
       </div>
+      {/* 전송 실패한 낙관적 user 메시지 — 성공한 말풍선과 똑같이 보이면 사용자가 실패를 알 길이
+          없다(레드팀 감사). 재시도 UI는 아직 없다 — 우선 실패를 숨기지 않는 것부터 고친다. */}
+      {isUser && message.failed && (
+        <p role="alert" className="text-xs text-primary">
+          전송 실패 · 다시 시도해 주세요
+        </p>
+      )}
       {/* 근거 없이 답하지 않는다는 원칙을 시각적으로도 지킨다 — 출처 배지 또는 "근거 없음"을
           항상 표시한다(HANDOFF.md §4 S3). verification 이 아직 안 왔으면(스트리밍 중) 아무것도
           내지 않는다 — 이 시점엔 "근거 없음" 조차 확정된 사실이 아니다. */}

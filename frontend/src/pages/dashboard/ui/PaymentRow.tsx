@@ -8,6 +8,7 @@
 // 이 컴포넌트만 실제 API 유니온(`DashboardUpcomingItem`)을 직접 받는다 — 없는 금액을 0이나 빈
 // 문자열로 지어내는 대신, 애초에 그 슬롯을 렌더하지 않는 쪽을 택했다(지어내지 않는다).
 import type { DashboardUpcomingItem } from "@/entities/dashboard";
+import { formatDDay } from "@/shared/lib/format-d-day";
 import { Badge } from "@/shared/ui";
 
 export interface PaymentRowProps {
@@ -26,7 +27,7 @@ const CHECKLIST_STATUS_LABEL: Record<string, string> = {
 };
 
 export function PaymentRow({ item, categoryLabel }: PaymentRowProps) {
-  const badgeText = item.source === "timeline" ? `D-${item.d_day}` : (CHECKLIST_STATUS_LABEL[item.status] ?? item.status);
+  const badgeText = item.source === "timeline" ? formatDDay(item.d_day) : (CHECKLIST_STATUS_LABEL[item.status] ?? item.status);
   const subLabel = item.source === "timeline" ? `${categoryLabel} · ${item.target_date}` : `${categoryLabel} · 체크리스트`;
 
   return (
