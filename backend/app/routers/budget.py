@@ -27,7 +27,7 @@ from app.core.config import Settings, get_settings
 from app.core.db import get_session
 from app.core.embeddings import get_azure_openai_client
 from app.core.errors import api_error
-from app.core.storage import get_blob_service_client, upload_receipt_image
+from app.core.storage import upload_receipt_image
 from app.deps import get_current_user, get_current_wedding
 from app.models import Payment, User, Wedding
 from app.schemas.benchmark import BenchmarkCompareOut, TotalBudgetPlaceholderOut
@@ -126,10 +126,7 @@ async def extract_receipt(
     if len(content) > _MAX_RECEIPT_BYTES:
         raise api_error(422, "RECEIPT_TOO_LARGE", "영수증 이미지가 너무 큽니다(최대 15MB).")
 
-    blob_client = get_blob_service_client(settings)
-    receipt_url = await upload_receipt_image(
-        blob_client, settings, wedding.id, content, file.content_type
-    )
+    receipt_url = await upload_receipt_image(settings, wedding.id, content, file.content_type)
 
     openai_client = get_azure_openai_client(settings)
     fields = await extract_receipt_fields(
