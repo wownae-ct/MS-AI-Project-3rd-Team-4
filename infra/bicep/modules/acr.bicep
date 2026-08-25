@@ -6,8 +6,11 @@ param tags object = {}
 param sku string = 'Basic'
 param logAnalyticsWorkspaceId string
 
-@description('purge 대상 리포지토리/태그 필터 (ACR purge 문법)')
-param purgeFilter string = 'backend:.*'
+@description('purge 대상 리포지토리/태그 필터 목록 (ACR purge 문법, 리포지토리별로 --filter 하나씩) — 2026-08-26 same-origin 전환으로 frontend 리포지토리가 추가돼 backend와 함께 여기 포함한다.')
+param purgeFilters array = [
+  'backend:.*'
+  'frontend:.*'
+]
 
 @description('이 기간(일)보다 오래된 이미지만 purge 후보로 고려')
 param purgeAgeDays int = 14
@@ -15,8 +18,9 @@ param purgeAgeDays int = 14
 @description('오래됐어도 최신 N개 태그는 항상 보존')
 param purgeKeepCount int = 5
 
+var purgeFilterArgs = join(map(purgeFilters, f => '--filter "${f}"'), ' ')
 // 트리플쿼트('''...''')는 raw 문자열이라 ${} 보간이 안 되므로 일반 문자열 + \n으로 구성
-var purgeTaskYaml = 'version: v1.1.0\nsteps:\n  - cmd: acr purge --filter "${purgeFilter}" --ago ${purgeAgeDays}d --keep ${purgeKeepCount} --untagged\n    disableWorkingDirectoryOverride: true\n    timeout: 3600\n'
+var purgeTaskYaml = 'version: v1.1.0\nsteps:\n  - cmd: acr purge ${purgeFilterArgs} --ago ${purgeAgeDays}d --keep ${purgeKeepCount} --untagged\n    disableWorkingDirectoryOverride: true\n    timeout: 3600\n'
 
 resource acr 'Microsoft.ContainerRegistry/registries@2026-03-01-preview' = {
   name: replace('${namePrefix}acr', '-', '')

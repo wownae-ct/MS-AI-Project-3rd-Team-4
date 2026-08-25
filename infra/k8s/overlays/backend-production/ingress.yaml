@@ -7,6 +7,12 @@
 # Ingress 자체가 트래픽을 처리하는 프로그램은 아니다.
 # 도메인: AKS/Azure LoadBalancer 자동생성 DNS 라벨(infra/k8s/ingress-nginx/README.md 참고).
 # TLS: cert-manager가 letsencrypt-nginx ClusterIssuer로 자동 발급(infra/k8s/cert-manager/README.md).
+#
+# 경로 분기(2026-08-26): 같은 호스트 아래 `/api`는 backend Service로, 그 외 전부(`/`)는 frontend
+# Service(nginx 정적 서빙, base/frontend)로 보낸다 — 프론트·백엔드를 완전 same-origin으로 만들어
+# 사파리(ITP)/브레이브(Shields)의 서드파티 쿠키 차단을 우회하기 위함(SWA cross-origin 배포는
+# frontend-ci.yml이 PR 프리뷰용으로 계속 병행). ingress-nginx는 경로 길이 기준으로 더 구체적인
+# 규칙을 우선 매칭하므로 `/api`가 `/`보다 항상 먼저 매치된다.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -30,11 +36,18 @@ spec:
           # 처리한다(보통 404).
       http:
         paths:
-          - path: / # 이 경로 아래 전부(Prefix)를 매칭 — 이 도메인으로 온 모든 요청을 통째로
-                # backend Service로 넘긴다는 뜻(경로별로 다른 서비스로 나누지 않음).
+          - path: /api # backend API 전용 경로 — 03_API_spec.md의 모든 엔드포인트가 이미
+                # /api/v1/... 프리픽스라 ingress-nginx가 경로를 벗기지 않고 그대로 넘겨도 된다.
             pathType: Prefix
             backend:
               service:
-                name: backend # 목적지 Service 이름 — service.yaml에서 정의한 바로 그 Service.
+                name: backend
+                port:
+                  number: 80
+          - path: / # 그 외 전부 — frontend 정적 파일(nginx, base/frontend).
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
                 port:
                   number: 80
