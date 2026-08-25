@@ -68,7 +68,10 @@ export function buildReviewLabels(inputs: ReviewLabelInputs): ReviewLabels {
     ),
     regionLabel,
     budgetLabel,
-    guestCountLabel: inputs.effectiveGuestCountUnsure ? "미정 — 200명 기준으로 시작해요" : `${inputs.guestCount}명`,
+    // 총예산과 달리 guest_count_unsure=true 일 때 서버가 대신 계산해 채워주는 값이 없다 —
+    // "200명 기준으로 시작해요"는 실제로 저장되지 않는 값을 저장되는 것처럼 말해 어긋난다
+    // (레드팀 감사 라운드 2).
+    guestCountLabel: inputs.effectiveGuestCountUnsure ? "미정" : `${inputs.guestCount}명`,
     tasteLabel: TASTE_CARDS.find((card) => card.value === inputs.effectiveTastePreference)?.title ?? inputs.effectiveTastePreference,
     goalsLabel: inputs.effectiveGoals.join(", "),
     venuePriorityLabel:

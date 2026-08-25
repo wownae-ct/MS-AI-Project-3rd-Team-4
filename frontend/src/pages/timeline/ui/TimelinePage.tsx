@@ -8,7 +8,7 @@
 // `GET /timeline-items`와 `GET /weddings/me`를 병렬로 불러온다 — 후자는 phase 계산의 기준일
 // (wedding_date)을 얻기 위해서고, 카테고리 라벨은 항목의 category_code를 그대로 보여준다
 // (이 응답엔 카테고리 이름이 없고, 이름 하나 때문에 세 번째 호출을 추가하지 않는다 — YAGNI).
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getTimelineItems, type TimelineItem } from "@/entities/timeline";
 import { getMyWedding } from "@/entities/wedding";
 import { RegenerateButton } from "@/entities/personalization";
@@ -47,11 +47,20 @@ export function TimelinePage() {
   }
 
   // 커스텀 항목 추가·수동 재생성 뒤 목록을 다시 받아온다 — 둘 다 서버가 항목을 새로 만들거나
-  // 대체하는 동작이라 낙관적 갱신 대신 재조회가 맞다.
+  // 대체하는 동작이라 낙관적 갱신 대신 재조회가 맞다. 항목 추가 직후 곧바로 "다시 생성"을 누르는
+  // 것처럼 두 호출이 겹치면 응답이 보낸 순서와 다르게 도착할 수 있다 — 시퀀스 번호로 "가장
+  // 최근에 보낸 재조회"일 때만 결과를 반영해, 늦게 도착한 예전 응답이 최신 타임라인을 덮어쓰지
+  // 않게 막는다(레드팀 감사).
+  const refetchSeqRef = useRef(0);
   function refetchItems() {
+    const seq = ++refetchSeqRef.current;
     getTimelineItems()
-      .then((res) => setData((prev) => (prev ? { ...prev, items: res.items } : prev)))
+      .then((res) => {
+        if (refetchSeqRef.current !== seq) return;
+        setData((prev) => (prev ? { ...prev, items: res.items } : prev));
+      })
       .catch((err: unknown) => {
+        if (refetchSeqRef.current !== seq) return;
         setError(err instanceof ApiError ? err.message : "타임라인을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
       });
   }

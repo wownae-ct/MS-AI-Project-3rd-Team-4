@@ -106,8 +106,15 @@ export function LoginPage() {
         // getMe() 는 loadSession() 이 아니라 여기서만 직접 부른다 — 캐시를 타면 쿠키가 실제로
         // 왕복했는지 이 요청 하나로는 확인할 수 없다.
         await getMe();
-      } catch {
-        setError(COOKIE_NOT_PERSISTED_ERROR);
+      } catch (err) {
+        // "쿠키가 이 브라우저에서 유지되지 않는다"는 진단은 UNAUTHORIZED(로그인 직후인데 쿠키가
+        // 없어 바로 401)일 때만 맞는 원인이다 — 네트워크 순단·429·500 등 다른 실패까지 전부 같은
+        // 문구로 묶으면 원인과 무관한 "브라우저를 바꿔라" 안내로 사용자를 잘못 이끈다(레드팀 감사).
+        if (isApiError(err) && err.code !== "UNAUTHORIZED") {
+          setError(LOGIN_ERROR[err.code] ?? "로그인 확인 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.");
+        } else {
+          setError(COOKIE_NOT_PERSISTED_ERROR);
+        }
         return;
       }
       // `search.redirect`는 router.tsx의 authedRoute.beforeLoad가 세션 없이 보호된 경로에
@@ -192,7 +199,7 @@ export function LoginPage() {
         <Button
           variant="secondary"
           block
-          onClick={() => { window.location.href = socialLoginUrl("google"); }}
+          onClick={() => { window.location.href = socialLoginUrl("google", search.redirect); }}
           // secondary 변이는 기본적으로 호버 시 배경(bg-bg)·보더(border-ink-soft)가 옅게 바뀐다
           // (Button.tsx VARIANT.secondary) — 구글 버튼은 그 변화 없이 항상 자기 색(흰 배경 +
           // 라인 보더) 그대로 보이길 원해서, 네이버 버튼과 같은 방식(인라인 style로 고정)으로
@@ -205,7 +212,7 @@ export function LoginPage() {
         <Button
           variant="secondary"
           block
-          onClick={() => { window.location.href = socialLoginUrl("naver"); }}
+          onClick={() => { window.location.href = socialLoginUrl("naver", search.redirect); }}
           // 네이버 브랜드 그린 — Tailwind 임의값 클래스(bg-[#hex])가 아니라 인라인 style 이다.
           // 이 저장소 소스 규범 게이트(scripts/lib/source-norms.mjs)가 팔레트 밖 색을 막는 건
           // `bg-[#...]` 류 Tailwind 클래스 토큰뿐이라 — 게이트를 피하려는 게 아니라, 게이트가
@@ -219,6 +226,9 @@ export function LoginPage() {
 
       <Button
         variant="ghost"
+        // 제출 중(busy)에 모드를 바꾸면, 진행 중이던 요청이 나중에 settle될 때 이미 바뀐 폼
+        // 위에 엉뚱한 에러/강제 이동을 남길 수 있다(레드팀 감사 — 경합 가드 부재).
+        disabled={busy}
         onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(null); }}
       >
         {mode === "login" ? "계정이 없으신가요? 회원가입" : "이미 계정이 있으신가요? 로그인"}

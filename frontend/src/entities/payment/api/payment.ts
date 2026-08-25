@@ -56,8 +56,8 @@ export function getBenchmarkCompare(params: {
 // #34 — 영수증 사진에서 item_name/vendor_name/amount/paid_date 자동채움(S3 비용 탭). DB 반영
 // 없음(추출만); FormData 는 apiFetch 의 JSON 래퍼를 태우면 Content-Type boundary 가 깨진다
 // (shared/api/client.ts 머리말) — apiFetchMultipart 를 직접 쓴다.
-export function getReceiptExtract(file: File): Promise<ReceiptExtractResult> {
+export function getReceiptExtract(file: File, signal?: AbortSignal): Promise<ReceiptExtractResult> {
   const form = new FormData();
   form.set("file", file);
-  return apiFetchMultipart("/api/v1/payments/receipt-extract", form) as Promise<ReceiptExtractResult>;
+  return apiFetchMultipart("/api/v1/payments/receipt-extract", form, { signal }) as Promise<ReceiptExtractResult>;
 }

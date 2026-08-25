@@ -16,18 +16,15 @@
 // 상태를 하나의 객체 대신 필드별 useState로 쪼갠 이유 — 각 스텝이 자기 필드만 구독하게 하면
 // prop 목록이 스텝별 데이터 계약을 그대로 드러낸다(각 Step 컴포넌트의 Props 인터페이스가 실제로
 // 그 단계가 무엇을 묻는지 문서 역할을 한다). reducer 하나로 합치면 그 문서화 효과가 사라진다.
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { invalidateSession } from "@/entities/session";
 import {
   createWedding,
-  getCategories,
-  getTotalAverageBenchmark,
   putWeddingCategories,
   type DoneSoFarCategory,
   type SdmPriority,
   type TastePreference,
-  type TotalAverageBenchmark,
   type UserRole,
   type VenuePriority,
   type WeddingCategoryUpdateInput,
@@ -36,9 +33,8 @@ import { ApiError } from "@/shared/api";
 import { computeDefaultUnsurePrecision, computeUnsurePrecisionOptions } from "@/shared/lib/wedding-date";
 import { Button, Card, Page } from "@/shared/ui";
 import { buildReviewLabels } from "./build-review-labels";
-import { GeneratingOverlay } from "./GeneratingOverlay";
 import {
-  categoriesToAllocationRows,
+  GeneratingOverlay,
   STEP_HEADLINE,
   STEP_SUBTITLE,
   Step1RoleDate,
@@ -51,10 +47,10 @@ import {
   Step8Allocation,
   Step9Review,
   TOTAL_STEPS,
-  type AllocationRow,
   type Step,
   type UnsurePrecision,
 } from "./steps";
+import { useOnboardingData } from "./use-onboarding-data";
 
 // 3단계(취향)·4단계(목표)를 "나중에 설정"으로 건너뛸 때 백엔드에 실제로 보낼 기본값
 // (2026-08-26 사용자 지시 — 지어낸 값이 아니라 대화로 정한 값). 예산/하객수(2단계)는 이런
@@ -84,7 +80,6 @@ export function OnboardingPage() {
   const [totalBudgetUnsure, setTotalBudgetUnsure] = useState(false);
   const [guestCount, setGuestCount] = useState("");
   const [guestCountUnsure, setGuestCountUnsure] = useState(false);
-  const [benchmark, setBenchmark] = useState<TotalAverageBenchmark | null>(null);
 
   // 3단계 (스킵 가능 — null 이면 아예 보내지 않는다)
   const [tastePreference, setTastePreference] = useState<TastePreference | null>(null);
@@ -100,44 +95,14 @@ export function OnboardingPage() {
   const [doneSoFar, setDoneSoFar] = useState<DoneSoFarCategory[]>([]);
 
   // 7·8단계 — GET /categories 로 한 번만 채운다. 토글(7)과 배분(8)이 같은 행 배열을 공유한다.
-  const [allocationRows, setAllocationRows] = useState<AllocationRow[]>([]);
-  const [isLoadingCategories, setIsLoadingCategories] = useState(true);
+  // 2단계/8단계가 같이 쓰는 참고 벤치마크도 같은 훅이 받아온다(use-onboarding-data.ts —
+  // oxlint max-lines 300줄 상한 초과로 뽑아냄). 두 조회 모두 실패를 조용히 삼키지 않는다
+  // (레드팀 감사) — categoriesError/benchmarkError로 화면에 알린다.
+  const { benchmark, benchmarkError, allocationRows, setAllocationRows, isLoadingCategories, categoriesError } =
+    useOnboardingData(regionCode);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // 지역이 바뀔 때마다 참고 벤치마크를 다시 받는다 — 2단계 캡션과 8단계 "미정일 때 참고 총예산"이
-  // 같은 값을 쓴다(Step2RegionBudget.tsx 머리말 참조). 실패해도 화면을 막지 않는다.
-  useEffect(() => {
-    let cancelled = false;
-    getTotalAverageBenchmark(regionCode)
-      .then((result) => {
-        if (!cancelled) setBenchmark(result);
-      })
-      .catch(() => {
-        if (!cancelled) setBenchmark(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [regionCode]);
-
-  useEffect(() => {
-    let cancelled = false;
-    getCategories()
-      .then((result) => {
-        if (!cancelled) {
-          setAllocationRows(categoriesToAllocationRows(result.categories));
-          setIsLoadingCategories(false);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setIsLoadingCategories(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const parsedTotalBudget = totalBudget === "" ? 0 : Number(totalBudget);
 
@@ -154,6 +119,12 @@ export function OnboardingPage() {
   const effectiveTotalBudgetUnsure = totalBudgetUnsure || isBudgetDefaulted;
   const isGuestCountDefaulted = !guestCountUnsure && guestCount === "";
   const effectiveGuestCountUnsure = guestCountUnsure || isGuestCountDefaulted;
+  // 같은 부류의 버그 — "정확한 날짜"를 고르고 값은 비운 채로 "나중에 설정"(1단계에서 바로
+  // 9단계로 점프)을 누르면 isDateExact=true·weddingDate=""가 그대로 남는다. 이 조합으로
+  // 제출하면 wedding_date:"" 가 Pydantic date 강제 변환에서 422 로 튕긴다(레드팀 감사) — 다른
+  // defaulted 필드들과 같은 패턴으로, "선택은 EXACT 지만 값이 없다"를 실제로는 미정 취급한다.
+  const isDateDefaulted = isDateExact && weddingDate === "";
+  const effectiveIsDateExact = isDateExact && !isDateDefaulted;
   const isTasteDefaulted = tastePreference === null;
   const effectiveTastePreference = tastePreference ?? TASTE_DEFAULT;
   const isGoalsDefaulted = goals.length === 0;
@@ -170,23 +141,33 @@ export function OnboardingPage() {
     setError(null);
     setIsSubmitting(true);
     try {
-      // 응답의 웨딩 id는 쓰지 않는다 — wedding_id는 URL/바디로 받지 않고 세션에서 서버가 유도한다
-      // (03_API_spec.md:126) — PUT /wedding-categories 도 같은 세션 쿠키로 대상 웨딩을 찾는다.
-      await createWedding({
-        user_role: userRole,
-        wedding_date: isDateExact ? weddingDate : undefined,
-        wedding_date_precision: isDateExact ? "EXACT" : unsurePrecision,
-        total_budget: effectiveTotalBudgetUnsure ? undefined : parsedTotalBudget,
-        total_budget_unsure: effectiveTotalBudgetUnsure,
-        region_code: regionCode,
-        guest_count: effectiveGuestCountUnsure ? undefined : Number(guestCount),
-        guest_count_unsure: effectiveGuestCountUnsure,
-        taste_preference: effectiveTastePreference,
-        venue_priority: venuePriority ?? undefined,
-        sdm_priority: sdmPriority ?? undefined,
-        primary_goals: effectiveGoals,
-        done_so_far: doneSoFar,
-      });
+      try {
+        // 응답의 웨딩 id는 쓰지 않는다 — wedding_id는 URL/바디로 받지 않고 세션에서 서버가
+        // 유도한다(03_API_spec.md:126) — PUT /wedding-categories 도 같은 세션 쿠키로 대상
+        // 웨딩을 찾는다.
+        await createWedding({
+          user_role: userRole,
+          wedding_date: effectiveIsDateExact ? weddingDate : undefined,
+          wedding_date_precision: effectiveIsDateExact ? "EXACT" : unsurePrecision,
+          total_budget: effectiveTotalBudgetUnsure ? undefined : parsedTotalBudget,
+          total_budget_unsure: effectiveTotalBudgetUnsure,
+          region_code: regionCode,
+          guest_count: effectiveGuestCountUnsure ? undefined : Number(guestCount),
+          guest_count_unsure: effectiveGuestCountUnsure,
+          taste_preference: effectiveTastePreference,
+          venue_priority: venuePriority ?? undefined,
+          sdm_priority: sdmPriority ?? undefined,
+          primary_goals: effectiveGoals,
+          done_so_far: doneSoFar,
+        });
+      } catch (err) {
+        // createWedding 성공 후 putWeddingCategories 가 실패하면, 이미 웨딩이 생겼으므로
+        // "시작하기" 재시도가 매번 여기서 409(WEDDING_ALREADY_EXISTS)로 막혀 온보딩에 영원히
+        // 갇힌다(레드팀 감사 1라운드 #2, dev-35 확인 — 백엔드는 이 409 계약을 그대로 유지하기로
+        // 했고 프론트가 이 경우만 통과시키기로 함). allocationRows 는 실패와 무관하게 화면
+        // state에 남아 있으므로 사용자가 다시 고를 필요 없이 바로 카테고리 저장을 재시도한다.
+        if (!(err instanceof ApiError && err.code === "WEDDING_ALREADY_EXISTS")) throw err;
+      }
 
       const categoryUpdates: WeddingCategoryUpdateInput[] = allocationRows.map((row) => ({
         category_code: row.categoryCode,
@@ -302,6 +283,7 @@ export function OnboardingPage() {
         {step === 9 && (
           <Step9Review
             weddingDateLabel={reviewLabels.weddingDateLabel}
+            isDateDefaulted={isDateDefaulted}
             regionLabel={reviewLabels.regionLabel}
             budgetLabel={reviewLabels.budgetLabel}
             isBudgetDefaulted={isBudgetDefaulted}
@@ -322,11 +304,22 @@ export function OnboardingPage() {
         {(step === 7 || step === 8) &&
           (isLoadingCategories ? (
             <p className="text-sm text-ink-soft">불러오는 중…</p>
-          ) : step === 7 ? (
-            <Step7CategoryToggle rows={allocationRows} onRowsChange={setAllocationRows} />
+          ) : categoriesError === null ? (
+            step === 7 ? (
+              <Step7CategoryToggle rows={allocationRows} onRowsChange={setAllocationRows} />
+            ) : (
+              <Step8Allocation rows={allocationRows} onRowsChange={setAllocationRows} totalBudgetEstimate={totalBudgetEstimate} />
+            )
           ) : (
-            <Step8Allocation rows={allocationRows} onRowsChange={setAllocationRows} totalBudgetEstimate={totalBudgetEstimate} />
+            <p role="alert" className="rounded-md border border-line bg-primary-soft px-3 py-2 text-sm text-primary">
+              {categoriesError}
+            </p>
           ))}
+        {step === 2 && benchmarkError !== null && (
+          <p role="alert" className="rounded-md border border-line bg-primary-soft px-3 py-2 text-sm text-primary">
+            {benchmarkError}
+          </p>
+        )}
 
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -346,7 +339,16 @@ export function OnboardingPage() {
             )}
           </div>
           {step < TOTAL_STEPS ? (
-            <Button onClick={() => setStep((current) => (current + 1) as Step)}>다음</Button>
+            <Button
+              // 1단계에서 "정확한 날짜"를 고르고 값을 비운 채로는 다음으로 넘어가지 못하게 막는다
+              // — "나중에 설정"은 여전히 열려 있다(그 경우 isDateDefaulted 파생값이 안전하게
+              // 미정 취급한다). 값 없이 "다음"만 눌러 진행하면 결국 9단계 제출 시점에야 422로
+              // 알게 되던 문제를 여기서 먼저 막는다(레드팀 감사).
+              disabled={step === 1 && isDateDefaulted}
+              onClick={() => setStep((current) => (current + 1) as Step)}
+            >
+              다음
+            </Button>
           ) : (
             <Button disabled={isSubmitting} onClick={() => void handleSubmit()}>
               시작하기

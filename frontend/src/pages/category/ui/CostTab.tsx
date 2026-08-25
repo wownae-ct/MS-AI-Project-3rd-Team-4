@@ -120,7 +120,16 @@ export function CostTab({ categoryCode, categoryMeta }: CostTabProps) {
                     <p className="truncate text-sm font-bold text-ink">{p.item_name}</p>
                   </div>
                   <p className="text-xs text-ink-soft">
-                    {p.vendor_name} · {p.status === "PAID" ? `지급완료 ${p.paid_date ?? ""}` : `예정일 ${p.due_date ?? "미정"}`}
+                    {p.vendor_name} ·{" "}
+                    {/* status는 PLANNED/PAID 2갈래만 아니라 CANCELED도 있다(backend/app/schemas/
+                        common.py:53) — 이걸 놓치면 취소된 결제가 "예정일..."로 잘못 보인다
+                        (레드팀 감사 라운드 2). 지금은 CANCELED로 바꾸는 UI가 없어 잠재적이지만,
+                        서버가 이미 이 값을 낼 수 있는 이상 렌더 쪽은 3갈래를 그대로 반영한다. */}
+                    {p.status === "PAID"
+                      ? `지급완료 ${p.paid_date ?? ""}`
+                      : p.status === "CANCELED"
+                        ? "취소됨"
+                        : `예정일 ${p.due_date ?? "미정"}`}
                   </p>
                 </div>
                 <Money value={p.amount} className="shrink-0" />
