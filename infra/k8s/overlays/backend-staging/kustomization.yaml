@@ -21,8 +21,14 @@ patches:
           value: staging
   # 소셜 로그인(구글/네이버, 00_BASELINE.md §0-2 Should) — OAUTH_BACKEND_BASE_URL은 IdP
   # 콘솔에 등록해둔 redirect_uri와 문자 그대로 일치해야 하는 값이라 이 배포 환경의 실제
-  # Ingress 도메인(03_API_spec.md §1 base URL, /api/v1 제외)으로 명시한다. FRONTEND_BASE_URL은
-  # app/main.py의 SWA_ORIGIN_REGEX가 허용하는 실제 배포 오리진.
+  # Ingress 도메인(03_API_spec.md §1 base URL, /api/v1 제외)으로 명시한다. 백엔드 호스트 자체는
+  # same-origin 전환 이후에도 그대로라 이 값은 안 바뀐다(IdP 콘솔 redirect_uri 등록도 유지).
+  #
+  # FRONTEND_BASE_URL은 backend/app/routers/auth.py의 OAuth 로그인 성공/실패 후 리다이렉트
+  # 목적지 — 2026-08-26 same-origin 전환(ingress.yaml의 `/api`·`/` 경로 분기 참고)으로 frontend가
+  # 이제 이 백엔드와 같은 호스트에서 서빙되므로, 예전 SWA 주소 대신 이 호스트를 가리켜야 한다.
+  # app/main.py의 CORS(SWA_ORIGIN_REGEX)는 PR 프리뷰(SWA)·로컬 개발용으로 별개로 계속 유지된다
+  # — same-origin 요청은 애초에 CORS 검사 대상이 아니라 이 값과 무관하다.
   - target:
       kind: Deployment
       name: backend
@@ -36,4 +42,4 @@ patches:
         path: /spec/template/spec/containers/0/env/-
         value:
           name: FRONTEND_BASE_URL
-          value: https://polite-island-0bb189700.7.azurestaticapps.net
+          value: https://20-249-52-148.nip.io

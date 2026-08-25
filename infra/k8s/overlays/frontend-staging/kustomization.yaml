@@ -1,0 +1,14 @@
+# backend 브랜치 -> staging 네임스페이스 (backend-staging/kustomization.yaml과 동일 패턴).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: staging
+resources:
+  - namespace.yaml
+  - ../../base/frontend
+# base/frontend/deployment.yaml의 placeholder 태그를 이 환경 전용 태그로 덮어쓴다 — Vite가
+# VITE_API_BASE를 빌드타임에 굽기 때문에 staging(nip.io)용 이미지는 production용과 별개로
+# 빌드된다(frontend-docker-ci.yml 참고, apps/frontend-staging.yaml의 Image Updater도 동일 태그
+# 추적).
+images:
+  - name: team4hcacr-drascbaqe8f2gcca.azurecr.io/frontend
+    newTag: staging-latest
