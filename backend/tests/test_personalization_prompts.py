@@ -32,6 +32,19 @@ class TestChecklistFewShotSampleSize:
             assert few_shot.count(f"[{category_code}]") >= 3
 
 
+class TestChecklistFewShotVenueSdmBalance:
+    """2026-08-25 버그 회귀 방지 — VENUE/SDM few-shot이 CHECKLIST_FALLBACK_CATALOG(전부
+    CONTRACT_TERM)만 재사용해 LLM이 EXTRA_COST/PREP 예시를 한 번도 못 보고, "40% 이상" 규칙과
+    맞물려 실계정 재현으로 VENUE/SDM 체크리스트가 27/27 CONTRACT_TERM으로 나온 회귀가 있었다.
+    few-shot에 두 item_type이 실제로 섞여 나오는지 확인한다."""
+
+    def test_venue_and_sdm_few_shot_include_non_contract_term_items(self):
+        few_shot = _build_checklist_few_shot()
+        for category_code in ("VENUE", "SDM"):
+            for item_type in ("EXTRA_COST", "PREP"):
+                assert f"[{category_code}] ({item_type})" in few_shot
+
+
 def _parse_timeline_few_shot_entries() -> list[dict]:
     """첫 줄(헤더 설명)을 제외한 나머지를 JSON 한 줄씩 파싱한다."""
     lines = _build_timeline_few_shot().splitlines()
