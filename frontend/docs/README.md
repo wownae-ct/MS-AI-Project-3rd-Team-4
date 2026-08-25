@@ -1,6 +1,10 @@
 # frontend/docs — 프론트엔드 구현 문서
 
-> **최종 갱신** 2026-08-25 (백엔드 연동 설계 — ADR 0007 + architecture 3종 신설)
+> **최종 갱신** 2026-08-25 (**전송 계층 + 인증 구현** — [architecture/integration-status.md](architecture/integration-status.md) 신설 ·
+> `backend-analysis/`·`plans/` 를 저장소 루트 `docs/` 에서 옮겨 와 팀 공유로 전환)
+>
+> 🧭 **처음 오셨거나 이어받는 분은 [architecture/integration-status.md](architecture/integration-status.md) 부터 읽으십시오** —
+> 무엇이 서 있고 무엇이 남았는지, 그리고 로컬에서는 절대 드러나지 않는 함정이 거기 있습니다.
 >
 > ✅ 이 폴더는 커밋된다 (`!frontend/docs/` 예외). 여기 두는 문서는 팀 전체에 공유되는 공개 문서다 —
 > 로컬 메모·시크릿·개인 기록은 두지 않는다.
@@ -13,6 +17,8 @@
 | [design/](design/README.md) | 디자인 규범 — 색 · 서체 · 형태 · 접근성 · 레이아웃의 값과 근거 |
 | [mockups/](mockups/README.md) | 화면 스펙 S1~S6 (정적 사본) |
 | [adr/](adr/README.md) | 아키텍처 결정 기록 진입점 |
+| [backend-analysis/](backend-analysis/README.md) | **백엔드 조사 원본** — 엔드포인트·스키마·데이터 모델·SSE·인증/배포 전수 분석 + 클러스터/로컬 실측 |
+| [plans/](plans/) | **구현 계획** — 태스크 단위 실행 계획(코드·테스트 포함) |
 
 ### architecture/ — 적용 설계
 
