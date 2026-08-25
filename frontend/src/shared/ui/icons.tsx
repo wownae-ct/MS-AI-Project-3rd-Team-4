@@ -105,3 +105,30 @@ export function IconChat(props: IconProps) {
     </svg>
   );
 }
+
+// 브랜드 마크(Google·Naver) — 위 아이콘들과 달리 currentColor 를 따르지 않는다. 로그인 버튼에
+// 실제 제공자를 식별시키는 것이 유일한 용도라 공식 브랜드 색을 고정으로 쓴다. 이 색은 Tailwind
+// 클래스(bg-[#hex] 류)가 아니라 SVG fill 속성 값이라 소스 규범 게이트(scripts/lib/source-norms.mjs
+// 의 ARBITRARY_COLOR 는 `fill-[#...]` 토큰만 잡는다)에 걸리지 않는다 — 팔레트 밖 색 금지(D8)는
+// 앱 자체의 accent 색 대상이지 로그인 버튼의 제3자 브랜드 마크를 막을 의도가 아니다.
+export function IconGoogle({ size, className }: IconProps) {
+  return (
+    <svg width={size ?? 20} height={size ?? 20} className={className} viewBox="0 0 20 20" aria-hidden="true">
+      <path fill="#4285F4" d="M19.6 10.23c0-.82-.1-1.42-.25-2.05H10v3.72h5.5c-.15.96-.74 2.31-2.04 3.22v2.45h3.16c1.89-1.73 2.98-4.3 2.98-7.34z" />
+      <path fill="#34A853" d="M10 20c2.7 0 4.96-.89 6.62-2.42l-3.16-2.45c-.87.59-2.03.99-3.46.99-2.65 0-4.89-1.79-5.7-4.19H1.06v2.53C2.66 17.76 6.02 20 10 20z" />
+      <path fill="#FBBC05" d="M4.3 11.93A5.98 5.98 0 0 1 4 10c0-.67.11-1.32.3-1.93V5.54H1.06A9.99 9.99 0 0 0 0 10c0 1.62.39 3.14 1.06 4.46l3.24-2.53z" />
+      <path fill="#EA4335" d="M10 3.98c1.47 0 2.79.5 3.83 1.49l2.79-2.79C14.95.99 12.7 0 10 0 6.02 0 2.66 2.24 1.06 5.54l3.24 2.53C5.11 5.77 7.35 3.98 10 3.98z" />
+    </svg>
+  );
+}
+
+// 흰색 글자만 그린다 — 초록 사각 배경은 넣지 않는다. 버튼 자체가 네이버 브랜드 그린이라
+// (LoginPage 의 네이버 버튼) 아이콘까지 배경을 가지면 박스 안에 박스가 되어 어색하다.
+// 그린 배경이 없는 자리에 놓으면 흰 글자가 보이지 않는다 — 현재 유일한 용처(네이버 버튼) 전제.
+export function IconNaver({ size, className }: IconProps) {
+  return (
+    <svg width={size ?? 20} height={size ?? 20} className={className} viewBox="0 0 20 20" aria-hidden="true">
+      <path fill="#fff" d="M12.6 5v5.4L7.4 5H5v10h2.4v-5.4l5.2 5.4H15V5z" />
+    </svg>
+  );
+}
