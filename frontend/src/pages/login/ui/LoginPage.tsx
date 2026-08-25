@@ -44,7 +44,7 @@ const COOKIE_NOT_PERSISTED_ERROR =
 
 export function LoginPage() {
   const navigate = useNavigate();
-  const search = useSearch({ strict: false }) as { oauth_error?: string };
+  const search = useSearch({ strict: false }) as { oauth_error?: string; redirect?: string };
 
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
@@ -110,7 +110,11 @@ export function LoginPage() {
         setError(COOKIE_NOT_PERSISTED_ERROR);
         return;
       }
-      await navigate({ to: user.hasWedding ? "/" : "/onboarding" });
+      // `search.redirect`는 router.tsx의 authedRoute.beforeLoad가 세션 없이 보호된 경로에
+      // 접근했을 때 채워 넣고 sanitizeRedirectTarget으로 앱 내부 절대 경로인지 걸러낸 값이다 —
+      // 여기서 있으면 원래 가려던 곳으로 되돌린다. hasWedding이 false인데 shell 하위 경로가
+      // 와도 안전하다 — shellRoute.beforeLoad가 어차피 /onboarding으로 다시 걸러낸다.
+      await navigate({ to: search.redirect ?? (user.hasWedding ? "/" : "/onboarding") });
     } catch (cause) {
       const code = isApiError(cause) ? cause.code : "UNKNOWN_ERROR";
       setError(LOGIN_ERROR[code] ?? "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.");
