@@ -19,12 +19,15 @@ app/routers/checklist.py, 웨딩별 실DB 행)로 대체돼 여기서 제거했�
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.categories import CATEGORY_META_BY_CODE
+from app.core.config import Settings, get_settings
 from app.core.db import get_session
+from app.core.embeddings import get_azure_openai_client
 from app.core.errors import api_error
+from app.core.storage import upload_receipt_image
 from app.deps import get_current_user, get_current_wedding
 from app.models import Payment, User, Wedding
 from app.schemas.benchmark import BenchmarkCompareOut, TotalBudgetPlaceholderOut
@@ -34,6 +37,7 @@ from app.schemas.payment import (
     PaymentListOut,
     PaymentOut,
     PaymentUpdate,
+    ReceiptExtractOut,
     UpcomingPaymentListOut,
     UpcomingPaymentOut,
 )
@@ -45,8 +49,13 @@ from app.services.payment import get_payment as get_payment_service
 from app.services.payment import list_payments as list_payments_service
 from app.services.payment import list_upcoming_payments as list_upcoming_payments_service
 from app.services.payment import update_payment as update_payment_service
+from app.services.receipt_ocr import extract_receipt_fields
 
 router = APIRouter(tags=["budget"])
+
+_ALLOWED_RECEIPT_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic"}
+# 카메라 촬영 사진이 수 MB대인 경우가 흔해 넉넉하게 잡되, 악의적/실수로 과대 업로드되는 것은 막는다.
+_MAX_RECEIPT_BYTES = 15 * 1024 * 1024
 
 
 def _to_out(payment: Payment) -> PaymentOut:
@@ -94,6 +103,42 @@ async def create_payment(
         )
     payment = await create_payment_service(session, wedding.id, payload)
     return _to_out(payment)
+
+
+@router.post("/payments/receipt-extract", response_model=ReceiptExtractOut, status_code=201)
+async def extract_receipt(
+    file: UploadFile,
+    wedding: Wedding = Depends(get_current_wedding),  # noqa: B008
+    settings: Settings = Depends(get_settings),  # noqa: B008
+) -> ReceiptExtractOut:
+    """영수증 사진 업로드 → Blob 저장 + vision 추출(DB 반영 없음). 2026-08-25 결정
+    (docs/AI-Sessions/wiki/decisions/2026-08-25-receipt-ocr-payment-autofill-decision.md) —
+    프론트가 이 응답으로 폼을 프리필하고, 사용자 확인 후 기존 POST /payments를 호출한다.
+    업로드는 추출 성공 여부와 무관하게 먼저 끝낸다 — 원본 보존이 이 기능의 핵심 요구사항이라,
+    vision 응답 파싱이 흔들려도 이미지 자체는 잃지 않는다."""
+    if file.content_type not in _ALLOWED_RECEIPT_CONTENT_TYPES:
+        raise api_error(
+            422,
+            "UNSUPPORTED_RECEIPT_TYPE",
+            f"지원하지 않는 이미지 형식입니다: {file.content_type}",
+        )
+    content = await file.read()
+    if len(content) > _MAX_RECEIPT_BYTES:
+        raise api_error(422, "RECEIPT_TOO_LARGE", "영수증 이미지가 너무 큽니다(최대 15MB).")
+
+    receipt_url = await upload_receipt_image(settings, wedding.id, content, file.content_type)
+
+    openai_client = get_azure_openai_client(settings)
+    fields = await extract_receipt_fields(
+        openai_client, settings.receipt_vision_deployment, content, file.content_type
+    )
+    return ReceiptExtractOut(
+        item_name=fields["item_name"],
+        vendor_name=fields["vendor_name"],
+        amount=fields["amount"],
+        paid_date=fields["paid_date"],
+        receipt_url=receipt_url,
+    )
 
 
 @router.patch("/payments/{payment_id}", response_model=PaymentOut)

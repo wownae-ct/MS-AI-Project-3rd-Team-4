@@ -20,6 +20,11 @@ def _make_settings(**overrides) -> Settings:
     defaults = {
         "database_url": "postgresql://x",
         "azure_openai_endpoint": "https://x",
+        "google_client_id": "test",
+        "google_client_secret": "test",
+        "naver_client_id": "test",
+        "naver_client_secret": "test",
+        "azure_storage_blob_endpoint": "https://test.blob.core.windows.net",
     }
     defaults.update(overrides)
     return Settings(**defaults)

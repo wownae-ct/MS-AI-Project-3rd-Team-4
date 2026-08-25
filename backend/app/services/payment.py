@@ -43,7 +43,13 @@ async def list_payments(
 async def create_payment(
     session: AsyncSession, wedding_id: UUID, payload: PaymentCreate
 ) -> Payment:
-    payment = Payment(wedding_id=wedding_id, **payload.model_dump())
+    """payload.paid_date가 있으면 이미 결제 완료된 건이므로 status를 PAID로 자동 유도한다
+    (2026-08-25 영수증 OCR 자동채움 결정) — Payment.status의 server_default는 "PLANNED"라,
+    paid_date만 채우고 status를 그대로 두면 "결제일은 있는데 상태는 예정"인 모순이 생긴다."""
+    fields = payload.model_dump()
+    if fields.get("paid_date") is not None:
+        fields["status"] = "PAID"
+    payment = Payment(wedding_id=wedding_id, **fields)
     session.add(payment)
     await session.commit()
     await session.refresh(payment)
