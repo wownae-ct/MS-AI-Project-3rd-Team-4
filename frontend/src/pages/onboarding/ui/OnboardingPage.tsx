@@ -29,6 +29,7 @@ import {
   type WeddingCategoryUpdateInput,
 } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
+import { computeDefaultUnsurePrecision } from "@/shared/lib/wedding-date";
 import { Button, Card, Page } from "@/shared/ui";
 import { GeneratingOverlay } from "./GeneratingOverlay";
 import {
@@ -78,7 +79,9 @@ export function OnboardingPage() {
   const [userRole, setUserRole] = useState<UserRole>("BRIDE");
   const [isDateExact, setIsDateExact] = useState(false);
   const [weddingDate, setWeddingDate] = useState("");
-  const [unsurePrecision, setUnsurePrecision] = useState<UnsurePrecision>("APPROX_H1_NEXT_YEAR");
+  const [unsurePrecision, setUnsurePrecision] = useState<UnsurePrecision>(() =>
+    computeDefaultUnsurePrecision(new Date()),
+  );
 
   // 2단계
   const [regionCode, setRegionCode] = useState("SEOUL_GANGNAM");
