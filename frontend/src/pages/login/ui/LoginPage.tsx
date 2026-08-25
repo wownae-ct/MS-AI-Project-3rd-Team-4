@@ -10,7 +10,7 @@
 // sessionStorage·쿠키·URL 어디에도 넣지 않고 이 컴포넌트의 상태로만 들고 있다가 1회 소비한다.
 import { useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { invalidateSession, login, signup, socialLoginUrl } from "@/entities/session";
+import { getMe, invalidateSession, login, signup, socialLoginUrl } from "@/entities/session";
 import { isApiError } from "@/shared/api";
 import { Button, Card, Page } from "@/shared/ui";
 import { oauthErrorMessage } from "./oauth-error";
@@ -21,7 +21,16 @@ const LOGIN_ERROR: Record<string, string> = {
   INVALID_CREDENTIALS: "이메일 또는 비밀번호가 올바르지 않습니다.",
   EMAIL_ALREADY_EXISTS: "이미 가입된 이메일입니다.",
   NETWORK_ERROR: "서버에 연결하지 못했습니다. 네트워크를 확인해 주세요.",
+  // 백엔드가 로그인·가입에 5회/분(IP 기준) 제한을 건다(origin/backend PR #65, 2026-08-25) —
+  // 이 코드가 없으면 화면 최하단 범용 폴백("요청을 처리하지 못했습니다")으로 떨어져 원인을 숨긴다.
+  RATE_LIMIT_EXCEEDED: "짧은 시간에 너무 많이 시도했습니다. 1분 후 다시 시도해 주세요.",
 };
+
+// 로그인 자체는 200 이어도, 발급된 세션 쿠키가 이 브라우저에서 왕복하지 못하면(Chrome 시크릿 모드,
+// Edge Strict 등 — User-Agent 로는 구분되지 않는다) 다음 화면이 전부 401 로 조용히 실패한다.
+// 그래서 로그인 직후 /auth/me 를 한 번 더 불러 세션이 실제로 살아있는지 확인한다.
+const COOKIE_NOT_PERSISTED_ERROR =
+  "이 브라우저에서는 로그인 상태가 유지되지 않습니다. Chrome 또는 Edge 일반 창에서 다시 시도해 주세요.";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -55,6 +64,14 @@ export function LoginPage() {
       // 캐시를 비워야 다음 loadSession() 이 방금 로그인한 사용자의 최신 hasWedding 을 본다 —
       // 안 비우면 최대 60초 동안 낡은 세션이 남아 가드가 엉뚱한 곳으로 보낸다.
       invalidateSession();
+      try {
+        // getMe() 는 loadSession() 이 아니라 여기서만 직접 부른다 — 캐시를 타면 쿠키가 실제로
+        // 왕복했는지 이 요청 하나로는 확인할 수 없다.
+        await getMe();
+      } catch {
+        setError(COOKIE_NOT_PERSISTED_ERROR);
+        return;
+      }
       await navigate({ to: user.hasWedding ? "/" : "/onboarding" });
     } catch (cause) {
       const code = isApiError(cause) ? cause.code : "UNKNOWN_ERROR";

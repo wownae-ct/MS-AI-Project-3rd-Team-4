@@ -4,11 +4,32 @@
 // 여기서 한 파일로 합치면 그 효과가 사라진다.
 export type {
   BudgetSummary,
+  CategoriesResponse,
   CategoryBudget,
-  RecommendedCheck,
-  SourceTier,
+  CategoryConstant,
+  CategoryTier,
+  DoneSoFarCategory,
+  SdmPriority,
+  TastePreference,
+  TotalAverageBenchmark,
   UpcomingPayment,
+  UserRole,
+  VenuePriority,
+  WeddingCategoriesResponse,
+  WeddingCategory,
+  WeddingCategoryUpdateInput,
+  WeddingCreateInput,
+  WeddingDatePrecision,
   WeddingHeadline,
+  WeddingProfile,
+  WeddingUpdateInput,
 } from "./model/types";
-export { BUDGET, CATEGORY_BUDGETS, UPCOMING_PAYMENTS, WEDDING } from "./model/sample-data";
-export { RECOMMENDED_CHECKS } from "./model/recommended-checks";
+export {
+  createWedding,
+  getCategories,
+  getMyWedding,
+  getTotalAverageBenchmark,
+  getWeddingCategories,
+  putWeddingCategories,
+  updateMyWedding,
+} from "./api/wedding";

@@ -78,12 +78,21 @@ jobs:
             - name: Build
               env:
                   VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
+                  IS_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork }}
               run: |
-                  # 포크에서 온 PR에는 secret이 전달되지 않는다(GitHub 사양). 지금은 이 값을 **읽는 코드가 없다**
-                  # (전송 계층이 주제 전환으로 삭제됨 — toolchain.md §6.3). 경고를 남겨 두는 이유는 전송 계층이
-                  # 돌아왔을 때 `?? ""` 같은 조용한 폴백을 다시 들이지 않도록 부재를 눈에 보이게 하기 위해서다.
+                  # 포크에서 온 PR에는 secret이 전달되지 않는다(GitHub 사양) — 빌드 검증 자체는 계속 되어야
+                  # 하므로 더미 오리진으로 대체한다. 반면 같은 저장소 브랜치(push · non-fork PR)인데 값이
+                  # 비어 있으면 시크릿 미설정이라는 뜻이고, 그 산출물이 배포되면 실제로 호출할 곳이 없다 —
+                  # `?? ""` 식 조용한 폴백을 두지 않고 여기서 바로 실패시킨다(전송 계층의 VITE_API_BASE
+                  # 형식 게이트가 빌드 시점에 값을 요구하므로, 비워 두면 이 단계가 어차피 실패한다).
                   if [ -z "$VITE_API_BASE" ]; then
-                    echo "::warning::VITE_API_BASE가 비어 있다 — 포크 PR이거나 시크릿 미설정. API 호출이 상대 경로로 나간다."
+                    if [ "$IS_FORK_PR" = "true" ]; then
+                      echo "::warning::VITE_API_BASE가 비어 있다 — 포크 PR이라 시크릿이 전달되지 않는다. 빌드 검증용 더미 오리진을 쓴다."
+                      export VITE_API_BASE="https://fork-pr.invalid"
+                    else
+                      echo "::error::VITE_API_BASE가 비어 있다 — 저장소 시크릿 미설정. 이 산출물은 배포돼도 API 를 호출할 곳이 없다."
+                      exit 1
+                    fi
                   fi
                   npm run build
 

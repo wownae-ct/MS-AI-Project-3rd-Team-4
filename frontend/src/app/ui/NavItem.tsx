@@ -21,7 +21,7 @@ import type { ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 
 /** 내비에 노출하는 경로. 라우터에 등록된 것만 허용된다 — 오타는 `tsc -b` 가 잡는다. */
-export type NavTarget = "/" | "/timeline" | "/budget" | "/report" | "/style-guide";
+export type NavTarget = "/" | "/timeline" | "/budget" | "/report" | "/chat" | "/style-guide";
 
 export interface NavItemProps {
   to: NavTarget;
