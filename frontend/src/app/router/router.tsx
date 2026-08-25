@@ -41,6 +41,14 @@
 // 밀린다**(폰트가 첫 방문 전송의 81% · LCP 경로 · JS 완료 19 ms 뒤에 요청된다). 그래서
 // **첫 화면(`/`)만 정적 import** 하고 나머지는 전부 `lazyRouteComponent` 로 분리한다.
 // 여기서 `import("@/pages/…")` 를 정적 import 로 바꾸면 그 화면이 조용히 초기 청크로 들어온다.
+//
+// ⚠️ **예외 1건 — `/login` 도 정적 import 다** (Task 8). 원칙대로라면 첫 화면이 아니니 lazy 여야
+// 하지만, 실측이 원칙을 뒤집었다: `lazyRouteComponent` 로 내려 봤더니 `/report` 와 공유하는 `Page`
+// 컴포넌트를 Rollup 이 별도 청크로 뽑아냈고, 그 청크가 `dist/index.html` 에 `modulepreload` 로
+// 걸려 **여전히 초기 로드 경로에 남았다** — 지연되는 바이트 없이 청크 분할 오버헤드만 더해져 JS
+// 합계가 113,695 B → 115,029 B 로 더 나빠졌다. 그래서 `/login` 은 정적 import 로 남긴다
+// (아래 `loginRoute` 정의 옆 주석에 실측 전체가 있다). **다음 화면(S1 등)을 lazy/정적으로 가를 때
+// 이 문단만 보고 판단하지 말 것** — `/login` 은 "첫 화면"이 아닌데도 정적인, 이 원칙의 유일한 예외다.
 import {
   createRootRoute,
   createRoute,
@@ -75,6 +83,23 @@ function RootLayout() {
 
 const rootRoute = createRootRoute({ component: RootLayout });
 
+// `/login?redirect=` 는 **밖에서 들어오는 값**이다(authedRoute.beforeLoad 가 스스로 채우는 값과
+// 달리, 공격자가 링크에 심어 사용자를 유도할 수 있다). `/login` 은 요구 플로우상 가드가 없으므로
+// (바로 아래 loginRoute 주석 참조) 이 경계에서 걸러내지 않으면 다음에 이 값을 소비하는 코드가
+// (예: 로그인 성공 후 `navigate({ to: search.redirect })`) 그대로 열린 리다이렉트가 된다.
+//
+// 앱 내부의 절대 경로(슬래시로 시작)만 허용한다 — 아래 세 형태는 전부 외부로 나가므로 막는다.
+//   · 스킴이 있는 절대 URL       "https://evil.example"        → 애초에 "/"로 시작하지 않는다
+//   · 프로토콜 상대 URL          "//evil.example"               → WHATWG URL 이 현재 스킴을 그대로 쓴다
+//   · 백슬래시로 시작/이어지는 값 "\evil.example" · "/\evil.example" → 일부 브라우저가 "\"를 "/"처럼
+//     파싱해(WHATWG URL: 이른바 "special scheme"에서 backslash 를 slash 로 치환) 위 두 형태로 둔갑한다
+// 조건을 만족하지 않으면 에러를 던지지 않고 `undefined` 로 떨어뜨린다 — 리다이렉트 매개변수 하나
+// 때문에 로그인 화면 자체가 죽을 이유는 없다("그냥 로그인 후 홈으로" 로 대체되는 것으로 충분하다).
+function sanitizeRedirectTarget(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  return /^\/(?!\/|\\)/u.test(value) ? value : undefined;
+}
+
 // 로그인 화면은 셸 밖이고 **세션 가드가 없다** — signup 이 201 과 함께 쿠키를 발급하므로
 // 가드를 두면 가입 직후 로그인 폼에 도달할 수 없다(요구 플로우 ③).
 //
@@ -90,9 +115,10 @@ const loginRoute = createRoute({
   component: LoginPage,
   // `redirect` 는 _authed 의 beforeLoad 가 원래 가려던 위치를 실어 보내는 자리다 — 스키마에
   // 없으면 그 리다이렉트 호출이 타입 에러가 된다(_authed 와 이 라우트는 같은 search 계약을 진다).
+  // 값은 여기서 바로 신뢰하지 않는다 — `sanitizeRedirectTarget` 이 앱 내부 경로인지 걸러낸다.
   validateSearch: (search: Record<string, unknown>) => ({
     oauth_error: typeof search.oauth_error === "string" ? search.oauth_error : undefined,
-    redirect: typeof search.redirect === "string" ? search.redirect : undefined,
+    redirect: sanitizeRedirectTarget(typeof search.redirect === "string" ? search.redirect : undefined),
   }),
 });
 
