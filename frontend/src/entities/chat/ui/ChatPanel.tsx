@@ -12,7 +12,7 @@
 // 나가는 방문마다 세션이 쌓이는 것을 막는다). 세션 id는 호출자(CategoryPage/ChatPage)가 들고
 // 있다가 이 컴포넌트에 내려준다 — Base UI Tabs.Panel이 비활성 탭을 언마운트할 수 있어(keepMounted
 // 기본값 미확인), 이 컴포넌트 로컬 state에만 두면 탭을 나갔다 돌아올 때 세션을 잃을 수 있다.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ApiError } from "@/shared/api";
 import { Card } from "@/shared/ui";
 import { createChatSession, getChatMessages, rateChatMessage, sendChatMessage } from "../api/chat";
@@ -41,6 +41,9 @@ interface ChatPanelProps {
   categoryCode?: string;
   sessionId: string | null;
   onSessionCreated: (id: string) => void;
+  /** entities 레이어 교차import 제약 때문에 pages(CategoryPage/ChatPage)가 내려주는 신고(F13)
+      버튼 렌더러 — 자세한 이유는 MessageBubble.tsx 머리말 참고. */
+  renderReportAction?: (messageId: string) => ReactNode;
 }
 
 // 스트리밍 중인 답변을 완결된 ChatMessage 처럼 다루기 위한 임시 형태 — id 는 아직 서버가
@@ -51,7 +54,7 @@ interface DraftAssistantMessage {
   verification?: ChatVerification;
 }
 
-export function ChatPanel({ categoryCode, sessionId, onSessionCreated }: ChatPanelProps) {
+export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderReportAction }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState<DraftAssistantMessage | null>(null);
   const [input, setInput] = useState("");
@@ -78,9 +81,22 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated }: ChatPan
   // append되는 버그였다(사용자 리포트 2026-08-24, 재현: Enter/버튼 무관하게 매번). ref 미러는
   // 대입만 하므로 두 번 호출돼도 같은 값이 다시 대입될 뿐 부수효과가 없다.
   const draftRef = useRef<DraftAssistantMessage | null>(null);
+  // handleSend가 첫 메시지 전송 중 세션을 새로 만들면 onSessionCreated가 부모의 sessionId를
+  // 바꾸고, 그게 이 컴포넌트로 새 prop이 되어 내려오면서 아래 useEffect가 재실행된다. 그 시점엔
+  // 아직 sendChatMessage가 진행 중이라(백엔드가 user 메시지를 막 저장했거나 안 했거나 하는
+  // 경합 구간) getChatMessages가 빈 배열을 돌려줄 수 있고, 그걸로 setMessages를 덮어쓰면 방금
+  // 낙관적으로 넣은 사용자 질문 말풍선이 통째로 사라진다(사용자 리포트 2026-08-26 "유저의
+  // 질문이 사라져"). 이 플래그는 "방금 이 컴포넌트가 만든 세션이라 로컬 상태가 이미 정답"임을
+  // 표시해 그 1회의 히스토리 재조회만 건너뛴다 — 기존에 이미 있던 세션으로 진입할 때의 정상
+  // 히스토리 복원(effect 최초 실행)은 그대로 동작한다.
+  const skipNextHistoryFetchRef = useRef(false);
 
   useEffect(() => {
     if (!sessionId) return;
+    if (skipNextHistoryFetchRef.current) {
+      skipNextHistoryFetchRef.current = false;
+      return;
+    }
     let cancelled = false;
     getChatMessages(sessionId)
       .then((res) => {
@@ -121,6 +137,7 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated }: ChatPan
       if (!activeSessionId) {
         const session = await createChatSession(categoryCode);
         activeSessionId = session.id;
+        skipNextHistoryFetchRef.current = true;
         onSessionCreated(session.id);
       }
 
@@ -232,7 +249,7 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated }: ChatPan
           />
         )}
         {messages.map((m) => (
-          <MessageBubble key={m.id} message={m} onRate={handleRate} />
+          <MessageBubble key={m.id} message={m} onRate={handleRate} renderReportAction={renderReportAction} />
         ))}
         {draft &&
           (draft.content === "" ? (

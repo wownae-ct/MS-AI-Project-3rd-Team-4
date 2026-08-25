@@ -26,10 +26,11 @@ describe("oauth_error 매핑", () => {
 });
 
 const navigate = vi.fn();
+const useSearchMock = vi.fn(() => ({}) as { oauth_error?: string; redirect?: string });
 vi.mock("@tanstack/react-router", async (orig) => ({
   ...(await orig<typeof import("@tanstack/react-router")>()),
   useNavigate: () => navigate,
-  useSearch: () => ({}),
+  useSearch: () => useSearchMock(),
 }));
 
 const loginFn = vi.fn();
@@ -51,6 +52,8 @@ beforeEach(() => {
   invalidateSessionFn.mockReset();
   getMeFn.mockReset();
   getMeFn.mockResolvedValue({ id: "u", email: "a@b.c", displayName: null, hasWedding: false });
+  useSearchMock.mockReset();
+  useSearchMock.mockReturnValue({});
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -73,6 +76,18 @@ describe("로그인 폼", () => {
     await userEvent.type(screen.getByLabelText("비밀번호"), "pw123456");
     await userEvent.click(screen.getByRole("button", { name: "로그인" }));
     expect(navigate).toHaveBeenCalledWith(expect.objectContaining({ to: "/" }));
+  });
+
+  // authedRoute.beforeLoad(router.tsx)가 세션 없이 보호된 경로에 접근했을 때 채워 넣는 값 —
+  // 로그인 성공 후 원래 가려던 곳으로 되돌아가야 한다(하드코딩된 "/" 대신).
+  it("search.redirect가 있으면 로그인 성공 후 그 경로로 돌아간다", async () => {
+    useSearchMock.mockReturnValue({ redirect: "/timeline" });
+    loginFn.mockResolvedValue({ id: "u", email: "a@b.c", displayName: null, hasWedding: true });
+    render(<LoginPage />);
+    await userEvent.type(screen.getByLabelText("이메일"), "a@b.c");
+    await userEvent.type(screen.getByLabelText("비밀번호"), "pw123456");
+    await userEvent.click(screen.getByRole("button", { name: "로그인" }));
+    expect(navigate).toHaveBeenCalledWith(expect.objectContaining({ to: "/timeline" }));
   });
 
   it("실패는 화면에 드러난다 — 조용히 아무 일도 안 일어나면 안 된다", async () => {

@@ -17,7 +17,9 @@ export interface Payment {
   contact_name: string | null;
   contact_phone: string | null;
   amount: number;
-  due_date: string;
+  // backend PaymentOut.due_date는 date | None — 영수증 OCR로 paid_date만 채워 만든 건은
+  // due_date 없이 생성될 수 있다(AddPaymentRow.tsx handleSubmit 참고).
+  due_date: string | null;
   paid_date: string | null;
   status: PaymentStatus;
   receipt_url: string | null;
@@ -36,7 +38,9 @@ export interface PaymentCreateInput {
   contact_name?: string;
   contact_phone?: string;
   amount: number;
-  due_date: string;
+  // backend PaymentCreate.due_date는 optional(date | None = None) — 영수증 OCR로 paid_date가
+  // 이미 채워진 건은 due_date 없이 생성할 수 있다(AddPaymentRow.tsx handleSubmit).
+  due_date?: string;
   // 영수증 OCR 자동채움(#34) 전용 — 이미 결제 완료된 건을 등록할 때 씀. paid_date 가 있으면
   // status 를 클라이언트가 직접 안 보내도 서버가 PAID 로 자동 유도한다(backend/app/schemas/
   // payment.py:47-52) — status 자체는 이 입력에 없다(임의 상태 생성 방지).

@@ -4,6 +4,7 @@
 // 색으로 표현하지 않는다(D6, docs/design/decisions.md — 상태색을 도입하지 않기로 닫힌 결정).
 // `shared/ui`엔 경고 전용 아이콘이 따로 없어 `IconInfo`를 재사용한다 — 이 화면 하나 때문에
 // 새 아이콘을 들이지 않는다(YAGNI, 이 저장소 CLAUDE.md).
+import { ReportButton } from "@/entities/feedback";
 import { patchTimelineItem, type TimelineItem } from "@/entities/timeline";
 import { IconInfo } from "@/shared/ui";
 
@@ -63,6 +64,12 @@ export function TimelineItemRow({ item, categoryLabel, onStatusChange }: Timelin
           {categoryLabel === null ? "" : `${categoryLabel} · `}
           {item.target_date}
         </p>
+        {/* 신고(F13)는 AI가 생성한 항목에만 의미가 있다 — 사용자가 직접 추가한 항목은 신고 대상이 아니다. */}
+        {item.origin === "LLM" && (
+          <div className="mt-1">
+            <ReportButton targetType="TIMELINE_ITEM" targetId={item.id} />
+          </div>
+        )}
       </div>
     </div>
   );
