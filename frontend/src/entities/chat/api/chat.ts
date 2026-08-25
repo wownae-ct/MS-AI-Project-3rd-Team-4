@@ -1,0 +1,130 @@
+import { apiBase, apiFetch } from "@/shared/api";
+import { parseApiError } from "@/shared/api/errors";
+import type {
+  ChatCitation,
+  ChatMessagesResponse,
+  ChatSession,
+  ChatStage,
+  ChatVerification,
+  MessageRating,
+} from "../model";
+
+// categoryCode 생략 시 카테고리 무관 전역 상담 세션이 된다(backend PR #50, 2026-08-24 머지 —
+// POST /chat/sessions의 category_code가 optional로 열렸고 RAG 검색도 필터 없이 전체 대상으로
+// 동작한다). 하단 탭 "AI상담"(pages/chat)이 이 경로를 쓰고, S3 카테고리 상세는 여전히 고정값을 준다.
+export function createChatSession(categoryCode?: string): Promise<ChatSession> {
+  return apiFetch("/api/v1/chat/sessions", {
+    method: "POST",
+    body: JSON.stringify({ category_code: categoryCode ?? null }),
+  }) as Promise<ChatSession>;
+}
+
+export function getChatMessages(sessionId: string): Promise<ChatMessagesResponse> {
+  return apiFetch(`/api/v1/chat/sessions/${sessionId}/messages`) as Promise<ChatMessagesResponse>;
+}
+
+// AI 답변(assistant 메시지)에만 가능 — user 메시지에 시도하면 백엔드가 400
+// CHAT_MESSAGE_NOT_RATABLE을 준다. 재호출하면 마지막 값으로 덮어쓴다(재평가).
+export function rateChatMessage(
+  sessionId: string,
+  messageId: string,
+  rating: MessageRating,
+): Promise<{ message_id: string; rating: MessageRating }> {
+  return apiFetch(`/api/v1/chat/sessions/${sessionId}/messages/${messageId}/feedback`, {
+    method: "POST",
+    body: JSON.stringify({ rating }),
+  }) as Promise<{ message_id: string; rating: MessageRating }>;
+}
+
+export interface SendMessageHandlers {
+  onToken: (delta: string) => void;
+  onCitations: (citations: ChatCitation[]) => void;
+  onVerification: (verification: ChatVerification) => void;
+  // 챗 그래프 노드(retrieve→generate→verify) 진입 신호 — 옵셔널이라 안 넘겨도 기존 동작 그대로.
+  onStage?: (stage: ChatStage) => void;
+  // CRAG 조건부 재검색 루프 진입 신호(verify가 WEAK/GENERAL일 때 최대 1회) — 이 시점까지 쌓인
+  // 1차 답변 토큰은 버려야 한다. reason은 1차 판정이 WEAK/GENERAL이 된 사유 문장.
+  onRetry?: (reason: string) => void;
+  onDone: (payload: { message_id: string; latency_ms: number }) => void;
+  onError: (payload: { code: string; message: string }) => void;
+}
+
+// SSE 이벤트 7종(03_API_spec.md §6-2 5종 + stage + retry) — 채팅 스트림 전용, 다른 엔드포인트엔
+// 없다. stage는 챗 그래프(backend/app/rag/graph.py) 3개 노드(retrieve→generate→verify) 진입
+// 신호. retry는 CRAG 조건부 재검색 루프 진입 직전 신호 — 이게 오면 그때까지 스트리밍된 1차
+// 답변 토큰은 전부 버리고 2차 답변을 처음부터 새로 받는다. 둘 다 순수 UX용 신호라 무시해도
+// 기존 5종만으로 완전히 동작한다(additive).
+function dispatchSseFrame(frame: string, handlers: SendMessageHandlers): void {
+  const lines = frame.split("\n");
+  const eventLine = lines.find((line) => line.startsWith("event:"));
+  const dataLine = lines.find((line) => line.startsWith("data:"));
+  if (!eventLine || !dataLine) return;
+
+  const eventType = eventLine.slice("event:".length).trim();
+  const data: unknown = JSON.parse(dataLine.slice("data:".length).trim());
+
+  switch (eventType) {
+    case "token":
+      handlers.onToken((data as { delta: string }).delta);
+      break;
+    case "citations":
+      handlers.onCitations((data as { citations: ChatCitation[] }).citations);
+      break;
+    case "verification":
+      handlers.onVerification(data as ChatVerification);
+      break;
+    case "stage":
+      handlers.onStage?.((data as { stage: ChatStage }).stage);
+      break;
+    case "retry":
+      handlers.onRetry?.((data as { reason: string }).reason);
+      break;
+    case "done":
+      handlers.onDone(data as { message_id: string; latency_ms: number });
+      break;
+    case "error":
+      handlers.onError(data as { code: string; message: string });
+      break;
+    default:
+      break;
+  }
+}
+
+// POST 요청이라 EventSource 를 못 쓴다(커스텀 바디 전송 불가, API 스펙 §6-2 "구현 노트") —
+// fetch + ReadableStream 으로 SSE 프레임을 직접 파싱한다. apiFetch 를 태우지 않는 이유는
+// apiFetchMultipart 와 같다 — 응답이 JSON 한 덩어리가 아니라 스트림이라 body 를 직접 읽어야 한다.
+export async function sendChatMessage(sessionId: string, content: string, handlers: SendMessageHandlers): Promise<void> {
+  const res = await fetch(`${apiBase()}/api/v1/chat/sessions/${sessionId}/messages`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+
+  if (!res.ok || !res.body) {
+    const body: unknown = await res.json().catch(() => null);
+    const error = parseApiError(res.status, body);
+    handlers.onError({ code: error.code, message: error.message });
+    return;
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  let streamDone = false;
+  while (!streamDone) {
+    // 스트림 청크는 순서가 있고 이전 read() 결과(버퍼)에 의존한다 — Promise.all 로 병렬화 불가.
+    // eslint-disable-next-line no-await-in-loop
+    const { done, value } = await reader.read();
+    streamDone = done;
+    buffer += decoder.decode(value, { stream: true });
+
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() ?? "";
+
+    for (const frame of frames) {
+      dispatchSseFrame(frame, handlers);
+    }
+  }
+}

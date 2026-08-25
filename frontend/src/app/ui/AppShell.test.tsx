@@ -53,14 +53,16 @@ describe("내비게이션 마크업", () => {
     expect(screen.queryAllByRole("tab")).toHaveLength(0);
   });
 
-  it("주 메뉴는 layout.md §3 의 4개다 — 순서가 계약이다", async () => {
+  // layout.md §3 의 4개(홈·타임라인·예산·리포트)에 2026-08-24 "AI상담"이 5번째로 추가됐다
+  // (12_final_prototype_mockup.html의 탭바 — AppShell.tsx PRIMARY_NAV 머리말 참조).
+  it("주 메뉴는 5개다 — 순서가 계약이다", async () => {
     await renderShellAt("/");
 
     const primary = screen.getByRole("navigation", { name: "주 메뉴" });
     const labels = within(primary)
       .getAllByRole("link")
       .map((link) => link.textContent);
-    expect(labels).toEqual(["홈", "타임라인", "예산", "리포트"]);
+    expect(labels).toEqual(["홈", "타임라인", "예산", "리포트", "AI상담"]);
   });
 });
 

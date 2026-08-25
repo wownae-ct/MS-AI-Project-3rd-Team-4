@@ -1,0 +1,86 @@
+// ChatPanel.tsx에서 분리(2026-08-24, eslint max-lines 300줄 제한) — 좋아요/싫어요 평가 버튼
+// 추가로 ChatPanel.tsx가 300줄을 넘겨서, 재사용 가능한 프레젠테이션 조각인 이 컴포넌트를
+// 별도 파일로 뺐다. entities/chat/ui/ 소속 유지(ChatPanel과 같은 슬라이스).
+import { Badge } from "@/shared/ui";
+import type { ChatMessage, MessageRating } from "../model";
+
+interface MessageBubbleProps {
+  message: ChatMessage;
+  // greeting/draft 호출부는 안 넘긴다 — 아직 서버가 발급한 진짜 message_id가 없어서 평가할
+  // 대상이 없다(백엔드 규칙: user 메시지·존재하지 않는 메시지 평가는 400/404).
+  onRate?: (messageId: string, rating: MessageRating) => void;
+}
+
+export function MessageBubble({ message, onRate }: MessageBubbleProps) {
+  const isUser = message.role === "user";
+  return (
+    <div className={`flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
+      <div
+        className={
+          isUser
+            ? "max-w-[85%] whitespace-pre-wrap rounded-lg bg-primary px-3 py-2 text-sm text-surface"
+            : "max-w-[85%] whitespace-pre-wrap rounded-lg border border-line bg-bg px-3 py-2 text-sm text-ink"
+        }
+      >
+        {message.content || "…"}
+      </div>
+      {/* 근거 없이 답하지 않는다는 원칙을 시각적으로도 지킨다 — 출처 배지 또는 "근거 없음"을
+          항상 표시한다(HANDOFF.md §4 S3). verification 이 아직 안 왔으면(스트리밍 중) 아무것도
+          내지 않는다 — 이 시점엔 "근거 없음" 조차 확정된 사실이 아니다. */}
+      {!isUser && message.verification && (
+        <div className="flex items-center gap-1.5">
+          <Badge>
+            {/* 문구는 목업 그대로다(s3-category-detail.html:355,361) — "출처"가 아니라 "근거", 체크마크 포함.
+                verdict 3종은 backend/app/schemas/common.py:56 원본 그대로("WEAK"가 실제 값 — 이전엔
+                "UNSUPPORTED"로 잘못 알고 있었다, entities/chat/model.ts 머리말 참조). */}
+            {message.verification.verdict === "SUPPORTED"
+              ? "✓ 근거 확인됨"
+              : message.verification.verdict === "WEAK"
+                ? "근거 불충분"
+                : "일반 정보 · 근거 없음"}
+          </Badge>
+          {message.citations?.map((c) => (
+            <Badge key={c.chunk_id} className="bg-bg text-ink-soft">
+              {/* 목업 형식(s3-category-detail.html:352-353): "{티어} · {제목}" — 티어만 보여주면
+                  어떤 근거인지 사람이 알 수 없다. */}
+              {c.source_tier} · {c.title}
+            </Badge>
+          ))}
+        </div>
+      )}
+      {/* 좋아요/싫어요 평가 — AI 답변에만(백엔드 규칙과 동일하게 verification이 있는 메시지만
+          "완결된 AI 답변"으로 취급). 토글이 아니라 배타적 선택이라 aria-pressed로 현재 선택
+          상태를 알린다. */}
+      {!isUser && message.verification && onRate && (
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            aria-pressed={message.user_rating === "GOOD"}
+            aria-label="이 답변이 도움됐어요"
+            onClick={() => onRate(message.id, "GOOD")}
+            className={
+              message.user_rating === "GOOD"
+                ? "min-h-tap rounded-md border border-transparent bg-primary px-2 text-xs text-surface"
+                : "min-h-tap rounded-md border border-line bg-bg px-2 text-xs text-ink-soft enabled:hover:text-ink"
+            }
+          >
+            👍
+          </button>
+          <button
+            type="button"
+            aria-pressed={message.user_rating === "BAD"}
+            aria-label="이 답변이 아쉬워요"
+            onClick={() => onRate(message.id, "BAD")}
+            className={
+              message.user_rating === "BAD"
+                ? "min-h-tap rounded-md border border-transparent bg-primary px-2 text-xs text-surface"
+                : "min-h-tap rounded-md border border-line bg-bg px-2 text-xs text-ink-soft enabled:hover:text-ink"
+            }
+          >
+            👎
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
