@@ -1,7 +1,8 @@
 /// <reference types="vitest/config" />
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { checkApiBase, isLoopbackApiBase } from "./src/shared/api/api-base";
 
 /**
  * 프로덕션 빌드가 개발 시맨틱으로 도는 것을 막는다.
@@ -49,6 +50,58 @@ function assertProductionBuild(): Plugin {
   };
 }
 
+/**
+ * VITE_API_BASE 게이트 — 두 단계로 나눈다.
+ *
+ *   ① 형식 검사   항상. 루프백 허용(로컬 개발이 성립해야 한다)
+ *   ② 배포 검사   CI 빌드에서만. **루프백이면 실패**
+ *
+ * ②가 없으면 .env.example 의 로컬 기본값(http://localhost:8000)을 그대로 둔 채 배포 빌드를
+ * 돌려도 초록불이 나온다 — 앱은 아무 데도 못 붙는데 빌드는 성공한다. 조용한 실패다.
+ * 판정 로직을 두 벌 두지 않으려고 assert-production-build 와 같은 형태의 게이트로 둔다.
+ *
+ * `process.cwd()`/`process.env` 대신 `configResolved`+`loadEnv` 로 값을 얻는 이유 —
+ * `@types/node` 가 이 저장소에 없다(설치돼 있지 않다, 실측 확인). 우연이 아니라 기존 결정이다
+ * — `resolve.alias` 대신 `resolve.tsconfigPaths` 를 쓴 이유가 바로 "수동 alias 는 절대 경로가
+ * 필요해 `node:url` → `@types/node` 의존을 부르는데, 그 대가를 치를 이유가 없다"였다(이 파일
+ * 위쪽 주석, `docs/architecture/toolchain.md:272`, `layers.md:94`). 여기서도 같은 원칙을 지킨다.
+ * `ResolvedConfig.env` 는 Vite 가 이미 `envPrefix`(기본 `VITE_`)로 계산해 둔 값이라 그대로 쓰면
+ * 되고, `CI` 는 `loadEnv(mode, envDir, "CI")` 로 얻는다 — `loadEnv` 는 `process.env` 를 이미
+ * 병합해서 돌려준다(Vite 공식: "existing environment variables always take priority"). 두 값
+ * 모두 `vite` 패키지가 이미 타입을 내주는 API 라 새 의존성이 필요 없다.
+ */
+function assertApiBase(): Plugin {
+  return {
+    name: "assert-api-base",
+    apply: "build",
+    configResolved(config) {
+      const raw = config.env.VITE_API_BASE;
+      const reason = checkApiBase(raw);
+      if (reason !== null) {
+        throw new Error(`[assert-api-base] VITE_API_BASE: ${reason}`);
+      }
+
+      // 배포 검사는 mode 가 아니라 CI 로 판정한다.
+      //
+      // `vite build` 는 기본 mode 가 production 이다(Vite 공식: "the `build` command runs in
+      // `production` mode"). mode 로 판정하면 개발자가 로컬에서 4게이트를 돌릴 때마다 로컬
+      // .env 값 때문에 빌드가 죽는다 — 막아야 할 것은 배포될 산출물이지 로컬 검증 빌드가 아니다.
+      //
+      // 전용 플래그(DEPLOY_BUILD 등)를 쓰지 않는 이유는 워크플로가 켜는 것을 잊으면 게이트가
+      // 조용히 사라지기 때문이다. CI 는 GitHub Actions 가 항상 넣는다(공식: CI — "Always set to
+      // true."). 배포가 CI 에서만 일어나므로 판정이 정확하고, 잊어서 빠질 설정이 없다.
+      const ci = loadEnv(config.mode, config.envDir, "CI").CI;
+      const isCI = ci !== undefined && ci !== "" && ci !== "false";
+      if (isCI && isLoopbackApiBase(raw)) {
+        throw new Error(
+          `[assert-api-base] 배포(CI) 빌드에 루프백 주소가 들어 있다: ${raw}\n` +
+            "  로컬 값을 그대로 두고 배포하면 앱이 아무 데도 붙지 못한다. 운영 오리진(https://…)으로 바꾼다.",
+        );
+      }
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
     react(),
@@ -61,6 +114,7 @@ export default defineConfig({
     // Tailwind 쪽을 끄면 타깃의 단일 출처가 아래 build.target 하나로 유지된다.
     tailwindcss({ optimize: false }),
     assertProductionBuild(),
+    assertApiBase(),
   ],
   resolve: {
     // tsconfig.app.json의 paths("@/*")를 그대로 쓴다 — 별칭 정의를 두 곳에 두지 않기 위해서다.
