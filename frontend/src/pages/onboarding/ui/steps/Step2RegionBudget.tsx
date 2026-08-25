@@ -50,8 +50,6 @@ const REGION_OPTIONS: { value: string; label: string }[] = REGION_CODES.filter(
   (code) => !FALLBACK_REGION_CODES.has(code),
 ).map((code) => ({ value: code, label: REGION_LABELS[code as keyof typeof REGION_LABELS] }));
 
-const GUEST_COUNT_DEFAULT = "200";
-
 const MINI_TOGGLE = "inline-flex cursor-pointer items-center gap-1.5 text-xs font-bold text-ink-soft";
 // 스케일 밖 4px 접미사 없는 둥근모서리 유틸리티는 이 저장소의 게이트가 막는다
 // (ghost-candidates.test.mjs) — 스케일 안의 `-sm` 접미사 버전을 쓴다. 이 주석에도 그 접미사 없는
@@ -154,11 +152,16 @@ export function Step2RegionBudget({
           type="number"
           inputMode="numeric"
           min={0}
-          value={guestCountUnsure ? GUEST_COUNT_DEFAULT : guestCount}
+          placeholder={guestCountUnsure ? "미정" : undefined}
+          value={guestCountUnsure ? "" : guestCount}
           disabled={guestCountUnsure}
           onChange={(event) => onGuestCountChange(event.target.value)}
         />
-        {guestCountUnsure && <p className={FIELD_NOTE}>평균 보증인원 기준인 200명으로 시작해요.</p>}
+        {/* 실제로 200명을 기본값으로 저장하지 않는다 — guest_count_unsure=true 면 서버는
+            guest_count 를 NULL 로 저장할 뿐, 총예산(total_budget_unsure)과 달리 대신 계산해
+            채워주는 값이 없다. "200명으로 시작해요"라고 하면 실제 저장값과 다른 문구가 된다
+            (레드팀 감사 라운드 2) — 실제 동작 그대로 안내한다. */}
+        {guestCountUnsure && <p className={FIELD_NOTE}>인원 수는 미정으로 저장돼요. 나중에 언제든 입력할 수 있어요.</p>}
       </div>
     </div>
   );

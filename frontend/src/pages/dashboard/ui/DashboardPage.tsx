@@ -15,9 +15,10 @@
 //     `role="alert"` — 로그인/온보딩 화면이 이미 쓰는 관례 그대로).
 //   · "다가오는 납부" → "다가오는 할 일": `PaymentRow.tsx` 머리말 참고 — API 응답에 금액이 없다.
 //   · 카테고리 → S3 상세 진입: `CategoryRow.tsx`가 행 전체를 `/category/$id` 링크로 감싼다.
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { getDashboardSummary, type DashboardSummary } from "@/entities/dashboard";
 import { ApiError } from "@/shared/api";
+import { formatDDay } from "@/shared/lib/format-d-day";
 import { Card, Page } from "@/shared/ui";
 import { adaptBudgetSummary, adaptCategories, adaptHeadline } from "./adapt-summary";
 import { BudgetDonut } from "./BudgetDonut";
@@ -28,11 +29,17 @@ import { PaymentRow } from "./PaymentRow";
 // 제목을 먼저 렌더하므로, 감싸지 않으면 첫 행이 `:first-child` 가 되지 못해 위 패딩이 남는다.
 const ROWS = "flex flex-col";
 
+// 온보딩 시 항상 생기는 카테고리 무관 "범용" 타임라인 항목(category_code=null, 예: "결혼 날짜
+// 후보 확정")의 표시 라벨 — 레드팀 감사 라운드 2, HIGH. 이전엔 이 값을 non-nullable 타입으로
+// 잘못 선언해 `?? item.category_code`가 `undefined ?? null`이 돼 문자열 "null"이 그대로 찍혔다.
+const GENERAL_CATEGORY_LABEL = "일반";
+
 export function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const fetchSummary = useCallback(() => {
+    setError(null);
     let cancelled = false;
     getDashboardSummary()
       .then((data) => {
@@ -42,11 +49,15 @@ export function DashboardPage() {
         if (cancelled) return;
         setError(err instanceof ApiError ? err.message : "대시보드를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
       });
-    // 언마운트 후 setState 를 막는다 — 탭 전환이 빨라 응답이 늦게 와도 경고 없이 무시된다.
     return () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    // 언마운트 후 setState 를 막는다 — 탭 전환이 빨라 응답이 늦게 와도 경고 없이 무시된다.
+    return fetchSummary();
+  }, [fetchSummary]);
 
   // category_code → name_ko 맵. `PaymentRow` 가 `upcoming_items` 의 category_code 를 사람이
   // 읽는 이름으로 보여줄 때 쓴다 — 같은 응답 안의 `categories[]` 가 이미 그 매핑을 갖고 있으므로
@@ -57,12 +68,24 @@ export function DashboardPage() {
     return map;
   }, [summary]);
 
+  function resolveCategoryLabel(categoryCode: string | null): string {
+    if (categoryCode === null) return GENERAL_CATEGORY_LABEL;
+    return categoryLabelByCode.get(categoryCode) ?? categoryCode;
+  }
+
   if (error !== null) {
     return (
       <Page title="대시보드" width="max-w-none">
         <p role="alert" className="rounded-md border border-line bg-primary-soft px-3 py-2 text-sm text-primary">
           {error}
         </p>
+        <button
+          type="button"
+          onClick={fetchSummary}
+          className="mt-3 min-h-tap rounded-md border border-line bg-surface px-4 text-sm font-bold text-ink enabled:hover:bg-surface-2"
+        >
+          다시 시도
+        </button>
       </Page>
     );
   }
@@ -82,7 +105,7 @@ export function DashboardPage() {
   return (
     <Page title="대시보드" width="max-w-none">
       <div className="flex flex-col gap-0.5">
-        <p className="text-4xl font-bold tracking-tight text-ink tabular-nums">D-{headline.dDay}</p>
+        <p className="text-4xl font-bold tracking-tight text-ink tabular-nums">{formatDDay(headline.dDay)}</p>
         <p className="text-sm text-ink-soft">{headline.dateLabel} 결혼식</p>
       </div>
 
@@ -92,23 +115,27 @@ export function DashboardPage() {
         </Card>
 
         <Card title="다가오는 할 일">
-          <div className={ROWS}>
-            {summary.upcoming_items.map((item) => (
-              <PaymentRow
-                key={item.id}
-                item={item}
-                categoryLabel={categoryLabelByCode.get(item.category_code) ?? item.category_code}
-              />
-            ))}
-          </div>
+          {summary.upcoming_items.length === 0 ? (
+            <p className="text-sm text-ink-soft">다가오는 할 일이 없습니다.</p>
+          ) : (
+            <div className={ROWS}>
+              {summary.upcoming_items.map((item) => (
+                <PaymentRow key={item.id} item={item} categoryLabel={resolveCategoryLabel(item.category_code)} />
+              ))}
+            </div>
+          )}
         </Card>
 
         <Card title="카테고리별 예산">
-          <div className={ROWS}>
-            {categories.map((category) => (
-              <CategoryRow key={category.id} category={category} />
-            ))}
-          </div>
+          {categories.length === 0 ? (
+            <p className="text-sm text-ink-soft">등록된 카테고리가 없습니다.</p>
+          ) : (
+            <div className={ROWS}>
+              {categories.map((category) => (
+                <CategoryRow key={category.id} category={category} />
+              ))}
+            </div>
+          )}
         </Card>
       </div>
     </Page>

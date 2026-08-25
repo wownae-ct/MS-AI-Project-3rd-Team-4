@@ -21,14 +21,39 @@ import { ChatPanel } from "@/entities/chat";
 import { ReportButton } from "@/entities/feedback";
 import { Page } from "@/shared/ui";
 
+// 하단 탭 전환은 이 컴포넌트를 언마운트한다 — sessionId 를 로컬 state에만 두면 전송 중 다른
+// 탭으로 갔다 돌아왔을 때 sessionId=null 로 재마운트돼 이미 서버에 존재하는 세션이 영구히
+// 고아가 된다(레드팀 감사 HIGH). sessionStorage 에 미러링해 재마운트 시 복구한다 — 브라우저
+// 탭 하나의 수명 동안만 유지하면 충분하고(로그아웃 시 clear 할 이유가 딱히 없다), 여러 탭에
+// 새 채팅을 강제하지 않는다.
+const CHAT_SESSION_STORAGE_KEY = "merrymap.chat.global_session_id";
+
+function readStoredSessionId(): string | null {
+  try {
+    return sessionStorage.getItem(CHAT_SESSION_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
 export function ChatPage() {
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(readStoredSessionId);
+
+  function handleSessionCreated(id: string) {
+    setSessionId(id);
+    try {
+      sessionStorage.setItem(CHAT_SESSION_STORAGE_KEY, id);
+    } catch {
+      // 프라이빗 모드 등 sessionStorage 를 못 쓰는 환경에서도 채팅 자체는 계속 동작해야 한다 —
+      // 이 경우 재마운트 시 복구만 안 될 뿐 새 세션으로 계속 대화할 수 있다.
+    }
+  }
 
   return (
     <Page title="AI상담" subtitle="결혼 준비 중 궁금한 점을 자유롭게 물어보세요.">
       <ChatPanel
         sessionId={sessionId}
-        onSessionCreated={setSessionId}
+        onSessionCreated={handleSessionCreated}
         renderReportAction={(messageId) => <ReportButton targetType="CHAT_MESSAGE" targetId={messageId} />}
       />
     </Page>

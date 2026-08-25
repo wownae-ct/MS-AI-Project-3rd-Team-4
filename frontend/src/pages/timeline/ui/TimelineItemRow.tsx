@@ -4,6 +4,7 @@
 // 색으로 표현하지 않는다(D6, docs/design/decisions.md — 상태색을 도입하지 않기로 닫힌 결정).
 // `shared/ui`엔 경고 전용 아이콘이 따로 없어 `IconInfo`를 재사용한다 — 이 화면 하나 때문에
 // 새 아이콘을 들이지 않는다(YAGNI, 이 저장소 CLAUDE.md).
+import { useRef } from "react";
 import { ReportButton } from "@/entities/feedback";
 import { patchTimelineItem, type TimelineItem } from "@/entities/timeline";
 import { IconInfo } from "@/shared/ui";
@@ -18,16 +19,21 @@ export interface TimelineItemRowProps {
 
 export function TimelineItemRow({ item, categoryLabel, onStatusChange }: TimelineItemRowProps) {
   const isDone = item.status === "DONE";
+  // 연속 토글 가드 — 체크(PATCH#1) 직후 재클릭으로 해제(PATCH#2)를 보내면, 네트워크 지연으로
+  // PATCH#1이 나중에 도착해 방금 사용자가 정한 최신 상태(해제)를 조용히 되돌릴 수 있었다
+  // (레드팀 감사 HIGH). 이 행에 대해 "가장 최근에 보낸 요청"일 때만 그 결과를 반영한다.
+  const requestSeqRef = useRef(0);
 
   async function handleToggle() {
     const nextStatus = isDone ? "TODO" : "DONE";
     const previous = item;
+    const seq = ++requestSeqRef.current;
     onStatusChange({ ...item, status: nextStatus }); // 낙관적 갱신
     try {
       const updated = await patchTimelineItem(item.id, { status: nextStatus });
-      onStatusChange(updated);
+      if (requestSeqRef.current === seq) onStatusChange(updated);
     } catch {
-      onStatusChange(previous); // 실패 시 되돌림
+      if (requestSeqRef.current === seq) onStatusChange(previous); // 실패 시 되돌림
     }
   }
 

@@ -46,6 +46,10 @@ export interface ChatMessage {
   // AI 답변에만 값이 온다(user 메시지는 항상 null) — 재평가 시 마지막 값으로 덮어쓴다.
   user_rating?: MessageRating | null;
   created_at: string;
+  // 클라이언트 전용 필드 — 서버는 절대 이 값을 보내지 않는다. 낙관적으로 붙인 user 메시지의
+  // 전송이 실패했을 때만 true 로 세팅해, 성공한 메시지와 시각적으로 구분한다(레드팀 감사:
+  // 이전엔 실패해도 말풍선이 성공과 똑같이 보였다).
+  failed?: boolean;
 }
 
 export interface ChatMessagesResponse {

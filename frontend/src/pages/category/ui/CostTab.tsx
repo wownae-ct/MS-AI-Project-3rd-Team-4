@@ -48,10 +48,16 @@ export function CostTab({ categoryCode, categoryMeta }: CostTabProps) {
   function refetchPayments() {
     if (categoryMeta?.has_cost === false) {
       setPayments([]);
+      setError(null);
       return;
     }
     getPayments({ categoryCode })
-      .then((res) => setPayments(res.payments))
+      .then((res) => {
+        setPayments(res.payments);
+        // 이전 조회가 실패해 배너가 떠 있었더라도, 이번 재조회가 성공하면 지운다 — 안 지우면
+        // 정상 목록 위에 낡은 에러 배너가 계속 남는다(레드팀 감사 교차 패턴 02).
+        setError(null);
+      })
       .catch((err: unknown) => {
         setError(err instanceof ApiError ? err.message : "납부 내역을 불러오지 못했습니다.");
       });
@@ -64,11 +70,14 @@ export function CostTab({ categoryCode, categoryMeta }: CostTabProps) {
     let cancelled = false;
     if (categoryMeta?.has_cost === false) {
       setPayments([]);
+      setError(null);
       return;
     }
     getPayments({ categoryCode })
       .then((res) => {
-        if (!cancelled) setPayments(res.payments);
+        if (cancelled) return;
+        setPayments(res.payments);
+        setError(null);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -111,7 +120,16 @@ export function CostTab({ categoryCode, categoryMeta }: CostTabProps) {
                     <p className="truncate text-sm font-bold text-ink">{p.item_name}</p>
                   </div>
                   <p className="text-xs text-ink-soft">
-                    {p.vendor_name} · {p.status === "PAID" ? `지급완료 ${p.paid_date ?? ""}` : `예정일 ${p.due_date ?? "미정"}`}
+                    {p.vendor_name} ·{" "}
+                    {/* status는 PLANNED/PAID 2갈래만 아니라 CANCELED도 있다(backend/app/schemas/
+                        common.py:53) — 이걸 놓치면 취소된 결제가 "예정일..."로 잘못 보인다
+                        (레드팀 감사 라운드 2). 지금은 CANCELED로 바꾸는 UI가 없어 잠재적이지만,
+                        서버가 이미 이 값을 낼 수 있는 이상 렌더 쪽은 3갈래를 그대로 반영한다. */}
+                    {p.status === "PAID"
+                      ? `지급완료 ${p.paid_date ?? ""}`
+                      : p.status === "CANCELED"
+                        ? "취소됨"
+                        : `예정일 ${p.due_date ?? "미정"}`}
                   </p>
                 </div>
                 <Money value={p.amount} className="shrink-0" />
