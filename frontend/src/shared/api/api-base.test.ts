@@ -67,3 +67,20 @@ describe("isLoopbackApiBase", () => {
     expect(isLoopbackApiBase("nonsense")).toBe(false);
   });
 });
+
+describe("배포 빌드 규칙 — 형식 통과와 배포 가능은 다르다", () => {
+  // 판정 시점은 mode 가 아니라 CI 다 — `vite build` 는 기본 mode 가 production 이라
+  // mode 로 잡으면 로컬 4게이트가 매번 죽는다. 게이트 자체는 vite.config.ts 에 있고
+  // 여기서는 그 게이트가 쓰는 두 함수의 역할 분담만 고정한다.
+  it("로컬 값은 형식은 통과하지만 배포에는 쓸 수 없다", () => {
+    const local = "http://localhost:8000";
+    expect(checkApiBase(local)).toBeNull(); // 형식 OK
+    expect(isLoopbackApiBase(local)).toBe(true); // 배포 게이트가 잡는다
+  });
+
+  it("운영 값은 둘 다 통과한다", () => {
+    const remote = "https://20-249-52-148.nip.io";
+    expect(checkApiBase(remote)).toBeNull();
+    expect(isLoopbackApiBase(remote)).toBe(false);
+  });
+});
