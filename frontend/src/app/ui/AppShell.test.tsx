@@ -6,10 +6,20 @@
 //
 // 셸은 라우터 컨텍스트 없이는 렌더되지 않는다(`Link`·`Outlet`). 그래서 실제 `routeTree` 를
 // 메모리 히스토리로 조립한다 — 셸만 따로 떼어내 mock 으로 감싸면 계약이 아니라 mock 을 검증하게 된다.
-import { describe, expect, it } from "vitest";
+//
+// 실제 트리는 이제 `_authed`(세션)·`_shell`(웨딩) 가드를 지난다(App.test.tsx §가드).
+// 여기서 검증하는 건 가드가 아니라 셸의 내비게이션 마크업이므로, 가드를 통과시키는
+// 웨딩 있는 사용자로 loadSession 을 고정한다 — App.test.tsx 와 같은 패턴이다.
+import { describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { routeTree } from "../router";
+
+vi.mock("@/entities/session", async (orig) => ({
+  ...(await orig<typeof import("@/entities/session")>()),
+  loadSession: () =>
+    Promise.resolve({ id: "u", email: "a@b.c", displayName: null, hasWedding: true }),
+}));
 
 async function renderShellAt(path: string) {
   const router = createRouter({
