@@ -82,7 +82,25 @@ async def generate_node(state: PersonalizationState, config: RunnableConfig) -> 
         timeline_draft = (
             parsed.get("timeline_items") if "TIMELINE" in state["affected_domains"] else None
         )
+        if timeline_draft:
+            timeline_draft = [_normalize_timeline_category_code(item) for item in timeline_draft]
         return {"checklist_draft": checklist_draft, "timeline_draft": timeline_draft}
+
+
+_NULL_STRING_VALUES = {"null", "none", "None", "NULL", ""}
+
+
+def _normalize_timeline_category_code(item: dict) -> dict:
+    """prompts.py의 few-shot이 실제 JSON null을 그대로 보여줘도, LLM이 category_code 자리에
+    문자열 "null"/"None"/빈 문자열을 쓰는 사례가 few-shot 지시만으로는 반복적으로 재발했다
+    (2026-08-24 "범용"→"null" 버그, 그 수정 후에도 재발 — validate_node가 이 값을 ENUM 밖으로
+    BLOCKED 처리해 폴백 카탈로그로 떨어지는 원인). 프롬프트만으로 100% 방지가 안 되는 게
+    실측으로 확인된 이상, 파싱 단계에서 방어적으로 흡수한다 — validate는 여전히 순수 규칙
+    검증만 하고, "무엇을 null로 볼지"는 여기 한 곳에서만 결정한다."""
+    code = item.get("category_code")
+    if isinstance(code, str) and code.strip() in _NULL_STRING_VALUES:
+        return {**item, "category_code": None}
+    return item
 
 
 # ③ validate: 순수 코드, LLM 호출 없음(§1-4) — app/personalization/validation.py의 4규칙을
