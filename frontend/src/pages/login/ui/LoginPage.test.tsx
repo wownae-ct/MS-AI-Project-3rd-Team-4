@@ -35,11 +35,13 @@ vi.mock("@tanstack/react-router", async (orig) => ({
 const loginFn = vi.fn();
 const signupFn = vi.fn();
 const invalidateSessionFn = vi.fn();
+const getMeFn = vi.fn();
 vi.mock("@/entities/session", () => ({
   login: (...a: unknown[]) => loginFn(...a),
   signup: (...a: unknown[]) => signupFn(...a),
   socialLoginUrl: (p: string) => `https://api.test/api/v1/auth/${p}/login`,
   invalidateSession: () => invalidateSessionFn(),
+  getMe: () => getMeFn(),
 }));
 
 beforeEach(() => {
@@ -47,6 +49,8 @@ beforeEach(() => {
   loginFn.mockReset();
   signupFn.mockReset();
   invalidateSessionFn.mockReset();
+  getMeFn.mockReset();
+  getMeFn.mockResolvedValue({ id: "u", email: "a@b.c", displayName: null, hasWedding: false });
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -80,6 +84,27 @@ describe("로그인 폼", () => {
     await userEvent.click(screen.getByRole("button", { name: "로그인" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/이메일 또는 비밀번호/u);
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("로그인은 성공했지만 세션 쿠키가 왕복하지 않으면(시크릿 모드 등) 이동하지 않는다", async () => {
+    loginFn.mockResolvedValue({ id: "u", email: "a@b.c", displayName: null, hasWedding: false });
+    getMeFn.mockRejectedValue(new Error("401"));
+    render(<LoginPage />);
+    await userEvent.type(screen.getByLabelText("이메일"), "a@b.c");
+    await userEvent.type(screen.getByLabelText("비밀번호"), "pw123456");
+    await userEvent.click(screen.getByRole("button", { name: "로그인" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/로그인 상태가 유지되지 않/u);
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("세션 쿠키가 정상 왕복하면 그대로 이동한다", async () => {
+    loginFn.mockResolvedValue({ id: "u", email: "a@b.c", displayName: null, hasWedding: false });
+    render(<LoginPage />);
+    await userEvent.type(screen.getByLabelText("이메일"), "a@b.c");
+    await userEvent.type(screen.getByLabelText("비밀번호"), "pw123456");
+    await userEvent.click(screen.getByRole("button", { name: "로그인" }));
+    expect(getMeFn).toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith(expect.objectContaining({ to: "/onboarding" }));
   });
 });
 

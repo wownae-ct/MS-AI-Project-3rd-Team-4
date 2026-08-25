@@ -19,6 +19,7 @@
 //                ├── /timeline             S4
 //                ├── /budget               S6
 //                ├── /report               S5
+//                ├── /chat                 AI상담(카테고리 선택 → 상담) — 12_final_prototype_mockup.html
 //                └── /style-guide          디자인 시스템 참조 화면
 //
 // **판정을 두 층으로 나누는 이유** — 한 층에서 「세션 없으면 /login, 웨딩 없으면 /onboarding」을
@@ -58,6 +59,7 @@ import {
   Outlet,
   redirect,
 } from "@tanstack/react-router";
+import { lazy, Suspense } from "react";
 import { loadSession } from "@/entities/session";
 import { DashboardPage } from "@/pages/dashboard";
 import { LoginPage } from "@/pages/login";
@@ -172,10 +174,26 @@ const dashboardRoute = createRoute({
 
 // 경로 파라미터는 `$id` 다. layout.md §2 의 `/category/:id` 는 일반 표기이고
 // TanStack 의 문법은 `$` 다 — 여기서 `:id` 로 쓰면 리터럴 경로가 되어 조용히 매칭되지 않는다.
+//
+// CategoryPage 는 `categoryCode` 를 prop 으로 받아야 라우터를 몰라도 된다(로그인/온보딩과 같은
+// 원칙). `lazyRouteComponent` 는 route params 를 컴포넌트에 자동 주입하지 않으므로(자기 자신이
+// `useParams` 를 불러야 한다) 여기서만 React.lazy + Suspense 로 감싸 `$id` 를 읽어 prop 으로 내린다
+// — 코드 스플리팅 자체는 유지된다(청크는 그대로 분리).
+const LazyCategoryPage = lazy(() => import("@/pages/category").then((mod) => ({ default: mod.CategoryPage })));
+
+function CategoryRouteComponent() {
+  const { id } = categoryRoute.useParams();
+  return (
+    <Suspense fallback={null}>
+      <LazyCategoryPage categoryCode={id} />
+    </Suspense>
+  );
+}
+
 const categoryRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: "/category/$id",
-  component: lazyRouteComponent(() => import("@/pages/category"), "CategoryPage"),
+  component: CategoryRouteComponent,
 });
 
 const timelineRoute = createRoute({
@@ -194,6 +212,16 @@ const reportRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: "/report",
   component: lazyRouteComponent(() => import("@/pages/report"), "ReportPage"),
+});
+
+// 5번째 탭 "AI상담" — AppShell.tsx PRIMARY_NAV 머리말 참조(2026-08-24 추가 근거,
+// 12_final_prototype_mockup.html의 탭바). ChatPage는 라우터를 모르는 다른 화면들과 달리 콜백
+// prop이 필요 없다(내부에서 카테고리 선택 상태만 로컬로 다루고 페이지 이동을 하지 않는다) —
+// 그래서 다른 탭들과 똑같이 lazyRouteComponent를 그대로 쓸 수 있다.
+const chatRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: "/chat",
+  component: lazyRouteComponent(() => import("@/pages/chat"), "ChatPage"),
 });
 
 const styleGuideRoute = createRoute({
@@ -216,6 +244,7 @@ export const routeTree = rootRoute.addChildren([
       timelineRoute,
       budgetRoute,
       reportRoute,
+      chatRoute,
       styleGuideRoute,
     ]),
   ]),

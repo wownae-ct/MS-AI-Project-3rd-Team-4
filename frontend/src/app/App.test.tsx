@@ -23,6 +23,20 @@ vi.mock("@/entities/session", async (orig) => ({
   loadSession: () => getMeMock(),
 }));
 
+// 이 파일은 라우팅 조립(경로 → 화면 · 가드 · 셸 소재)만 본다 — 화면이 실제로 그리는 데이터는
+// 관심사가 아니다(그건 DashboardPage.test.tsx 등 각 화면 계약 테스트의 몫이다). 그런데
+// CategoryPage(getCategories)와 OnboardingPage(getCategories/getTotalAverageBenchmark)가 실API
+// 배선 이후 진짜 네트워크 호출을 시도하면, `VITE_API_BASE=https://api.test`(존재하지 않는
+// 도메인)로의 DNS 실패가 전체 스위트를 병렬로 돌릴 때 간헐적으로 findBy* 기본 타임아웃을
+// 넘겨 테스트를 깨뜨린다(고립 실행에선 통과, 전체 스위트에선 가끔 실패 — 재현됨). 라우팅
+// 조립과 무관한 네트워크 의존을 없애기 위해 여기서 즉시 응답하는 목으로 바꾼다.
+vi.mock("@/entities/wedding", async (orig) => ({
+  ...(await orig<typeof import("@/entities/wedding")>()),
+  getCategories: () => Promise.resolve({ categories: [] }),
+  getTotalAverageBenchmark: () =>
+    Promise.reject(new ApiError({ code: "TOTAL_BUDGET_UNAVAILABLE", message: "x", status: 404, extra: {} })),
+}));
+
 beforeEach(() => {
   getMeMock.mockReset();
   getMeMock.mockResolvedValue({ id: "u", email: "a@b.c", displayName: null, hasWedding: true });
@@ -43,9 +57,17 @@ function renderAt(path: string) {
   return router;
 }
 
-/** 제목으로 화면을 식별한다 — 클래스명이나 testid 가 아니라 사용자가 보는 것으로 검증한다. */
+/**
+ * 제목으로 화면을 식별한다 — 클래스명이나 testid 가 아니라 사용자가 보는 것으로 검증한다.
+ *
+ * 타임아웃을 기본값(1000ms)보다 넉넉히 준다 — `CategoryPage`/`OnboardingPage`는 실API 배선
+ * 이후 다른 lazy 화면보다 훨씬 큰 청크(탭 3개 + entities, 8단계 위저드)를 동적 import 하므로,
+ * 전체 스위트를 병렬로 돌릴 때(CPU 경합)는 기본 타임아웃을 넘기고서야 로드가 끝나는 경우가
+ * 실측으로 확인됐다(고립 실행에선 항상 통과, 전체 스위트에선 간헐적 실패) — 로직 결함이
+ * 아니라 순수 로딩 시간 여유 부족이었다.
+ */
 async function expectScreen(name: string) {
-  expect(await screen.findByRole("heading", { level: 1, name })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { level: 1, name }, { timeout: 5000 })).toBeInTheDocument();
 }
 
 describe("경로 → 화면 (layout.md §2 라우트 표)", () => {
@@ -61,8 +83,11 @@ describe("경로 → 화면 (layout.md §2 라우트 표)", () => {
 
   it("카테고리 상세는 경로 파라미터를 받는다", async () => {
     // `$id` 를 `:id` 로 적으면 리터럴 경로가 되어 조용히 매칭되지 않는다 — 그 회귀를 여기서 잡는다.
+    // 카테고리 상수 조회(`GET /categories`)를 이 테스트는 목으로 두지 않으므로 실패하고,
+    // `CategoryPage`는 그 경우 제목을 원본 `categoryCode`로 폴백한다(CategoryPage.tsx) — 그
+    // 폴백값이 곧 `$id`가 실제로 라우트에 전달됐다는 증거다.
     renderAt("/category/wedding-hall");
-    await expectScreen("카테고리 상세");
+    await expectScreen("wedding-hall");
   });
 
   it("스타일가이드는 라우트로 남는다 — 화면이 생겨도 참조 문서로 계속 쓴다", async () => {
@@ -93,14 +118,18 @@ describe("셸의 소재 (layout.md §1)", () => {
   it("온보딩에는 크롬이 없다 — 탭바도 사이드바도 붙지 않는다", async () => {
     getMeMock.mockResolvedValue({ id: "u", email: "a@b.c", displayName: null, hasWedding: false });
     renderAt("/onboarding");
-    await expectScreen("온보딩");
+    // OnboardingPage 실 배선 이후 제목은 고정 문구 "온보딩"이 아니라 1단계 헤드라인이다
+    // (OnboardingPage.tsx STEP_HEADLINE).
+    await expectScreen("당신에 대해 알려주세요");
     expect(screen.queryAllByRole("navigation")).toHaveLength(0);
   });
 
   it("셸이 없어도 스킵 링크는 있다 — 본문 건너뛰기는 온보딩에도 필요하다", async () => {
     getMeMock.mockResolvedValue({ id: "u", email: "a@b.c", displayName: null, hasWedding: false });
     renderAt("/onboarding");
-    await expectScreen("온보딩");
+    // OnboardingPage 실 배선 이후 제목은 고정 문구 "온보딩"이 아니라 1단계 헤드라인이다
+    // (OnboardingPage.tsx STEP_HEADLINE).
+    await expectScreen("당신에 대해 알려주세요");
     expect(screen.getByRole("link", { name: "본문으로 건너뛰기" })).toBeInTheDocument();
   });
 });
@@ -115,7 +144,9 @@ describe("가드 — 세션과 웨딩을 두 층으로 나눈다", () => {
   it("로그인했지만 웨딩이 없으면 온보딩으로 간다", async () => {
     getMeMock.mockResolvedValue({ id: "u", email: "a@b.c", displayName: null, hasWedding: false });
     renderAt("/");
-    await expectScreen("온보딩");
+    // OnboardingPage 실 배선 이후 제목은 고정 문구 "온보딩"이 아니라 1단계 헤드라인이다
+    // (OnboardingPage.tsx STEP_HEADLINE).
+    await expectScreen("당신에 대해 알려주세요");
   });
 
   it("웨딩이 있으면 대시보드가 그대로 보인다", async () => {
@@ -134,7 +165,9 @@ describe("가드 — 세션과 웨딩을 두 층으로 나눈다", () => {
   it("웨딩이 없는 사용자는 온보딩에 머무른다 — 되돌려 보내면 루프다", async () => {
     getMeMock.mockResolvedValue({ id: "u", email: "a@b.c", displayName: null, hasWedding: false });
     renderAt("/onboarding");
-    await expectScreen("온보딩");
+    // OnboardingPage 실 배선 이후 제목은 고정 문구 "온보딩"이 아니라 1단계 헤드라인이다
+    // (OnboardingPage.tsx STEP_HEADLINE).
+    await expectScreen("당신에 대해 알려주세요");
   });
 
   it("/login 은 세션이 있어도 열린다 — 가입 직후 자동 채움 경로가 여기를 지난다", async () => {

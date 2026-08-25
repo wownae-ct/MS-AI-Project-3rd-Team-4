@@ -11,6 +11,7 @@ export { Tabs, type TabsRootProps } from "./Tabs";
 export {
   IconCalendar,
   IconChart,
+  IconChat,
   IconCheck,
   IconChevronDown,
   IconHome,

@@ -1,35 +1,43 @@
-// 다가오는 납부 한 줄 (시각 스펙: docs/mockups/s2-dashboard.html:188-195).
+// 다가오는 할 일 한 줄 (시각 스펙: docs/mockups/s2-dashboard.html:188-195, 원래는 "다가오는 납부").
 //
-// **구분선을 행이 스스로 그린다** — `first:pt-0 last:border-b-0 last:pb-0`.
-// 목업의 `.pay-row:first-child` / `:last-child` 규칙(s2:102-103)을 그대로 옮긴 것이다.
-// ⚠️ 이 변이는 **형제 중 첫/마지막**을 본다. 카드가 `<h2>` 제목을 먼저 렌더하므로 행들을
-// **별도 컨테이너로 감싸야** 첫 행이 `:first-child` 가 된다 — 감싸지 않으면 첫 행에 위 패딩이 남는다.
-//
-// 5개 화면 7곳이 같은 구분선 리스트를 요구하지만(목업 인벤토리) 공용 `DividedList` 로 빼지 않았다 —
-// 반복 행을 `<ul>/<li>` 로 낼지가 아직 미정이기 때문이다(a11y.md §5 「목록 시맨틱」).
-// 지금 빼면 결정이 뒤집힐 때 7곳이 함께 바뀐다. 그때까지 파급을 이 화면 안에 가둬 둔다.
-import type { UpcomingPayment } from "@/entities/wedding";
-import { Badge, Money } from "@/shared/ui";
+// **`amount`(금액)를 받지 않는다.** `GET /dashboard/summary`(API 스펙 §25)의 `upcoming_items`는
+// `timeline_items`(마감일만 있고 금액 없음)와 `checklist_items`(상태만 있고 날짜·금액 둘 다 없음)를
+// 합친 피드다 — 구 sample-data의 `UpcomingPayment.amount`에 대응하는 값이 API 어느 변형에도 없다.
+// 금액을 요구하는 카드 제목("다가오는 납부")도 더는 맞지 않아 `DashboardPage`에서 "다가오는 할
+// 일"로 고쳤다. `entities/wedding`의 `UpcomingPayment` 타입(S5 리포트가 여전히 씀)은 그대로 두고,
+// 이 컴포넌트만 실제 API 유니온(`DashboardUpcomingItem`)을 직접 받는다 — 없는 금액을 0이나 빈
+// 문자열로 지어내는 대신, 애초에 그 슬롯을 렌더하지 않는 쪽을 택했다(지어내지 않는다).
+import type { DashboardUpcomingItem } from "@/entities/dashboard";
+import { Badge } from "@/shared/ui";
 
 export interface PaymentRowProps {
-  payment: UpcomingPayment;
+  item: DashboardUpcomingItem;
+  /** `category_code` → `name_ko` 해석은 페이지가 한다(카테고리 목록을 이미 갖고 있으므로 중복 조회 안 함). */
+  categoryLabel: string;
 }
 
-export function PaymentRow({ payment }: PaymentRowProps) {
+// 체크리스트 쪽 상태값 3종만 이 피드에 나온다 — API 스펙 §25 "upcoming_items" 설명의
+// `checklist_items(status IN ('DOING','COMPARING','ORDERED'))` 그대로. 나머지 상태(TODO/DONE 등)는
+// 애초에 이 목록에 들어오지 않으므로 라벨을 만들지 않는다.
+const CHECKLIST_STATUS_LABEL: Record<string, string> = {
+  DOING: "진행 중",
+  COMPARING: "비교 중",
+  ORDERED: "주문 완료",
+};
+
+export function PaymentRow({ item, categoryLabel }: PaymentRowProps) {
+  const badgeText = item.source === "timeline" ? `D-${item.d_day}` : (CHECKLIST_STATUS_LABEL[item.status] ?? item.status);
+  const subLabel = item.source === "timeline" ? `${categoryLabel} · ${item.target_date}` : `${categoryLabel} · 체크리스트`;
+
   return (
     <div className="flex items-center gap-3 border-b border-line py-3 first:pt-0 last:border-b-0 last:pb-0">
-      {/* D-Day 는 규범이 정의한 배지 하나(primary-soft / primary / pill)와 정확히 같다 — 변이가 필요 없다. */}
-      <Badge className="shrink-0 tabular-nums">D-{payment.dDay}</Badge>
+      <Badge className="shrink-0 tabular-nums">{badgeText}</Badge>
 
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-bold text-ink">{payment.item}</p>
+        <p className="text-sm font-bold text-ink">{item.title}</p>
         {/* 카테고리명이 길면 줄바꿈 대신 말줄임 — 목업의 text-overflow:ellipsis(s2:113). */}
-        <p className="truncate text-xs text-ink-soft">
-          {payment.category} · {payment.date}
-        </p>
+        <p className="truncate text-xs text-ink-soft">{subLabel}</p>
       </div>
-
-      <Money value={payment.amount} className="shrink-0 text-sm" />
     </div>
   );
 }

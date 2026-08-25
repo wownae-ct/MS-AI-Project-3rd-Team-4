@@ -23,12 +23,15 @@
 // 읽히는데 로그인 개념이 확인되지 않았다), 제품명 표기는 CLAUDE.md §6-G 가 디자인 오너 대기다.
 // 상단바로 제목을 옮기는 것(`showPageTitle = mobile`)은 화면 내용이 들어올 때 `Page` 와 함께 다룬다.
 // 쓸 곳이 확정되지 않은 것을 미리 만들지 않는다(ADR 0004).
-import { Outlet } from "@tanstack/react-router";
-import { IconCalendar, IconChart, IconHome, IconInfo, IconWallet } from "@/shared/ui";
+import { Outlet, useNavigate } from "@tanstack/react-router";
+import { invalidateSession, logout } from "@/entities/session";
+import { IconCalendar, IconChart, IconChat, IconHome, IconInfo, IconWallet } from "@/shared/ui";
 import { NavItem, type NavItemProps } from "./NavItem";
 
 /**
- * 주 내비 4개 — layout.md §3. 순서가 계약이다(홈 · 타임라인 · 예산 · 리포트).
+ * 주 내비 5개 — layout.md §3의 4개(홈·타임라인·예산·리포트)에 2026-08-24 "AI상담"을 추가했다.
+ * 근거는 layout.md가 아니라 docs/wedding/plan/new/12_final_prototype_mockup.html의 실제 탭바
+ * (renderApp())다 — 그 파일이 이 4개 뒤에 AI상담을 마지막으로 둔 순서를 그대로 따른다.
  *
  * 홈은 `/category/…` 에서도 활성이어야 한다 — 카테고리 상세는 독립 탭이 아니라 홈에 귀속되는
  * 하위 화면이다(layout.md §1). 그 규칙의 소재지는 `NavItem` 한 곳이다.
@@ -38,6 +41,7 @@ const PRIMARY_NAV: readonly NavItemProps[] = [
   { to: "/timeline", label: "타임라인", icon: <IconCalendar /> },
   { to: "/budget", label: "예산", icon: <IconWallet /> },
   { to: "/report", label: "리포트", icon: <IconChart /> },
+  { to: "/chat", label: "AI상담", icon: <IconChat /> },
 ];
 
 /** 보조 내비 — 데스크톱 사이드바에만 나온다(layout.md §4: 주 내비 → 구분선 → 보조 링크). */
@@ -53,6 +57,29 @@ const CONTENT_BOTTOM_INSET = "pb-24 md:pb-0";
 // (layout.md §3.2). 임의값 안의 `_` 는 Tailwind 가 공백으로 바꾼다 — CSS `calc` 는 `+` 양옆 공백이 필수라
 // 언더스코어 없이 쓰면 선언 자체가 무효가 된다.
 const TAB_BAR_SAFE_AREA = "pb-[calc(0.5rem_+_env(safe-area-inset-bottom))] md:pb-0";
+
+// 로그아웃은 §"아직 만들지 않은 것" 이 열어 둔 사이드바 하단 블록(아바타/계정 UI)의 축소판이다 —
+// 그 전체 디자인은 여전히 오너 대기 상태라 지어내지 않고, 보조 메뉴와 같은 desktop-only 자리에
+// 텍스트 버튼 하나만 둔다. 모바일 탭바는 12_final_prototype_mockup.html 이 못박은 5개(홈·타임라인·
+// 예산·리포트·AI상담) 자리라 6번째 항목을 끼워 넣지 않는다 — 모바일에서 로그아웃할 방법이 없는 건
+// 실제 갭이지만, 이번 로컬 E2E 검증 범위에서는 데스크톱 브라우저로 충분하다.
+function LogoutButton() {
+  const navigate = useNavigate();
+  async function handleLogout() {
+    await logout();
+    invalidateSession();
+    await navigate({ to: "/login", search: { redirect: undefined, oauth_error: undefined } });
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => void handleLogout()}
+      className="min-h-tap w-full rounded-sm px-3 py-2 text-left text-sm font-bold text-ink-soft transition-colors duration-150 hover:bg-bg hover:text-primary"
+    >
+      로그아웃
+    </button>
+  );
+}
 
 export function AppShell() {
   return (
@@ -81,6 +108,9 @@ export function AppShell() {
                 <NavItem {...item} />
               </li>
             ))}
+            <li className="flex">
+              <LogoutButton />
+            </li>
           </ul>
         </nav>
       </div>
