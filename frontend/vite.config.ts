@@ -2,7 +2,7 @@
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import { checkApiBase, isLoopbackApiBase } from "./src/shared/api/api-base";
+import { checkApiBase, isLoopbackApiBase } from "./src/shared/api/api-base.ts";
 
 /**
  * 프로덕션 빌드가 개발 시맨틱으로 도는 것을 막는다.

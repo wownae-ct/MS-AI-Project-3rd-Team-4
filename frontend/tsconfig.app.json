@@ -17,6 +17,13 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
+    // vite.config.ts 가 src/shared/api/api-base.ts 를 확장자와 함께 import 하기 위한 것이다.
+    // Vite 가 configLoader: 'native' 를 기본값으로 바꿀 예정이라 확장자 없는 import 는 그때
+    // 깨진다(빌드 경고가 조치까지 명시한다 — "Add the file extension"). 전제 조건인
+    // moduleResolution: Bundler 와 noEmit 은 위에 이미 있어 새로 켤 것이 없다.
+    // 앱 코드(src/)에서는 계속 확장자를 붙이지 않는다 — 이 옵션은 위 한 곳을 위한 것이지
+    // 스타일 변경이 아니다.
+    "allowImportingTsExtensions": true,
     "tsBuildInfoFile": "./node_modules/.cache/tsconfig.app.tsbuildinfo",
     "jsx": "react-jsx",
     // 경로 별칭 — baseUrl 없이 paths만 선언한다. TypeScript 7이 baseUrl을 제거했으므로
