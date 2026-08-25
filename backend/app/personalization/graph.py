@@ -124,6 +124,7 @@ async def validate_node(state: PersonalizationState, config: RunnableConfig) -> 
         state["affected_domains"],
         state["checklist_draft"],
         state["timeline_draft"],
+        state["protected_items"],
     )
     validation_status = {
         domain: "BLOCKED" if errors else "SUCCESS" for domain, errors in domain_errors.items()

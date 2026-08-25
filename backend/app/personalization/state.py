@@ -12,7 +12,11 @@ class PersonalizationState(TypedDict):
     changed_fields: list[str]
     profile: dict  # 활성 카테고리, 우선순위, 스타일, primary_goals, 예산, wedding_date, 지역 등
     protected_items: (
-        dict  # {"CHECKLIST": [id, ...], "TIMELINE": [id, ...]} — user_edited_at 있는 행
+        # {"CHECKLIST": [{"id","category_code","title"}, ...], "TIMELINE": [...]} —
+        # user_edited_at 있는 행. title/category_code까지 담는 이유는
+        # app/services/personalization.py::_fetch_protected_items 참고(2026-08-26 레드팀 감사
+        # 3라운드 MEDIUM #7 — id만으로는 "다시 만들지 마라" 지시를 LLM이 지킬 수 없었다).
+        dict
     )
     requested_domains: list[str]  # MANUAL_REGENERATE 전용: 사용자가 직접 고른 도메인.
     # ONBOARDING_INITIAL/FIELD_UPDATED는 항상 빈 리스트 — route 노드가 무시한다.
