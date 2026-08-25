@@ -116,12 +116,12 @@ describe("가입 → 로그인 자동 채움", () => {
     render(<LoginPage />);
 
     await userEvent.click(screen.getByRole("button", { name: "계정이 없으신가요? 회원가입" }));
-    await userEvent.type(screen.getByLabelText("이름"), "홍길동");
+    await userEvent.type(screen.getByLabelText("닉네임"), "홍길동");
     await userEvent.type(screen.getByLabelText("이메일"), "new@b.c");
-    await userEvent.type(screen.getByLabelText("비밀번호"), "pw123456");
+    await userEvent.type(screen.getByLabelText("비밀번호"), "pw123456!");
     await userEvent.click(screen.getByRole("button", { name: "회원가입" }));
 
-    expect(signupFn).toHaveBeenCalledWith({ email: "new@b.c", password: "pw123456", displayName: "홍길동" });
+    expect(signupFn).toHaveBeenCalledWith({ email: "new@b.c", password: "pw123456!", displayName: "홍길동" });
     // 가입도 쿠키를 발급하므로 세션 캐시를 비운다 — 안 그러면 곧이은 login 이전에 낡은 세션이 보인다.
     expect(invalidateSessionFn).toHaveBeenCalled();
     // 곧바로 로그인시키지 않는다 — 요구 플로우가 로그인을 한 번 더 거친다.
@@ -129,6 +129,108 @@ describe("가입 → 로그인 자동 채움", () => {
 
     expect(await screen.findByRole("button", { name: "로그인" })).toBeInTheDocument();
     expect(screen.getByLabelText("이메일")).toHaveValue("new@b.c");
-    expect(screen.getByLabelText("비밀번호")).toHaveValue("pw123456");
+    expect(screen.getByLabelText("비밀번호")).toHaveValue("pw123456!");
+  });
+
+  it("이메일·닉네임 앞뒤 공백은 잘라내고 보낸다", async () => {
+    signupFn.mockResolvedValue({ id: "u", email: "new@b.c", displayName: null, hasWedding: false });
+    render(<LoginPage />);
+
+    await userEvent.click(screen.getByRole("button", { name: "계정이 없으신가요? 회원가입" }));
+    await userEvent.type(screen.getByLabelText("닉네임"), "  홍길동  ");
+    await userEvent.type(screen.getByLabelText("이메일"), "  new@b.c  ");
+    await userEvent.type(screen.getByLabelText("비밀번호"), "pw123456!");
+    await userEvent.click(screen.getByRole("button", { name: "회원가입" }));
+
+    expect(signupFn).toHaveBeenCalledWith({ email: "new@b.c", password: "pw123456!", displayName: "홍길동" });
+  });
+});
+
+describe("회원가입 클라이언트 검증 — 서버까지 안 간다", () => {
+  beforeEach(() => {
+    signupFn.mockReset();
+    loginFn.mockReset();
+  });
+
+  it("이메일 형식이 아니면 회원가입을 막는다", async () => {
+    render(<LoginPage />);
+    await userEvent.click(screen.getByRole("button", { name: "계정이 없으신가요? 회원가입" }));
+    await userEvent.type(screen.getByLabelText("닉네임"), "홍길동");
+    await userEvent.type(screen.getByLabelText("이메일"), "not-an-email");
+    await userEvent.type(screen.getByLabelText("비밀번호"), "pw123456!");
+    await userEvent.click(screen.getByRole("button", { name: "회원가입" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("올바른 이메일 형식이 아닙니다.");
+    expect(signupFn).not.toHaveBeenCalled();
+  });
+
+  it("이메일 형식이 아니면 로그인도 막는다", async () => {
+    render(<LoginPage />);
+    await userEvent.type(screen.getByLabelText("이메일"), "not-an-email");
+    await userEvent.type(screen.getByLabelText("비밀번호"), "whatever");
+    await userEvent.click(screen.getByRole("button", { name: "로그인" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("올바른 이메일 형식이 아닙니다.");
+    expect(loginFn).not.toHaveBeenCalled();
+  });
+
+  it("비밀번호가 영문·숫자·특수문자를 다 갖추지 못하면 회원가입을 막는다", async () => {
+    render(<LoginPage />);
+    await userEvent.click(screen.getByRole("button", { name: "계정이 없으신가요? 회원가입" }));
+    await userEvent.type(screen.getByLabelText("닉네임"), "홍길동");
+    await userEvent.type(screen.getByLabelText("이메일"), "new@b.c");
+    await userEvent.type(screen.getByLabelText("비밀번호"), "pw123456");
+    await userEvent.click(screen.getByRole("button", { name: "회원가입" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "비밀번호는 영문·숫자·특수문자를 모두 포함해 8자 이상이어야 합니다.",
+    );
+    expect(signupFn).not.toHaveBeenCalled();
+  });
+
+  it("비밀번호 조합 규칙은 로그인에는 적용하지 않는다 — 옛 비밀번호일 수 있다", async () => {
+    loginFn.mockResolvedValue({ id: "u", email: "a@b.c", displayName: null, hasWedding: false });
+    render(<LoginPage />);
+    await userEvent.type(screen.getByLabelText("이메일"), "a@b.c");
+    await userEvent.type(screen.getByLabelText("비밀번호"), "pw123456");
+    await userEvent.click(screen.getByRole("button", { name: "로그인" }));
+
+    expect(loginFn).toHaveBeenCalledWith({ email: "a@b.c", password: "pw123456" });
+  });
+
+  it("닉네임이 공백뿐이면 회원가입을 막는다", async () => {
+    render(<LoginPage />);
+    await userEvent.click(screen.getByRole("button", { name: "계정이 없으신가요? 회원가입" }));
+    await userEvent.type(screen.getByLabelText("닉네임"), "   ");
+    await userEvent.type(screen.getByLabelText("이메일"), "new@b.c");
+    await userEvent.type(screen.getByLabelText("비밀번호"), "pw123456!");
+    await userEvent.click(screen.getByRole("button", { name: "회원가입" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("닉네임을 입력해 주세요.");
+    expect(signupFn).not.toHaveBeenCalled();
+  });
+});
+
+describe("서버 예외 매핑", () => {
+  it("VALIDATION_ERROR 는 형식 문제라는 문구로 보여준다", async () => {
+    const { ApiError } = await import("@/shared/api");
+    loginFn.mockRejectedValue(new ApiError({ code: "VALIDATION_ERROR", message: "x", status: 422, extra: {} }));
+    render(<LoginPage />);
+    await userEvent.type(screen.getByLabelText("이메일"), "a@b.c");
+    await userEvent.type(screen.getByLabelText("비밀번호"), "pw123456");
+    await userEvent.click(screen.getByRole("button", { name: "로그인" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("입력하신 정보가 형식에 맞지 않습니다.");
+  });
+
+  it("MALFORMED_USER 는 서버 응답 문제라는 문구로 보여준다", async () => {
+    const { ApiError } = await import("@/shared/api");
+    loginFn.mockRejectedValue(new ApiError({ code: "MALFORMED_USER", message: "x", status: 0, extra: {} }));
+    render(<LoginPage />);
+    await userEvent.type(screen.getByLabelText("이메일"), "a@b.c");
+    await userEvent.type(screen.getByLabelText("비밀번호"), "pw123456");
+    await userEvent.click(screen.getByRole("button", { name: "로그인" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("서버 응답을 처리하지 못했습니다.");
   });
 });

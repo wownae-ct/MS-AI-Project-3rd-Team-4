@@ -14,8 +14,10 @@ export {
   IconChat,
   IconCheck,
   IconChevronDown,
+  IconGoogle,
   IconHome,
   IconInfo,
+  IconNaver,
   IconWallet,
   type IconProps,
 } from "./icons";
