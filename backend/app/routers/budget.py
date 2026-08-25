@@ -17,6 +17,7 @@ v3.0의 `/checklists/*`(#8-9) 목 엔드포인트는 v4.0에서 완전히 다른
 app/routers/checklist.py, 웨딩별 실DB 행)로 대체돼 여기서 제거했다 — v4.0 API 명세서에
 `/checklists/*` 자체가 없다."""
 
+import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, UploadFile
@@ -50,6 +51,8 @@ from app.services.payment import list_payments as list_payments_service
 from app.services.payment import list_upcoming_payments as list_upcoming_payments_service
 from app.services.payment import update_payment as update_payment_service
 from app.services.receipt_ocr import extract_receipt_fields
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["budget"])
 
@@ -126,12 +129,24 @@ async def extract_receipt(
     if len(content) > _MAX_RECEIPT_BYTES:
         raise api_error(422, "RECEIPT_TOO_LARGE", "영수증 이미지가 너무 큽니다(최대 15MB).")
 
-    receipt_url = await upload_receipt_image(settings, wedding.id, content, file.content_type)
+    # 2026-08-26 레드팀 감사 4라운드 항목 6 — Blob 업로드/vision 추출 예외를 아예 안 잡았다.
+    # 예외 자체는 app/main.py의 catch-all 핸들러가 결국 잡아 500으로 응답하지만, 두 단계 중
+    # 어느 쪽에서 죽었는지가 로그에 안 남으면 원인 파악이 늦어진다 — 동작(그대로 전파)은
+    # 안 바꾸고 어느 단계인지만 남긴다.
+    try:
+        receipt_url = await upload_receipt_image(settings, wedding.id, content, file.content_type)
+    except Exception:
+        logger.exception("Receipt image upload failed for wedding_id=%s", wedding.id)
+        raise
 
     openai_client = get_azure_openai_client(settings)
-    fields = await extract_receipt_fields(
-        openai_client, settings.receipt_vision_deployment, content, file.content_type
-    )
+    try:
+        fields = await extract_receipt_fields(
+            openai_client, settings.receipt_vision_deployment, content, file.content_type
+        )
+    except Exception:
+        logger.exception("Receipt vision extraction failed for wedding_id=%s", wedding.id)
+        raise
     return ReceiptExtractOut(
         item_name=fields["item_name"],
         vendor_name=fields["vendor_name"],
@@ -150,6 +165,9 @@ async def update_payment(
 ) -> PaymentOut:
     payment = await get_payment_service(session, wedding.id, payment_id)
     if payment is None:
+        # 2026-08-26 레드팀 감사 4라운드 LOW 항목 — 웨딩 소유 범위 밖 리소스 404가 무로깅이면
+        # ID 스캐닝/IDOR 탐지 목적을 놓친다.
+        logger.info("Payment not found for wedding_id=%s payment_id=%s", wedding.id, payment_id)
         raise api_error(404, "PAYMENT_NOT_FOUND", "해당 납부 항목을 찾을 수 없습니다.")
     updated = await update_payment_service(session, payment, payload)
     return _to_out(updated)
@@ -163,6 +181,7 @@ async def delete_payment(
 ) -> None:
     payment = await get_payment_service(session, wedding.id, payment_id)
     if payment is None:
+        logger.info("Payment not found for wedding_id=%s payment_id=%s", wedding.id, payment_id)
         raise api_error(404, "PAYMENT_NOT_FOUND", "해당 납부 항목을 찾을 수 없습니다.")
     await delete_payment_service(session, payment)
 
@@ -199,8 +218,11 @@ async def compare_benchmark(
     wedding: Wedding = Depends(get_current_wedding),  # noqa: B008
     session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> BenchmarkCompareOut:
+    # 2026-08-26 레드팀 감사 4라운드 항목 21 — 벤치마크 없음(404)이 무로깅이면 어느 지역/
+    # 카테고리/품목의 시드를 보강해야 하는지 우선순위를 사용자 문의 전엔 파악할 방법이 없다.
     category_meta = CATEGORY_META_BY_CODE.get(category_code)
     if category_meta is None or not category_meta.has_benchmark:
+        logger.info("Benchmark not available for category_code=%s", category_code)
         raise api_error(
             404,
             "BENCHMARK_NOT_AVAILABLE",
@@ -208,6 +230,12 @@ async def compare_benchmark(
         )
     benchmark = await get_latest_benchmark(session, wedding.region_code, category_code, item_code)
     if benchmark is None:
+        logger.info(
+            "Benchmark not available for region=%s category=%s item=%s",
+            wedding.region_code,
+            category_code,
+            item_code,
+        )
         raise api_error(
             404,
             "BENCHMARK_NOT_AVAILABLE",

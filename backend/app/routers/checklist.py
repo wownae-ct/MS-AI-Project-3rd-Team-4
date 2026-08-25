@@ -3,6 +3,8 @@
 get_current_wedding으로 wedding_id를 세션에서 유도한다 — URL/바디로 안 받음(다른 사람 웨딩
 접근 자체가 불가능하도록 auth 재구현이 정한 원칙, app/deps.py)."""
 
+import logging
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +27,8 @@ from app.services.checklist import (
     list_checklist_items,
     update_checklist_item,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["checklist"])
 
@@ -73,6 +77,9 @@ async def patch_checklist_item(
 ) -> ChecklistItemPatchOut:
     item = await get_checklist_item(session, wedding.id, item_id)
     if item is None:
+        # 2026-08-26 레드팀 감사 4라운드 LOW 항목 — 웨딩 소유 범위 밖 리소스 404가 무로깅이면
+        # ID 스캐닝/IDOR 탐지 목적을 놓친다.
+        logger.info("Checklist item not found for wedding_id=%s item_id=%s", wedding.id, item_id)
         raise api_error(404, "CHECKLIST_ITEM_NOT_FOUND", "해당 체크리스트 항목을 찾을 수 없습니다.")
     if payload.status is not None and not is_valid_status_for_category(
         item.category_code, payload.status

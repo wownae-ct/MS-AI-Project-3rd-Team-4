@@ -14,6 +14,7 @@ LangGraph 노드가 어떻게 스케줄되든(같은 태스크 내 await, 또는
 완전히 같은 클래스 객체) — 그래서 `azure_ad_token_provider`(AAD 인증) 같은 생성자 kwarg가
 그대로 통과하고, 이 프로젝트가 API 키 없이 Managed Identity만 쓰는 것과 아무 문제 없이 맞는다."""
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import ExitStack, asynccontextmanager
 from dataclasses import dataclass
@@ -21,6 +22,8 @@ from functools import lru_cache
 from typing import Any
 
 from app.core.config import Settings, get_settings
+
+logger = logging.getLogger(__name__)
 
 
 def is_tracing_enabled(settings: Settings) -> bool:
@@ -120,9 +123,14 @@ async def traced_span(
             stack.enter_context(
                 propagate_attributes(user_id=user_id, session_id=session_id, tags=tags)
             )
-    except Exception:  # noqa: BLE001 — Langfuse SDK 자체 실패(네트워크 등)가 비즈니스 로직을
+    except Exception:
         # 막으면 안 된다. 이 트라이는 "span을 여는" 설정 단계만 감싼다 — 아래 yield 이후
         # 호출부(async with 블록) 안에서 발생하는 예외는 여기서 안 잡고 그대로 전파시킨다.
+        # 2026-08-26 레드팀 감사 4라운드 항목 11 — 이 실패를 완전 무음으로 삼키고 no-op으로
+        # 대체했다. 레드팀 감사 3라운드가 찾은 "LLM 실패 턴도 trace가 비어있다"의 실제 원인이
+        # 바로 이 지점이라, 최소한 로그는 남겨야 Langfuse trace가 비어 있는 이유(전송 실패
+        # 자체 vs. 이 span-open 실패)를 구분할 수 있다.
+        logger.exception("Failed to start Langfuse span %r — tracing disabled for this call", name)
         yield TraceHandle(trace_id=None)
         return
 
