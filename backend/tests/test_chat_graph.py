@@ -12,7 +12,8 @@ from app.rag.retrieval import RetrievedChunk
 
 # retrieve_node가 config["configurable"]에 settings가 없으면 get_settings()로 폴백하는데,
 # 그건 .env(이 워크트리엔 없음)/환경변수에 의존해 테스트가 로컬·CI 환경에 따라 깨질 수 있다 —
-# Settings의 필수 필드(기본값 없는 6개)만 채운 더미 인스턴스를 명시적으로 넘겨 환경 의존을 없앤다.
+# Settings의 필수 필드(기본값 없는 7개, 2026-08-25 영수증 OCR 결정으로 azure_storage_blob_
+# endpoint 추가돼 6→7)만 채운 더미 인스턴스를 명시적으로 넘겨 환경 의존을 없앤다.
 _TEST_SETTINGS = Settings(
     database_url="postgresql://test",
     azure_openai_endpoint="https://test.openai.azure.com",
@@ -20,6 +21,7 @@ _TEST_SETTINGS = Settings(
     google_client_secret="test",
     naver_client_id="test",
     naver_client_secret="test",
+    azure_storage_blob_endpoint="https://test.blob.core.windows.net",
 )
 
 

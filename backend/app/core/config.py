@@ -64,7 +64,22 @@ class Settings(BaseSettings):
     langfuse_host: str = "https://jp.cloud.langfuse.com"
     langfuse_environment: str = "local"
 
+    # 영수증 OCR 자동채움(2026-08-25 결정, payments) — infra/bicep/modules/storage.bicep이
+    # 배포 시점에 직접 써넣는 값(azure_openai_endpoint와 동일 패턴). 컨테이너 이름은 환경마다
+    # 다를 이유가 없어 기본값만 두고 K8s env로 안 뺐다(rag_corpus_path와 동일 원칙).
+    azure_storage_blob_endpoint: str
+    azure_storage_receipts_container: str = "receipts"
+    # 영수증 vision 추출에 쓸 배포 — 기본은 이미 chat 전반에 쓰는 azure_openai_chat_deployment
+    # 값(현재 gpt-5.4-mini)을 그대로 재사용한다. 풀사이즈(gpt-5.4, 배포 이름 "chat")로 A/B
+    # 테스트하고 싶으면 이 값만 바꾸면 된다 — infra/bicep/modules/openai.bicep에 두 배포
+    # (chat-mini/chat) 모두 이미 있어 새 배포·RBAC 변경 없이 전환 가능.
+    azure_openai_receipt_vision_deployment: str | None = None
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @property
+    def receipt_vision_deployment(self) -> str:
+        return self.azure_openai_receipt_vision_deployment or self.azure_openai_chat_deployment
 
 
 @lru_cache
