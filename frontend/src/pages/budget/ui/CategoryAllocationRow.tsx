@@ -42,6 +42,10 @@ export function CategoryAllocationRow({
   }
 
   if (!isEditingScenario) {
+    // Progress는 값을 [0,1]로 클램프한다 — 초과지출(paid_amount>planned_budget, 비율>100%)이
+    // "정확히 다 씀"과 시각적으로 구분되지 않는다(레드팀 감사). 편집 모드를 열어야만 초과 여부를
+    // 알 수 있던 문제를, 보기 모드에도 D6(상태색 없이 텍스트만) 관례대로 문구를 더해 해소한다.
+    const overspend = category.paid_amount - category.planned_budget;
     return (
       <div className={ROW}>
         <div className="flex items-baseline justify-between gap-2">
@@ -54,6 +58,9 @@ export function CategoryAllocationRow({
           value={category.planned_budget > 0 ? category.paid_amount / category.planned_budget : 0}
           label={`${category.name_ko} 예산 집행률`}
         />
+        {overspend > 0 && (
+          <span className="text-xs font-bold text-primary">{wonToManwon(overspend)}만원 초과 집행</span>
+        )}
       </div>
     );
   }

@@ -95,12 +95,18 @@ export function Step1RoleDate({
         </div>
 
         {isDateExact ? (
-          <input
-            className={INPUT}
-            type="date"
-            value={weddingDate}
-            onChange={(event) => onWeddingDateChange(event.target.value)}
-          />
+          <>
+            <input
+              className={INPUT}
+              type="date"
+              value={weddingDate}
+              onChange={(event) => onWeddingDateChange(event.target.value)}
+            />
+            {/* <form noValidate> + type="button" 뿐인 위저드라 HTML5 required 검증이 애초에
+                안 걸린다 — 값이 비어 있으면 "다음"으로 넘어가도 결국 제출 시점에야 422가
+                뜬다(레드팀 감사). 진행을 막기 전에 여기서 먼저 알린다. */}
+            {weddingDate === "" && <p className={FIELD_NOTE}>결혼 예정일을 입력해 주세요.</p>}
+          </>
         ) : (
           <>
             <div className={CHIP_GROUP}>

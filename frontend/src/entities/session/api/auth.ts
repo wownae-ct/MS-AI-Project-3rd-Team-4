@@ -68,7 +68,14 @@ export async function getMe(): Promise<AuthUser> {
  * 성립하지 않는다. 반환된 URL 로 `window.location.href` 를 바꾼다.
  *
  * 지원 제공자는 구글·네이버 2종뿐이다(카카오는 백엔드에 없다).
+ *
+ * `redirectTo` 는 콜백 성공 후 돌아올 앱 내부 경로다(dev-35 확정 계약, GET
+ * /auth/{provider}/login?redirect_to=...) — 안 넘기면 백엔드가 루트로 보낸다(하위호환).
+ * 실제 검증(앱 내부 상대경로만 허용, `//`·`://` 거부)은 백엔드 책임이다 — 여기서는 값을
+ * 그대로 실어 보내기만 한다.
  */
-export function socialLoginUrl(provider: "google" | "naver"): string {
-  return `${apiBase()}/api/v1/auth/${provider}/login`;
+export function socialLoginUrl(provider: "google" | "naver", redirectTo?: string): string {
+  const base = `${apiBase()}/api/v1/auth/${provider}/login`;
+  if (!redirectTo) return base;
+  return `${base}?redirect_to=${encodeURIComponent(redirectTo)}`;
 }
