@@ -10,6 +10,16 @@ import json
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from typing import get_args
+
+from app.schemas.common import CategoryCode, ItemType
+
+# 2026-08-26 레드팀 감사 3라운드 MEDIUM #8 — category_codes/item_type을 정식 코드 집합과 대조
+# 검증 안 하고 그대로 적재했다. 오타(예: "VENEU")가 나면 색인 로그엔 성공만 찍히고, 그 청크는
+# app/rag/retrieval.py의 category_codes 필터에서 영구적으로 걸러지지 않아 해당 카테고리 검색에서
+# 조용히 누락된다 — 파싱 시점에 바로 걸러 인덱싱을 실패시키는 편이 훨씬 싸게 먹힌다.
+_VALID_CATEGORY_CODES: frozenset[str] = frozenset(get_args(CategoryCode))
+_VALID_ITEM_TYPES: frozenset[str] = frozenset(get_args(ItemType))
 
 
 @dataclass(frozen=True)
@@ -40,10 +50,23 @@ def _parse_chunk(raw: dict, path: Path) -> ParsedChunk:
         raise ValueError(f"{path}: 청크에 chunk_index 누락 — {raw!r}")
     if not raw.get("content"):
         raise ValueError(f"{path}: chunk_index={raw['chunk_index']} content가 비어 있음")
+
+    category_codes = raw.get("category_codes") or []
+    invalid_codes = [c for c in category_codes if c not in _VALID_CATEGORY_CODES]
+    if invalid_codes:
+        raise ValueError(
+            f"{path}: chunk_index={raw['chunk_index']} 알 수 없는 category_codes={invalid_codes}"
+        )
+    item_type = raw.get("item_type")
+    if item_type is not None and item_type not in _VALID_ITEM_TYPES:
+        raise ValueError(
+            f"{path}: chunk_index={raw['chunk_index']} 알 수 없는 item_type={item_type!r}"
+        )
+
     return ParsedChunk(
         chunk_index=raw["chunk_index"],
-        category_codes=raw.get("category_codes") or [],
-        item_type=raw.get("item_type"),
+        category_codes=category_codes,
+        item_type=item_type,
         source_url=raw.get("source_url"),
         content=raw["content"],
     )
