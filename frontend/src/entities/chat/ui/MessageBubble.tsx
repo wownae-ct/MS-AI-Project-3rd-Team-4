@@ -1,6 +1,7 @@
 // ChatPanel.tsx에서 분리(2026-08-24, eslint max-lines 300줄 제한) — 좋아요/싫어요 평가 버튼
 // 추가로 ChatPanel.tsx가 300줄을 넘겨서, 재사용 가능한 프레젠테이션 조각인 이 컴포넌트를
 // 별도 파일로 뺐다. entities/chat/ui/ 소속 유지(ChatPanel과 같은 슬라이스).
+import type { ReactNode } from "react";
 import { Badge } from "@/shared/ui";
 import type { ChatMessage, MessageRating } from "../model";
 
@@ -9,9 +10,13 @@ interface MessageBubbleProps {
   // greeting/draft 호출부는 안 넘긴다 — 아직 서버가 발급한 진짜 message_id가 없어서 평가할
   // 대상이 없다(백엔드 규칙: user 메시지·존재하지 않는 메시지 평가는 400/404).
   onRate?: (messageId: string, rating: MessageRating) => void;
+  // F13 신고 버튼은 entities/feedback 소속이라 같은 entities 레이어인 여기서 직접 import할 수
+  // 없다(.oxlintrc.json no-restricted-imports — entities는 다른 entity를 못 가져온다). 그래서
+  // 실제 버튼은 pages 레이어(CategoryPage/ChatPage)가 만들어 이 render prop으로 내려준다.
+  renderReportAction?: (messageId: string) => ReactNode;
 }
 
-export function MessageBubble({ message, onRate }: MessageBubbleProps) {
+export function MessageBubble({ message, onRate, renderReportAction }: MessageBubbleProps) {
   const isUser = message.role === "user";
   return (
     <div className={`flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
@@ -28,7 +33,12 @@ export function MessageBubble({ message, onRate }: MessageBubbleProps) {
           항상 표시한다(HANDOFF.md §4 S3). verification 이 아직 안 왔으면(스트리밍 중) 아무것도
           내지 않는다 — 이 시점엔 "근거 없음" 조차 확정된 사실이 아니다. */}
       {!isUser && message.verification && (
-        <div className="flex items-center gap-1.5">
+        // max-w-[85%]로 말풍선과 같은 폭 제한을 주고 flex-wrap을 켠다 — 출처가 여러 개거나
+        // 제목이 길면 한 줄로 욱여넣던 예전 레이아웃이 카드 폭을 뚫고 나가 깨져 보였다
+        // (사용자 리포트 2026-08-26 "화면이 깨져보여 · 박스가 커"). rounded-pill 배지는 원래
+        // 한 줄짜리 짧은 라벨 전용이라 title이 줄바꿈되면 모양 자체가 일그러진다 — 그래서 개별
+        // 배지도 truncate로 한 줄을 강제한다.
+        <div className="flex max-w-[85%] flex-wrap items-center gap-1.5">
           <Badge>
             {/* 문구는 목업 그대로다(s3-category-detail.html:355,361) — "출처"가 아니라 "근거", 체크마크 포함.
                 verdict 3종은 backend/app/schemas/common.py:56 원본 그대로("WEAK"가 실제 값 — 이전엔
@@ -40,9 +50,10 @@ export function MessageBubble({ message, onRate }: MessageBubbleProps) {
                 : "일반 정보 · 근거 없음"}
           </Badge>
           {message.citations?.map((c) => (
-            <Badge key={c.chunk_id} className="bg-bg text-ink-soft">
+            <Badge key={c.chunk_id} className="max-w-[220px] truncate bg-bg text-ink-soft" title={`${c.source_tier} · ${c.title}`}>
               {/* 목업 형식(s3-category-detail.html:352-353): "{티어} · {제목}" — 티어만 보여주면
-                  어떤 근거인지 사람이 알 수 없다. */}
+                  어떤 근거인지 사람이 알 수 없다. 전체 제목은 title 속성(hover 툴팁)으로 남긴다 —
+                  잘린 텍스트만으로는 무슨 근거인지 못 알아볼 수 있어서다. */}
               {c.source_tier} · {c.title}
             </Badge>
           ))}
@@ -79,6 +90,7 @@ export function MessageBubble({ message, onRate }: MessageBubbleProps) {
           >
             👎
           </button>
+          {renderReportAction?.(message.id)}
         </div>
       )}
     </div>

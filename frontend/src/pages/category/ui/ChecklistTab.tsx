@@ -11,10 +11,13 @@ import {
   type ChecklistItemType,
   type ChecklistStatus,
 } from "@/entities/checklist";
+import { ReportButton } from "@/entities/feedback";
+import { RegenerateButton } from "@/entities/personalization";
 import { getVendorCases, type VendorCase, type VendorCasesResponse } from "@/entities/vendor-case";
 import type { CategoryConstant } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
 import { Badge, Card } from "@/shared/ui";
+import { AddChecklistItemRow } from "./AddChecklistItemRow";
 
 interface ChecklistTabProps {
   categoryCode: string;
@@ -65,6 +68,16 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
       cancelled = true;
     };
   }, [categoryCode]);
+
+  // 커스텀 항목 추가·수동 재생성 뒤 목록을 다시 받아온다 — 둘 다 서버가 항목을 새로 만들거나
+  // 대체하는 동작이라 낙관적 갱신 대신 재조회가 맞다.
+  function refetchItems() {
+    getChecklistItems({ categoryCode })
+      .then((res) => setItems(res.items))
+      .catch((err: unknown) => {
+        setError(err instanceof ApiError ? err.message : "체크리스트를 불러오지 못했습니다.");
+      });
+  }
 
   useEffect(() => {
     if (!categoryMeta?.has_vendor_cases) return;
@@ -118,15 +131,18 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
         </Card>
       )}
 
-      <label className="flex items-center gap-2 text-sm text-ink-soft">
-        <input
-          type="checkbox"
-          checked={contractOnly}
-          onChange={(e) => setContractOnly(e.target.checked)}
-          className="size-4"
-        />
-        계약 조항만 보기
-      </label>
+      <div className="flex items-center justify-between gap-2">
+        <label className="flex items-center gap-2 text-sm text-ink-soft">
+          <input
+            type="checkbox"
+            checked={contractOnly}
+            onChange={(e) => setContractOnly(e.target.checked)}
+            className="size-4"
+          />
+          계약 조항만 보기
+        </label>
+        <RegenerateButton domain="CHECKLIST" label="AI 체크리스트 다시 생성" onRegenerated={refetchItems} />
+      </div>
 
       {groups
         .filter((g) => !contractOnly || g === "CONTRACT_TERM")
@@ -151,23 +167,30 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
                       )}
                     </div>
                     <p className="text-xs text-ink-soft">{item.body}</p>
-                    <select
-                      value={item.status}
-                      onChange={(e) => void handleStatusChange(item, e.target.value as ChecklistStatus)}
-                      className="mt-1 w-fit rounded-md border border-line bg-surface px-2 py-1 text-xs text-ink"
-                    >
-                      {statusOptionsFor(categoryCode).map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="mt-1 flex items-center gap-2">
+                      <select
+                        value={item.status}
+                        onChange={(e) => void handleStatusChange(item, e.target.value as ChecklistStatus)}
+                        className="w-fit rounded-md border border-line bg-surface px-2 py-1 text-xs text-ink"
+                      >
+                        {statusOptionsFor(categoryCode).map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                      {/* 신고(F13)는 AI가 생성한 항목에만 의미가 있다 — 사용자가 직접 추가한
+                          항목(origin=USER)은 본인 입력이라 신고 대상이 아니다. */}
+                      {item.origin === "LLM" && <ReportButton targetType="CHECKLIST_ITEM" targetId={item.id} />}
+                    </div>
                   </li>
                 ))}
               </ul>
             </Card>
           );
         })}
+
+      <AddChecklistItemRow categoryCode={categoryCode} onAdded={refetchItems} />
     </div>
   );
 }

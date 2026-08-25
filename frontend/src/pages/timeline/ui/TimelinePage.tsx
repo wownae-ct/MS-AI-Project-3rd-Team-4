@@ -11,8 +11,10 @@
 import { useEffect, useState } from "react";
 import { getTimelineItems, type TimelineItem } from "@/entities/timeline";
 import { getMyWedding } from "@/entities/wedding";
+import { RegenerateButton } from "@/entities/personalization";
 import { ApiError } from "@/shared/api";
 import { Card, Page } from "@/shared/ui";
+import { AddTimelineItemRow } from "./AddTimelineItemRow";
 import { groupTimelineItemsByPhase } from "./group-by-phase";
 import { TimelineItemRow } from "./TimelineItemRow";
 
@@ -44,6 +46,16 @@ export function TimelinePage() {
     setData((prev) => (prev ? { ...prev, items: prev.items.map((item) => (item.id === updated.id ? updated : item)) } : prev));
   }
 
+  // 커스텀 항목 추가·수동 재생성 뒤 목록을 다시 받아온다 — 둘 다 서버가 항목을 새로 만들거나
+  // 대체하는 동작이라 낙관적 갱신 대신 재조회가 맞다.
+  function refetchItems() {
+    getTimelineItems()
+      .then((res) => setData((prev) => (prev ? { ...prev, items: res.items } : prev)))
+      .catch((err: unknown) => {
+        setError(err instanceof ApiError ? err.message : "타임라인을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      });
+  }
+
   if (error !== null) {
     return (
       <Page title="타임라인" subtitle="D-12개월부터 결혼식 당일까지, 비활성 카테고리는 제외됩니다">
@@ -67,6 +79,9 @@ export function TimelinePage() {
   return (
     <Page title="타임라인" subtitle="D-12개월부터 결혼식 당일까지, 비활성 카테고리는 제외됩니다">
       <div className="flex flex-col gap-5">
+        <div className="flex justify-end">
+          <RegenerateButton domain="TIMELINE" label="AI 타임라인 다시 생성" onRegenerated={refetchItems} />
+        </div>
         {/* 목업(s4-timeline.html:80)은 구간 헤더에 라벨과 날짜를 함께 보여준다 — 라벨만으로는
             "12개월 전이 정확히 언제인지" 알 수 없다. 날짜가 없는 유일한 경우("일정 미정" 그룹)는
             그냥 라벨만 낸다. */}
@@ -79,6 +94,8 @@ export function TimelinePage() {
             </div>
           </Card>
         ))}
+
+        <AddTimelineItemRow onAdded={refetchItems} />
       </div>
     </Page>
   );

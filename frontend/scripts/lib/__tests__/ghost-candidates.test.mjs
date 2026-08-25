@@ -74,6 +74,7 @@ const EXPECTED_BARE_UTILITIES = {
   hidden: "AppShell 보조 메뉴 (hidden md:block)",
   relative: "BudgetDonut 도넛 래퍼",
   truncate: "PaymentRow 카테고리명 말줄임",
+  underline: "ReportButton(F13 신고) 링크형 트리거 밑줄",
   // ② 피할 수 없는 식별자 충돌 — 클래스로는 쓰지 않는데 그 단어가 소스에 있어 생성된다.
   //    각 25 B 남짓이라 이름을 비트는 값어치가 없다고 판단해 받아들인다.
   block: "Button 의 block prop 이름 — 구현은 w-full 이고 이 클래스는 쓰지 않는다",

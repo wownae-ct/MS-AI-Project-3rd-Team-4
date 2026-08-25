@@ -44,7 +44,7 @@ const COOKIE_NOT_PERSISTED_ERROR =
 
 export function LoginPage() {
   const navigate = useNavigate();
-  const search = useSearch({ strict: false }) as { oauth_error?: string };
+  const search = useSearch({ strict: false }) as { oauth_error?: string; redirect?: string };
 
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
@@ -110,7 +110,11 @@ export function LoginPage() {
         setError(COOKIE_NOT_PERSISTED_ERROR);
         return;
       }
-      await navigate({ to: user.hasWedding ? "/" : "/onboarding" });
+      // `search.redirect`는 router.tsx의 authedRoute.beforeLoad가 세션 없이 보호된 경로에
+      // 접근했을 때 채워 넣고 sanitizeRedirectTarget으로 앱 내부 절대 경로인지 걸러낸 값이다 —
+      // 여기서 있으면 원래 가려던 곳으로 되돌린다. hasWedding이 false인데 shell 하위 경로가
+      // 와도 안전하다 — shellRoute.beforeLoad가 어차피 /onboarding으로 다시 걸러낸다.
+      await navigate({ to: search.redirect ?? (user.hasWedding ? "/" : "/onboarding") });
     } catch (cause) {
       const code = isApiError(cause) ? cause.code : "UNKNOWN_ERROR";
       setError(LOGIN_ERROR[code] ?? "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.");
@@ -185,7 +189,16 @@ export function LoginPage() {
       </Card>
 
       <div className="flex flex-col gap-2">
-        <Button variant="secondary" block onClick={() => { window.location.href = socialLoginUrl("google"); }}>
+        <Button
+          variant="secondary"
+          block
+          onClick={() => { window.location.href = socialLoginUrl("google"); }}
+          // secondary 변이는 기본적으로 호버 시 배경(bg-bg)·보더(border-ink-soft)가 옅게 바뀐다
+          // (Button.tsx VARIANT.secondary) — 구글 버튼은 그 변화 없이 항상 자기 색(흰 배경 +
+          // 라인 보더) 그대로 보이길 원해서, 네이버 버튼과 같은 방식(인라인 style로 고정)으로
+          // 고정한다. 인라인 style은 클래스 기반 :hover 유틸리티보다 항상 우선한다.
+          style={{ backgroundColor: "#FFFFFF", borderColor: "#E7E3DE" }}
+        >
           <IconGoogle size={18} />
           구글로 계속하기
         </Button>

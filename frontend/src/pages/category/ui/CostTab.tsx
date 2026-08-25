@@ -111,7 +111,7 @@ export function CostTab({ categoryCode, categoryMeta }: CostTabProps) {
                     <p className="truncate text-sm font-bold text-ink">{p.item_name}</p>
                   </div>
                   <p className="text-xs text-ink-soft">
-                    {p.vendor_name} · {p.status === "PAID" ? `지급완료 ${p.paid_date ?? ""}` : `예정일 ${p.due_date}`}
+                    {p.vendor_name} · {p.status === "PAID" ? `지급완료 ${p.paid_date ?? ""}` : `예정일 ${p.due_date ?? "미정"}`}
                   </p>
                 </div>
                 <Money value={p.amount} className="shrink-0" />

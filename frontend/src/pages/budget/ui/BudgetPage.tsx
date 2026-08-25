@@ -17,6 +17,7 @@
 // (03_API_spec.md #8), 그 문서 자체가 "사용 화면: S1(수정 시), S6"이라고 명시한다. 카테고리
 // 재배분(PUT /wedding-categories)과는 완전히 별개의 액션이라 별도 상태로 관리한다.
 import { useEffect, useState } from "react";
+import { getUpcomingPayments, type UpcomingPaymentEntry } from "@/entities/payment";
 import {
   getCategories,
   getMyWedding,
@@ -29,6 +30,9 @@ import { ApiError } from "@/shared/api";
 import { manwonToWon, wonToManwon } from "@/shared/lib/money";
 import { Card, Money, Page } from "@/shared/ui";
 import { CategoryAllocationRow } from "./CategoryAllocationRow";
+
+// 서버가 D-day까지 계산해 준다(backend/app/routers/budget.py) — 프론트에서 날짜 계산을 다시 하지 않는다.
+const UPCOMING_PAYMENT_WINDOW_DAYS = 30;
 
 interface BudgetData {
   totalBudget: number;
@@ -48,6 +52,7 @@ const PRIMARY_BUTTON = "rounded-md bg-primary px-4 py-2 text-sm font-bold text-s
 export function BudgetPage() {
   const [data, setData] = useState<BudgetData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [upcomingPayments, setUpcomingPayments] = useState<UpcomingPaymentEntry[] | null>(null);
 
   // 시나리오 편집 — null이면 읽기전용 보기, 값이 있으면 초안 편집 중. `data.categories`를 직접
   // 고치지 않고 사본을 따로 들고 있어야 "‹ 뒤로"(취소)가 저장 없이 원래 값으로 돌아갈 수 있다.
@@ -74,6 +79,20 @@ export function BudgetPage() {
       .catch((err: unknown) => {
         if (cancelled) return;
         setError(err instanceof ApiError ? err.message : "예산 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getUpcomingPayments(UPCOMING_PAYMENT_WINDOW_DAYS)
+      .then((res) => {
+        if (!cancelled) setUpcomingPayments(res.payments);
+      })
+      .catch(() => {
+        // 다가오는 결제는 보조 위젯이다 — 실패해도 예산 재배분 본문은 그대로 보여준다.
       });
     return () => {
       cancelled = true;
@@ -223,6 +242,22 @@ export function BudgetPage() {
             </p>
           )}
         </Card>
+
+        {upcomingPayments !== null && upcomingPayments.length > 0 && (
+          <Card title={`다가오는 결제 · ${UPCOMING_PAYMENT_WINDOW_DAYS}일 이내`}>
+            <ul className="flex flex-col gap-2">
+              {upcomingPayments.map((payment) => (
+                <li key={payment.id} className="flex items-center justify-between gap-3 text-sm">
+                  <span className="min-w-0 flex-1 truncate text-ink">{payment.item_name}</span>
+                  <span className="flex-none text-xs text-ink-soft">
+                    {payment.d_day === 0 ? "오늘" : payment.d_day > 0 ? `D-${payment.d_day}` : `D+${-payment.d_day}`}
+                  </span>
+                  <Money value={payment.amount} className="flex-none text-sm" />
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
 
         <Card title="카테고리별 배정">
           <div>

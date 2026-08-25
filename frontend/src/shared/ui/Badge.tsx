@@ -11,8 +11,15 @@ const BASE = "inline-flex items-center rounded-pill bg-primary-soft px-2 py-0.5 
 export interface BadgeProps {
   children: ReactNode;
   className?: string;
+  /** 텍스트를 truncate로 잘라내는 배지(예: 인용 출처)가 hover 시 전체 텍스트를 보여주기 위한
+      표준 HTML title 속성 — 새 변이가 아니라 접근성 passthrough라 컴포넌트 스펙과 무관하다. */
+  title?: string;
 }
 
-export function Badge({ children, className }: BadgeProps) {
-  return <span className={className ? `${BASE} ${className}` : BASE}>{children}</span>;
+export function Badge({ children, className, title }: BadgeProps) {
+  return (
+    <span className={className ? `${BASE} ${className}` : BASE} title={title}>
+      {children}
+    </span>
+  );
 }
