@@ -81,13 +81,15 @@ describe("경로 → 화면 (layout.md §2 라우트 표)", () => {
     await expectScreen("타임라인");
   });
 
-  it("카테고리 상세는 경로 파라미터를 받는다", async () => {
+  it("카테고리 상세는 경로 파라미터를 받는다 — URL은 소문자, categoryCode는 대문자로 되돌린다", async () => {
     // `$id` 를 `:id` 로 적으면 리터럴 경로가 되어 조용히 매칭되지 않는다 — 그 회귀를 여기서 잡는다.
     // 카테고리 상수 조회(`GET /categories`)를 이 테스트는 목으로 두지 않으므로 실패하고,
     // `CategoryPage`는 그 경우 제목을 원본 `categoryCode`로 폴백한다(CategoryPage.tsx) — 그
-    // 폴백값이 곧 `$id`가 실제로 라우트에 전달됐다는 증거다.
+    // 폴백값이 곧 `$id`가 실제로 라우트에 전달됐다는 증거다. 2026-08-26부터 router.tsx가 그
+    // 값을 `.toUpperCase()`로 되돌리므로(CategoryRow.tsx가 링크를 소문자로 만드는 것과 대칭),
+    // 폴백 제목도 대문자로 뜬다 — 그 변환이 실제로 일어난다는 증거이기도 하다.
     renderAt("/category/wedding-hall");
-    await expectScreen("wedding-hall");
+    await expectScreen("WEDDING-HALL");
   });
 
   it("스타일가이드는 라우트로 남는다 — 화면이 생겨도 참조 문서로 계속 쓴다", async () => {

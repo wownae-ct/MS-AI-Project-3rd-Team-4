@@ -18,6 +18,9 @@ export interface CategoryAllocationRowProps {
 }
 
 const ROW = "flex flex-col gap-1.5 border-b border-line py-3 last:border-b-0 last:pb-0 first:pt-0";
+// 10만원 단위(2026-08-26 사용자 지시) — 단위가 "만원"이라 여기선 10. 온보딩 Step8Allocation의
+// 같은 지시(BUDGET_STEP_WON = 100_000원)와 값 자체는 동일하다, 단위만 다르다.
+const SLIDER_STEP_MANWON = 10;
 
 export function CategoryAllocationRow({
   category,
@@ -76,7 +79,7 @@ export function CategoryAllocationRow({
         value={wonToManwon(category.planned_budget)}
         min={0}
         max={maxManwon}
-        step={1}
+        step={SLIDER_STEP_MANWON}
         disabled={!category.is_active}
         onValueChange={(manwonValue) => {
           // 이미 지급한 금액 아래로는 못 내린다 — paid_amount 가 슬라이더 하한이다.

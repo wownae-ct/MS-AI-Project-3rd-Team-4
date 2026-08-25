@@ -27,7 +27,9 @@ import { FIELD_LABEL, FIELD_NOTE, INPUT, SELECT } from "../onboarding-styles";
 // 벤치마크 응답 전용)만 제외해 파생시킨다 — 목록을 따로 손으로 관리하면 계약이 늘 때마다 또 갈린다.
 const FALLBACK_REGION_CODES: ReadonlySet<RegionCode> = new Set(["NATIONWIDE", "METRO", "NON_METRO"]);
 
-const REGION_LABELS: Record<Exclude<RegionCode, "NATIONWIDE" | "METRO" | "NON_METRO">, string> = {
+// export하는 이유 — Step9Review가 지역 코드→한글 라벨 변환을 다시 정의하지 않고 이걸 그대로 쓴다
+// (라벨 소스가 두 곳으로 갈리면 하나만 갱신됐을 때 조용히 어긋난다).
+export const REGION_LABELS: Record<Exclude<RegionCode, "NATIONWIDE" | "METRO" | "NON_METRO">, string> = {
   SEOUL_GANGNAM: "서울(강남)",
   SEOUL_OTHER: "서울(강남 외)",
   BUSAN: "부산",

@@ -76,6 +76,11 @@ export type WeddingDatePrecision =
   | "APPROX_H2_THIS_YEAR"
   | "APPROX_H1_NEXT_YEAR"
   | "APPROX_H2_NEXT_YEAR"
+  // 2026-08-26 백엔드에 추가된 4번째 근사 버킷("오늘 기준 2년 뒤 해의 상반기") — dev-4a 세션이
+  // `backend/app/schemas/wedding.py:14`(DatePrecision Literal)에 추가, 로컬 브랜치
+  // `backend-bug-fix`(아직 미병합) 기준. `shared/lib/wedding-date.ts::computeUnsurePrecisionOptions`
+  // 가 오늘이 하반기일 때의 세 번째 "미정" 칩에 이 값을 쓴다.
+  | "APPROX_H1_YEAR_AFTER_NEXT"
   | "NO_PLAN";
 export type TastePreference = "MINIMAL" | "BUDGET" | "GRAND" | "BALANCED";
 export type VenuePriority = "FOOD" | "LOCATION" | "PARKING" | "CAPACITY";

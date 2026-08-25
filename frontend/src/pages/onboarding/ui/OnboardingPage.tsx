@@ -1,9 +1,13 @@
-// 온보딩 — S1, 8단계 위저드. 시각 스펙: docs/mockups/s1-onboarding.html, 필드 계약: 03_API_spec.md
-// #6(POST /weddings) · #10(PUT /wedding-categories) · #31(GET /benchmarks/total-average).
+// 온보딩 — S1, 9단계 위저드(8단계 입력 + 9단계 최종 확인). 시각 스펙: docs/mockups/s1-onboarding.html,
+// 필드 계약: 03_API_spec.md #6(POST /weddings) · #10(PUT /wedding-categories) ·
+// #31(GET /benchmarks/total-average).
 //
-// 8단계 순서는 최종 프로토타입(docs/wedding/plan/new/12_final_prototype_mockup.html)의
+// 1~8단계 순서는 최종 프로토타입(docs/wedding/plan/new/12_final_prototype_mockup.html)의
 // onbStep1~8 번호와 그대로 맞춘다: 1 역할/날짜 · 2 지역/예산/하객수 · 3 취향(스킵) ·
-// 4 목표(스킵) · 5 우선순위 · 6 진행상황 · 7 카테고리 on/off · 8 예산 배분.
+// 4 목표(스킵) · 5 우선순위(스킵) · 6 진행상황 · 7 카테고리 on/off · 8 예산 배분.
+// 9단계(확인, 2026-08-26 사용자 지시 신규)는 목업에 없다 — 모든 단계(1~8)가 "나중에 설정"
+// 버튼을 갖게 되면서, 몇 단계를 건너뛰었든 마지막엔 항상 여기서 "실제로 고른 값"과 "기본값으로
+// 채워질 값"을 한 화면에 모아 확인하고 시작하게 한다.
 //
 // **이 컴포넌트는 라우터를 모르지 않는다 — LoginPage.tsx 와 같은 관례.** 콜백 prop(onSuccess) 대신
 // `useNavigate` 를 직접 쓴다 — 이 브랜치의 `_authed`/`_shell` 가드·`LoginPage.tsx` 가 이미 이
@@ -29,11 +33,14 @@ import {
   type WeddingCategoryUpdateInput,
 } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
-import { computeDefaultUnsurePrecision } from "@/shared/lib/wedding-date";
+import { computeDefaultUnsurePrecision, computeUnsurePrecisionOptions } from "@/shared/lib/wedding-date";
 import { Button, Card, Page } from "@/shared/ui";
+import { buildReviewLabels } from "./build-review-labels";
 import { GeneratingOverlay } from "./GeneratingOverlay";
 import {
   categoriesToAllocationRows,
+  STEP_HEADLINE,
+  STEP_SUBTITLE,
   Step1RoleDate,
   Step2RegionBudget,
   Step3Taste,
@@ -42,34 +49,18 @@ import {
   Step6Progress,
   Step7CategoryToggle,
   Step8Allocation,
+  Step9Review,
+  TOTAL_STEPS,
   type AllocationRow,
+  type Step,
   type UnsurePrecision,
 } from "./steps";
 
-type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
-const TOTAL_STEPS = 8;
-
-const STEP_HEADLINE: Record<Step, string> = {
-  1: "당신에 대해 알려주세요",
-  2: "예산과 규모를 알려주세요",
-  3: "어떤 결혼식을 꿈꾸세요?",
-  4: "이번 준비에서 가장 바라는 건요?",
-  5: "가장 중요하게 생각하는 건요?",
-  6: "지금까지 진행한 게 있나요?",
-  7: "카테고리를 켜고 꺼볼까요?",
-  8: "카테고리별 예산을 나눠볼까요?",
-};
-
-const STEP_SUBTITLE: Record<Step, string> = {
-  1: "맞춤 체크리스트와 타임라인을 만드는 데 써요.",
-  2: "나중에 언제든 바꿀 수 있어요.",
-  3: "체크리스트 추천 우선순위에 참고할게요.",
-  4: "여러 개 고를 수 있어요.",
-  5: "카테고리별로 하나씩 골라주세요.",
-  6: "체크한 항목은 타임라인에 완료로 미리 표시해드려요.",
-  7: "필요 없는 카테고리는 꺼두면 체크리스트·타임라인에서 제외돼요.",
-  8: "총 예산 안에서 자유롭게 배분하세요.",
-};
+// 3단계(취향)·4단계(목표)를 "나중에 설정"으로 건너뛸 때 백엔드에 실제로 보낼 기본값
+// (2026-08-26 사용자 지시 — 지어낸 값이 아니라 대화로 정한 값). 예산/하객수(2단계)는 이런
+// 고정값이 아니라 `*_unsure` 플래그 경로를 쓴다 — 그 값은 아래 파생 상수 블록 참고.
+const TASTE_DEFAULT: TastePreference = "BALANCED";
+const GOALS_DEFAULT: string[] = ["예산 초과 없이 준비", "계약서 꼼꼼히 확인"];
 
 export function OnboardingPage() {
   const navigate = useNavigate();
@@ -79,12 +70,16 @@ export function OnboardingPage() {
   const [userRole, setUserRole] = useState<UserRole>("BRIDE");
   const [isDateExact, setIsDateExact] = useState(false);
   const [weddingDate, setWeddingDate] = useState("");
+  // 기본 선택값과 칩 목록이 서로 다른 "오늘" 값을 보고 어긋나지 않도록 한 번만 계산해 공유한다.
+  const [today] = useState(() => new Date());
   const [unsurePrecision, setUnsurePrecision] = useState<UnsurePrecision>(() =>
-    computeDefaultUnsurePrecision(new Date()),
+    computeDefaultUnsurePrecision(today),
   );
+  const unsurePrecisionOptions = computeUnsurePrecisionOptions(today);
 
-  // 2단계
-  const [regionCode, setRegionCode] = useState("SEOUL_GANGNAM");
+  // 2단계 — 지역 기본값은 SEOUL_OTHER(서울 강남 외, 2026-08-26 사용자 지시). 강남은 가격이
+  // 위로 쏠린 부분집합이라 "만졌든 안 만졌든 항상 유효한 기본값"으로 대표성이 떨어진다고 판단.
+  const [regionCode, setRegionCode] = useState("SEOUL_OTHER");
   const [totalBudget, setTotalBudget] = useState("");
   const [totalBudgetUnsure, setTotalBudgetUnsure] = useState(false);
   const [guestCount, setGuestCount] = useState("");
@@ -145,10 +140,31 @@ export function OnboardingPage() {
   }, []);
 
   const parsedTotalBudget = totalBudget === "" ? 0 : Number(totalBudget);
-  // 8단계 진행률 바의 분모 — 예산을 확정했으면 그 값, 미정이면 참고 벤치마크 중앙값으로 어림한다.
-  // 실제 저장값은 이 추정치가 아니라 `total_budget_unsure` 플래그로 서버가 다시 계산한다
-  // (03_API_spec.md #6 규칙 4) — 여기서는 사용자가 배분 감을 잡게 하는 화면 전용 추정치일 뿐이다.
-  const totalBudgetEstimate = totalBudgetUnsure ? (benchmark?.median_price ?? 0) : parsedTotalBudget;
+
+  // "나중에 설정" 기본값 파생 블록 (2026-08-26 사용자 지시) — 실제 state는 건드리지 않고,
+  // 제출/9단계 확인 화면에 쓸 "실제로 반영될 값"만 여기서 계산한다. 각 필드가 비어있는 채로
+  // 넘어왔다는 것 자체가 "건드리지 않았다"는 신호라 별도의 "건너뛴 단계" 추적 상태가 필요 없다
+  // — 나중에 돌아가서 채우면 이 파생값도 자동으로 "실제 선택"으로 바뀐다.
+  //
+  // 🚨 이전엔 총예산/하객수를 비운 채로 "다음"만 눌러도 total_budget:0·guest_count:0이 그대로
+  // 나갔다(실제 버그, 2026-08-26 발견) — 0은 "미정"이 아니라 진짜 0원/0명으로 해석된다. 아래
+  // `isBudgetDefaulted`/`isGuestCountDefaulted`가 이 버그를 "나중에 설정" 여부와 무관하게 항상
+  // 닫는다.
+  const isBudgetDefaulted = !totalBudgetUnsure && totalBudget === "";
+  const effectiveTotalBudgetUnsure = totalBudgetUnsure || isBudgetDefaulted;
+  const isGuestCountDefaulted = !guestCountUnsure && guestCount === "";
+  const effectiveGuestCountUnsure = guestCountUnsure || isGuestCountDefaulted;
+  const isTasteDefaulted = tastePreference === null;
+  const effectiveTastePreference = tastePreference ?? TASTE_DEFAULT;
+  const isGoalsDefaulted = goals.length === 0;
+  const effectiveGoals = goals.length > 0 ? goals : GOALS_DEFAULT;
+
+  // 8단계 진행률 바 + 슬라이더 상한의 분모 — 예산을 확정했으면 그 값, 미정(명시적 토글이든
+  // 비워둬서 defaulted 처리됐든)이면 참고 벤치마크 중앙값으로 어림한다. 실제 저장값은 이
+  // 추정치가 아니라 `total_budget_unsure` 플래그로 서버가 다시 계산한다(03_API_spec.md #6
+  // 규칙 4) — 여기서는 사용자가 배분 감을 잡게 하는 화면 전용 추정치일 뿐이다.
+  const totalBudgetEstimate = effectiveTotalBudgetUnsure ? (benchmark?.median_price ?? 0) : parsedTotalBudget;
+  const allocatedBudget = allocationRows.filter((row) => row.isActive).reduce((sum, row) => sum + row.plannedBudget, 0);
 
   async function handleSubmit() {
     setError(null);
@@ -160,15 +176,15 @@ export function OnboardingPage() {
         user_role: userRole,
         wedding_date: isDateExact ? weddingDate : undefined,
         wedding_date_precision: isDateExact ? "EXACT" : unsurePrecision,
-        total_budget: totalBudgetUnsure ? undefined : parsedTotalBudget,
-        total_budget_unsure: totalBudgetUnsure,
+        total_budget: effectiveTotalBudgetUnsure ? undefined : parsedTotalBudget,
+        total_budget_unsure: effectiveTotalBudgetUnsure,
         region_code: regionCode,
-        guest_count: guestCountUnsure ? undefined : Number(guestCount),
-        guest_count_unsure: guestCountUnsure,
-        taste_preference: tastePreference ?? undefined,
+        guest_count: effectiveGuestCountUnsure ? undefined : Number(guestCount),
+        guest_count_unsure: effectiveGuestCountUnsure,
+        taste_preference: effectiveTastePreference,
         venue_priority: venuePriority ?? undefined,
         sdm_priority: sdmPriority ?? undefined,
-        primary_goals: goals.length > 0 ? goals : undefined,
+        primary_goals: effectiveGoals,
         done_so_far: doneSoFar,
       });
 
@@ -200,6 +216,29 @@ export function OnboardingPage() {
   // 거의 같아, 사용자 눈에 "오버레이 → 대시보드"로 자연스럽게 이어진다.
   if (isSubmitting) return <GeneratingOverlay />;
 
+  // 9단계(확인) 라벨 계산 — Step9Review도 이 컴포넌트도 라벨 변환 로직을 갖지 않는다
+  // (build-review-labels.ts로 뽑아냄, oxlint max-lines 300줄 상한 초과).
+  const reviewLabels = buildReviewLabels({
+    isDateExact,
+    weddingDate,
+    unsurePrecision,
+    unsurePrecisionOptions,
+    regionCode,
+    effectiveTotalBudgetUnsure,
+    parsedTotalBudget,
+    benchmarkMedianPrice: benchmark?.median_price ?? null,
+    effectiveGuestCountUnsure,
+    guestCount,
+    effectiveTastePreference,
+    effectiveGoals,
+    venuePriority,
+    sdmPriority,
+    doneSoFar,
+    allocatedBudget,
+    totalBudgetEstimate,
+  });
+  const activeCategoryCount = allocationRows.filter((row) => row.isActive).length;
+
   return (
     <Page title={STEP_HEADLINE[step]} subtitle={STEP_SUBTITLE[step]} width="max-w-[430px]">
       {/*
@@ -229,6 +268,7 @@ export function OnboardingPage() {
             onDateModeChange={setIsDateExact}
             weddingDate={weddingDate}
             onWeddingDateChange={setWeddingDate}
+            unsurePrecisionOptions={unsurePrecisionOptions}
             unsurePrecision={unsurePrecision}
             onUnsurePrecisionChange={setUnsurePrecision}
           />
@@ -259,6 +299,26 @@ export function OnboardingPage() {
           />
         )}
         {step === 6 && <Step6Progress doneSoFar={doneSoFar} onDoneSoFarChange={setDoneSoFar} />}
+        {step === 9 && (
+          <Step9Review
+            weddingDateLabel={reviewLabels.weddingDateLabel}
+            regionLabel={reviewLabels.regionLabel}
+            budgetLabel={reviewLabels.budgetLabel}
+            isBudgetDefaulted={isBudgetDefaulted}
+            guestCountLabel={reviewLabels.guestCountLabel}
+            isGuestCountDefaulted={isGuestCountDefaulted}
+            tasteLabel={reviewLabels.tasteLabel}
+            isTasteDefaulted={isTasteDefaulted}
+            goalsLabel={reviewLabels.goalsLabel}
+            isGoalsDefaulted={isGoalsDefaulted}
+            venuePriorityLabel={reviewLabels.venuePriorityLabel}
+            sdmPriorityLabel={reviewLabels.sdmPriorityLabel}
+            progressLabel={reviewLabels.progressLabel}
+            activeCategoryCount={activeCategoryCount}
+            totalCategoryCount={allocationRows.length}
+            allocatedBudgetLabel={reviewLabels.allocatedBudgetLabel}
+          />
+        )}
         {(step === 7 || step === 8) &&
           (isLoadingCategories ? (
             <p className="text-sm text-ink-soft">불러오는 중…</p>
@@ -275,11 +335,12 @@ export function OnboardingPage() {
                 ← 이전
               </Button>
             )}
-            {/* 목업(12_final_prototype_mockup.html onbStep3/onbStep4)의 스킵 타깃 — 둘 다 6단계
-                (진행상황)로 간다. 취향(3)을 건너뛰면 목표(4)·우선순위(5)까지 함께 건너뛰고,
-                목표(4) 자체를 건너뛰면 우선순위(5)만 건너뛴다 — 우연히 같은 목적지가 된다. */}
-            {(step === 3 || step === 4) && (
-              <Button variant="ghost" onClick={() => setStep(6)}>
+            {/* 모든 입력 단계(1~8)에 "나중에 설정"이 있다(2026-08-26 사용자 지시) — 목적지는
+                항상 9단계(확인)다. 몇 단계에서 눌렀든 남은 단계는 그냥 건너뛰고, 비워둔 필드는
+                9단계가 정한 기본값으로 채워진다(§ isXxxDefaulted 파생값 블록) — "다음"으로
+                하나씩 넘기는 것과 달리 여기선 중간 단계를 굳이 보여줄 필요가 없다. */}
+            {step < TOTAL_STEPS && (
+              <Button variant="ghost" onClick={() => setStep(9)}>
                 나중에 설정
               </Button>
             )}

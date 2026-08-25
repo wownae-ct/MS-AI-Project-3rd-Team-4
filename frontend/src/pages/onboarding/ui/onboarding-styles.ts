@@ -15,10 +15,13 @@ export const CHOICE_CARD_TITLE_SELECTED = "text-sm font-bold text-primary";
 export const CHOICE_CARD_SUB = "text-xs text-ink-soft";
 
 export const CHIP_GROUP = "flex flex-wrap gap-2";
+// 2026-08-26 사용자 피드백: MODE_TOGGLE_*와 같은 이유로 rounded-pill이 과했다 — rounded-md로
+// 낮춘다. Step1(날짜 미정 칩)뿐 아니라 Step4Goals·Step5Priority도 이 토큰을 그대로 쓴다 —
+// 화면별로 따로 낮추면 온보딩 안에서 캡슐/각진 모양이 섞여 더 어색해진다.
 export const CHIP_BASE =
-  "cursor-pointer rounded-pill border border-line bg-surface px-3.5 py-2 text-sm font-bold text-ink-soft " +
+  "cursor-pointer rounded-md border border-line bg-surface px-3.5 py-2 text-sm font-bold text-ink-soft " +
   "transition-colors duration-150";
-export const CHIP_SELECTED = "cursor-pointer rounded-pill border border-primary bg-primary px-3.5 py-2 text-sm font-bold text-surface";
+export const CHIP_SELECTED = "cursor-pointer rounded-md border border-primary bg-primary px-3.5 py-2 text-sm font-bold text-surface";
 
 // 7단계(카테고리 on/off)의 하위 옵션 칩용 축소판 — 목업의 `.chip.sm`(12_final_prototype_mockup.html:59)
 // 대응. 일반 칩과 같은 그룹(`CHIP_GROUP`) 안에 쓰지만 한 단계 작게 눌러 "카테고리 자체보다 부속
