@@ -11,7 +11,9 @@ from uuid import UUID
 from sqlalchemy import case, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import ChecklistItem, TimelineItem
+from app.models import ChecklistItem, PriceBenchmark, TimelineItem
+from app.schemas.dashboard import DashboardBudgetBenchmarkOut
+from app.services.benchmark import compute_ratio_and_label
 from app.services.payment import compute_d_day
 
 # 03_API_spec.md #25 field table: "checklist_items(status IN ('DOING','COMPARING','ORDERED'))".
@@ -20,6 +22,28 @@ from app.services.payment import compute_d_day
 UPCOMING_CHECKLIST_STATUSES = ("DOING", "COMPARING", "ORDERED")
 DASHBOARD_UPCOMING_ITEMS_LIMIT = 5
 NEXT_RECOMMENDED_CHECKS_LIMIT = 5
+
+
+def build_budget_benchmark(
+    total_budget: int, benchmark: PriceBenchmark | None
+) -> DashboardBudgetBenchmarkOut | None:
+    """total_budget을 지역별 TOTAL/TOTAL 참가격(benchmark, app/services/benchmark.py::
+    get_latest_benchmark(session, region_code, "TOTAL", "TOTAL")로 미리 조회)과 비교한다 — 순수
+    함수로 유지해 DB 세션 없이 결정론적으로 테스트한다(app/services/wedding.py::
+    approximate_wedding_date()와 같은 컨벤션). 해당 지역에 아직 TOTAL/TOTAL 시드가 없으면
+    benchmark가 None이고, 그대로 None을 돌려줘 대시보드 전체를 막지 않는다(카테고리별
+    /benchmarks/compare(#23)가 BENCHMARK_NOT_AVAILABLE로 404하는 것과 달리, 이 필드는 애초에
+    optional이라 500/404 없이 그냥 카드가 안 보이는 쪽을 택했다)."""
+    if benchmark is None:
+        return None
+    ratio, label = compute_ratio_and_label(total_budget, benchmark.median_price)
+    return DashboardBudgetBenchmarkOut(
+        region_code=benchmark.region_code,
+        median_price=benchmark.median_price,
+        ratio_to_median=ratio,
+        percentile_label=label,
+        source_url=benchmark.source_url,
+    )
 
 
 async def get_checklist_progress_by_category(
