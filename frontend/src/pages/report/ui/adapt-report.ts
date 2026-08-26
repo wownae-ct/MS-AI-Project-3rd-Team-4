@@ -3,7 +3,7 @@
 // 건드리지 않고 이 파일 하나로 실API 응답 ↔ 기존 타입 간극을 흡수한다.
 import type { MyReport, ReportCategoryCompletion } from "@/entities/dashboard";
 import type { WeddingCategory } from "@/entities/wedding";
-import type { BudgetSummary, CategoryBudget, UpcomingPayment } from "@/entities/wedding";
+import type { BudgetSummary, CategoryBudget } from "@/entities/wedding";
 
 /**
  * `budget_summary`에 `total_planned`이 없다(#26 스펙 원문 — total_budget/total_paid/
@@ -45,25 +45,4 @@ export function adaptCategoryCompletions(
       checklistProgress: completion.progress_rate,
     };
   });
-}
-
-/**
- * `next_recommended_checks`는 `{checklist_item_id, category_code, title, priority}`다 —
- * 기존 `RecommendedCheck`(source: SourceTier)와는 필드가 겹치지 않는다. `priority`(high/mid/low)를
- * `SourceTier`(OFFICIAL/CONSENSUS/INDUSTRY)로 억지 매핑하면 근거 출처 정보를 지어내는 것이 되므로,
- * §5의 `PaymentRow` 선례를 따라 `RecoRow`의 prop 계약 자체를 API가 실제로 주는 필드로 바꿨다
- * (RecoRow.tsx 머리말 참고).
- */
-export function adaptUpcomingPayments(report: MyReport): UpcomingPayment[] {
-  return report.upcoming_payments.map((payment) => ({
-    id: payment.id,
-    dDay: payment.d_day,
-    item: payment.item_name,
-    category: payment.category_code,
-    date: payment.due_date,
-    amount: payment.amount,
-    // item_name엔 업체명이 안 붙는다(#22 스키마 — "스튜디오 잔금" 형태) — 옛 sample-data의
-    // `item`(업체명 포함이라 폭 초과)과 달리 그대로 압축 라벨로 써도 폭이 맞는다.
-    compactLabel: payment.item_name,
-  }));
 }

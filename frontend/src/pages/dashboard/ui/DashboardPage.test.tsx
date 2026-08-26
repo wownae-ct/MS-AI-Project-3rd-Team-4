@@ -48,9 +48,13 @@ vi.mock("@/entities/wedding", async (orig) => ({
 }));
 
 const getBenchmarkCompareMock = vi.fn();
+// 이전엔 getUpcomingPayments()가 목킹 안 돼 있어 "다가오는 결제" 카드가 이 파일의 테스트에서
+// 실제로 한 번도 렌더된 적이 없었다(네트워크 실패 → 조용히 null) — 2026-08-27에 메움.
+const getUpcomingPaymentsMock = vi.fn();
 vi.mock("@/entities/payment", async (orig) => ({
   ...(await orig<typeof import("@/entities/payment")>()),
   getBenchmarkCompare: (params: unknown) => getBenchmarkCompareMock(params),
+  getUpcomingPayments: (days: number) => getUpcomingPaymentsMock(days),
 }));
 
 const SUMMARY: DashboardSummary = {
@@ -114,6 +118,13 @@ beforeEach(() => {
   getCategoriesMock.mockResolvedValue(CATEGORIES_RESPONSE);
   getBenchmarkCompareMock.mockReset();
   getBenchmarkCompareMock.mockResolvedValue(VENUE_BENCHMARK);
+  getUpcomingPaymentsMock.mockReset();
+  getUpcomingPaymentsMock.mockResolvedValue({
+    days: 30,
+    // d_day를 "다가오는 할 일" 카드의 timeline 항목(d_day: 12)과 겹치지 않게 둔다 — 겹치면
+    // 두 카드 모두 "D-12" 텍스트를 그려 getByText("D-12")가 복수 매치로 깨진다.
+    payments: [{ id: "u1", category_code: "VENUE", item_name: "예식장 중도금", amount: 4_200_000, due_date: "2026-09-01", d_day: 25 }],
+  });
 });
 
 async function renderDashboard() {
@@ -125,11 +136,16 @@ async function renderDashboard() {
 }
 
 describe("카드 구조", () => {
-  it("카드 2개가 각각 레벨 2 제목을 갖는다 — 예산 도넛은 예산 페이지로 옮겼다", async () => {
+  // getUpcomingPayments()가 이제 목킹돼 있어(2026-08-27) "다가오는 결제" 카드도 실제로 렌더된다
+  // — 이전엔 이 카드가 이 테스트 파일에서 한 번도 렌더된 적이 없었다(조용한 네트워크 실패).
+  it("카드 3개가 각각 레벨 2 제목을 갖는다 — 예산 도넛은 예산 페이지로 옮겼다", async () => {
     await renderDashboard();
+    // "다가오는 결제" 카드는 별도 useEffect(getUpcomingPayments)로 늦게 뜬다 — 렌더 직후엔
+    // 아직 없을 수 있어 명시적으로 기다린다.
+    await screen.findByRole("heading", { level: 2, name: "다가오는 결제 · 30일 이내" });
 
     const titles = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
-    expect(titles).toEqual(["다가오는 할 일", "카테고리별 체크리스트 · 시세비교"]);
+    expect(titles).toEqual(["다가오는 할 일", "다가오는 결제 · 30일 이내", "카테고리별 체크리스트 · 시세비교"]);
   });
 });
 

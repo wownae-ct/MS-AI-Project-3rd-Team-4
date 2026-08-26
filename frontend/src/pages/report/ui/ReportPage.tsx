@@ -2,7 +2,13 @@
 //
 // **새 데이터가 없는 화면이다.** 숫자 대부분이 S2 대시보드와 같은 원천(`GET /reports/me`가
 // `GET /dashboard/summary`와 겹치는 값을 다른 각도로 준다)이고, 보는 각도만 다르다 — 예산은
-// 도넛 대신 3분할로, 카테고리는 예산 지불률 대신 체크리스트 진행률로, 납부는 2줄 대신 1줄로.
+// 도넛 대신 3분할로, 카테고리는 예산 지불률 대신 체크리스트 진행률로.
+//
+// **"다가오는 납부" 카드 제거(2026-08-27, 사용자 지시).** 홈 탭(S2)에 이미 같은 성격의 카드
+// (`UpcomingPaymentsCard`, `getUpcomingPayments()` 기반)가 있어 중복이었다 — 이 화면이 쓰던
+// "D-day · 제목" 한 줄 형태가 그쪽으로 옮겨갔다(그 컴포넌트도 같이 쓰는 예산 탭 S6에도 반영).
+// `CompactPaymentRow.tsx`/`adaptUpcomingPayments()`/`entities/wedding`의 `UpcomingPayment`
+// 타입은 이 카드 전용이라 함께 삭제했다.
 //
 // **목업과 의도적으로 다른 점** (전부 규범이 목업을 이기는 경우 — ADR 0006)
 //   1. 카드 제목을 `<p>` 가 아니라 `<h2>` 로 낸다 — WCAG 1.3.1 F2 (a11y.md §4).
@@ -23,9 +29,8 @@ import { getMyReport, type MyReport } from "@/entities/dashboard";
 import { getWeddingCategories, type WeddingCategory } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
 import { Card, Page } from "@/shared/ui";
-import { adaptBudgetSummary, adaptCategoryCompletions, adaptUpcomingPayments } from "./adapt-report";
+import { adaptBudgetSummary, adaptCategoryCompletions } from "./adapt-report";
 import { BudgetStats } from "./BudgetStats";
-import { CompactPaymentRow } from "./CompactPaymentRow";
 import { completionPercent, CompletionRow } from "./CompletionRow";
 import { RecoRow } from "./RecoRow";
 
@@ -78,7 +83,6 @@ export function ReportPage() {
   const { report, weddingCategories } = data;
   const budget = adaptBudgetSummary(report);
   const categoryCompletions = adaptCategoryCompletions(report.category_completion, weddingCategories);
-  const upcomingPayments = adaptUpcomingPayments(report);
 
   // **S5 는 정렬하고 S2 는 안 한다.** S2 의 「카테고리별 예산」은 배열 순서(= 준비 순서)를 그대로
   // 보여 주지만, 리포트는 순위를 보여 주는 화면이라 진행률 내림차순이다. `Array.prototype.toSorted`
@@ -118,18 +122,6 @@ export function ReportPage() {
                   priority={check.priority}
                   categoryName={categoryNameById.get(check.category_code) ?? check.category_code}
                 />
-              ))}
-            </div>
-          )}
-        </Card>
-
-        <Card title="다가오는 납부">
-          {upcomingPayments.length === 0 ? (
-            <p className="text-sm text-ink-soft">다가오는 납부가 없습니다.</p>
-          ) : (
-            <div className={ROWS}>
-              {upcomingPayments.map((payment) => (
-                <CompactPaymentRow key={payment.id} payment={payment} />
               ))}
             </div>
           )}
