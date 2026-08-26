@@ -8,7 +8,7 @@
 // 클램프(Math.min(...,100))에 걸려 사실상 절대 그려지지 않았다.
 //
 // 여기서는 세 계열을 서로 배타적으로 나눠 합이 정확히 `total`이 되게 한다:
-//   집행(paid) + 계획·미지급(배정 - 집행) + 미배정(총예산 - 배정) = 총예산
+//   지불(paid) + 계획·미지급(배정 - 지불) + 미배정(총예산 - 배정) = 총예산
 import type { BudgetSummary, WeddingCategory } from "./types";
 
 export function deriveBudgetSummary(categories: readonly WeddingCategory[], totalBudget: number): BudgetSummary {

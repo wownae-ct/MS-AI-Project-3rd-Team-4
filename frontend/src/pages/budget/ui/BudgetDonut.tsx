@@ -14,19 +14,24 @@
 // 흰 표면에서 점 자체가 보이지 않는다(a11y.md §3 「경계가 유일한 식별 수단」).
 //
 // **총예산 인라인 수정을 이 컴포넌트가 직접 담당한다(UX 개편 2차, 2026-08-26, 사용자 지시).**
-// 원래 별도 "남은예산" 카드(`TotalBudgetCard.tsx`, 삭제됨)가 하던 일이다 — "예산 현황" 카드
+// 원래 별도 "남은예산" 카드(`TotalBudgetCard.tsx`, 삭제됨)가 하던 일이다 — "총 예산 현황" 카드
 // 안에 도넛·범례·총예산 수정이 이미 다 모여 있는데 남은예산만 별개 카드로 떼어 둘 이유가
 // 없다는 사용자 판단. **다만 "미배정" 범례 줄 자체는 여전히 0으로 클램프한다**(레드팀 감사로
 // 고친 음수 오독 버그, 아래 `Math.max(0, ...)` 참고) — 총예산보다 배정 합계가 많은 경우는
-// 그 대신 아래 별도 문구로 알린다(카테고리별 배정의 "OO만원 초과 집행"과 같은 D6 텍스트 전용
-// 관례, 성격은 다르다 — 이건 "총예산 대비 배정 초과", 그건 "카테고리별 지급 대비 배정 초과").
+// 그 대신 아래 별도 문구로 알린다(카테고리별 예산 현황의 "OO만원 초과 지불"과 같은 D6 텍스트
+// 전용 관례, 성격은 다르다 — 이건 "총예산 대비 배정 초과", 그건 "카테고리별 지급 대비 배정 초과").
 //
 // **"예산 시세 비교"를 대시보드에서 이 카드로 흡수한다(UX 개편 3차, 2026-08-26, 사용자 지시).**
 // 예전엔 대시보드에 `BudgetBenchmarkCard.tsx`(삭제됨)가 별도 카드로 떠 있었다 — 예산 상세는
-// 이미 예산 페이지가 전담한다는 2차 개편의 연장선에서, 총예산 대비 지역 시세는 "예산 현황"
+// 이미 예산 페이지가 전담한다는 2차 개편의 연장선에서, 총예산 대비 지역 시세는 "총 예산 현황"
 // 카드 하단(예전 "총예산 …원 중 수정" 자리)으로 옮겼다. 그 자리를 비우려고 수정 버튼을
 // 카드 제목 옆으로 올렸다 — 도넛 구멍 안(104px)은 이미 한 번 넘쳐서 키운 자리라 더 넣지
 // 않는다(아래 도넛 마크업 주석 참고). Card.tsx의 `titleAction` 슬롯이 이 개편으로 새로 생겼다.
+//
+// **UX 개편 4차(2026-08-27, 사용자 지시) — 카드 제목 "예산 현황" → "총 예산 현황".**
+// "카테고리별 예산 현황"(AllocationOverview.tsx의 다른 카드)과 짝이 되도록 맞췄다 — 하나는
+// 전체 합계, 하나는 카테고리별 상세라는 관계가 제목만 보고도 드러난다. 같은 날 "집행"이라는
+// 말도 전부 "지불"로 바꿨다(아래 SERIES "지불 완료" 등).
 import { useState } from "react";
 import type { BudgetBenchmarkSummary } from "@/entities/dashboard";
 import { updateMyWedding, type BudgetSummary } from "@/entities/wedding";
@@ -162,7 +167,7 @@ export function BudgetDonut({ summary, onTotalBudgetSaved, benchmark }: BudgetDo
   const safeBenchmarkUrl = benchmark === null ? null : safeExternalUrl(benchmark.source_url);
 
   return (
-    <Card title="예산 현황" titleAction={editTrigger}>
+    <Card title="총 예산 현황" titleAction={editTrigger}>
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-5">
           {/* 도넛 테두리 자체는 장식이다 — 같은 정보를 옆 범례가 텍스트로 낸다. 가운데 라벨만 의미를 갖는다.

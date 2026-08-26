@@ -1,4 +1,4 @@
-// "예산 현황"(도넛) + "카테고리별 배정" 묶음 — BudgetPage.tsx에서 뽑아냈다. 파일 크기 게이트가
+// "총 예산 현황"(도넛) + "카테고리별 예산 현황" 묶음 — BudgetPage.tsx에서 뽑아냈다. 파일 크기 게이트가
 // 아니라 **모듈 의존성 상한**(`import/max-dependencies`, 10개) 때문이다 — CostManagementTab
 // 추가로 BudgetPage.tsx의 import가 11개가 됐다. 두 카드 다 "지금 얼마를 어디에 배정했는지"라는
 // 같은 질문에 답하는 화면이라(도넛=전체 요약, 배정 목록=카테고리별 상세) 묶는 것 자체도 자연스럽다.
@@ -49,15 +49,17 @@ export function AllocationOverview({
           움직인다(entities/wedding/model/derive-budget-summary.ts 머리말 — 예전 대시보드
           도넛의 "미배정이 거의 항상 안 그려지던" 버그도 여기서 함께 고쳐졌다).
           UX 개편 3차(2026-08-26)로 대시보드의 "예산 시세 비교" 카드도 여기 흡수됐다 —
-          BudgetDonut이 자기 Card(제목 "예산 현황" + titleAction 수정 버튼)를 직접 그리므로
-          여기서는 더 이상 Card로 감싸지 않는다. */}
+          BudgetDonut이 자기 Card(제목 "총 예산 현황" + titleAction 수정 버튼)를 직접 그리므로
+          여기서는 더 이상 Card로 감싸지 않는다. UX 개편 4차(2026-08-27)로 두 카드 제목이
+          "총 예산 현황" / "카테고리별 예산 현황"으로 짝을 맞췄다 — 전체 합계 vs 카테고리별
+          상세라는 관계가 제목만 봐도 드러나도록. */}
       <BudgetDonut
         summary={deriveBudgetSummary(rows, totalBudget)}
         onTotalBudgetSaved={onTotalBudgetSaved}
         benchmark={budgetBenchmark}
       />
 
-      <Card title="카테고리별 배정">
+      <Card title="카테고리별 예산 현황">
         <div>
           {rows.map((category) => {
             const hasCost = hasCostByCode.get(category.category_code) ?? true;

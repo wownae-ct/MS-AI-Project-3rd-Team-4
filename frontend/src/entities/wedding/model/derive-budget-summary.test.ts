@@ -20,7 +20,7 @@ function category(overrides: Partial<WeddingCategory>): WeddingCategory {
 }
 
 describe("deriveBudgetSummary", () => {
-  it("세 계열(집행·계획·미배정)의 합이 정확히 총예산과 같다", () => {
+  it("세 계열(지불·계획·미배정)의 합이 정확히 총예산과 같다", () => {
     const categories = [
       category({ category_code: "VENUE", planned_budget: 12_000_000, paid_amount: 3_000_000 }),
       category({ category_code: "SDM", planned_budget: 8_000_000, paid_amount: 800_000 }),
@@ -29,7 +29,7 @@ describe("deriveBudgetSummary", () => {
 
     expect(summary.paid + summary.planned + summary.remaining).toBe(45_000_000);
     expect(summary.paid).toBe(3_800_000);
-    // 배정(20,000,000) - 집행(3,800,000) = 계획(미지급)
+    // 배정(20,000,000) - 지불(3,800,000) = 계획(미지급)
     expect(summary.planned).toBe(16_200_000);
     // 총예산(45,000,000) - 배정(20,000,000) = 미배정
     expect(summary.remaining).toBe(25_000_000);
