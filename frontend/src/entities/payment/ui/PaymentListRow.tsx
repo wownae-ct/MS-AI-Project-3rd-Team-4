@@ -14,16 +14,28 @@
 // 진행 중엔 취소를 막는다(레드팀 감사 HIGH, 같은 이유: 취소 후에도 진행 중이던 저장이 성공하면
 // 이미 취소한 값이 되살아난다).
 //
-// **수정 범위는 제목(item_name)·금액·날짜뿐이다** — 카테고리·업체명·결제 유형은 이번 요청
-// 범위 밖이라 안 넣는다. 날짜는 이미 채워진 필드(paid_date 있으면 결제일, 없으면 예정일)만
-// 고친다 — "예정"을 "지급완료"로 바꾸는 상태 전환 UI는 아니다. 이 좁은 범위 덕분에 백엔드의
-// PATCH 상태 자동유도 계약(status 생략 시 paid_date만으로 PAID 자동유도, dd435d1)을 이 화면이
-// 건드릴 일이 아예 없다 — PLANNED 건은 paid_date가 항상 null이라 due_date만 보내고,
-// PAID/CANCELED 건은 이미 채워진 paid_date를 다른 값으로 고칠 뿐 새로 채우는 게 아니다.
+// **수정 범위는 제목(item_name)·금액·날짜뿐이었다가, 상태 전환도 더해졌다.** 카테고리·업체명·
+// 결제 유형은 여전히 범위 밖. 날짜는 기본적으로 이미 채워진 필드(paid_date 있으면 결제일,
+// 없으면 예정일)만 고친다.
 //
-// **삭제 확인도 모달이 아니라 인라인 전환**이다("정말 삭제할까요?" + 삭제/취소) — 이 저장소엔
+// **상태 전환(2026-08-27, 사용자 지시, PR #97 머지+배포 이후 추가)** — 처음엔 "예정"→"지급완료"
+// 전환 UI를 의도적으로 뺐다(PR #97의 PATCH 상태 자동유도 계약이 아직 배포 전이라 반쪽짜리
+// 동작 위험이 있었다). 이제 배포됐으므로 두 방향을 토글로 추가한다:
+//   · PLANNED 건: "이미 결제했어요" 토글 — 켜면 날짜 필드가 예정일→결제일로 바뀌고(오늘 날짜로
+//     프리필), 저장 시 paid_date만 보내고 status는 생략 — 서버가 PAID로 자동유도(dd435d1 계약).
+//   · PAID 건: "환불 처리(취소)" 토글 — 켜면 저장 시 status: "CANCELED"를 명시적으로 보낸다.
+//     paid_date는 그대로 유지(환불이어도 "언제 냈었는지" 기록은 남긴다 — CANCELED+paid_date는
+//     모순이 아니라는 게 dev-e4 세션이 확인해 준 계약). CANCELED 건 자체는 이 토글이 안 뜬다
+//     (되돌리기는 이번 요청 범위 밖).
+// 조사 결과 `paid_amount`는 DB 컬럼이 아니라 `SUM(...) WHERE status='PAID'` 실시간 집계라
+// (origin/backend 코드로 확인), 이 상태 전환도 삭제와 마찬가지로 별도 합계 보정 로직이 필요
+// 없다 — status가 바뀌는 순간 다음 조회부터 집계에 자동 반영된다.
+//
+// **삭제 확인도 모달이 아니라 인라인 전환**이다("OOO 삭제할까요?" + 삭제/취소) — 이 저장소엔
 // danger 색 토큰이 아예 없다(D6) — 새로 만들지 않고 기존 에러 문구와 같은 text-primary 굵은
-// 글씨만 쓴다.
+// 글씨만 쓴다. 삭제 확인엔 상태별 보조 문구도 붙는다(PAID: 총 지불액에서 빠진다는 안내 —
+// 이것도 위와 같은 이유로 이미 정확히 동작하는 기존 delete 흐름을 설명만 더하는 것뿐, 로직
+// 변경은 없다).
 import { useState } from "react";
 import { ApiError } from "@/shared/api";
 import { Badge, Money } from "@/shared/ui";
@@ -37,6 +49,14 @@ const PRIMARY_BUTTON = "min-h-tap flex-1 rounded-md bg-primary text-xs font-bold
 const LINE_BUTTON = "min-h-tap flex-1 rounded-md border border-line bg-surface text-xs font-bold text-ink-soft disabled:opacity-50";
 const DELETE_CONFIRM_BUTTON =
   "min-h-tap rounded-md border border-primary bg-primary-soft px-3 text-xs font-bold text-primary disabled:opacity-50";
+const TOGGLE_ROW = "flex items-center gap-2 rounded-md border border-line bg-bg px-2.5 py-2";
+const TOGGLE_CHECKBOX = "size-[18px] accent-primary";
+const TOGGLE_LABEL = "text-xs font-bold text-ink";
+const HINT_TEXT = "text-xs font-bold text-primary";
+
+function todayISODate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 export interface PaymentListRowProps {
   payment: Payment;
@@ -53,18 +73,24 @@ export function PaymentListRow({ payment: p, categoryLabel, onChanged }: Payment
   const [draftName, setDraftName] = useState("");
   const [draftAmount, setDraftAmount] = useState("");
   const [draftDate, setDraftDate] = useState("");
+  const [markAsPaid, setMarkAsPaid] = useState(false);
+  const [markAsCanceled, setMarkAsCanceled] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // paid_date가 있으면(PAID/CANCELED) 그 날짜를, 없으면(PLANNED) due_date를 고친다 — 위 머리말
-  // 설명대로 "이미 채워진 필드"만 편집 대상이다.
-  const editsPaidDate = p.paid_date !== null;
-  const dateLabel = editsPaidDate ? "결제일" : "예정일";
+  const isPlanned = p.status === "PLANNED";
+  const isPaid = p.status === "PAID";
+  // "이미 채워진 필드"가 원래 편집 대상이었다(PAID/CANCELED면 결제일, PLANNED면 예정일) —
+  // markAsPaid 토글이 켜지면 PLANNED 건도 결제일 쪽으로 넘어간다.
+  const willUsePaidDate = !isPlanned || markAsPaid;
+  const dateLabel = willUsePaidDate ? "결제일" : "예정일";
 
   function startEdit() {
     setDraftName(p.item_name);
     setDraftAmount(String(p.amount));
-    setDraftDate((editsPaidDate ? p.paid_date : p.due_date) ?? "");
+    setDraftDate((isPlanned ? p.due_date : p.paid_date) ?? "");
+    setMarkAsPaid(false);
+    setMarkAsCanceled(false);
     setSaveState("idle");
     setErrorMessage(null);
     setMode("editing");
@@ -74,6 +100,11 @@ export function PaymentListRow({ payment: p, categoryLabel, onChanged }: Payment
     setMode("idle");
     setSaveState("idle");
     setErrorMessage(null);
+  }
+
+  function handleTogglePaid(checked: boolean) {
+    setMarkAsPaid(checked);
+    setDraftDate(checked ? todayISODate() : (p.due_date ?? ""));
   }
 
   async function handleSave() {
@@ -86,9 +117,12 @@ export function PaymentListRow({ payment: p, categoryLabel, onChanged }: Payment
     setSaveState("saving");
     setErrorMessage(null);
     try {
-      const patch: PaymentPatchInput = editsPaidDate
+      const patch: PaymentPatchInput = willUsePaidDate
         ? { item_name: draftName, amount: parsedAmount, paid_date: draftDate }
         : { item_name: draftName, amount: parsedAmount, due_date: draftDate };
+      // isPaid && markAsCanceled일 때만 status를 명시(환불) — PLANNED→PAID 전환은 status를
+      // 생략해 서버 자동유도에 맡긴다(dd435d1 계약, 명시하면 자동유도가 안 걸린다).
+      if (isPaid && markAsCanceled) patch.status = "CANCELED";
       await patchPayment(p.id, patch);
       setMode("idle");
       setSaveState("idle");
@@ -128,9 +162,23 @@ export function PaymentListRow({ payment: p, categoryLabel, onChanged }: Payment
     return (
       <li className="flex flex-col gap-2 border-b border-line pb-3 last:border-0 last:pb-0">
         <div className="flex items-center justify-between gap-3">
-          <p role="alert" className="text-sm font-bold text-primary">
-            「{p.item_name}」 삭제할까요?
-          </p>
+          <div className="flex flex-col gap-0.5">
+            <p role="alert" className="text-sm font-bold text-primary">
+              「{p.item_name}」 삭제할까요?
+            </p>
+            {/* 실제 동작은 상태와 무관하게 이미 정확하다(paid_amount가 status='PAID' 조건의
+                실시간 SUM 집계라 — 이 삭제가 그 조건에서 빠지는 순간 자동 반영된다). 이 문구는
+                동작을 바꾸는 게 아니라 그 사실을 미리 알려주는 것뿐이다. */}
+            <p className="text-xs text-ink-soft">
+              {p.status === "PAID" ? (
+                <>
+                  이미 낸 <Money value={p.amount} className="text-xs" />이 총 지불액에서도 빠집니다.
+                </>
+              ) : (
+                "아직 안 낸 항목이라 예산 금액엔 영향 없어요."
+              )}
+            </p>
+          </div>
           <div className="flex flex-none gap-2">
             <button
               type="button"
@@ -177,9 +225,40 @@ export function PaymentListRow({ payment: p, categoryLabel, onChanged }: Payment
             type="date"
             aria-label={dateLabel}
             value={draftDate}
+            disabled={markAsCanceled}
             onChange={(e) => setDraftDate(e.target.value)}
           />
         </div>
+        {isPlanned && (
+          <div className={TOGGLE_ROW}>
+            <input
+              type="checkbox"
+              id={`mark-paid-${p.id}`}
+              className={TOGGLE_CHECKBOX}
+              checked={markAsPaid}
+              onChange={(e) => handleTogglePaid(e.target.checked)}
+            />
+            <label htmlFor={`mark-paid-${p.id}`} className={TOGGLE_LABEL}>
+              이미 결제했어요
+            </label>
+          </div>
+        )}
+        {isPaid && (
+          <div className={TOGGLE_ROW}>
+            <input
+              type="checkbox"
+              id={`mark-canceled-${p.id}`}
+              className={TOGGLE_CHECKBOX}
+              checked={markAsCanceled}
+              onChange={(e) => setMarkAsCanceled(e.target.checked)}
+            />
+            <label htmlFor={`mark-canceled-${p.id}`} className={TOGGLE_LABEL}>
+              환불 처리(취소)
+            </label>
+          </div>
+        )}
+        {markAsPaid && <p className={HINT_TEXT}>저장하면 「지급완료」로 바뀝니다.</p>}
+        {markAsCanceled && <p className={HINT_TEXT}>저장하면 「취소됨」으로 바뀌고 총 지불액에서 빠집니다.</p>}
         {saveState === "error" && (
           <p role="alert" className="text-xs text-primary">
             {errorMessage}

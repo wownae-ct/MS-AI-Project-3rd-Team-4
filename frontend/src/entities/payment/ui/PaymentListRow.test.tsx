@@ -133,7 +133,105 @@ describe("PaymentListRow — 수정", () => {
   });
 });
 
+describe("PaymentListRow — 상태 전환(PLANNED→PAID)", () => {
+  it("PLANNED 건만 '이미 결제했어요' 토글이 보인다 — PAID 건엔 없다", async () => {
+    const user = userEvent.setup();
+    render(<PaymentListRow payment={payment({ status: "PAID", paid_date: "2026-08-20" })} onChanged={() => {}} />);
+    await user.click(screen.getByRole("button", { name: "수정" }));
+
+    expect(screen.queryByLabelText("이미 결제했어요")).not.toBeInTheDocument();
+  });
+
+  it("토글을 켜면 날짜 라벨이 예정일→결제일로 바뀌고 오늘 날짜로 채워진다", async () => {
+    const user = userEvent.setup();
+    render(<PaymentListRow payment={payment({ due_date: "2026-11-02" })} onChanged={() => {}} />);
+    await user.click(screen.getByRole("button", { name: "수정" }));
+    await user.click(screen.getByLabelText("이미 결제했어요"));
+
+    expect(screen.queryByLabelText("예정일")).not.toBeInTheDocument();
+    const today = new Date().toISOString().slice(0, 10);
+    expect(screen.getByLabelText("결제일")).toHaveValue(today);
+    expect(screen.getByText("저장하면 「지급완료」로 바뀝니다.")).toBeInTheDocument();
+  });
+
+  it("저장 시 status 없이 paid_date만 보낸다 — 서버 자동유도(dd435d1) 계약", async () => {
+    const user = userEvent.setup();
+    patchPaymentMock.mockResolvedValue(payment({}));
+    render(<PaymentListRow payment={payment({ due_date: "2026-11-02" })} onChanged={() => {}} />);
+    await user.click(screen.getByRole("button", { name: "수정" }));
+    await user.click(screen.getByLabelText("이미 결제했어요"));
+    await user.click(screen.getByRole("button", { name: "저장" }));
+
+    const today = new Date().toISOString().slice(0, 10);
+    expect(patchPaymentMock).toHaveBeenCalledWith(
+      "p1",
+      expect.objectContaining({ paid_date: today }),
+    );
+    const [, sentPatch] = patchPaymentMock.mock.calls[0] as [string, Record<string, unknown>];
+    expect(sentPatch.status).toBeUndefined();
+    expect(sentPatch.due_date).toBeUndefined();
+  });
+
+  it("토글을 다시 끄면 예정일로 되돌아간다", async () => {
+    const user = userEvent.setup();
+    render(<PaymentListRow payment={payment({ due_date: "2026-11-02" })} onChanged={() => {}} />);
+    await user.click(screen.getByRole("button", { name: "수정" }));
+    await user.click(screen.getByLabelText("이미 결제했어요"));
+    await user.click(screen.getByLabelText("이미 결제했어요"));
+
+    expect(screen.getByLabelText("예정일")).toHaveValue("2026-11-02");
+  });
+});
+
+describe("PaymentListRow — 상태 전환(PAID→CANCELED, 환불)", () => {
+  it("PAID 건만 '환불 처리(취소)' 토글이 보인다 — PLANNED 건엔 없다", async () => {
+    const user = userEvent.setup();
+    render(<PaymentListRow payment={payment({})} onChanged={() => {}} />);
+    await user.click(screen.getByRole("button", { name: "수정" }));
+
+    expect(screen.queryByLabelText("환불 처리(취소)")).not.toBeInTheDocument();
+  });
+
+  it("토글을 켜면 날짜 입력이 잠기고, 저장 시 status: CANCELED를 명시적으로 보낸다", async () => {
+    const user = userEvent.setup();
+    patchPaymentMock.mockResolvedValue(payment({}));
+    render(
+      <PaymentListRow payment={payment({ status: "PAID", paid_date: "2026-08-20" })} onChanged={() => {}} />,
+    );
+    await user.click(screen.getByRole("button", { name: "수정" }));
+    await user.click(screen.getByLabelText("환불 처리(취소)"));
+
+    expect(screen.getByLabelText("결제일")).toBeDisabled();
+    expect(screen.getByText("저장하면 「취소됨」으로 바뀌고 총 지불액에서 빠집니다.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "저장" }));
+
+    expect(patchPaymentMock).toHaveBeenCalledWith(
+      "p1",
+      expect.objectContaining({ status: "CANCELED", paid_date: "2026-08-20" }),
+    );
+  });
+});
+
 describe("PaymentListRow — 삭제", () => {
+  it("PAID 건 삭제 확인엔 총 지불액에서 빠진다는 안내가 붙는다", async () => {
+    const user = userEvent.setup();
+    render(
+      <PaymentListRow payment={payment({ status: "PAID", paid_date: "2026-08-20" })} onChanged={() => {}} />,
+    );
+    await user.click(screen.getByRole("button", { name: "삭제" }));
+
+    expect(screen.getByText(/총 지불액에서도 빠집니다/u)).toBeInTheDocument();
+  });
+
+  it("PLANNED 건 삭제 확인엔 예산에 영향 없다는 안내가 붙는다", async () => {
+    const user = userEvent.setup();
+    render(<PaymentListRow payment={payment({})} onChanged={() => {}} />);
+    await user.click(screen.getByRole("button", { name: "삭제" }));
+
+    expect(screen.getByText("아직 안 낸 항목이라 예산 금액엔 영향 없어요.")).toBeInTheDocument();
+  });
+
   it("삭제를 누르면 확인 문구가 뜨고, 취소하면 아무 일도 안 일어난다", async () => {
     const user = userEvent.setup();
     render(<PaymentListRow payment={payment({})} onChanged={() => {}} />);

@@ -12,7 +12,6 @@ export type {
   SdmPriority,
   TastePreference,
   TotalAverageBenchmark,
-  UpcomingPayment,
   UserRole,
   VenuePriority,
   WeddingCategoriesResponse,

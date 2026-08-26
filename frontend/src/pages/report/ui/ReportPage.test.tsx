@@ -90,11 +90,13 @@ async function renderReport() {
 }
 
 describe("카드 구조", () => {
-  it("카드 4개가 각각 레벨 2 제목을 갖는다", async () => {
+  // "다가오는 납부" 카드는 홈 탭(S2)의 UpcomingPaymentsCard와 중복이라 제거됐다(2026-08-27,
+  // 사용자 지시) — 3개로 줄었다.
+  it("카드 3개가 각각 레벨 2 제목을 갖는다", async () => {
     await renderReport();
 
     const titles = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
-    expect(titles).toEqual(["예산", "카테고리별 진행률", "다음에 확인하면 좋아요", "다가오는 납부"]);
+    expect(titles).toEqual(["예산", "카테고리별 진행률", "다음에 확인하면 좋아요"]);
   });
 
   it("추천 카드의 부제는 제목이 아니다", async () => {
