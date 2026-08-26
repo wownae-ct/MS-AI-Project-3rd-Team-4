@@ -26,7 +26,13 @@
 // 대신 "카테고리별 배정" 행에 대시보드와 같은 시세비교 줄이 새로 붙는다(`useCategoryBenchmarks`,
 // `entities/wedding`로 승격됨) — 편집(슬라이더) 중엔 드래그마다 다시 조회하지 않도록
 // draft가 아니라 저장된 원본 `data.categories`로만 훅을 호출한다.
+//
+// **UX 개편 3차(2026-08-26, 사용자 지시)** — 대시보드의 "예산 시세 비교" 카드(전체 웨딩
+// 단위, 위 카테고리별 시세비교와는 별개)도 이 화면 "예산 현황" 카드로 흡수됐다. 그 자리를
+// 비우려고 총예산 수정 트리거를 카드 제목 옆으로 옮겼다(`BudgetDonut.tsx`, `Card`의 새
+// `titleAction` 슬롯). 이 페이지가 처음으로 `GET /dashboard/summary`를 직접 조회한다.
 import { useEffect, useState } from "react";
+import { getDashboardSummary, type BudgetBenchmarkSummary } from "@/entities/dashboard";
 import { getUpcomingPayments, UpcomingPaymentsCard, type UpcomingPaymentEntry } from "@/entities/payment";
 import { getCategories, getMyWedding, getWeddingCategories, putWeddingCategories, type WeddingCategory } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
@@ -63,6 +69,13 @@ export function BudgetPage() {
   const [data, setData] = useState<BudgetData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [upcomingPayments, setUpcomingPayments] = useState<UpcomingPaymentEntry[] | null>(null);
+  // 총예산 vs 지역 시세 — 대시보드의 "예산 시세 비교" 카드가 여기로 옮겨오면서(UX 개편 3차,
+  // 2026-08-26, 사용자 지시) 이 페이지도 GET /dashboard/summary를 직접 조회해야 한다. 이 필드
+  // 전용으로 별도 백엔드 엔드포인트를 새로 만들지 않고 기존 대시보드 응답을 재사용한다 —
+  // 카테고리/결제 등 나머지 필드는 그냥 버린다. `data`(BudgetData)에 넣지 않고 위
+  // upcomingPayments처럼 독립 state로 둔다 — 아래 effect가 위 초기 로드 effect보다 먼저
+  // 끝나도 `data`가 아직 null이라 값을 잃어버리는 경쟁 상태를 피하기 위해서다.
+  const [budgetBenchmark, setBudgetBenchmark] = useState<BudgetBenchmarkSummary | null>(null);
 
   // 시나리오 편집 — null이면 읽기전용 보기, 값이 있으면 초안 편집 중. `data.categories`를 직접
   // 고치지 않고 사본을 따로 들고 있어야 "‹ 뒤로"(취소)가 저장 없이 원래 값으로 돌아갈 수 있다.
@@ -109,6 +122,24 @@ export function BudgetPage() {
       })
       .catch(() => {
         // 다가오는 결제는 보조 위젯이다 — 실패해도 예산 재배분 본문은 그대로 보여준다.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 시세 비교(budgetBenchmark)도 위 다가오는 결제와 같은 이유로 별도 effect다 — 위 Promise.all에
+  // 넣으면 이 조회 하나가 실패해도 예산 재배분 본문 전체가 에러 화면으로 덮인다. 이 값은 원래도
+  // "지역에 참가격 데이터가 없으면 null"인 선택적 카드였다(예전 BudgetBenchmarkCard.tsx) — 조회
+  // 실패도 그 null과 같은 모양으로 조용히 흡수한다.
+  useEffect(() => {
+    let cancelled = false;
+    getDashboardSummary()
+      .then((res) => {
+        if (!cancelled) setBudgetBenchmark(res.budget_benchmark);
+      })
+      .catch(() => {
+        // 조용히 흡수 — budgetBenchmark는 이미 null로 시작하므로 카드가 그냥 안 뜬다.
       });
     return () => {
       cancelled = true;
@@ -230,6 +261,7 @@ export function BudgetPage() {
           hasCostByCode={data.hasCostByCode}
           hasBenchmarkByCode={hasBenchmarkByCode}
           benchmarkByCode={benchmarkByCode}
+          budgetBenchmark={budgetBenchmark}
           isEditingScenario={isEditingScenario}
           onDraftChange={updateDraftBudget}
           onTotalBudgetSaved={(nextTotal) => setData((prev) => (prev ? { ...prev, totalBudget: nextTotal } : prev))}
