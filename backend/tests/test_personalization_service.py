@@ -122,6 +122,23 @@ class TestChecklistRowFromDraft:
         row = _checklist_row_from_draft({"VENUE"}, item)
         assert row.source_tier is None
 
+    def test_source_fields_pass_through_when_resolved_by_generate_node(self):
+        # generate_node가 DS3 RAG grounding으로 source_ref_id를 실제 citation으로 이미 치환해둔
+        # 경우(app/personalization/graph.py::_resolve_checklist_citations) — 이 함수는 그 값을
+        # 그대로 신뢰만 하고 검색을 다시 하지 않는다.
+        item = {
+            "category_code": "VENUE",
+            "title": "계약금 10% 상한 확인",
+            "item_type": "CONTRACT_TERM",
+            "source_tier": "OFFICIAL",
+            "source_label": "공정위 예식장이용 표준약관(제10030호)",
+            "source_url": "https://example.com/venue-terms",
+        }
+        row = _checklist_row_from_draft({"VENUE"}, item)
+        assert row.source_tier == "OFFICIAL"
+        assert row.source_label == "공정위 예식장이용 표준약관(제10030호)"
+        assert row.source_url == "https://example.com/venue-terms"
+
 
 class TestChecklistFallbackRows:
     def test_filters_out_inactive_categories(self):
