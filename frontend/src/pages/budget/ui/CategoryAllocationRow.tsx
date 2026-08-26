@@ -2,14 +2,20 @@
 // 렌더 분기(비용 없음/보기 모드/시나리오 편집 모드 슬라이더)를 별도 파일로 뺐다. 상태(scenarioDraft
 // 등)는 여전히 BudgetPage가 소유한다 — 이 컴포넌트는 순수하게 한 행만 그린다.
 import { Slider } from "@base-ui/react/slider";
+import type { BenchmarkComparison } from "@/entities/payment";
 import type { WeddingCategory } from "@/entities/wedding";
 import { manwonToWon, wonToManwon } from "@/shared/lib/money";
-import { Progress } from "@/shared/ui";
+import { Badge, Money, Progress } from "@/shared/ui";
 
 export interface CategoryAllocationRowProps {
   category: WeddingCategory;
   hasCost: boolean;
   totalBudget: number;
+  /** 시세비교 대상인지 — 대시보드 `CategoryRow.tsx`와 같은 의미(2026-08-26, UX 개편 2차,
+      사용자 지시). 편집(슬라이더) 중에는 저장된 원본 기준으로만 보여준다 — 드래그마다 다시
+      조회하지 않는다(BudgetPage.tsx가 draft가 아니라 원본 categories로 훅을 호출한다). */
+  hasBenchmark: boolean;
+  benchmark: BenchmarkComparison | undefined;
   /** 편집 중이 아니면(보기 모드) 슬라이더 대신 읽기전용 진행률 바를 그린다. */
   isEditingScenario: boolean;
   /** 저장된 원본 금액 — 초안(draft)과 비교해 취소선/델타를 그리는 기준. */
@@ -26,6 +32,8 @@ export function CategoryAllocationRow({
   category,
   hasCost,
   totalBudget,
+  hasBenchmark,
+  benchmark,
   isEditingScenario,
   originalAmount,
   onDraftChange,
@@ -61,6 +69,15 @@ export function CategoryAllocationRow({
         {overspend > 0 && (
           <span className="text-xs font-bold text-primary">{wonToManwon(overspend)}만원 초과 집행</span>
         )}
+        {hasBenchmark &&
+          (benchmark ? (
+            <p className="flex items-center gap-1.5 text-xs text-ink-soft">
+              시세 대비 {benchmark.percentile_label} · 중앙값 <Money value={benchmark.median_price} className="text-xs" />
+              <Badge>{benchmark.ratio_to_median.toFixed(2)}배</Badge>
+            </p>
+          ) : (
+            <p className="text-xs text-ink-soft">예산을 배정하면 시세와 비교할 수 있어요.</p>
+          ))}
       </div>
     );
   }

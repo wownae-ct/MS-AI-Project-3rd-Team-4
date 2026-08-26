@@ -15,25 +15,31 @@
 //
 // **총예산 자체도 편집 가능하다** — `PATCH /weddings/me`가 `total_budget` 필드를 받고
 // (03_API_spec.md #8), 그 문서 자체가 "사용 화면: S1(수정 시), S6"이라고 명시한다. 카테고리
-// 재배분(PUT /wedding-categories)과는 완전히 별개의 액션이라 별도 상태로 관리한다.
+// 재배분(PUT /wedding-categories)과는 완전히 별개의 액션이다.
+//
+// **UX 개편 2차(2026-08-26, 사용자 지시)** — 이 화면에서 3개 컴포넌트가 빠졌다:
+//   · 결혼식 날짜 수정(`WeddingDateCard`) → 대시보드 헤드라인으로 이동
+//     (`pages/dashboard/ui/WeddingHeadline.tsx`).
+//   · 총예산 수정("남은예산" 카드, `TotalBudgetCard`) → `AllocationOverview`의 "예산 현황"
+//     카드 안 `BudgetDonut.tsx`로 흡수. "예산 현황"에 도넛·범례·총예산 수정이 이미 다 모여
+//     있는데 남은예산만 별개 카드로 둘 이유가 없다는 판단.
+// 대신 "카테고리별 배정" 행에 대시보드와 같은 시세비교 줄이 새로 붙는다(`useCategoryBenchmarks`,
+// `entities/wedding`로 승격됨) — 편집(슬라이더) 중엔 드래그마다 다시 조회하지 않도록
+// draft가 아니라 저장된 원본 `data.categories`로만 훅을 호출한다.
 import { useEffect, useState } from "react";
-import { getUpcomingPayments, type UpcomingPaymentEntry } from "@/entities/payment";
+import { getUpcomingPayments, UpcomingPaymentsCard, type UpcomingPaymentEntry } from "@/entities/payment";
 import { getCategories, getMyWedding, getWeddingCategories, putWeddingCategories, type WeddingCategory } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
 import { Page } from "@/shared/ui";
 import { AllocationOverview } from "./AllocationOverview";
 import { CostManagementTab } from "./CostManagementTab";
-import { TotalBudgetCard } from "./TotalBudgetCard";
-import { UpcomingPaymentsCard } from "./UpcomingPaymentsCard";
-import { WeddingDateCard } from "./WeddingDateCard";
+import { useCategoryBenchmarks } from "./use-category-benchmarks";
 
 // 서버가 D-day까지 계산해 준다(backend/app/routers/budget.py) — 프론트에서 날짜 계산을 다시 하지 않는다.
 const UPCOMING_PAYMENT_WINDOW_DAYS = 30;
 
 interface BudgetData {
   totalBudget: number;
-  /** "미정"(NO_PLAN)이면 undefined — WeddingDateCard.tsx 머리말 참고. */
-  weddingDate: string | undefined;
   categories: WeddingCategory[];
   /** `WeddingCategory`(GET /wedding-categories)엔 `has_cost`가 없다 — 비용 유무는 카테고리
       상수(`GET /categories`)만 안다. "비용 없음" 카테고리는 슬라이더/바 대신 안내 텍스트만
@@ -47,6 +53,11 @@ interface BudgetData {
 }
 
 const PRIMARY_BUTTON = "rounded-md bg-primary px-4 py-2 text-sm font-bold text-surface disabled:opacity-50";
+
+// data가 아직 없는 동안(로딩/에러)에도 useCategoryBenchmarks 훅은 호출돼야 한다(Hooks 규칙 —
+// 조건부 호출 금지) — 매 렌더 새 배열 리터럴(`[]`)을 넘기면 그 훅의 useEffect deps가 매번
+// 바뀐 것으로 보여 getCategories()를 계속 다시 부른다(DashboardPage.tsx의 NO_CATEGORIES와 같은 이유).
+const NO_CATEGORIES: readonly WeddingCategory[] = [];
 
 export function BudgetPage() {
   const [data, setData] = useState<BudgetData | null>(null);
@@ -71,7 +82,6 @@ export function BudgetPage() {
           const sorted = categoriesResponse.categories.toSorted((a, b) => a.display_order - b.display_order);
           setData({
             totalBudget: wedding.total_budget ?? 0,
-            weddingDate: wedding.wedding_date,
             categories: sorted,
             hasCostByCode: new Map(constants.categories.map((c) => [c.code, c.has_cost])),
             categoryLabelByCode: new Map(constants.categories.map((c) => [c.code, c.name_ko])),
@@ -104,6 +114,11 @@ export function BudgetPage() {
       cancelled = true;
     };
   }, []);
+
+  // 편집(슬라이더) 중에도 draft가 아니라 원본 data.categories로만 호출한다 — 드래그마다
+  // GET /benchmarks/compare를 다시 부르지 않기 위해서다(카테고리별 배정 행의 시세비교는
+  // "저장된 값 기준"이라는 뜻).
+  const { hasBenchmarkByCode, benchmarkByCode } = useCategoryBenchmarks(data?.categories ?? NO_CATEGORIES);
 
   // 비용 관리 섹션에서 결제가 새로 등록되면(특히 paid_date 있는 건 — 서버가 status=PAID로
   // 자동 유도) 그 카테고리의 paid_amount가 바뀐다. 도넛(deriveBudgetSummary)과 「카테고리별
@@ -194,24 +209,10 @@ export function BudgetPage() {
   // 편집 중 화면과 저장된 값이 같은 렌더 경로를 타되 데이터 출처만 갈린다.
   const rows = scenarioDraft ?? data.categories;
   const isEditingScenario = scenarioDraft !== null;
-  const activeRows = rows.filter((category) => category.is_active);
-  const allocated = activeRows.reduce((sum, category) => sum + category.planned_budget, 0);
-  const remaining = data.totalBudget - allocated;
 
   return (
     <Page title="예산 재배분" subtitle="카테고리 사이로 예산을 옮겨 봅니다.">
       <div className="flex flex-col gap-5">
-        <TotalBudgetCard
-          totalBudget={data.totalBudget}
-          remaining={remaining}
-          onSaved={(nextTotal) => setData((prev) => (prev ? { ...prev, totalBudget: nextTotal } : prev))}
-        />
-
-        <WeddingDateCard
-          weddingDate={data.weddingDate}
-          onSaved={(nextDate) => setData((prev) => (prev ? { ...prev, weddingDate: nextDate } : prev))}
-        />
-
         {upcomingPayments !== null && (
           <UpcomingPaymentsCard payments={upcomingPayments} windowDays={UPCOMING_PAYMENT_WINDOW_DAYS} />
         )}
@@ -227,8 +228,11 @@ export function BudgetPage() {
           originalCategories={data.categories}
           totalBudget={data.totalBudget}
           hasCostByCode={data.hasCostByCode}
+          hasBenchmarkByCode={hasBenchmarkByCode}
+          benchmarkByCode={benchmarkByCode}
           isEditingScenario={isEditingScenario}
           onDraftChange={updateDraftBudget}
+          onTotalBudgetSaved={(nextTotal) => setData((prev) => (prev ? { ...prev, totalBudget: nextTotal } : prev))}
         />
 
         {isEditingScenario ? (

@@ -1,8 +1,9 @@
-// "다가오는 결제" 카드 — BudgetPage.tsx에서 뽑아냈다(oxlint max-lines 300줄 상한 초과, 레드팀
-// 감사 수정 배치로 에러 메시지/저장 가드 로직이 늘어나면서 넘김). D-day 표기는 공용
-// formatDDay()를 쓴다 — 이 화면이 직접 `D-${...}`를 조립하던 걸 다른 화면들과 같은 포맷으로
-// 맞춘다(교차 패턴 01과 같은 클래스의 문제를 예방).
-import type { UpcomingPaymentEntry } from "@/entities/payment";
+// "다가오는 결제" 카드 — 원래 BudgetPage.tsx 전용이었으나(oxlint max-lines 300줄 상한 초과로
+// 추출) 대시보드도 같은 실제 결제 예정 목록을 보여주게 되며 entities/payment로 승격했다
+// (2026-08-26, UX 개편 2차) — 서로 다른 pages/*/ui는 직접 import할 수 없다(FSD 경계).
+// D-day 표기는 공용 formatDDay()를 쓴다 — 이 화면이 직접 `D-${...}`를 조립하던 걸 다른 화면들과
+// 같은 포맷으로 맞춘다(교차 패턴 01과 같은 클래스의 문제를 예방).
+import type { UpcomingPaymentEntry } from "../model";
 import { formatDDay } from "@/shared/lib/format-d-day";
 import { Card, Money } from "@/shared/ui";
 
