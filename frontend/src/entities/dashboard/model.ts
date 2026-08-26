@@ -37,6 +37,20 @@ export type DashboardUpcomingItem =
       status: string;
     };
 
+// 총예산 vs 지역 시세 요약 — 03_API_spec.md #25(2026-08-26 추가). `GET /benchmarks/compare`
+// (entities/payment의 BenchmarkComparison)와 필드명(median_price/ratio_to_median/
+// percentile_label/source_url)을 백엔드가 의도적으로 맞췄다 — CategoryRow.tsx의 카테고리별
+// 시세비교 배지 문구를 그대로 재사용한다(pages/dashboard/ui/BudgetBenchmarkCard.tsx).
+// percentile_label을 Literal 유니언으로 좁히지 않는 이유는 ReportRecommendedCheck.priority와
+// 같다 — 값을 지어내지 않는다.
+export interface BudgetBenchmarkSummary {
+  region_code: string;
+  median_price: number;
+  ratio_to_median: number;
+  percentile_label: string;
+  source_url: string;
+}
+
 export interface DashboardSummary {
   wedding_date: string;
   d_day: number;
@@ -46,6 +60,9 @@ export interface DashboardSummary {
   remaining_budget: number;
   categories: DashboardCategorySummary[];
   upcoming_items: DashboardUpcomingItem[];
+  // null 가능 — 해당 지역에 참가격 데이터가 아직 없으면 null이다(백엔드). 화면은 이 경우 카드
+  // 자체를 숨긴다("데이터 없음" 문구를 보여주지 않는다).
+  budget_benchmark: BudgetBenchmarkSummary | null;
 }
 
 export interface ReportBudgetSummary {
