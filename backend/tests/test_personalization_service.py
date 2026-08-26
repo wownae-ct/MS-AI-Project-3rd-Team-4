@@ -142,23 +142,36 @@ class TestChecklistRowFromDraft:
 
 class TestChecklistFallbackRows:
     def test_filters_out_inactive_categories(self):
-        # 24항목은 VENUE 10 + SDM 14 고정이므로 SDM을 비활성으로 주면 VENUE 10개만 나와야 한다.
+        # VENUE 25개(CONTRACT_TERM 10 + EXTRA_COST 10 + PREP 5, 2026-08-26 확장 —
+        # app/core/checklist_catalog.py 모듈 docstring)이므로 SDM을 비활성으로 주면 VENUE
+        # 25개만 나와야 한다.
         rows = _checklist_fallback_rows({"VENUE"})
-        assert len(rows) == 10
+        assert len(rows) == 25
         assert all(r.category_code == "VENUE" for r in rows)
 
-    def test_both_active_returns_all_24(self):
+    def test_both_active_returns_all_60(self):
         rows = _checklist_fallback_rows({"VENUE", "SDM"})
-        assert len(rows) == 24
+        assert len(rows) == 60
 
     def test_empty_active_categories_returns_empty(self):
         rows = _checklist_fallback_rows(set())
         assert rows == []
 
-    def test_fallback_rows_have_llm_origin_and_official_source_tier(self):
+    def test_fallback_rows_have_llm_origin(self):
         rows = _checklist_fallback_rows({"VENUE"})
         assert all(r.origin == "LLM" for r in rows)
-        assert all(r.source_tier == "OFFICIAL" for r in rows)
+
+    def test_venue_contract_term_rows_are_official_rest_are_consensus(self):
+        # VENUE의 CONTRACT_TERM(표준약관 조문 근거)만 OFFICIAL이고, 2026-08-26에 추가된
+        # EXTRA_COST/PREP(팀 자체 정리 실무 팁)은 CONSENSUS다 — 회귀 방지: 전부 OFFICIAL이라고
+        # 잘못 단언하면 다음에 EXTRA_COST/PREP이 다시 빠져도 이 테스트가 못 잡는다.
+        rows = _checklist_fallback_rows({"VENUE"})
+        contract_term_rows = [r for r in rows if r.item_type == "CONTRACT_TERM"]
+        other_rows = [r for r in rows if r.item_type != "CONTRACT_TERM"]
+        assert len(contract_term_rows) == 10
+        assert len(other_rows) == 15
+        assert all(r.source_tier == "OFFICIAL" for r in contract_term_rows)
+        assert all(r.source_tier == "CONSENSUS" for r in other_rows)
 
     def test_mockup_category_now_covered_with_consensus_source_tier(self):
         # 00_BASELINE.md §0-2 Should "MOCKUP 7개 카테고리 얇은 시드" — MEETING은 VENUE/SDM처럼

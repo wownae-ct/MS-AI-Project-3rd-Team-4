@@ -152,8 +152,8 @@ def _checklist_row_from_draft(active_categories: set[str], item: dict) -> Checkl
 
 def _checklist_fallback_rows(active_categories: set[str]) -> list[ChecklistItem]:
     """BLOCKED/FAILED 폴백. active_categories로 반드시 먼저 필터링한다 — CHECKLIST_FALLBACK_
-    CATALOG는 VENUE 10+SDM 14 고정이라, 필터링 없이 그대로 꽂으면 비활성 카테고리에도 체크리스트가
-    생기는 버그가 난다."""
+    CATALOG는 VENUE 25(CONTRACT_TERM 10 + EXTRA_COST 10 + PREP 5)+SDM 35(14+18+3) 고정이라,
+    필터링 없이 그대로 꽂으면 비활성 카테고리에도 체크리스트가 생기는 버그가 난다."""
     return [
         ChecklistItem(
             category_code=item.category_code,
