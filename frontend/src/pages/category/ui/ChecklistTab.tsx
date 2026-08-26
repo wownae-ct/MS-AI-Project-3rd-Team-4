@@ -12,14 +12,13 @@ import {
   type ChecklistPriority,
   type ChecklistStatus,
 } from "@/entities/checklist";
-import { ReportButton } from "@/entities/feedback";
 import { RegenerateButton } from "@/entities/personalization";
 import { getVendorCases, type VendorCase, type VendorCasesResponse } from "@/entities/vendor-case";
 import type { CategoryConstant } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
-import { SOURCE_TIER_LABEL } from "@/shared/lib/source-tier";
 import { Badge, Card } from "@/shared/ui";
 import { AddChecklistItemRow } from "./AddChecklistItemRow";
+import { ChecklistItemRow } from "./ChecklistItemRow";
 
 interface ChecklistTabProps {
   categoryCode: string;
@@ -37,24 +36,6 @@ const GROUP_LABEL: Record<ChecklistItemType, string> = {
 // priority(high/mid/low)를 그대로 쓴다 — 프론트가 중요도를 새로 판단하지 않는다.
 const CONTRACT_TERM_DEFAULT_LIMIT = 5;
 const PRIORITY_RANK: Record<ChecklistPriority, number> = { high: 0, mid: 1, low: 2 };
-
-// HOMEWARE(혼수)만 다른 상태기계를 쓴다 — 03_API_spec.md #12 표. 나머지 8개 카테고리는 공통 4상태.
-const HOMEWARE_STATUS_OPTIONS: { value: ChecklistStatus; label: string }[] = [
-  { value: "LISTED", label: "목록에 추가" },
-  { value: "COMPARING", label: "비교 중" },
-  { value: "ORDERED", label: "주문 완료" },
-  { value: "DELIVERED", label: "배송 완료" },
-];
-const DEFAULT_STATUS_OPTIONS: { value: ChecklistStatus; label: string }[] = [
-  { value: "TODO", label: "할 일" },
-  { value: "DOING", label: "진행 중" },
-  { value: "SKIP", label: "건너뜀" },
-  { value: "DONE", label: "완료" },
-];
-
-function statusOptionsFor(categoryCode: string) {
-  return categoryCode === "HOMEWARE" ? HOMEWARE_STATUS_OPTIONS : DEFAULT_STATUS_OPTIONS;
-}
 
 export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) {
   const [items, setItems] = useState<ChecklistItem[] | null>(null);
@@ -187,37 +168,12 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
             <Card key={group} title={GROUP_LABEL[group]}>
               <ul className="flex flex-col gap-3">
                 {groupItems.map((item) => (
-                  <li key={item.id} className="flex flex-col gap-1 border-b border-line pb-3 last:border-0 last:pb-0">
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="min-w-0 truncate text-sm font-bold text-ink">{item.title}</p>
-                      {/* origin/source_tier는 독립 필드다(entities/checklist/model.ts 머리말) —
-                          사용자가 직접 추가한 항목(origin=USER)은 출처 등급이 없는 게 정상이라
-                          "내가 추가"로 명시하고, source_tier가 null인데 LLM 생성 항목이면(카탈로그
-                          폴백) 등급 배지 자체를 생략한다 — 빈 배지나 "null" 텍스트를 보여주지 않는다. */}
-                      {item.origin === "USER" ? (
-                        <Badge>내가 추가</Badge>
-                      ) : (
-                        item.source_tier !== null && <Badge>{SOURCE_TIER_LABEL[item.source_tier] ?? item.source_tier}</Badge>
-                      )}
-                    </div>
-                    <p className="break-words text-xs text-ink-soft">{item.body}</p>
-                    <div className="mt-1 flex items-center gap-2">
-                      <select
-                        value={item.status}
-                        onChange={(e) => void handleStatusChange(item, e.target.value as ChecklistStatus)}
-                        className="w-fit rounded-md border border-line bg-surface px-2 py-1 text-xs text-ink"
-                      >
-                        {statusOptionsFor(categoryCode).map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                      {/* 신고(F13)는 AI가 생성한 항목에만 의미가 있다 — 사용자가 직접 추가한
-                          항목(origin=USER)은 본인 입력이라 신고 대상이 아니다. */}
-                      {item.origin === "LLM" && <ReportButton targetType="CHECKLIST_ITEM" targetId={item.id} />}
-                    </div>
-                  </li>
+                  <ChecklistItemRow
+                    key={item.id}
+                    item={item}
+                    categoryCode={categoryCode}
+                    onStatusChange={(i, next) => void handleStatusChange(i, next)}
+                  />
                 ))}
               </ul>
               {hiddenCount > 0 && (
