@@ -25,9 +25,14 @@ describe("BudgetDonut", () => {
   });
 
   it("초과지출이어도 도넛 gradient stop 이 100%를 넘지 않는다", () => {
+    // RTL 렌더 결과가 돌려주는 감싸는 div 프로퍼티 중 하나는 이름이 진짜 Tailwind 유틸리티와
+    // 겹친다 — 그 이름을 그대로 소스에 적으면(식별자든 주석이든) 평문으로 읽는 ghost-candidate
+    // 스캐너가 걸린다(BudgetDonut.tsx 헤더 주석의 그 경고를 이 파일에서 한 번 더 재현할 뻔한
+    // 사례 — 경고 주석 자체에 금지어를 적었다가 잡히는 재귀 실수를 피하려 이름을 안 적는다).
+    // 같은 DOM 을 가리키는 다른 프로퍼티(`baseElement`)로 우회한다.
     const overspent = summary({ paid: 30_000_000, planned: 25_000_000, remaining: -10_000_000 });
-    const { container } = render(<BudgetDonut summary={overspent} />);
-    const donut = container.querySelector<HTMLDivElement>("[style*='conic-gradient']");
+    const { baseElement } = render(<BudgetDonut summary={overspent} />);
+    const donut = baseElement.querySelector<HTMLDivElement>("[style*='conic-gradient']");
     expect(donut).not.toBeNull();
     const background = donut?.style.background ?? "";
     const percentages = [...background.matchAll(/([\d.]+)%/gu)].map((m) => Number(m[1]));
