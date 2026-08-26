@@ -30,8 +30,8 @@ param clusterAdminPrincipalIds array = []
 @description('ArgoCD Image Updater가 도는 네임스페이스. infra/k8s/argocd/README.md의 설치 절차 기준(kubectl create namespace argocd)')
 param argocdNamespace string = 'argocd'
 
-@description('업스트림 argocd-image-updater 설치 매니페스트의 기본 ServiceAccount 이름 — 실배포 후 실제 매니페스트와 일치하는지 확인 필요(버전에 따라 바뀔 수 있음)')
-param imageUpdaterServiceAccountName string = 'argocd-image-updater'
+@description('업스트림 argocd-image-updater ServiceAccount 이름. 2026-08-14에 이미 argocd-image-updater-controller로 재구성된 걸 확인해뒀지만(infra/k8s/argocd/README.md §Image Updater Identity) 이 파라미터 기본값은 갱신되지 않은 채 남아 있었다 — federatedIdentityCredential의 subject가 실제 SA 이름과 달라 AAD 토큰 교환이 401로 계속 실패하고 있던 걸 2026-08-26에 발견(kubectl logs의 auth.sh 401 Unauthorized). 이 문서 자체가 "재구성됐다"고 적어놓고도 여기 값은 안 고친, 문서와 IaC가 따로 논 사례.')
+param imageUpdaterServiceAccountName string = 'argocd-image-updater-controller'
 
 resource acr 'Microsoft.ContainerRegistry/registries@2026-03-01-preview' existing = {
   name: acrName

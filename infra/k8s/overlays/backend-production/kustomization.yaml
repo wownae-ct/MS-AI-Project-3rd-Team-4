@@ -7,6 +7,18 @@ resources:
   - ../../base/backend
   - ingress.yaml
 patches:
+  # 2026-08-26 사용자 지시 — production만 이중화(replica=2). base(backend/deployment.yaml)의
+  # "데모 규모라 의도적으로 1개만 유지"는 staging 기준 그대로 두고, 실사용 트래픽을 받는
+  # production만 배포/노드 재시작 중 다운타임을 줄이기 위해 여기서 덮어쓴다. 노드 여유(고정
+  # 2노드, 오토스케일러 없음, 실사용량 매우 낮음 — infra/docs/kubernetes.md 확인)로 리소스
+  # 문제 없음.
+  - target:
+      kind: Deployment
+      name: backend
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
   # 14_langfuse_tracing_design.md — backend-staging/kustomization.yaml과 대칭(값만 다름).
   - target:
       kind: Deployment

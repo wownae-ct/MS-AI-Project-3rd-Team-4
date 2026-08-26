@@ -13,7 +13,22 @@ kubectl rollout restart deployment argocd-server -n argocd
 
 # Image Updater (ACR 신규 태그 자동 반영)
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/manifests/install.yaml
+
+# Image Updater가 실제로 Application을 감시하게 만드는 CR — 이거 없으면 컨트롤러가 켜져
+# 있어도 "감시 대상 없음" 상태로 아무 일도 안 한다(2026-08-26 발견, 아래 참고).
+kubectl apply -f infra/k8s/argocd/argocd-image-updater-crs.yaml
 ```
+
+> ⚠️ **2026-08-26 발견 — Image Updater가 설치 이후 실제로는 한 번도 동작하지 않고 있었다.**
+> 업스트림이 kubebuilder/CRD 구조로 재구성되면서(§5-2, `quay.io/argoprojlabs/argocd-image-updater:v1.3.0`)
+> 컨트롤러 기본 동작이 바뀌었다 — Application의 `argocd-image-updater.argoproj.io/*` annotation을
+> 자동으로 스캔하던 옛 방식과 달리, 이제는 **`ImageUpdater` CR이 명시적으로 지정한 Application만**
+> 처리한다. CR을 만들지 않았던 12일 동안 컨트롤러 로그는 시작 직후 "No ImageUpdater CRs to process"
+> 한 줄만 남기고 그 뒤로 아무 활동이 없었다(`kubectl get imageupdaters -A` → 0개) — 즉 backend/
+> frontend가 새 이미지를 ACR에 push해도 staging/production 어느 쪽도 자동으로 갱신되지 않는 상태가
+> 계속 유지되고 있었다. `infra/k8s/argocd/argocd-image-updater-crs.yaml`(신규, `useAnnotations: true`
+> + `namePattern: "*"`)이 기존 6개 Application의 annotation을 그대로 읽게 만들어 고쳤다 — annotation
+> 자체는 안 건드렸다(중복 설정을 피하려고 "이 annotation을 봐라"는 선택 하나만 CR에 추가).
 
 ## 프라이빗 레포 접근 (필수 — 이 레포는 private)
 

@@ -41,6 +41,18 @@ spec:
                       # 않도록 매번 새로 받아오게 강제.
                   ports:
                       - containerPort: 8000 # 컨테이너 안에서 앱(uvicorn)이 실제로 듣는 포트.
+                  resources: # 2026-08-26 추가 — 이전엔 이 필드가 아예 없어 BestEffort로 뜨고
+                      # 있었다(스케줄러가 이 파드를 위해 아무것도 예약하지 않음 — 노드 메모리 압박
+                      # 시 우선 축출 대상). 값은 실측(staging `kubectl top pod` 기준 ~2-3m CPU,
+                      # ~170Mi 메모리)에 여유를 둔 수준 — 이 클러스터는 오토스케일러가 없는 고정
+                      # 2노드(az aks nodepool list 확인)라 requests를 올려도 새 노드가 뜨거나
+                      # 비용이 늘지 않는다, 노드 안에서의 스케줄링 보장/QoS 문제일 뿐이다.
+                      requests:
+                          cpu: 100m
+                          memory: 200Mi
+                      limits:
+                          cpu: 500m
+                          memory: 400Mi
                   env: # 컨테이너 안 환경변수. 아래 secretKeyRef는 "K8s Secret이라는 오브젝트의
                       # 특정 키 값을 읽어와서 이 환경변수에 넣어라"는 뜻 — 값 자체는 이 파일에
                       # 없고 별도 시크릿 저장소(Key Vault → CSI 드라이버 → K8s Secret)에서 온다.

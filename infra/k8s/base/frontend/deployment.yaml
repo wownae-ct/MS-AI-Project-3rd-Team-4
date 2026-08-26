@@ -36,6 +36,16 @@ spec:
                   imagePullPolicy: Always
                   ports:
                       - containerPort: 80 # nginx 기본 포트 — 정적 파일만 서빙.
+                  resources: # 2026-08-26 추가 — backend/deployment.yaml과 같은 이유(이전엔 필드
+                      # 자체가 없어 BestEffort). 정적 파일만 서빙하는 nginx라 backend보다 훨씬
+                      # 가볍다(실측 `kubectl top pod` 기준 ~1m CPU, ~8Mi 메모리) — 오토스케일러
+                      # 없는 고정 2노드라 값을 올려도 비용 영향 없다.
+                      requests:
+                          cpu: 20m
+                          memory: 32Mi
+                      limits:
+                          cpu: 100m
+                          memory: 64Mi
                   readinessProbe:
                       httpGet:
                           path: /
