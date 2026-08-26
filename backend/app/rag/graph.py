@@ -31,6 +31,8 @@ retrieve_node가 재시도 여부를 판단할 때 state["verdict"]가 아니라
 반환하는 context가 1차 결과를 완전히 교체하고, 1차의 "근거 부족" 컨텍스트가 2차 답변에 섞여
 들어갈 위험이 없다."""
 
+import asyncio
+from collections.abc import Awaitable, Callable
 from typing import TypedDict
 
 from langchain_core.runnables import RunnableConfig
@@ -54,6 +56,28 @@ from app.rag.retrieval import RetrievedChunk, retrieve
 # CRAG 재검색 루프의 상한. 무한루프/비용 폭증 방지가 목적이라 설정값으로 노출하지 않고 코드에
 # 고정한다(2026-08-24 결정 — "최대 재시도 1회로 상한").
 _MAX_RETRIES = 1
+
+# 2026-08-26 챗 SSE 타임아웃 회귀 수정 — verify_answer/reformulate_query는 generate_node와
+# 달리 스트리밍 없는 단발 호출이라, 대기 중엔 SSE로 바이트가 하나도 안 나간다. 이 침묵 구간이
+# nginx ingress의 proxy-read-timeout(기본 60초, app/core/config.py::azure_openai_timeout_seconds
+# 주석 참고)에 걸리면 클라이언트 쪽엔 "타임아웃 에러"로 보인다 — settings.azure_openai_
+# timeout_seconds(기본 45초)가 그 호출 자체를 하드 타임아웃시켜주지만, 그 45초 동안에도 아무
+# 바이트가 안 나가면 프록시 기본값(60초)보다는 짧아도 위험할 수 있어 별도로 흘려보낸다. SSE
+# 주석 줄(app/services/chat.py::_sse_comment)은 스펙상 이벤트가 아니라 기존 파서가 그대로
+# 무시하므로 프론트 변경이 전혀 필요 없다.
+_HEARTBEAT_INTERVAL_SECONDS = 15.0
+
+
+async def _await_with_heartbeat[T](awaitable: Awaitable[T], writer: Callable[[dict], None]) -> T:
+    """awaitable이 끝날 때까지 _HEARTBEAT_INTERVAL_SECONDS마다 heartbeat 커스텀 이벤트를
+    흘려보낸다. asyncio.wait는 완료된 태스크를 취소하지 않으므로, 이미 끝난 뒤에도 다시 부르면
+    즉시 반환한다 — 반복문이 매번 새 wait를 걸어도 안전하다."""
+    task: asyncio.Task[T] = asyncio.ensure_future(awaitable)
+    while True:
+        done, _pending = await asyncio.wait({task}, timeout=_HEARTBEAT_INTERVAL_SECONDS)
+        if task in done:
+            return task.result()
+        writer({"type": "heartbeat"})
 
 
 # 그래프가 흘러가면서 채워지는 "상태 보따리". 노드 하나가 끝날 때마다 여기 필드가 하나씩 채워져서
@@ -107,8 +131,9 @@ async def retrieve_node(state: ChatState, config: RunnableConfig) -> dict:
     ):
         if is_retry:
             client = get_azure_openai_client(settings)
-            search_query = await reformulate_query(
-                client, settings, state["query"], state["verification_reason"]
+            search_query = await _await_with_heartbeat(
+                reformulate_query(client, settings, state["query"], state["verification_reason"]),
+                writer,
             )
         chunks = await retrieve(session, search_query, state["category_code"], settings)
         update: dict = {"context": chunks}
@@ -153,14 +178,17 @@ async def generate_node(state: ChatState, config: RunnableConfig) -> dict:
 # ③ verify: 방금 쓴 답변이 근거 자료로 실제 뒷받침되는지 AI에게 한 번 더 물어본다("셀프 채점").
 #    근거가 없으면(0건 검색) 굳이 다시 물어볼 것도 없이 곧바로 GENERAL로 확정.
 async def verify_node(state: ChatState, config: RunnableConfig) -> dict:
-    get_stream_writer()({"type": "stage", "stage": "verify"})
+    writer = get_stream_writer()
+    writer({"type": "stage", "stage": "verify"})
     settings: Settings = config["configurable"].get("settings") or get_settings()
     async with traced_span("chat.verify", settings=settings, input=state["answer"]):
         if not state["context"]:
             return {"verdict": "GENERAL", "verification_reason": NO_CONTEXT_REASON}
 
         client = get_azure_openai_client(settings)
-        verdict, reason = await verify_answer(client, settings, state["context"], state["answer"])
+        verdict, reason = await _await_with_heartbeat(
+            verify_answer(client, settings, state["context"], state["answer"]), writer
+        )
         return {"verdict": verdict, "verification_reason": reason}
 
 

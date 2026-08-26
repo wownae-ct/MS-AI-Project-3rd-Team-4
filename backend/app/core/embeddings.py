@@ -24,6 +24,10 @@ def get_azure_openai_client(settings: Settings) -> AsyncAzureOpenAI:
         azure_endpoint=settings.azure_openai_endpoint,
         azure_ad_token_provider=token_provider,
         api_version=settings.azure_openai_api_version,
+        # settings.azure_openai_timeout_seconds 참고(app/core/config.py) — 이 값이 없으면 SDK
+        # 기본 600초가 적용돼, 스트리밍 없는 단발 호출(챗 그래프의 verify/reformulate_query)이
+        # nginx ingress의 proxy-read-timeout(기본 60초)보다 훨씬 오래 열려있을 수 있었다.
+        timeout=settings.azure_openai_timeout_seconds,
     )
 
 

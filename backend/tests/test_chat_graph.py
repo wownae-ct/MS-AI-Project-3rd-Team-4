@@ -3,6 +3,7 @@ Azure OpenAI/retrieval mocking 선례가 이 레포에 없어 이 파일에서 �
 app.rag.generation에서 import해 자기 네임스페이스에 바인딩한 이름들을 패치한다(원본 모듈이
 아니라 graph.py가 실제로 호출하는 이름을 패치해야 효과가 있다)."""
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -139,3 +140,66 @@ class TestRetryCapStopsAfterOneAttempt:
         assert len(retry_events) == 1  # 2차 verify 이후엔 retry 이벤트가 더 안 나옴
         assert final_state["retry_count"] == 1
         assert final_state["verdict"] == "GENERAL"  # 2차 결과 그대로, 강제 종료됐다는 뜻
+
+
+# 2026-08-26 챗 SSE 타임아웃 회귀 수정 — verify_node/retrieve_node(재시도)가 스트리밍 없는
+# 단발 LLM 호출(verify_answer/reformulate_query) 대기 중 heartbeat 커스텀 이벤트를 흘려보내는지
+# 확인한다(app/rag/graph.py::_await_with_heartbeat). _HEARTBEAT_INTERVAL_SECONDS를 짧게
+# 패치해 실제로 몇 초씩 기다리지 않고도 반복 tick을 재현한다.
+class TestVerifyHeartbeat:
+    async def test_emits_heartbeat_while_verify_answer_is_slow(self):
+        client = _stream_client("1차 답변")
+
+        async def _slow_verify(*_args, **_kwargs):
+            await asyncio.sleep(0.05)
+            return ("SUPPORTED", "근거 충분")
+
+        graph = build_graph()
+        config = {"configurable": {"session": object(), "settings": _TEST_SETTINGS}}
+        heartbeats: list[dict] = []
+        with (
+            patch("app.rag.graph.get_azure_openai_client", return_value=client),
+            patch("app.rag.graph.retrieve", AsyncMock(return_value=[_chunk(1)])),
+            patch("app.rag.graph.verify_answer", AsyncMock(side_effect=_slow_verify)),
+            patch("app.rag.graph._HEARTBEAT_INTERVAL_SECONDS", 0.01),
+        ):
+            async for mode, chunk in graph.astream(
+                _initial_state(), config, stream_mode=["custom", "values"]
+            ):
+                if mode == "custom" and chunk["type"] == "heartbeat":
+                    heartbeats.append(chunk)
+
+        assert len(heartbeats) >= 1
+
+
+class TestReformulateHeartbeat:
+    async def test_emits_heartbeat_while_reformulate_query_is_slow(self):
+        client = _stream_client("1차 답변", "2차 답변")
+
+        async def _slow_reformulate(*_args, **_kwargs):
+            await asyncio.sleep(0.05)
+            return "재구성된 질의"
+
+        graph = build_graph()
+        config = {"configurable": {"session": object(), "settings": _TEST_SETTINGS}}
+        heartbeats: list[dict] = []
+        with (
+            patch("app.rag.graph.get_azure_openai_client", return_value=client),
+            patch(
+                "app.rag.graph.retrieve",
+                AsyncMock(side_effect=[[_chunk(1)], [_chunk(2)]]),
+            ),
+            patch(
+                "app.rag.graph.verify_answer",
+                AsyncMock(side_effect=[("WEAK", "이유1"), ("SUPPORTED", "이유2")]),
+            ),
+            patch("app.rag.graph.reformulate_query", AsyncMock(side_effect=_slow_reformulate)),
+            patch("app.rag.graph._HEARTBEAT_INTERVAL_SECONDS", 0.01),
+        ):
+            async for mode, chunk in graph.astream(
+                _initial_state(), config, stream_mode=["custom", "values"]
+            ):
+                if mode == "custom" and chunk["type"] == "heartbeat":
+                    heartbeats.append(chunk)
+
+        assert len(heartbeats) >= 1
