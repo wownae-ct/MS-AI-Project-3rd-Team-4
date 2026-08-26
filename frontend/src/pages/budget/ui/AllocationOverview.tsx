@@ -2,6 +2,7 @@
 // 아니라 **모듈 의존성 상한**(`import/max-dependencies`, 10개) 때문이다 — CostManagementTab
 // 추가로 BudgetPage.tsx의 import가 11개가 됐다. 두 카드 다 "지금 얼마를 어디에 배정했는지"라는
 // 같은 질문에 답하는 화면이라(도넛=전체 요약, 배정 목록=카테고리별 상세) 묶는 것 자체도 자연스럽다.
+import type { BenchmarkComparison } from "@/entities/payment";
 import type { WeddingCategory } from "@/entities/wedding";
 import { deriveBudgetSummary } from "@/entities/wedding";
 import { Card } from "@/shared/ui";
@@ -15,8 +16,13 @@ export interface AllocationOverviewProps {
   originalCategories: readonly WeddingCategory[];
   totalBudget: number;
   hasCostByCode: ReadonlyMap<string, boolean>;
+  /** 시세비교 대상 여부/결과 — BudgetPage가 `useCategoryBenchmarks`로 한 번만 조회해 내려준다
+      (2026-08-26, UX 개편 2차, 사용자 지시). 대시보드 `CategoryRow.tsx`와 같은 데이터. */
+  hasBenchmarkByCode: ReadonlyMap<string, boolean>;
+  benchmarkByCode: ReadonlyMap<string, BenchmarkComparison>;
   isEditingScenario: boolean;
   onDraftChange: (categoryCode: string, plannedBudget: number) => void;
+  onTotalBudgetSaved: (nextTotal: number) => void;
 }
 
 export function AllocationOverview({
@@ -24,8 +30,11 @@ export function AllocationOverview({
   originalCategories,
   totalBudget,
   hasCostByCode,
+  hasBenchmarkByCode,
+  benchmarkByCode,
   isEditingScenario,
   onDraftChange,
+  onTotalBudgetSaved,
 }: AllocationOverviewProps) {
   return (
     <>
@@ -34,7 +43,7 @@ export function AllocationOverview({
           움직인다(entities/wedding/model/derive-budget-summary.ts 머리말 — 예전 대시보드
           도넛의 "미배정이 거의 항상 안 그려지던" 버그도 여기서 함께 고쳐졌다). */}
       <Card title="예산 현황">
-        <BudgetDonut summary={deriveBudgetSummary(rows, totalBudget)} />
+        <BudgetDonut summary={deriveBudgetSummary(rows, totalBudget)} onTotalBudgetSaved={onTotalBudgetSaved} />
       </Card>
 
       <Card title="카테고리별 배정">
@@ -49,6 +58,8 @@ export function AllocationOverview({
                 category={category}
                 hasCost={hasCost}
                 totalBudget={totalBudget}
+                hasBenchmark={hasBenchmarkByCode.get(category.category_code) ?? false}
+                benchmark={benchmarkByCode.get(category.category_code)}
                 isEditingScenario={isEditingScenario}
                 originalAmount={originalAmount}
                 onDraftChange={onDraftChange}

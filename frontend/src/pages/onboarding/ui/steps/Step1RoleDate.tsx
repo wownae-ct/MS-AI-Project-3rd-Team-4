@@ -99,6 +99,7 @@ export function Step1RoleDate({
             <input
               className={INPUT}
               type="date"
+              aria-label="결혼 예정일"
               value={weddingDate}
               onChange={(event) => onWeddingDateChange(event.target.value)}
             />

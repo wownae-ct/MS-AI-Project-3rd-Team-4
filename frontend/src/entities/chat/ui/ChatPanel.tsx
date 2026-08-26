@@ -349,7 +349,7 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
           }}
           placeholder="메시지를 입력하세요"
           disabled={sending}
-          className="min-h-tap flex-1 rounded-md border border-line bg-surface px-3 text-sm text-ink disabled:opacity-50"
+          className="min-h-tap flex-1 rounded-md border border-line bg-surface px-3 text-base text-ink disabled:opacity-50"
         />
         <button
           type="button"

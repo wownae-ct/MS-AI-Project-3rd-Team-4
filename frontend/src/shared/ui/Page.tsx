@@ -51,9 +51,15 @@ export function Page({
 }: PageProps) {
   const titleRef = useRef<HTMLHeadingElement>(null);
 
+  // `title`도 의존성에 넣는다 — OnboardingPage.tsx처럼 라우트 이동 없이 한 Page 인스턴스 안에서
+  // 화면(제목)만 바뀌는 멀티스텝 위저드가 있다(2026-08-26 접근성 감사). `focusOnMount`만 보면
+  // 그 값이 처음 true가 되는 단계 전환 한 번만 포커스가 옮겨가고, 그 뒤로는 같은 true값이 계속
+  // 유지되므로 effect가 다시 안 돈다 — 매 단계(제목)가 바뀔 때마다 다시 announce되게 한다.
+  // 지금까지 저장소 전체에서 focusOnMount=true로 쓰는 곳이 없었으니(라우트 전환마다 Page 자체가
+  // 새로 마운트돼 굳이 필요 없었다) 이 변경이 기존 화면 동작을 바꾸지 않는다.
   useEffect(() => {
     if (focusOnMount) titleRef.current?.focus();
-  }, [focusOnMount]);
+  }, [focusOnMount, title]);
 
   return (
     <div className={`mx-auto flex w-full flex-col gap-5 px-4 py-6 md:px-6 md:py-8 ${width}`}>

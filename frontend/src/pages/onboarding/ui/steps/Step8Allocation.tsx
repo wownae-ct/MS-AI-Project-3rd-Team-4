@@ -16,7 +16,7 @@ import { manwonToWon, wonToManwon } from "@/shared/lib/money";
 const ROW = "flex flex-col gap-2 border-b border-line py-3 last:border-b-0 last:pb-0 first:pt-0";
 const TOP_ROW = "flex items-center gap-2.5";
 const AMOUNT_INPUT =
-  "w-28 rounded-md border border-line bg-surface px-2.5 py-1.5 text-right text-sm text-ink " +
+  "min-h-tap w-28 rounded-md border border-line bg-surface px-2.5 text-right text-base text-ink " +
   "[font-variant-numeric:tabular-nums] focus-visible:border-primary";
 const SLIDER = "h-1.5 w-full cursor-pointer accent-primary";
 
@@ -73,6 +73,7 @@ export function Step8Allocation({ rows, onRowsChange, totalBudgetEstimate }: Ste
                       inputMode="numeric"
                       min={0}
                       step={BUDGET_STEP_MANWON}
+                      aria-label={`${row.nameKo} 예산 금액`}
                       // 행 배열 자체는 원 단위를 유지한다(합계·진행률 계산이 이미 원 단위로 짜여
                       // 있다) — 만원 변환은 이 입력의 표시/입력 경계에서만 일어난다.
                       value={wonToManwon(row.plannedBudget)}

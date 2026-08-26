@@ -159,7 +159,7 @@ function BenchmarkWidget({ categoryCode }: { categoryCode: string }) {
           <select
             value={itemCode}
             onChange={(e) => setItemCode(e.target.value)}
-            className="rounded-md border border-line bg-surface px-2 py-1.5 text-sm text-ink"
+            className="min-h-tap rounded-md border border-line bg-surface px-2 text-base text-ink"
           >
             {options.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -175,7 +175,7 @@ function BenchmarkWidget({ categoryCode }: { categoryCode: string }) {
             min={0}
             value={amountInput}
             onChange={(e) => setAmountInput(e.target.value)}
-            className="w-32 rounded-md border border-line bg-surface px-2 py-1.5 text-sm text-ink"
+            className="min-h-tap w-32 rounded-md border border-line bg-surface px-2 text-base text-ink"
           />
         </label>
         <button

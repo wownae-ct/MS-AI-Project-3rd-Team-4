@@ -50,10 +50,13 @@ const OPTIONS_BY_CATEGORY: Record<string, readonly string[]> = {
   HOMEWARE: ["가전", "가구", "침구/소품"],
 };
 
-const TOGGLE_ON = "relative h-[21px] w-9 flex-none rounded-pill bg-primary";
-const TOGGLE_OFF = "relative h-[21px] w-9 flex-none rounded-pill bg-line";
+// h-6(24px) — WCAG 2.2 SC 2.5.8(AA, 접근성 감사 2026-08-26) 최소 타겟 크기. 이전 21px는
+// AA 최저선에도 못 미쳤다.
+const TOGGLE_ON = "relative h-6 w-9 flex-none rounded-pill bg-primary";
+const TOGGLE_OFF = "relative h-6 w-9 flex-none rounded-pill bg-line";
 // D1 — 무한 반경 유틸리티는 게이트가 잡는다(shared/ui/README.md). 원형 노브는 rounded-pill 로.
-const TOGGLE_KNOB = "absolute top-0.5 h-4 w-4 rounded-pill bg-surface transition-[right,left] duration-150";
+// top-1 — 24px 트랙 안에서 16px 노브를 수직 중앙에 놓는다((24-16)/2=4px).
+const TOGGLE_KNOB = "absolute top-1 h-4 w-4 rounded-pill bg-surface transition-[right,left] duration-150";
 
 const ROW = "flex flex-col gap-2 border-b border-line py-3 last:border-b-0 last:pb-0 first:pt-0";
 const TOP_ROW = "flex items-center gap-2.5";
