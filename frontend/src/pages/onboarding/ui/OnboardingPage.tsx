@@ -221,7 +221,15 @@ export function OnboardingPage() {
   const activeCategoryCount = allocationRows.filter((row) => row.isActive).length;
 
   return (
-    <Page title={STEP_HEADLINE[step]} subtitle={STEP_SUBTITLE[step]} width="max-w-[430px]">
+    <Page
+      title={STEP_HEADLINE[step]}
+      subtitle={STEP_SUBTITLE[step]}
+      width="max-w-[430px]"
+      // 최초 진입(1단계)만 끈다 — 문서 제목과 중복 낭독을 피한다(Page.tsx 규범). 이후 모든 단계
+      // 전환은 헤드라인이 바뀌므로(Page.tsx의 focus effect가 title도 의존성으로 본다) 스크린
+      // 리더가 화면이 바뀐 것을 알 수 있어야 한다(접근성 감사 2026-08-26, WCAG 4.1.3 관점).
+      focusOnMount={step > 1}
+    >
       {/*
         장식용 점 표시기다 — 몇 단계인지는 Page 의 title(STEP_HEADLINE)이 이미 텍스트로 전달한다.
         `role="progressbar"` 를 붙이면 jsx-a11y가 네이티브 `<progress>` 태그를 요구하는데(prefer-
@@ -325,7 +333,7 @@ export function OnboardingPage() {
           <div className="flex items-center gap-3">
             {step > 1 && (
               <Button variant="ghost" onClick={() => setStep((current) => (current - 1) as Step)}>
-                ← 이전
+                <span aria-hidden="true">←</span> 이전
               </Button>
             )}
             {/* 모든 입력 단계(1~8)에 "나중에 설정"이 있다(2026-08-26 사용자 지시) — 목적지는

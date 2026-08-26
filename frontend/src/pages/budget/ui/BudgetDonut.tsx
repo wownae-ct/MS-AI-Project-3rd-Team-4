@@ -12,8 +12,24 @@
 // 낸다(WCAG 1.4.1). 이 대비책이 사라지지 않도록 `DashboardPage.test.tsx` 가 고정한다.
 // 범례 점의 테두리는 `ink-soft` 다 — `잔여` 의 채움색이 `line`(1.28:1)이라 테두리가 없으면
 // 흰 표면에서 점 자체가 보이지 않는다(a11y.md §3 「경계가 유일한 식별 수단」).
-import type { BudgetSummary } from "@/entities/wedding";
+//
+// **총예산 인라인 수정을 이 컴포넌트가 직접 담당한다(UX 개편 2차, 2026-08-26, 사용자 지시).**
+// 원래 별도 "남은예산" 카드(`TotalBudgetCard.tsx`, 삭제됨)가 하던 일이다 — "예산 현황" 카드
+// 안에 도넛·범례·총예산 수정이 이미 다 모여 있는데 남은예산만 별개 카드로 떼어 둘 이유가
+// 없다는 사용자 판단. **다만 "미배정" 범례 줄 자체는 여전히 0으로 클램프한다**(레드팀 감사로
+// 고친 음수 오독 버그, 아래 `Math.max(0, ...)` 참고) — 총예산보다 배정 합계가 많은 경우는
+// 그 대신 아래 별도 문구로 알린다(카테고리별 배정의 "OO만원 초과 집행"과 같은 D6 텍스트 전용
+// 관례, 성격은 다르다 — 이건 "총예산 대비 배정 초과", 그건 "카테고리별 지급 대비 배정 초과").
+import { useState } from "react";
+import { updateMyWedding, type BudgetSummary } from "@/entities/wedding";
+import { ApiError } from "@/shared/api";
+import { manwonToWon, wonToManwon } from "@/shared/lib/money";
 import { Money } from "@/shared/ui";
+
+const INLINE_INPUT =
+  "min-h-tap w-28 rounded-md border border-line bg-surface px-2.5 text-right text-base text-ink " +
+  "[font-variant-numeric:tabular-nums] focus-visible:border-primary";
+const GHOST_BUTTON = "text-xs font-bold text-ink-soft transition-colors duration-150 hover:text-primary";
 
 interface Series {
   label: string;
@@ -36,10 +52,43 @@ const SERIES: readonly Series[] = [
 
 export interface BudgetDonutProps {
   summary: BudgetSummary;
+  onTotalBudgetSaved: (nextTotal: number) => void;
 }
 
-export function BudgetDonut({ summary }: BudgetDonutProps) {
+export function BudgetDonut({ summary, onTotalBudgetSaved }: BudgetDonutProps) {
   const { total, paid, planned } = summary;
+
+  const [draft, setDraft] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  function startEdit() {
+    setDraft(String(wonToManwon(total)));
+    setSaveState("idle");
+    setErrorMessage(null);
+  }
+
+  function cancelEdit() {
+    setDraft(null);
+    setSaveState("idle");
+    setErrorMessage(null);
+  }
+
+  async function handleSaveTotal() {
+    if (draft === null) return;
+    const nextTotal = manwonToWon(Number(draft));
+    setSaveState("saving");
+    setErrorMessage(null);
+    try {
+      await updateMyWedding({ total_budget: nextTotal });
+      onTotalBudgetSaved(nextTotal);
+      setDraft(null);
+      setSaveState("idle");
+    } catch (err) {
+      setSaveState("error");
+      setErrorMessage(err instanceof ApiError ? err.message : "총예산을 저장하지 못했어요. 다시 시도해 주세요.");
+    }
+  }
 
   // total 이 0 이면 나눗셈이 NaN 이 되고 conic-gradient 가 통째로 무효가 된다(조용히 배경이 사라진다).
   const safeTotal = total > 0 ? total : 1;
@@ -62,35 +111,86 @@ export function BudgetDonut({ summary }: BudgetDonutProps) {
     `var(--color-line) ${plannedEnd}% 100%)`;
 
   return (
-    <div className="flex items-center gap-5">
-      {/* 도넛 테두리 자체는 장식이다 — 같은 정보를 옆 범례가 텍스트로 낸다. 가운데 라벨만 의미를 갖는다.
-          ⚠️ 지름이 목업(112px)보다 크다. 목업의 캡션은 `.6rem`(9.6px)인데 **우리 타입 스케일의 하한은
-          `text-xs`(12px)** 다 — 스케일을 지키면 같은 구멍(80px)에는 들어가지 않는다. 실제로 112px 로
-          만들었다가 브라우저에서 글자가 원 밖으로 넘쳤다(구멍 80px, 내용 84px).
-          임의 폰트 크기를 만드는 대신 **원을 키웠다**: 128px · 링 12px → 구멍 104px.
-          가로 패딩도 뺐다 — `px-2` 가 가용폭을 64px 로 깎아 넘침을 키우고 있었다. */}
-      <div className="relative size-32 shrink-0 rounded-pill" style={{ background: donutGradient }}>
-        <div className="absolute inset-3 flex flex-col items-center justify-center gap-px rounded-pill bg-surface text-center">
-          <Money value={paid} className="text-sm leading-tight" />
-          <span className="text-xs leading-tight whitespace-nowrap text-ink-soft">
-            총 <Money value={total} className="text-xs" />
-          </span>
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-5">
+        {/* 도넛 테두리 자체는 장식이다 — 같은 정보를 옆 범례가 텍스트로 낸다. 가운데 라벨만 의미를 갖는다.
+            ⚠️ 지름이 목업(112px)보다 크다. 목업의 캡션은 `.6rem`(9.6px)인데 **우리 타입 스케일의 하한은
+            `text-xs`(12px)** 다 — 스케일을 지키면 같은 구멍(80px)에는 들어가지 않는다. 실제로 112px 로
+            만들었다가 브라우저에서 글자가 원 밖으로 넘쳤다(구멍 80px, 내용 84px).
+            임의 폰트 크기를 만드는 대신 **원을 키웠다**: 128px · 링 12px → 구멍 104px.
+            가로 패딩도 뺐다 — `px-2` 가 가용폭을 64px 로 깎아 넘침을 키우고 있었다. */}
+        <div className="relative size-32 shrink-0 rounded-pill" style={{ background: donutGradient }}>
+          <div className="absolute inset-3 flex flex-col items-center justify-center gap-px rounded-pill bg-surface text-center">
+            <Money value={paid} className="text-sm leading-tight" />
+            <span className="text-xs leading-tight whitespace-nowrap text-ink-soft">
+              총 <Money value={total} className="text-xs" />
+            </span>
+          </div>
+        </div>
+
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          {SERIES.map((series) => (
+            <div key={series.label} className="flex items-center gap-2 text-sm">
+              <span
+                aria-hidden
+                className="size-2.5 shrink-0 rounded-pill border border-ink-soft"
+                style={{ background: series.color }}
+              />
+              <span className="min-w-0 flex-1 text-ink-soft">{series.label}</span>
+              <Money value={series.amount(summary)} className="text-sm whitespace-nowrap" />
+            </div>
+          ))}
         </div>
       </div>
 
-      <div className="flex min-w-0 flex-1 flex-col gap-2">
-        {SERIES.map((series) => (
-          <div key={series.label} className="flex items-center gap-2 text-sm">
-            <span
-              aria-hidden
-              className="size-2.5 shrink-0 rounded-pill border border-ink-soft"
-              style={{ background: series.color }}
+      <div className="flex items-center justify-between gap-2 border-t border-line pt-3">
+        {draft === null ? (
+          <span className="flex items-center gap-2 text-xs text-ink-soft">
+            총예산 {total.toLocaleString("ko-KR")}원 중
+            <button type="button" onClick={startEdit} className={GHOST_BUTTON}>
+              수정
+            </button>
+          </span>
+        ) : (
+          <span className="flex flex-wrap items-center gap-1.5">
+            <input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              className={INLINE_INPUT}
+              aria-label="총예산(만원)"
             />
-            <span className="min-w-0 flex-1 text-ink-soft">{series.label}</span>
-            <Money value={series.amount(summary)} className="text-sm whitespace-nowrap" />
-          </div>
-        ))}
+            <span className="text-xs text-ink-soft">만원</span>
+            <button
+              type="button"
+              onClick={() => void handleSaveTotal()}
+              disabled={saveState === "saving"}
+              className={GHOST_BUTTON}
+            >
+              {saveState === "saving" ? "저장 중…" : "저장"}
+            </button>
+            {/* 저장 진행 중엔 취소를 막는다 — 안 막으면 취소 후에도 진행 중이던 저장이 성공 시
+                되살아난다(레드팀 감사 HIGH, 예전 TotalBudgetCard.tsx와 같은 이유). */}
+            <button type="button" onClick={cancelEdit} disabled={saveState === "saving"} className={GHOST_BUTTON}>
+              취소
+            </button>
+          </span>
+        )}
       </div>
+      {saveState === "error" && (
+        <p role="alert" className="text-xs text-primary">
+          {errorMessage}
+        </p>
+      )}
+      {/* "미배정" 범례는 위에서 0으로 클램프돼 있다 — 총예산보다 배정 합계가 더 많은 경우를
+          여기서 별도로 알린다(음수 "미배정"을 그대로 보여주면 오독된다는 기존 결정은 그대로 둔다). */}
+      {summary.remaining < 0 && (
+        <p className="text-xs font-bold text-primary">
+          배정 합계가 총예산보다 {wonToManwon(Math.abs(summary.remaining)).toLocaleString("ko-KR")}만원 더 많아요
+        </p>
+      )}
     </div>
   );
 }

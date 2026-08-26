@@ -20,16 +20,24 @@
 //     `role="alert"` — 로그인/온보딩 화면이 이미 쓰는 관례 그대로).
 //   · "다가오는 납부" → "다가오는 할 일": `PaymentRow.tsx` 머리말 참고 — API 응답에 금액이 없다.
 //   · 카테고리 → S3 상세 진입: `CategoryRow.tsx`가 행 전체를 `/category/$id` 링크로 감싼다.
+//
+// **UX 개편 2차(2026-08-26, 사용자 지시)**
+//   6. 결혼식 날짜 수정 버튼을 예산탭(S6)에서 이 헤드라인 옆으로 옮겼다 — `WeddingHeadline.tsx`
+//      머리말 참고. 예산탭엔 더 이상 날짜 수정 UI가 없다.
+//   7. "다가오는 할 일" 카드 옆에 실제 결제 예정(금액 포함) 카드 "다가오는 납부"를 새로 추가했다
+//      — `UpcomingPaymentsSection.tsx`. 5번에서 이름을 뺏긴 그 "다가오는 납부"가 별개 카드로
+//      돌아온 것이다(같은 이름을 다른 두 의미로 다시 쓰지 않게, 원본 데이터는 여전히 다르다 —
+//      하나는 결제 예정, 하나는 체크리스트/타임라인 혼합 피드).
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { getDashboardSummary, type DashboardCategorySummary, type DashboardSummary } from "@/entities/dashboard";
+import { getDashboardSummary, type DashboardSummary } from "@/entities/dashboard";
 import { ApiError } from "@/shared/api";
-import { formatDDay } from "@/shared/lib/format-d-day";
 import { Card, Page } from "@/shared/ui";
-import { adaptCategories, adaptHeadline } from "./adapt-summary";
+import { adaptHeadline } from "./adapt-summary";
 import { BudgetBenchmarkCard } from "./BudgetBenchmarkCard";
-import { CategoryRow } from "./CategoryRow";
+import { CategoryChecklistSection } from "./CategoryChecklistSection";
 import { PaymentRow } from "./PaymentRow";
-import { useCategoryBenchmarks } from "./use-category-benchmarks";
+import { UpcomingPaymentsSection } from "./UpcomingPaymentsSection";
+import { WeddingHeadline } from "./WeddingHeadline";
 
 // 행들을 감싸는 컨테이너. `first:`/`last:` 변이는 **형제 중 첫/마지막**을 보는데 `Card` 가 `<h2>`
 // 제목을 먼저 렌더하므로, 감싸지 않으면 첫 행이 `:first-child` 가 되지 못해 위 패딩이 남는다.
@@ -39,10 +47,6 @@ const ROWS = "flex flex-col";
 // 후보 확정")의 표시 라벨 — 레드팀 감사 라운드 2, HIGH. 이전엔 이 값을 non-nullable 타입으로
 // 잘못 선언해 `?? item.category_code`가 `undefined ?? null`이 돼 문자열 "null"이 그대로 찍혔다.
 const GENERAL_CATEGORY_LABEL = "일반";
-
-// summary 로딩/에러 중 useCategoryBenchmarks에 넘길 안정된 빈 배열 — 매 렌더 새 리터럴(`[]`)을
-// 넘기면 그 훅의 `useEffect` deps가 매번 바뀐 것으로 보여 getCategories()를 계속 다시 부른다.
-const NO_CATEGORIES: readonly DashboardCategorySummary[] = [];
 
 export function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
@@ -83,10 +87,6 @@ export function DashboardPage() {
     return categoryLabelByCode.get(categoryCode) ?? categoryCode;
   }
 
-  // summary가 null인 동안(로딩/에러)에도 훅은 호출돼야 한다(Hooks 규칙 — 조건부 호출 금지) —
-  // 빈 배열을 넘기면 훅 내부에서 아무 조회도 하지 않는다.
-  const { hasBenchmarkByCode, benchmarkByCode } = useCategoryBenchmarks(summary?.categories ?? NO_CATEGORIES);
-
   if (error !== null) {
     return (
       <Page title="대시보드" width="max-w-none">
@@ -113,14 +113,15 @@ export function DashboardPage() {
   }
 
   const headline = adaptHeadline(summary);
-  const categories = adaptCategories(summary.categories);
 
   return (
     <Page title="대시보드" width="max-w-none">
-      <div className="flex flex-col gap-0.5">
-        <p className="text-4xl font-bold tracking-tight text-ink tabular-nums">{formatDDay(headline.dDay)}</p>
-        <p className="text-sm text-ink-soft">{headline.dateLabel} 결혼식</p>
-      </div>
+      <WeddingHeadline
+        dDay={headline.dDay}
+        dateLabel={headline.dateLabel}
+        weddingDate={summary.wedding_date}
+        onDateSaved={() => fetchSummary()}
+      />
 
       <BudgetBenchmarkCard benchmark={summary.budget_benchmark} />
 
@@ -137,22 +138,9 @@ export function DashboardPage() {
           )}
         </Card>
 
-        <Card title="카테고리별 체크리스트 · 시세비교">
-          {categories.length === 0 ? (
-            <p className="text-sm text-ink-soft">등록된 카테고리가 없습니다.</p>
-          ) : (
-            <div className={ROWS}>
-              {categories.map((category) => (
-                <CategoryRow
-                  key={category.id}
-                  category={category}
-                  hasBenchmark={hasBenchmarkByCode.get(category.id) ?? false}
-                  benchmark={benchmarkByCode.get(category.id)}
-                />
-              ))}
-            </div>
-          )}
-        </Card>
+        <UpcomingPaymentsSection />
+
+        <CategoryChecklistSection categories={summary.categories} />
       </div>
     </Page>
   );

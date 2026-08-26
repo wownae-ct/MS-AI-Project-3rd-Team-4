@@ -83,7 +83,7 @@ export function MessageBubble({ message, onRate, renderReportAction }: MessageBu
                   aria-expanded={isExpanded}
                   aria-label={`근거 자세히 보기: ${tierLabel} · ${c.title}`}
                   onClick={() => toggleCitation(c.chunk_id)}
-                  className="max-w-[220px] rounded-pill border-none bg-transparent p-0 text-left enabled:hover:opacity-80"
+                  className="min-h-tap max-w-[220px] rounded-pill border-none bg-transparent p-0 text-left enabled:hover:opacity-80"
                 >
                   <Badge className="w-full truncate bg-bg text-ink-soft" title={`${tierLabel} · ${c.title}`}>
                     {/* 목업 형식(s3-category-detail.html:352-353): "{티어} · {제목}" — 티어만 보여주면

@@ -13,13 +13,13 @@ function summary(overrides: Partial<BudgetSummary>): BudgetSummary {
 
 describe("BudgetDonut", () => {
   it("정상 범위에서는 미배정 금액을 그대로 보여준다", () => {
-    render(<BudgetDonut summary={summary({})} />);
+    render(<BudgetDonut summary={summary({})} onTotalBudgetSaved={() => {}} />);
     expect(screen.getByText("1,000,000원")).toBeInTheDocument();
   });
 
   it("초과지출로 remaining 이 음수여도 미배정은 0으로 표시한다 — 음수를 그대로 내면 오독된다", () => {
     const overspent = summary({ paid: 3_800_000, planned: 42_200_000, remaining: -1_000_000 });
-    render(<BudgetDonut summary={overspent} />);
+    render(<BudgetDonut summary={overspent} onTotalBudgetSaved={() => {}} />);
     expect(screen.getByText("0원")).toBeInTheDocument();
     expect(screen.queryByText(/-1,000,000/u)).not.toBeInTheDocument();
   });
@@ -31,7 +31,7 @@ describe("BudgetDonut", () => {
     // 사례 — 경고 주석 자체에 금지어를 적었다가 잡히는 재귀 실수를 피하려 이름을 안 적는다).
     // 같은 DOM 을 가리키는 다른 프로퍼티(`baseElement`)로 우회한다.
     const overspent = summary({ paid: 30_000_000, planned: 25_000_000, remaining: -10_000_000 });
-    const { baseElement } = render(<BudgetDonut summary={overspent} />);
+    const { baseElement } = render(<BudgetDonut summary={overspent} onTotalBudgetSaved={() => {}} />);
     const donut = baseElement.querySelector<HTMLDivElement>("[style*='conic-gradient']");
     expect(donut).not.toBeNull();
     const background = donut?.style.background ?? "";

@@ -42,8 +42,15 @@ export function TimelinePage() {
     };
   }, []);
 
+  // 완료 토글 announce — 체크박스는 네이티브라 체크 자체는 스크린리더가 읽지만, 그 직후
+  // group-by-phase.ts의 완료 구간 재배치(sortDoneLast + pending/done 그룹 분리)가 같은 렌더
+  // 사이클에 일어나 방금 만진 행이 화면에서 자리를 옮길 수 있다 — 최소한 "무엇이 어떻게
+  // 바뀌었는지"는 announce한다(접근성 감사 2026-08-26, WCAG 4.1.3).
+  const [announcement, setAnnouncement] = useState("");
+
   function handleItemChange(updated: TimelineItem) {
     setData((prev) => (prev ? { ...prev, items: prev.items.map((item) => (item.id === updated.id ? updated : item)) } : prev));
+    setAnnouncement(updated.status === "DONE" ? `${updated.title} 완료로 표시했어요.` : `${updated.title} 완료를 해제했어요.`);
   }
 
   // 커스텀 항목 추가·수동 재생성 뒤 목록을 다시 받아온다 — 둘 다 서버가 항목을 새로 만들거나
@@ -87,6 +94,7 @@ export function TimelinePage() {
 
   return (
     <Page title="타임라인" subtitle="D-12개월부터 결혼식 당일까지, 비활성 카테고리는 제외됩니다">
+      <output className="sr-only">{announcement}</output>
       <div className="flex flex-col gap-5">
         <div className="flex justify-end">
           <RegenerateButton domain="TIMELINE" label="AI 타임라인 다시 생성" onRegenerated={refetchItems} />

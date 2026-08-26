@@ -22,6 +22,7 @@ export function AddTimelineItemRow({ onAdded }: AddTimelineItemRowProps) {
   const [targetDate, setTargetDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || categories !== null) return;
@@ -53,6 +54,9 @@ export function AddTimelineItemRow({ onAdded }: AddTimelineItemRowProps) {
         title: title.trim(),
         target_date: targetDate,
       });
+      // 폼이 바로 닫혀 성공 메시지를 보여줄 자리가 없다 — 스크린리더 사용자는 실패(아래
+      // role="alert")만 안내받고 성공은 알 방법이 없었다(접근성 감사 2026-08-26).
+      setSuccessMessage(`"${title.trim()}" 항목을 추가했어요.`);
       reset();
       setOpen(false);
       onAdded();
@@ -65,15 +69,31 @@ export function AddTimelineItemRow({ onAdded }: AddTimelineItemRowProps) {
 
   if (!open) {
     return (
-      <button type="button" className={ADD_BTN} onClick={() => setOpen(true)}>
-        + 항목 추가
-      </button>
+      <>
+        {/* 폼이 닫혀도 방금 추가 성공 announce는 살아있어야 한다. */}
+        <output className="sr-only">{successMessage}</output>
+        <button
+          type="button"
+          className={ADD_BTN}
+          onClick={() => {
+            setSuccessMessage(null);
+            setOpen(true);
+          }}
+        >
+          + 항목 추가
+        </button>
+      </>
     );
   }
 
   return (
     <div className="flex flex-col gap-2 rounded-md border border-line bg-bg p-3">
-      <select className={FORM_INPUT} value={categoryCode} onChange={(e) => setCategoryCode(e.target.value)}>
+      <select
+        className={FORM_INPUT}
+        aria-label="카테고리"
+        value={categoryCode}
+        onChange={(e) => setCategoryCode(e.target.value)}
+      >
         <option value="">카테고리 무관</option>
         {categories?.map((c) => (
           <option key={c.code} value={c.code}>
@@ -81,8 +101,20 @@ export function AddTimelineItemRow({ onAdded }: AddTimelineItemRowProps) {
           </option>
         ))}
       </select>
-      <input className={FORM_INPUT} placeholder="항목 이름" value={title} onChange={(e) => setTitle(e.target.value)} />
-      <input className={FORM_INPUT} type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
+      <input
+        className={FORM_INPUT}
+        aria-label="항목 이름"
+        placeholder="항목 이름"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+      />
+      <input
+        className={FORM_INPUT}
+        type="date"
+        aria-label="날짜"
+        value={targetDate}
+        onChange={(e) => setTargetDate(e.target.value)}
+      />
       {error && (
         <p role="alert" className="text-xs text-primary">
           {error}
