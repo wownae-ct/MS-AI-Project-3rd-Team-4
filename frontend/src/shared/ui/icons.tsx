@@ -106,6 +106,26 @@ export function IconChat(props: IconProps) {
   );
 }
 
+// 설정(⚙️) 화면(2026-08-27, docs/wedding/refactor/bug-todo.md [결정됨])이 생기며 용처가
+// 확정돼 추가했다. 다른 아이콘처럼 primitive(원+선)만 쓴다 — 톱니 디테일을 path로 정교하게
+// 그리지 않고 방사형 짧은 선 8개 + 원 2개로 근사한다.
+export function IconSettings(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="12" cy="12" r="3" />
+      <circle cx="12" cy="12" r="8" />
+      <line x1="12" y1="1" x2="12" y2="4" />
+      <line x1="12" y1="20" x2="12" y2="23" />
+      <line x1="4.2" y1="4.2" x2="6.3" y2="6.3" />
+      <line x1="17.7" y1="17.7" x2="19.8" y2="19.8" />
+      <line x1="1" y1="12" x2="4" y2="12" />
+      <line x1="20" y1="12" x2="23" y2="12" />
+      <line x1="4.2" y1="19.8" x2="6.3" y2="17.7" />
+      <line x1="17.7" y1="6.3" x2="19.8" y2="4.2" />
+    </svg>
+  );
+}
+
 // 브랜드 마크(Google·Naver) — 위 아이콘들과 달리 currentColor 를 따르지 않는다. 로그인 버튼에
 // 실제 제공자를 식별시키는 것이 유일한 용도라 공식 브랜드 색을 고정으로 쓴다. 이 색은 Tailwind
 // 클래스(bg-[#hex] 류)가 아니라 SVG fill 속성 값이라 소스 규범 게이트(scripts/lib/source-norms.mjs

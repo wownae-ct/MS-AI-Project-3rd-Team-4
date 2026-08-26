@@ -154,7 +154,14 @@ const BUDGETS = [
   // 정리 이후 값). 여유를 53 B 로 좁게 유지한다.
   // 접근성 감사 수정 배치(2026-08-26, 라벨/터치타겟/live region 다수)로 97,247 → 97,250 —
   // 오차 3B라 한도는 그대로 둔다.
-  { key: "jsChunkGzip", limit: 97_300, measured: 97_250, label: "최대 단일 JS 청크 (gzip)" },
+  // ── 2026-08-27 설정(⚙️) 화면 신규 추가(docs/wedding/refactor/bug-todo.md [결정됨])로
+  // 97,250 → 97,378 ─────────────────────────────────────────────────────────────────
+  // `AppShell.tsx`(초기 청크)에 `IconSettings` + `SECONDARY_NAV` 항목 + 모바일 상단 바
+  // 링크 하나가 늘었다 — 그 대신 이전에 AppShell.tsx가 직접 갖고 있던 `logout()`/
+  // `invalidateSession()` 호출은 이제 lazy `pages/settings` 청크로 옮겨져 초기 청크에서
+  // 빠졌다(순감소 방향 변경도 있었다는 뜻). 실측 128B 증가를 그대로 반영 — 여유를 22B로
+  // 좁게 유지한다.
+  { key: "jsChunkGzip", limit: 97_400, measured: 97_378, label: "최대 단일 JS 청크 (gzip)" },
   { key: "cssGzip", limit: 6_000, measured: 4_237, label: "CSS (gzip, @font-face 제외)" },
   // 폰트는 unicode-range 로 분할돼 전량 전송되지 않으므로 이 값은 전송량이 아니라 **배포 크기** 가드다.
   // 잡으려는 사고: variable/split(2.3 MB) 대신 static/split(8.8 MB)이나 static/complete(4.7 MB)를
