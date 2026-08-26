@@ -26,21 +26,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.core.config import get_settings
 from app.core.rate_limit import limiter
 from app.core.tracing import flush_tracing
-from app.routers import (
-    auth,
-    budget,
-    category,
-    chat,
-    checklist,
-    client_error,
-    dashboard,
-    feedback,
-    health,
-    personalization,
-    timeline,
-    vendor_case,
-    wedding,
-)
+from app.routers import ai, auth, system, wedding
 
 # 2026-08-26 레드팀 감사 4라운드(로깅/관측성) 항목 1 — app/ 전체에 logging 모듈이 한 번도 안
 # 쓰이고 있었다(예외를 삼키는 경계마다 print()조차 없음). 앱 생성 전, 딱 한 번 여기서 설정하고
@@ -155,16 +141,11 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     )
 
 
-app.include_router(health.router, prefix="/api/v1")
+# 2026-08-26 라우터 폴더 리스트럭처링 — 예전엔 이 자리에 13개 include_router가 한 줄씩
+# 나열돼 있었다. app/routers/{system,wedding,ai}가 각자 그 안의 여러 라우터를 하나의
+# router로 묶어 노출하므로(각 __init__.py 참고), 실제 등록되는 경로(prefix="/api/v1"
+# 기준)는 이전과 동일하고 여기서 보이는 줄 수만 줄어든다.
+app.include_router(system.router, prefix="/api/v1")
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(wedding.router, prefix="/api/v1")
-app.include_router(category.router, prefix="/api/v1")
-app.include_router(budget.router, prefix="/api/v1")
-app.include_router(vendor_case.router, prefix="/api/v1")
-app.include_router(checklist.router, prefix="/api/v1")
-app.include_router(timeline.router, prefix="/api/v1")
-app.include_router(chat.router, prefix="/api/v1")
-app.include_router(dashboard.router, prefix="/api/v1")
-app.include_router(feedback.router, prefix="/api/v1")
-app.include_router(personalization.router, prefix="/api/v1")
-app.include_router(client_error.router, prefix="/api/v1")
+app.include_router(ai.router, prefix="/api/v1")

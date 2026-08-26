@@ -14,7 +14,7 @@ region_code를 Wedding ORM이 아니라 순수 문자열로 받도록 애초에 
 때문이다(그 모듈의 모듈 docstring 참고).
 
 v3.0의 `/checklists/*`(#8-9) 목 엔드포인트는 v4.0에서 완전히 다른 리소스명·구조(`/checklist-items`,
-app/routers/checklist.py, 웨딩별 실DB 행)로 대체돼 여기서 제거했다 — v4.0 API 명세서에
+app/routers/wedding/checklist.py, 웨딩별 실DB 행)로 대체돼 여기서 제거했다 — v4.0 API 명세서에
 `/checklists/*` 자체가 없다."""
 
 import logging

@@ -1,5 +1,6 @@
 """#25 GET /dashboard/summary, #26 GET /reports/me — 03_API_spec.md §3-⑤. Importer:
-app/main.py(app.include_router, 이미 와이어링됨) — 이 파일 내용만 교체.
+app/routers/wedding/__init__.py(app.include_router로 wedding 패키지 router에 합쳐짐,
+2026-08-26 라우터 폴더 리스트럭처링 이전엔 app/main.py가 직접 와이어링했다).
 
 2026-08-24부로 실DB 집계로 전환. 카테고리 메타·예산 집계(planned_budget/paid_amount)는
 app/services/wedding.py의 list_wedding_categories_out()을 그대로 재사용해 GET
@@ -41,7 +42,7 @@ from app.services.wedding import list_wedding_categories_out
 
 router = APIRouter(tags=["dashboard"])
 
-# #22 GET /payments/upcoming의 기본 조회 범위(app/routers/budget.py)와 동일하게 30일을 쓴다 —
+# #22 GET /payments/upcoming의 기본 조회 범위(app/routers/wedding/budget.py)와 동일하게 30일을 쓴다 —
 # #26 스펙은 "#22와 동일 스키마"라고만 하고 조회 범위(days)는 명시하지 않아, 별도 값을 새로
 # 만드는 대신 이미 쓰던 기본값을 그대로 따랐다.
 REPORT_UPCOMING_PAYMENTS_DAYS = 30
