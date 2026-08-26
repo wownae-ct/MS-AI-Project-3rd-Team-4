@@ -38,7 +38,7 @@ export const MODE_TOGGLE_LABEL = "flex-1 rounded-sm py-2 text-center text-sm fon
 export const MODE_TOGGLE_LABEL_ACTIVE = "flex-1 rounded-sm bg-primary py-2 text-center text-sm font-bold text-surface";
 
 export const INPUT =
-  "min-h-tap w-full rounded-md border border-line bg-surface px-3 text-sm text-ink " +
+  "min-h-tap w-full rounded-md border border-line bg-surface px-3 text-base text-ink " +
   "placeholder:text-ink-soft focus-visible:border-primary";
 
 export const SELECT = INPUT;

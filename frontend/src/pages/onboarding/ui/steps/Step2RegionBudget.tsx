@@ -50,7 +50,9 @@ const REGION_OPTIONS: { value: string; label: string }[] = REGION_CODES.filter(
   (code) => !FALLBACK_REGION_CODES.has(code),
 ).map((code) => ({ value: code, label: REGION_LABELS[code as keyof typeof REGION_LABELS] }));
 
-const MINI_TOGGLE = "inline-flex cursor-pointer items-center gap-1.5 text-xs font-bold text-ink-soft";
+// py-1 — 인라인 미니 토글의 클릭 가능 높이를 늘린다(WCAG 2.5.8 AA 24px 쪽으로, 접근성 감사
+// 2026-08-26). 텍스트/아이콘 시각 크기는 그대로 두고 히트 영역만 넓힌다.
+const MINI_TOGGLE = "inline-flex cursor-pointer items-center gap-1.5 py-1 text-xs font-bold text-ink-soft";
 // 스케일 밖 4px 접미사 없는 둥근모서리 유틸리티는 이 저장소의 게이트가 막는다
 // (ghost-candidates.test.mjs) — 스케일 안의 `-sm` 접미사 버전을 쓴다. 이 주석에도 그 접미사 없는
 // 이름을 평문으로 적지 않는다 — Tailwind 스캐너는 파일 전체를 평문으로 훑어 주석 속 단어도
@@ -120,6 +122,7 @@ export function Step2RegionBudget({
               type="number"
               inputMode="numeric"
               min={0}
+              aria-label="총 예산(만원)"
               value={wonStringToManwonDisplay(totalBudget)}
               onChange={(event) => onTotalBudgetChange(manwonInputToWonString(event.target.value))}
             />
@@ -152,6 +155,7 @@ export function Step2RegionBudget({
           type="number"
           inputMode="numeric"
           min={0}
+          aria-label="예상 하객 수"
           placeholder={guestCountUnsure ? "미정" : undefined}
           value={guestCountUnsure ? "" : guestCount}
           disabled={guestCountUnsure}

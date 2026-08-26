@@ -52,7 +52,7 @@ interface BudgetData {
   costEligibleCategoryOptions: readonly { code: string; name_ko: string }[];
 }
 
-const PRIMARY_BUTTON = "rounded-md bg-primary px-4 py-2 text-sm font-bold text-surface disabled:opacity-50";
+const PRIMARY_BUTTON = "min-h-tap rounded-md bg-primary px-4 text-sm font-bold text-surface disabled:opacity-50";
 
 // data가 아직 없는 동안(로딩/에러)에도 useCategoryBenchmarks 훅은 호출돼야 한다(Hooks 규칙 —
 // 조건부 호출 금지) — 매 렌더 새 배열 리터럴(`[]`)을 넘기면 그 훅의 useEffect deps가 매번
@@ -245,7 +245,7 @@ export function BudgetPage() {
               disabled={saveState === "saving"}
               className="text-sm font-bold text-ink-soft hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
             >
-              ‹ 뒤로
+              <span aria-hidden="true">‹</span> 뒤로
             </button>
             <button
               type="button"
@@ -267,7 +267,7 @@ export function BudgetPage() {
             예산 조정하기
           </button>
         )}
-        {!isEditingScenario && saveState === "saved" && <span className="text-sm text-ink-soft">저장됐어요</span>}
+        {!isEditingScenario && saveState === "saved" && <output className="text-sm text-ink-soft">저장됐어요</output>}
       </div>
     </Page>
   );

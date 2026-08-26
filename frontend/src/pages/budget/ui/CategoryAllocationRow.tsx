@@ -105,6 +105,7 @@ export function CategoryAllocationRow({
         max={maxManwon}
         step={SLIDER_STEP_MANWON}
         disabled={!category.is_active}
+        aria-label={`${category.name_ko} 예산 조절`}
         onValueChange={(manwonValue) => {
           // 이미 지급한 금액 아래로는 못 내린다 — paid_amount 가 슬라이더 하한이다.
           const next = Math.max(category.paid_amount, manwonToWon(manwonValue));
@@ -136,7 +137,7 @@ export function CategoryAllocationRow({
       <div className="flex items-baseline justify-between gap-2 text-xs text-ink-soft">
         <span>지급 {wonToManwon(category.paid_amount)}만원 잠김</span>
         {changed && (
-          <span className="font-bold text-primary">
+          <span aria-live="polite" className="font-bold text-primary">
             {delta > 0 ? "+" : ""}
             {wonToManwon(delta)}만원
           </span>

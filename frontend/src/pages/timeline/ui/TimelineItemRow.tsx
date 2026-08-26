@@ -50,7 +50,7 @@ export function TimelineItemRow({ item, categoryLabel, onStatusChange }: Timelin
         checked={isDone}
         onChange={handleToggle}
         aria-label={`${item.title} 완료 여부`}
-        className="size-4 flex-none"
+        className="size-6 flex-none"
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">

@@ -218,7 +218,7 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
                     disabled={safePage === 0}
                     className={PAGE_BUTTON}
                   >
-                    ‹ 이전
+                    <span aria-hidden="true">‹</span> 이전
                   </button>
                   {/* 이전/다음을 눌러도 포커스는 버튼에 그대로 남고 목록만 바뀐다 — 스크린리더
                       사용자에게 페이지가 바뀌었음을 알리려면 이 값의 변경 자체를 announce해야
@@ -234,7 +234,7 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
                     disabled={safePage >= totalPages - 1}
                     className={PAGE_BUTTON}
                   >
-                    다음 ›
+                    다음 <span aria-hidden="true">›</span>
                   </button>
                 </div>
               )}
