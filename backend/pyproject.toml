@@ -33,6 +33,11 @@ dependencies = [
     "httpx>=0.27",
     "langfuse>=4.0",
     "slowapi>=0.1.10",
+    # 영수증 OCR(app/services/receipt_ocr.py)이 vision 호출 전에 HEIC/HEIF를 JPEG로 변환하는 데
+    # 쓴다 — iPhone 기본 사진 형식(HEIC)을 Azure OpenAI vision이 지원하지 않아 추가(트러블슈팅
+    # STEP 1-A). pillow-heif가 Pillow를 끌어오지만, PIL.Image를 변환 코드에서 직접 쓰므로 명시.
+    "pillow>=10.4",
+    "pillow-heif>=0.18",
 ]
 
 [project.optional-dependencies]

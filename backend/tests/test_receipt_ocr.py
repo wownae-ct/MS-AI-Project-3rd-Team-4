@@ -1,14 +1,26 @@
 """app/services/receipt_ocr.py — 영수증 vision 추출. Azure OpenAI 클라이언트 모킹은
 test_chat_graph.py가 세운 선례를 따른다(MagicMock + AsyncMock(chat.completions.create))."""
 
+import io
 import json
 from datetime import date
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import pillow_heif
 import pytest
+from PIL import Image
 
-from app.services.receipt_ocr import extract_receipt_fields
+from app.services.receipt_ocr import ReceiptImageDecodeError, extract_receipt_fields
+
+
+def _fake_heic_bytes() -> bytes:
+    """PIL로 만든 1x1 이미지를 pillow-heif로 실제 HEIC 인코딩한 바이트 — 디코딩 경로를
+    실제로 왕복시켜 검증하기 위함(가짜 content_type만 붙인 JPEG가 아님)."""
+    image = Image.new("RGB", (1, 1), color=(200, 100, 50))
+    buffer = io.BytesIO()
+    pillow_heif.from_pillow(image).save(buffer)
+    return buffer.getvalue()
 
 
 def _client_returning(payload: dict) -> MagicMock:
@@ -86,3 +98,41 @@ class TestExtractReceiptFields:
         image_block = call_kwargs["messages"][0]["content"][1]
         assert image_block["type"] == "image_url"
         assert image_block["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+class TestHeicConversion:
+    """STEP 1-A — HEIC/HEIF는 vision 호출 전에 JPEG로 변환돼야 한다(Azure OpenAI vision이
+    HEIC를 공식 지원하지 않는 경우가 흔함, iPhone 기본 사진 포맷이라 실사용 영향이 큼)."""
+
+    @pytest.mark.asyncio
+    async def test_heic_image_is_converted_to_jpeg_before_vision_call(self):
+        client = _client_returning(
+            {"item_name": None, "vendor_name": None, "amount": None, "paid_date": None}
+        )
+
+        await extract_receipt_fields(client, "chat-mini", _fake_heic_bytes(), "image/heic")
+
+        call_kwargs = client.chat.completions.create.call_args.kwargs
+        image_block = call_kwargs["messages"][0]["content"][1]
+        assert image_block["image_url"]["url"].startswith("data:image/jpeg;base64,")
+
+    @pytest.mark.asyncio
+    async def test_non_heic_image_passes_through_unconverted(self):
+        client = _client_returning(
+            {"item_name": None, "vendor_name": None, "amount": None, "paid_date": None}
+        )
+
+        await extract_receipt_fields(client, "chat-mini", b"\x89PNG\r\n", "image/png")
+
+        call_kwargs = client.chat.completions.create.call_args.kwargs
+        image_block = call_kwargs["messages"][0]["content"][1]
+        assert image_block["image_url"]["url"].startswith("data:image/png;base64,")
+
+    @pytest.mark.asyncio
+    async def test_corrupted_heic_raises_decode_error_instead_of_crashing_vision_call(self):
+        client = _client_returning({})
+
+        with pytest.raises(ReceiptImageDecodeError):
+            await extract_receipt_fields(client, "chat-mini", b"not-a-real-heic-file", "image/heic")
+
+        client.chat.completions.create.assert_not_called()
