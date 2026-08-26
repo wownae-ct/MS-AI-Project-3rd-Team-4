@@ -5,7 +5,9 @@ verify가 WEAK/GENERAL이면 최대 1회 retrieve로 되돌아가는 CRAG 조건
 graph.astream(..., stream_mode=["custom", "values"])로 순회하는 얇은 래퍼다 — "custom" 청크는
 세 노드가 get_stream_writer()로 흘려보낸 것으로, chunk["type"]에 따라 "token"(델타 텍스트,
 SSE token 이벤트), "stage"(노드 진입 알림, SSE stage 이벤트), "retry"(재검색 시작 알림, SSE
-retry 이벤트, 최대 1회) 셋으로 나뉜다. "values" 청크는 매 노드가 끝날 때마다의 상태 스냅샷이라
+retry 이벤트, 최대 1회), "heartbeat"(verify/reformulate_query 대기 중 침묵 방지용, SSE 주석
+줄 — 2026-08-26, app/rag/graph.py::_await_with_heartbeat) 넷으로 나뉜다. "values" 청크는
+매 노드가 끝날 때마다의 상태 스냅샷이라
 마지막 것만 최종 answer/context/verdict로 쓴다 — 재검색이 일어나도 이 방식은 자동으로 "마지막
 시도" 결과만 남긴다(따로 처리 불필요). 그래프와 로직을 분리하지 않고 하나로 합친 이유: 예전엔
 이 파일이 그래프를 거치지 않고 retrieve/generate/verify를 직접 재구현해서 app/rag/graph.py와
@@ -151,6 +153,15 @@ def _sse(event: str, data: BaseModel) -> str:
     return f"event: {event}\ndata: {data.model_dump_json()}\n\n"
 
 
+# 2026-08-26 챗 SSE 타임아웃 회귀 수정(app/rag/graph.py::_await_with_heartbeat) — `:`로
+# 시작하는 줄은 SSE 스펙상 주석이라 이벤트가 아니다. event:/data: 줄이 없어 프론트의
+# dispatchSseFrame(entities/chat/api/chat.ts)이 그냥 무시하므로 프론트 변경이 필요 없다.
+# 목적은 바이트를 흘려보내는 것 자체 — nginx의 proxy-read-timeout이 "이 구간엔 아무 응답도
+# 없다"고 판단하지 않게 한다.
+def _sse_comment(text: str) -> str:
+    return f": {text}\n\n"
+
+
 def _build_citations(context: list) -> list[CitationOut]:
     return [
         CitationOut(
@@ -287,6 +298,8 @@ async def stream_chat_response(
                             yield _sse("stage", StageEventData(stage=chunk["stage"]))
                         elif chunk["type"] == "retry":
                             yield _sse("retry", RetryEventData(reason=chunk["reason"]))
+                        elif chunk["type"] == "heartbeat":
+                            yield _sse_comment("heartbeat")
                     else:
                         final_state = chunk
             except RateLimitError as exc:
