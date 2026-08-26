@@ -18,7 +18,6 @@ app/routers/wedding/checklist.py, 웨딩별 실DB 행)로 대체돼 여기서 �
 `/checklists/*` 자체가 없다."""
 
 import logging
-from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +28,7 @@ from app.core.db import get_session
 from app.core.embeddings import get_azure_openai_client
 from app.core.errors import api_error
 from app.core.storage import upload_receipt_image
+from app.core.timezone import today_kst
 from app.deps import get_current_user, get_current_wedding
 from app.models import Payment, User, Wedding
 from app.schemas.benchmark import BenchmarkCompareOut, TotalBudgetPlaceholderOut
@@ -50,7 +50,7 @@ from app.services.payment import get_payment as get_payment_service
 from app.services.payment import list_payments as list_payments_service
 from app.services.payment import list_upcoming_payments as list_upcoming_payments_service
 from app.services.payment import update_payment as update_payment_service
-from app.services.receipt_ocr import extract_receipt_fields
+from app.services.receipt_ocr import ReceiptImageDecodeError, extract_receipt_fields
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +144,15 @@ async def extract_receipt(
         fields = await extract_receipt_fields(
             openai_client, settings.receipt_vision_deployment, content, file.content_type
         )
+    except ReceiptImageDecodeError as exc:
+        # 트러블슈팅 STEP 1-A — HEIC 디코딩 실패는 일반 500이 아니라 사용자가 대응 가능한
+        # 422로 구분한다(업로드된 원본은 위에서 이미 Blob에 저장돼 유실되지 않음).
+        logger.warning("Receipt HEIC decode failed for wedding_id=%s", wedding.id)
+        raise api_error(
+            422,
+            "RECEIPT_IMAGE_UNREADABLE",
+            "이미지를 읽을 수 없습니다. 다시 촬영해 업로드해주세요.",
+        ) from exc
     except Exception:
         logger.exception("Receipt vision extraction failed for wedding_id=%s", wedding.id)
         raise
@@ -192,7 +201,7 @@ async def list_upcoming_payments(
     wedding: Wedding = Depends(get_current_wedding),  # noqa: B008
     session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> UpcomingPaymentListOut:
-    today = datetime.now(UTC).date()
+    today = today_kst()
     rows = await list_upcoming_payments_service(session, wedding.id, days, today)
     return UpcomingPaymentListOut(
         days=days,

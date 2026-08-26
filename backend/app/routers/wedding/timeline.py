@@ -3,7 +3,7 @@
 get_current_wedding으로 wedding_id를 세션에서 유도한다(app/routers/wedding/checklist.py와 동일 원칙)."""
 
 import logging
-from datetime import UTC, date, datetime
+from datetime import date
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.categories import CATEGORY_META_BY_CODE
 from app.core.db import get_session
 from app.core.errors import api_error
+from app.core.timezone import today_kst
 from app.deps import get_current_wedding
 from app.models import Wedding
 from app.schemas.timeline import (
@@ -59,7 +60,7 @@ async def get_timeline_items(
         )
     active = await get_active_category_codes(session, wedding.id)
     items = await list_timeline_items(session, wedding.id, active, category_code)
-    today = datetime.now(UTC).date()
+    today = today_kst()
     return TimelineListOut(items=[_to_out(item, today) for item in items])
 
 
@@ -77,7 +78,7 @@ async def patch_timeline_item(
         logger.info("Timeline item not found for wedding_id=%s item_id=%s", wedding.id, item_id)
         raise api_error(404, "TIMELINE_ITEM_NOT_FOUND", "해당 타임라인 항목을 찾을 수 없습니다.")
     updated = await update_timeline_item(session, item, payload.target_date, payload.status)
-    return _to_out(updated, datetime.now(UTC).date())
+    return _to_out(updated, today_kst())
 
 
 @router.post("/timeline-items", response_model=TimelineItemOut, status_code=201)
@@ -93,4 +94,4 @@ async def post_timeline_item(
     item = await create_timeline_item(
         session, wedding.id, payload.category_code, payload.title, payload.target_date
     )
-    return _to_out(item, datetime.now(UTC).date())
+    return _to_out(item, today_kst())
