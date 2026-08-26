@@ -20,7 +20,8 @@
 //                ├── /budget               S6
 //                ├── /report               S5
 //                ├── /chat                 AI상담(카테고리 선택 → 상담) — 12_final_prototype_mockup.html
-//                └── /style-guide          디자인 시스템 참조 화면
+//                ├── /style-guide          디자인 시스템 참조 화면
+//                └── /settings             설정 — 로그아웃 + "준비 중" placeholder 2개(2026-08-27)
 //
 // **판정을 두 층으로 나누는 이유** — 한 층에서 「세션 없으면 /login, 웨딩 없으면 /onboarding」을
 // 함께 처리하면 /onboarding 자신이 그 가드 아래 있으므로 무한 리다이렉트가 된다.
@@ -234,6 +235,16 @@ const styleGuideRoute = createRoute({
   component: lazyRouteComponent(() => import("@/pages/style-guide"), "StyleGuidePage"),
 });
 
+// 설정(⚙️) 화면 — docs/wedding/refactor/bug-todo.md [결정됨] "유저 설정 화면 신규 추가"
+// (2026-08-27). 진입점은 AppShell.tsx의 톱니바퀴 아이콘 하나다(데스크톱 사이드바 · 모바일
+// 상단 바) — 예전에 그 자리에 직접 있던 로그아웃 버튼을 이 화면으로 옮겼다. SettingsPage는
+// 다른 탭들과 같은 lazyRouteComponent 패턴을 그대로 쓸 수 있다(콜백 prop 불필요).
+const settingsRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: "/settings",
+  component: lazyRouteComponent(() => import("@/pages/settings"), "SettingsPage"),
+});
+
 /**
  * 트리를 공개하는 이유는 **테스트가 같은 트리를 메모리 히스토리로 다시 조립하기 위해서**다.
  * 테스트용 트리를 따로 만들면 검증 대상과 실제 배선이 갈려, 라우트를 잘못 고쳐도 테스트가 초록으로 남는다.
@@ -250,6 +261,7 @@ export const routeTree = rootRoute.addChildren([
       reportRoute,
       chatRoute,
       styleGuideRoute,
+      settingsRoute,
     ]),
   ]),
 ]);

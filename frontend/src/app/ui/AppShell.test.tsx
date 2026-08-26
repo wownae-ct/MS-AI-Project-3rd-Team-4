@@ -21,14 +21,63 @@ vi.mock("@/entities/session", async (orig) => ({
     Promise.resolve({ id: "u", email: "a@b.c", displayName: null, hasWedding: true }),
 }));
 
+// [2026-08-27] `/budget`(BudgetPage + CostManagementTab)이 마운트 즉시 실API 4종을 부른다 —
+// App.test.tsx §22-29가 CategoryPage/OnboardingPage에 대해 이미 겪은 것과 같은 클래스의 결함
+// (VITE_API_BASE=https://api.test 는 의도적으로 응답하지 않는 주소라 실제로 나가면 안 되는
+// 네트워크 호출이다). 이 파일이 보는 건 라우팅 조립/셸 마크업이지 예산 데이터 렌더링이 아니므로
+// (그건 BudgetPage.test.tsx 등 각 화면 계약 테스트의 몫이다), 값은 최소한만 채운다 — 빈
+// 배열/0/null이면 BudgetPage가 에러 없이 그려지는 데 충분하다.
+//
+// **다만 "/budget 에서 정확히 하나다"가 실제로 깨졌던 원인은 이 네트워크 호출 자체가 아니었다**
+// (교정: 처음엔 DNS 실패가 findBy* 기본 타임아웃을 넘긴 거라고 추정했으나, 아래 mock을 전부
+// 넣은 뒤에도 여전히 간헐적으로 실패해 재조사함) — `/budget`은 `AllocationOverview`·
+// `CostManagementTab`·`BudgetDonut`까지 딸린 무거운 lazy 청크라, 이 환경에서 import+렌더가
+// 다른 라우트보다 오래 걸려 `findByRole`의 기본 대기시간(`@testing-library/dom` 1000ms)을
+// 살짝 넘기는 경우가 있었다(타임아웃을 1100~1500ms로만 올려도 결정적으로 통과함을 확인 —
+// 무한 대기가 아니라 딱 그만큼 느린 것). 그래서 실제 수정은 두 가지다: ① 아래 mock으로
+// 진짜 네트워크 의존을 없애 결과를 결정적으로 만들고, ② `renderShellAt`의 대기시간을
+// 넉넉히 올려 무거운 라우트도 안정적으로 잡히게 한다. mock만으로는 이 특정 실패의 재발을
+// 막지 못했다 — 두 수정이 함께 있어야 한다.
+vi.mock("@/entities/wedding", async (orig) => ({
+  ...(await orig<typeof import("@/entities/wedding")>()),
+  getMyWedding: () =>
+    Promise.resolve({
+      id: "w",
+      created_at: "2026-01-01T00:00:00Z",
+      wedding_date: null,
+      wedding_date_precision: "UNDECIDED",
+      total_budget: 0,
+      region_code: "SEOUL",
+      guest_count: null,
+    }),
+  getWeddingCategories: () => Promise.resolve({ categories: [] }),
+  getCategories: () => Promise.resolve({ categories: [] }),
+}));
+
+vi.mock("@/entities/payment", async (orig) => ({
+  ...(await orig<typeof import("@/entities/payment")>()),
+  getUpcomingPayments: () => Promise.resolve({ days: 30, payments: [] }),
+  // CostManagementTab.tsx가 마운트 즉시 부른다(BudgetPage 자신이 아니라 그 자식) — 위
+  // getMyWedding/getWeddingCategories/getCategories만으로는 안 잡히는 4번째 호출.
+  getPayments: () => Promise.resolve({ payments: [] }),
+}));
+
+vi.mock("@/entities/dashboard", async (orig) => ({
+  ...(await orig<typeof import("@/entities/dashboard")>()),
+  getDashboardSummary: () =>
+    Promise.reject(new Error("AppShell.test.tsx는 budget_benchmark 렌더를 검증하지 않는다")),
+}));
+
 async function renderShellAt(path: string) {
   const router = createRouter({
     routeTree,
     history: createMemoryHistory({ initialEntries: [path] }),
   });
   const view = render(<RouterProvider router={router} />);
-  // 화면이 도착한 뒤에 단언한다 — lazy 라우트는 비동기다.
-  await screen.findByRole("heading", { level: 1 });
+  // 화면이 도착한 뒤에 단언한다 — lazy 라우트는 비동기다. 기본 1000ms로는 `/budget`처럼
+  // 무거운 청크에서 간헐적으로 부족했다(위 mock 블록 코멘트 참고) — 5000ms는 실측(1100ms면
+  // 이미 통과)보다 넉넉한 여유를 둔 값이다.
+  await screen.findByRole("heading", { level: 1 }, { timeout: 5000 });
   return view;
 }
 
@@ -51,6 +100,17 @@ describe("내비게이션 마크업", () => {
     await renderShellAt("/");
     expect(screen.queryAllByRole("tablist")).toHaveLength(0);
     expect(screen.queryAllByRole("tab")).toHaveLength(0);
+  });
+
+  // [2026-08-27, 정정] 처음엔 이 자리에 로그아웃 버튼 자체를 뒀었다(데스크톱 사이드바에만 있고
+  // 모바일엔 없던 실제 갭). 곧이어 docs/wedding/refactor/bug-todo.md [결정됨]에 따라 로그아웃을
+  // `pages/settings/ui/SettingsPage.tsx`로 옮기고 이 자리엔 그 화면으로 가는 설정(⚙️) 링크만
+  // 남겼다 — 그래서 지금 고정하는 건 "로그아웃 버튼 2개"가 아니라 "설정 진입 링크 2개"다.
+  // 둘 다 항상 같은 DOM에 있다(§"단일 DOM + CSS 재배치") — 2개인 것 자체가 계약이고, 1개면
+  // 어느 한쪽이 없어진 회귀다.
+  it("설정 진입 링크가 데스크톱 사이드바·모바일 상단 바 양쪽에 있다", async () => {
+    await renderShellAt("/");
+    expect(screen.getAllByRole("link", { name: "설정" })).toHaveLength(2);
   });
 
   // layout.md §3 의 4개(홈·타임라인·예산·리포트)에 2026-08-24 "AI상담"이 5번째로 추가됐다

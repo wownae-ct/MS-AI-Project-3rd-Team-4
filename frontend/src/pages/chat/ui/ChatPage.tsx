@@ -52,8 +52,18 @@ export function ChatPage() {
   return (
     // md 한 단계만 넓힌다(2xl→3xl) — 사용자 요청으로 채팅 칸을 키우되(2026-08-26), MessageBubble.tsx가
     // 말풍선을 max-w-[85%]로 잡아서 열을 너무 넓히면 줄길이가 늘어 가독성이 떨어진다. lg는 이미
-    // 기본값(4xl)이라 그대로 둔다 — 칸이 커진 체감은 주로 ChatPanel.tsx의 높이(dvh) 변화가 맡는다.
-    <Page title="AI상담" subtitle="결혼 준비 중 궁금한 점을 자유롭게 물어보세요." width="max-w-lg md:max-w-3xl lg:max-w-4xl">
+    // 기본값(4xl)이라 그대로 둔다.
+    //
+    // `fill` — 대화창을 dvh% 클램프로 감으로 잡는 대신 뷰포트 남는 공간 전부를 쓰게 한다
+    // (사용자 요청, iPhone 16 Pro처럼 세로가 긴 기기에서 62dvh 캡에 막혀 여백이 남던 문제,
+    // 2026-08-27). ChatPanel.tsx의 메시지 목록도 같은 이유로 flex-1 min-h-0 체인으로 바꿨다 —
+    // 이 페이지가 유일한 사용처라서(카테고리별 상담 탭은 2026-08-26 제거) 안전하게 스코프된다.
+    <Page
+      title="AI상담"
+      subtitle="결혼 준비 중 궁금한 점을 자유롭게 물어보세요."
+      width="max-w-lg md:max-w-3xl lg:max-w-4xl"
+      fill
+    >
       <ChatPanel
         sessionId={sessionId}
         onSessionCreated={handleSessionCreated}

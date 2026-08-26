@@ -11,9 +11,10 @@
 // 않고, LoginPage.test.tsx 가 이미 쓰는 패턴대로 `@tanstack/react-router`의 `Link`만 목으로 바꾼다.
 //
 // **UX 개편(2026-08-26)** — 예산 도넛 카드를 예산 페이지로 옮겨서(BudgetDonut.test.tsx가 그
-// 화면에서 따로 고정한다) 여기선 더 안 본다. "카테고리별 예산" 카드는 "카테고리별 체크리스트 ·
-// 시세비교"로 바뀌어 `getCategories()`(has_benchmark 판정)와 `getBenchmarkCompare()`도 목으로
-// 배선해야 한다.
+// 화면에서 따로 고정한다) 여기선 더 안 본다. "카테고리별 예산" 카드는 "카테고리별 체크리스트
+// 진행률 · 시세비교"(2026-08-27, "시세비교"만 남아 체크리스트 진행률 카드라는 게 제목만 봐선
+// 안 드러나던 문제 수정)로 바뀌어 `getCategories()`(has_benchmark 판정)와
+// `getBenchmarkCompare()`도 목으로 배선해야 한다.
 //
 // **삭제한 테스트**: "비용이 없는 카테고리는 진행률 바를 그리지 않는다"(구 sample-data의
 // `budget: null` 분기) — 체크리스트 진행률은 예산 유무와 무관하게 항상 뜨므로 더 이상 해당하는
@@ -145,7 +146,7 @@ describe("카드 구조", () => {
     await screen.findByRole("heading", { level: 2, name: "다가오는 결제 · 30일 이내" });
 
     const titles = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
-    expect(titles).toEqual(["다가오는 할 일", "다가오는 결제 · 30일 이내", "카테고리별 체크리스트 · 시세비교"]);
+    expect(titles).toEqual(["다가오는 할 일", "다가오는 결제 · 30일 이내", "카테고리별 체크리스트 진행률 · 시세비교"]);
   });
 });
 
@@ -160,7 +161,7 @@ describe("다가오는 할 일 — 금액 없이 D-Day/상태만 보여준다", 
   });
 });
 
-describe("카테고리별 체크리스트 · 시세비교", () => {
+describe("카테고리별 체크리스트 진행률 · 시세비교", () => {
   it("진행률 바마다 어느 카테고리인지 말한다 — 접근명이 서로 다르고, 예산 지불률이 아니라 체크리스트 진행률이다", async () => {
     await renderDashboard();
 

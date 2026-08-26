@@ -97,6 +97,14 @@ describe("경로 → 화면 (layout.md §2 라우트 표)", () => {
     await expectScreen("디자인 시스템");
   });
 
+  // docs/wedding/refactor/bug-todo.md [결정됨] "유저 설정 화면 신규 추가"(2026-08-27) —
+  // SettingsPage는 마운트 시 아무 네트워크 호출도 하지 않아(로그아웃은 클릭 시에만) 이 파일의
+  // 다른 화면들과 달리 별도 목이 필요 없다.
+  it("설정은 라우트로 존재한다", async () => {
+    renderAt("/settings");
+    await expectScreen("설정");
+  });
+
   it("본문 영역이 main 랜드마크로 노출된다", async () => {
     renderAt("/");
     await expectScreen("대시보드");

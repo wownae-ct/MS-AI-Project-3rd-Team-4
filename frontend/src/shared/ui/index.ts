@@ -18,6 +18,7 @@ export {
   IconHome,
   IconInfo,
   IconNaver,
+  IconSettings,
   IconWallet,
   type IconProps,
 } from "./icons";
