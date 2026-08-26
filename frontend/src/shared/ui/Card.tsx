@@ -21,6 +21,13 @@ const TITLE = "mb-3 text-sm font-bold text-ink";
 // 위 TITLE 은 문자열이 그대로이므로 **부제 없는 카드의 마크업은 바이트 단위로 변하지 않는다.**
 const TITLE_WITH_SUBTITLE = "mb-1 text-sm font-bold text-ink";
 
+// 제목 옆에 액션(예: 수정 버튼)을 놓는 카드용 — titleAction을 넘긴 카드만 이 행 래퍼를 쓴다.
+// mb-*는 원래 h2 자체(TITLE/TITLE_WITH_SUBTITLE)에 있던 값을 행으로 옮긴 것 — titleAction이
+// 없는 카드는 TITLE/TITLE_WITH_SUBTITLE을 그대로 써서 마크업이 바이트 단위로 안 바뀐다.
+const TITLE_ACTION_ROW = "mb-3 flex flex-wrap items-center justify-between gap-2";
+const TITLE_ACTION_ROW_WITH_SUBTITLE = "mb-1 flex flex-wrap items-center justify-between gap-2";
+const TITLE_INLINE = "text-sm font-bold text-ink";
+
 // 목업 s5:61-62 의 margin 3px / 14px 는 spacing 스케일 밖이라 mb-1(4) / mb-3(12) 으로,
 // `.74rem`(11.84px)은 타입 스케일 하한(12px) 밑이라 text-xs 로 정규화했다.
 const SUBTITLE = "mb-3 text-xs text-ink-soft";
@@ -46,12 +53,25 @@ export interface CardProps {
    * 페이지 부제라 `Page` 가 이미 낸다).
    */
   subtitle?: ReactNode;
+  /**
+   * 제목 오른쪽에 놓는 액션(예: 수정 버튼). 지정하면 제목이 행으로 감싸인다 — 지정하지 않은
+   * 카드는 기존 `<h2>` 단독 마크업이 바이트 단위로 그대로 유지된다.
+   */
+  titleAction?: ReactNode;
 }
 
-export function Card({ children, className, title, subtitle }: CardProps) {
+export function Card({ children, className, title, subtitle, titleAction }: CardProps) {
   return (
     <div className={className ? `${BASE} ${className}` : BASE}>
-      {title !== undefined && <h2 className={subtitle === undefined ? TITLE : TITLE_WITH_SUBTITLE}>{title}</h2>}
+      {title !== undefined &&
+        (titleAction === undefined ? (
+          <h2 className={subtitle === undefined ? TITLE : TITLE_WITH_SUBTITLE}>{title}</h2>
+        ) : (
+          <div className={subtitle === undefined ? TITLE_ACTION_ROW : TITLE_ACTION_ROW_WITH_SUBTITLE}>
+            <h2 className={TITLE_INLINE}>{title}</h2>
+            {titleAction}
+          </div>
+        ))}
       {subtitle !== undefined && <p className={SUBTITLE}>{subtitle}</p>}
       {children}
     </div>

@@ -115,7 +115,7 @@ export function CostTab({ categoryCode, categoryMeta }: CostTabProps) {
         ) : (
           <ul className="flex flex-col gap-3">
             {payments.map((p) => (
-              <PaymentListRow key={p.id} payment={p} />
+              <PaymentListRow key={p.id} payment={p} onChanged={refetchPayments} />
             ))}
           </ul>
         )}

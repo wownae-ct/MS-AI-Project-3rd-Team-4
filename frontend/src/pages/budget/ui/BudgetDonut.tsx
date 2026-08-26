@@ -9,22 +9,36 @@
 // 색은 hex 가 아니라 `var(--color-*)` 로 참조한다 — 규범 게이트가 보는 팔레트 안에 머무른다.
 //
 // **접근성** — 도넛은 색으로만 3계열을 구분한다. 그래서 범례가 **라벨과 금액을 텍스트로** 함께
-// 낸다(WCAG 1.4.1). 이 대비책이 사라지지 않도록 `DashboardPage.test.tsx` 가 고정한다.
+// 낸다(WCAG 1.4.1). 이 대비책이 사라지지 않도록 `BudgetDonut.test.tsx` 가 고정한다.
 // 범례 점의 테두리는 `ink-soft` 다 — `잔여` 의 채움색이 `line`(1.28:1)이라 테두리가 없으면
 // 흰 표면에서 점 자체가 보이지 않는다(a11y.md §3 「경계가 유일한 식별 수단」).
 //
 // **총예산 인라인 수정을 이 컴포넌트가 직접 담당한다(UX 개편 2차, 2026-08-26, 사용자 지시).**
-// 원래 별도 "남은예산" 카드(`TotalBudgetCard.tsx`, 삭제됨)가 하던 일이다 — "예산 현황" 카드
+// 원래 별도 "남은예산" 카드(`TotalBudgetCard.tsx`, 삭제됨)가 하던 일이다 — "총 예산 현황" 카드
 // 안에 도넛·범례·총예산 수정이 이미 다 모여 있는데 남은예산만 별개 카드로 떼어 둘 이유가
 // 없다는 사용자 판단. **다만 "미배정" 범례 줄 자체는 여전히 0으로 클램프한다**(레드팀 감사로
 // 고친 음수 오독 버그, 아래 `Math.max(0, ...)` 참고) — 총예산보다 배정 합계가 많은 경우는
-// 그 대신 아래 별도 문구로 알린다(카테고리별 배정의 "OO만원 초과 집행"과 같은 D6 텍스트 전용
-// 관례, 성격은 다르다 — 이건 "총예산 대비 배정 초과", 그건 "카테고리별 지급 대비 배정 초과").
+// 그 대신 아래 별도 문구로 알린다(카테고리별 예산 현황의 "OO만원 초과 지불"과 같은 D6 텍스트
+// 전용 관례, 성격은 다르다 — 이건 "총예산 대비 배정 초과", 그건 "카테고리별 지급 대비 배정 초과").
+//
+// **"예산 시세 비교"를 대시보드에서 이 카드로 흡수한다(UX 개편 3차, 2026-08-26, 사용자 지시).**
+// 예전엔 대시보드에 `BudgetBenchmarkCard.tsx`(삭제됨)가 별도 카드로 떠 있었다 — 예산 상세는
+// 이미 예산 페이지가 전담한다는 2차 개편의 연장선에서, 총예산 대비 지역 시세는 "총 예산 현황"
+// 카드 하단(예전 "총예산 …원 중 수정" 자리)으로 옮겼다. 그 자리를 비우려고 수정 버튼을
+// 카드 제목 옆으로 올렸다 — 도넛 구멍 안(104px)은 이미 한 번 넘쳐서 키운 자리라 더 넣지
+// 않는다(아래 도넛 마크업 주석 참고). Card.tsx의 `titleAction` 슬롯이 이 개편으로 새로 생겼다.
+//
+// **UX 개편 4차(2026-08-27, 사용자 지시) — 카드 제목 "예산 현황" → "총 예산 현황".**
+// "카테고리별 예산 현황"(AllocationOverview.tsx의 다른 카드)과 짝이 되도록 맞췄다 — 하나는
+// 전체 합계, 하나는 카테고리별 상세라는 관계가 제목만 보고도 드러난다. 같은 날 "집행"이라는
+// 말도 전부 "지불"로 바꿨다(아래 SERIES "지불 완료" 등).
 import { useState } from "react";
+import type { BudgetBenchmarkSummary } from "@/entities/dashboard";
 import { updateMyWedding, type BudgetSummary } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
 import { manwonToWon, wonToManwon } from "@/shared/lib/money";
-import { Money } from "@/shared/ui";
+import { safeExternalUrl } from "@/shared/lib/safe-url";
+import { Badge, Card, Money } from "@/shared/ui";
 
 const INLINE_INPUT =
   "min-h-tap w-28 rounded-md border border-line bg-surface px-2.5 text-right text-base text-ink " +
@@ -39,7 +53,7 @@ interface Series {
 }
 
 const SERIES: readonly Series[] = [
-  { label: "집행", color: "var(--color-primary)", amount: (s) => s.paid },
+  { label: "지불 완료", color: "var(--color-primary)", amount: (s) => s.paid },
   { label: "계획(미지급)", color: "var(--color-ink-soft)", amount: (s) => s.planned },
   // 「잔여」가 아니라 「미배정」이다 — 45,000,000 − 3,800,000 ≠ 1,000,000 이라 「잔여」로 적으면
   // 숫자가 맞지 않아 보인다. 여기 도넛은 세 계열이 총액을 채우므로 문맥이 뜻을 잡아 주지만,
@@ -53,9 +67,12 @@ const SERIES: readonly Series[] = [
 export interface BudgetDonutProps {
   summary: BudgetSummary;
   onTotalBudgetSaved: (nextTotal: number) => void;
+  /** 대시보드에서 옮겨온 총예산 vs 지역 시세 — 해당 지역에 참가격 데이터가 없으면 null(하단
+      비교 문구 자체를 그리지 않는다, 예전 BudgetBenchmarkCard.tsx와 같은 규칙). */
+  benchmark: BudgetBenchmarkSummary | null;
 }
 
-export function BudgetDonut({ summary, onTotalBudgetSaved }: BudgetDonutProps) {
+export function BudgetDonut({ summary, onTotalBudgetSaved, benchmark }: BudgetDonutProps) {
   const { total, paid, planned } = summary;
 
   const [draft, setDraft] = useState<string | null>(null);
@@ -110,87 +127,115 @@ export function BudgetDonut({ summary, onTotalBudgetSaved }: BudgetDonutProps) {
     `var(--color-ink-soft) ${paidEnd}% ${plannedEnd}%,` +
     `var(--color-line) ${plannedEnd}% 100%)`;
 
+  // 카드 제목 옆(titleAction)에 놓는 수정 트리거/폼 — 예전엔 아래 "총예산 …원 중" 행이 이 역할을
+  // 함께 했지만, 그 행 자체가 시세 비교 문구로 바뀌면서 트리거만 제목 옆으로 옮겼다.
+  const editTrigger =
+    draft === null ? (
+      <button type="button" onClick={startEdit} className={GHOST_BUTTON}>
+        수정
+      </button>
+    ) : (
+      <span className="flex flex-wrap items-center gap-1.5">
+        <input
+          type="number"
+          inputMode="numeric"
+          min={0}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          className={INLINE_INPUT}
+          aria-label="총예산(만원)"
+        />
+        <span className="text-xs text-ink-soft">만원</span>
+        <button
+          type="button"
+          onClick={() => void handleSaveTotal()}
+          disabled={saveState === "saving"}
+          className={GHOST_BUTTON}
+        >
+          {saveState === "saving" ? "저장 중…" : "저장"}
+        </button>
+        {/* 저장 진행 중엔 취소를 막는다 — 안 막으면 취소 후에도 진행 중이던 저장이 성공 시
+            되살아난다(레드팀 감사 HIGH, 예전 TotalBudgetCard.tsx와 같은 이유). */}
+        <button type="button" onClick={cancelEdit} disabled={saveState === "saving"} className={GHOST_BUTTON}>
+          취소
+        </button>
+      </span>
+    );
+
+  // source_url이 있어도 스킴 검증 없이 href에 그대로 꽂지 않는다(예전 BudgetBenchmarkCard.tsx와
+  // 같은 원칙) — 값 자체는 백엔드에서 온 문자열이다.
+  const safeBenchmarkUrl = benchmark === null ? null : safeExternalUrl(benchmark.source_url);
+
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-5">
-        {/* 도넛 테두리 자체는 장식이다 — 같은 정보를 옆 범례가 텍스트로 낸다. 가운데 라벨만 의미를 갖는다.
-            ⚠️ 지름이 목업(112px)보다 크다. 목업의 캡션은 `.6rem`(9.6px)인데 **우리 타입 스케일의 하한은
-            `text-xs`(12px)** 다 — 스케일을 지키면 같은 구멍(80px)에는 들어가지 않는다. 실제로 112px 로
-            만들었다가 브라우저에서 글자가 원 밖으로 넘쳤다(구멍 80px, 내용 84px).
-            임의 폰트 크기를 만드는 대신 **원을 키웠다**: 128px · 링 12px → 구멍 104px.
-            가로 패딩도 뺐다 — `px-2` 가 가용폭을 64px 로 깎아 넘침을 키우고 있었다. */}
-        <div className="relative size-32 shrink-0 rounded-pill" style={{ background: donutGradient }}>
-          <div className="absolute inset-3 flex flex-col items-center justify-center gap-px rounded-pill bg-surface text-center">
-            <Money value={paid} className="text-sm leading-tight" />
-            <span className="text-xs leading-tight whitespace-nowrap text-ink-soft">
-              총 <Money value={total} className="text-xs" />
-            </span>
+    <Card title="총 예산 현황" titleAction={editTrigger}>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-5">
+          {/* 도넛 테두리 자체는 장식이다 — 같은 정보를 옆 범례가 텍스트로 낸다. 가운데 라벨만 의미를 갖는다.
+              ⚠️ 지름이 목업(112px)보다 크다. 목업의 캡션은 `.6rem`(9.6px)인데 **우리 타입 스케일의 하한은
+              `text-xs`(12px)** 다 — 스케일을 지키면 같은 구멍(80px)에는 들어가지 않는다. 실제로 112px 로
+              만들었다가 브라우저에서 글자가 원 밖으로 넘쳤다(구멍 80px, 내용 84px).
+              임의 폰트 크기를 만드는 대신 **원을 키웠다**: 128px · 링 12px → 구멍 104px.
+              가로 패딩도 뺐다 — `px-2` 가 가용폭을 64px 로 깎아 넘침을 키우고 있었다. */}
+          <div className="relative size-32 shrink-0 rounded-pill" style={{ background: donutGradient }}>
+            <div className="absolute inset-3 flex flex-col items-center justify-center gap-px rounded-pill bg-surface text-center">
+              <Money value={paid} className="text-sm leading-tight" />
+              <span className="text-xs leading-tight whitespace-nowrap text-ink-soft">
+                총 <Money value={total} className="text-xs" />
+              </span>
+            </div>
+          </div>
+
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
+            {SERIES.map((series) => (
+              <div key={series.label} className="flex items-center gap-2 text-sm">
+                <span
+                  aria-hidden
+                  className="size-2.5 shrink-0 rounded-pill border border-ink-soft"
+                  style={{ background: series.color }}
+                />
+                <span className="min-w-0 flex-1 text-ink-soft">{series.label}</span>
+                <Money value={series.amount(summary)} className="text-sm whitespace-nowrap" />
+              </div>
+            ))}
           </div>
         </div>
 
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
-          {SERIES.map((series) => (
-            <div key={series.label} className="flex items-center gap-2 text-sm">
-              <span
-                aria-hidden
-                className="size-2.5 shrink-0 rounded-pill border border-ink-soft"
-                style={{ background: series.color }}
-              />
-              <span className="min-w-0 flex-1 text-ink-soft">{series.label}</span>
-              <Money value={series.amount(summary)} className="text-sm whitespace-nowrap" />
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between gap-2 border-t border-line pt-3">
-        {draft === null ? (
-          <span className="flex items-center gap-2 text-xs text-ink-soft">
-            총예산 {total.toLocaleString("ko-KR")}원 중
-            <button type="button" onClick={startEdit} className={GHOST_BUTTON}>
-              수정
-            </button>
-          </span>
-        ) : (
-          <span className="flex flex-wrap items-center gap-1.5">
-            <input
-              type="number"
-              inputMode="numeric"
-              min={0}
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              className={INLINE_INPUT}
-              aria-label="총예산(만원)"
-            />
-            <span className="text-xs text-ink-soft">만원</span>
-            <button
-              type="button"
-              onClick={() => void handleSaveTotal()}
-              disabled={saveState === "saving"}
-              className={GHOST_BUTTON}
-            >
-              {saveState === "saving" ? "저장 중…" : "저장"}
-            </button>
-            {/* 저장 진행 중엔 취소를 막는다 — 안 막으면 취소 후에도 진행 중이던 저장이 성공 시
-                되살아난다(레드팀 감사 HIGH, 예전 TotalBudgetCard.tsx와 같은 이유). */}
-            <button type="button" onClick={cancelEdit} disabled={saveState === "saving"} className={GHOST_BUTTON}>
-              취소
-            </button>
-          </span>
+        {saveState === "error" && (
+          <p role="alert" className="text-xs text-primary">
+            {errorMessage}
+          </p>
+        )}
+        {/* "미배정" 범례는 위에서 0으로 클램프돼 있다 — 총예산보다 배정 합계가 더 많은 경우를
+            여기서 별도로 알린다(음수 "미배정"을 그대로 보여주면 오독된다는 기존 결정은 그대로 둔다). */}
+        {summary.remaining < 0 && (
+          <p className="text-xs font-bold text-primary">
+            배정 합계가 총예산보다 {wonToManwon(Math.abs(summary.remaining)).toLocaleString("ko-KR")}만원 더 많아요
+          </p>
+        )}
+        {/* 예전 "총예산 …원 중 수정" 행이 있던 자리 — 수정 트리거는 카드 제목 옆으로 옮겼고,
+            이 자리는 대시보드에서 흡수한 시세 비교 문구가 대신한다. benchmark가 null(해당
+            지역에 참가격 데이터 없음)이면 이 블록 자체를 그리지 않는다(예전 BudgetBenchmarkCard.tsx와
+            같은 규칙 — "데이터 없음" 문구 대신 아예 숨긴다). */}
+        {benchmark !== null && (
+          <div className="flex flex-col gap-1 border-t border-line pt-3">
+            <p className="flex flex-wrap items-center gap-1.5 text-sm text-ink-soft">
+              총예산이 지역 시세 대비 {benchmark.percentile_label} · 중앙값{" "}
+              <Money value={benchmark.median_price} className="text-sm" />
+              <Badge>{benchmark.ratio_to_median.toFixed(2)}배</Badge>
+            </p>
+            {safeBenchmarkUrl && (
+              <a
+                href={safeBenchmarkUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-fit text-xs text-primary underline"
+              >
+                출처 보기
+              </a>
+            )}
+          </div>
         )}
       </div>
-      {saveState === "error" && (
-        <p role="alert" className="text-xs text-primary">
-          {errorMessage}
-        </p>
-      )}
-      {/* "미배정" 범례는 위에서 0으로 클램프돼 있다 — 총예산보다 배정 합계가 더 많은 경우를
-          여기서 별도로 알린다(음수 "미배정"을 그대로 보여주면 오독된다는 기존 결정은 그대로 둔다). */}
-      {summary.remaining < 0 && (
-        <p className="text-xs font-bold text-primary">
-          배정 합계가 총예산보다 {wonToManwon(Math.abs(summary.remaining)).toLocaleString("ko-KR")}만원 더 많아요
-        </p>
-      )}
-    </div>
+    </Card>
   );
 }

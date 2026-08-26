@@ -54,20 +54,36 @@ export function CategoryAllocationRow({
     // "정확히 다 씀"과 시각적으로 구분되지 않는다(레드팀 감사). 편집 모드를 열어야만 초과 여부를
     // 알 수 있던 문제를, 보기 모드에도 D6(상태색 없이 텍스트만) 관례대로 문구를 더해 해소한다.
     const overspend = category.paid_amount - category.planned_budget;
+    // 예산을 아예 배정하지 않은(planned_budget=0) 카테고리에 지출이 생긴 경우 — 원래는 막대가
+    // 강제로 0%, 상단 금액도 0만원으로 보여 "아무 일도 안 일어난 것"처럼 보이는 버그였다
+    // (사용자 신고, 2026-08-27). planned_budget=0이면 나눗셈(paid/planned)이 정의되지 않으므로
+    // 이 경우만 막대를 꽉 채운다("배정 전체가 초과"라는 뜻) — 정상 범위/일반 초과지출(둘 다
+    // planned_budget>0)은 기존 비율 계산 그대로다. 상단 금액도 이 경우엔 배정액(0) 대신
+    // 실제 지출액을 보여준다 — 사용자가 A/B 두 안을 검토한 뒤 B안(실지출액 숫자)을 골랐다.
+    const isUnallocatedOverspend = category.planned_budget <= 0 && category.paid_amount > 0;
+    const progressValue = category.planned_budget > 0
+      ? category.paid_amount / category.planned_budget
+      : isUnallocatedOverspend
+        ? 1
+        : 0;
+    const headlineAmount = isUnallocatedOverspend ? category.paid_amount : category.planned_budget;
     return (
       <div className={ROW}>
         <div className="flex items-baseline justify-between gap-2">
           <span className="text-sm font-bold text-ink">{category.name_ko}</span>
           <span className="text-sm font-bold text-ink [font-variant-numeric:tabular-nums]">
-            {wonToManwon(category.planned_budget)}만원
+            {wonToManwon(headlineAmount)}만원
           </span>
         </div>
-        <Progress
-          value={category.planned_budget > 0 ? category.paid_amount / category.planned_budget : 0}
-          label={`${category.name_ko} 예산 집행률`}
-        />
+        <Progress value={progressValue} label={`${category.name_ko} 예산 지불률`} />
         {overspend > 0 && (
-          <span className="text-xs font-bold text-primary">{wonToManwon(overspend)}만원 초과 집행</span>
+          <span className="text-xs font-bold text-primary">
+            {wonToManwon(overspend)}만원 초과 지불
+            {/* 미배정 카테고리는 위 헤드라인 금액이 이미 실지출액이라(B안) "초과분"과 값이
+                같다 — 왜 그런지(배정 자체가 없어서) 회색 보조 표기로 밝혀 헷갈리지 않게 한다
+                (사용자 지시, 2026-08-27). */}
+            {isUnallocatedOverspend && <span className="font-normal text-ink-soft"> - 예산 미배정</span>}
+          </span>
         )}
         {hasBenchmark &&
           (benchmark ? (
