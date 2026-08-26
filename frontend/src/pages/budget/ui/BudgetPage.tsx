@@ -18,25 +18,21 @@
 // 재배분(PUT /wedding-categories)과는 완전히 별개의 액션이라 별도 상태로 관리한다.
 import { useEffect, useState } from "react";
 import { getUpcomingPayments, type UpcomingPaymentEntry } from "@/entities/payment";
-import {
-  getCategories,
-  getMyWedding,
-  getWeddingCategories,
-  putWeddingCategories,
-  updateMyWedding,
-  type WeddingCategory,
-} from "@/entities/wedding";
+import { getCategories, getMyWedding, getWeddingCategories, putWeddingCategories, type WeddingCategory } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
-import { manwonToWon, wonToManwon } from "@/shared/lib/money";
-import { Card, Money, Page } from "@/shared/ui";
+import { Card, Page } from "@/shared/ui";
 import { CategoryAllocationRow } from "./CategoryAllocationRow";
+import { TotalBudgetCard } from "./TotalBudgetCard";
 import { UpcomingPaymentsCard } from "./UpcomingPaymentsCard";
+import { WeddingDateCard } from "./WeddingDateCard";
 
 // 서버가 D-day까지 계산해 준다(backend/app/routers/budget.py) — 프론트에서 날짜 계산을 다시 하지 않는다.
 const UPCOMING_PAYMENT_WINDOW_DAYS = 30;
 
 interface BudgetData {
   totalBudget: number;
+  /** "미정"(NO_PLAN)이면 undefined — WeddingDateCard.tsx 머리말 참고. */
+  weddingDate: string | undefined;
   categories: WeddingCategory[];
   /** `WeddingCategory`(GET /wedding-categories)엔 `has_cost`가 없다 — 비용 유무는 카테고리
       상수(`GET /categories`)만 안다. "비용 없음" 카테고리는 슬라이더/바 대신 안내 텍스트만
@@ -44,10 +40,6 @@ interface BudgetData {
   hasCostByCode: ReadonlyMap<string, boolean>;
 }
 
-const INLINE_INPUT =
-  "w-28 rounded-md border border-line bg-surface px-2.5 py-1.5 text-right text-sm text-ink " +
-  "[font-variant-numeric:tabular-nums] focus-visible:border-primary";
-const GHOST_BUTTON = "text-xs font-bold text-ink-soft transition-colors duration-150 hover:text-primary";
 const PRIMARY_BUTTON = "rounded-md bg-primary px-4 py-2 text-sm font-bold text-surface disabled:opacity-50";
 
 export function BudgetPage() {
@@ -65,11 +57,6 @@ export function BudgetPage() {
   // 두 곳만 그 관례를 안 따르고 있었다.
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
 
-  // 총예산 인라인 편집 — 카테고리 시나리오와 무관한 별도 액션(위 머리말 참조).
-  const [totalBudgetDraft, setTotalBudgetDraft] = useState<string | null>(null);
-  const [totalBudgetSaveState, setTotalBudgetSaveState] = useState<"idle" | "saving" | "error">("idle");
-  const [totalBudgetErrorMessage, setTotalBudgetErrorMessage] = useState<string | null>(null);
-
   useEffect(() => {
     let cancelled = false;
     Promise.all([getMyWedding(), getWeddingCategories(), getCategories()])
@@ -78,6 +65,7 @@ export function BudgetPage() {
           const sorted = categoriesResponse.categories.toSorted((a, b) => a.display_order - b.display_order);
           setData({
             totalBudget: wedding.total_budget ?? 0,
+            weddingDate: wedding.wedding_date,
             categories: sorted,
             hasCostByCode: new Map(constants.categories.map((c) => [c.code, c.has_cost])),
           });
@@ -156,35 +144,6 @@ export function BudgetPage() {
     }
   }
 
-  function startEditTotalBudget() {
-    if (!data) return;
-    setTotalBudgetDraft(String(wonToManwon(data.totalBudget)));
-    setTotalBudgetSaveState("idle");
-    setTotalBudgetErrorMessage(null);
-  }
-
-  function cancelEditTotalBudget() {
-    setTotalBudgetDraft(null);
-    setTotalBudgetSaveState("idle");
-    setTotalBudgetErrorMessage(null);
-  }
-
-  async function handleSaveTotalBudget() {
-    if (!data || totalBudgetDraft === null) return;
-    const nextTotal = manwonToWon(Number(totalBudgetDraft));
-    setTotalBudgetSaveState("saving");
-    setTotalBudgetErrorMessage(null);
-    try {
-      await updateMyWedding({ total_budget: nextTotal });
-      setData((prev) => (prev ? { ...prev, totalBudget: nextTotal } : prev));
-      setTotalBudgetDraft(null);
-      setTotalBudgetSaveState("idle");
-    } catch (err) {
-      setTotalBudgetSaveState("error");
-      setTotalBudgetErrorMessage(err instanceof ApiError ? err.message : "총예산을 저장하지 못했어요. 다시 시도해 주세요.");
-    }
-  }
-
   if (error !== null) {
     return (
       <Page title="예산 재배분" subtitle="카테고리 사이로 예산을 옮겨 봅니다.">
@@ -214,58 +173,16 @@ export function BudgetPage() {
   return (
     <Page title="예산 재배분" subtitle="카테고리 사이로 예산을 옮겨 봅니다.">
       <div className="flex flex-col gap-5">
-        <Card title="남은예산">
-          <div className="flex items-baseline justify-between">
-            <Money value={remaining} className="text-2xl" />
-            {totalBudgetDraft === null ? (
-              <span className="flex items-center gap-2 text-xs text-ink-soft">
-                총예산 {data.totalBudget.toLocaleString("ko-KR")}원 중
-                {/* 카테고리 재배분과 별개 액션이라, 시나리오 편집 중에도(isEditingScenario 무관)
-                    항상 눌러볼 수 있게 둔다 — 다만 실제로 편집 UI가 뜨면 아래 브랜치로 넘어간다. */}
-                <button type="button" onClick={startEditTotalBudget} className={GHOST_BUTTON}>
-                  수정
-                </button>
-              </span>
-            ) : (
-              <span className="flex items-center gap-1.5">
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  value={totalBudgetDraft}
-                  onChange={(event) => setTotalBudgetDraft(event.target.value)}
-                  className={INLINE_INPUT}
-                  aria-label="총예산(만원)"
-                />
-                <span className="text-xs text-ink-soft">만원</span>
-                <button
-                  type="button"
-                  onClick={() => void handleSaveTotalBudget()}
-                  disabled={totalBudgetSaveState === "saving"}
-                  className={GHOST_BUTTON}
-                >
-                  {totalBudgetSaveState === "saving" ? "저장 중…" : "저장"}
-                </button>
-                {/* 저장 진행 중엔 취소를 막는다 — 안 막으면 draft 를 null 로 되돌린 뒤에도
-                    이미 시작된 저장 함수가 클릭 시점 draft 로 계속 진행해 성공 시 그 값을
-                    되살린다(레드팀 감사 HIGH, BudgetPage.tsx:285 와 같은 패턴). */}
-                <button
-                  type="button"
-                  onClick={cancelEditTotalBudget}
-                  disabled={totalBudgetSaveState === "saving"}
-                  className={GHOST_BUTTON}
-                >
-                  취소
-                </button>
-              </span>
-            )}
-          </div>
-          {totalBudgetSaveState === "error" && (
-            <p role="alert" className="mt-1.5 text-xs text-primary">
-              {totalBudgetErrorMessage}
-            </p>
-          )}
-        </Card>
+        <TotalBudgetCard
+          totalBudget={data.totalBudget}
+          remaining={remaining}
+          onSaved={(nextTotal) => setData((prev) => (prev ? { ...prev, totalBudget: nextTotal } : prev))}
+        />
+
+        <WeddingDateCard
+          weddingDate={data.weddingDate}
+          onSaved={(nextDate) => setData((prev) => (prev ? { ...prev, weddingDate: nextDate } : prev))}
+        />
 
         {upcomingPayments !== null && (
           <UpcomingPaymentsCard payments={upcomingPayments} windowDays={UPCOMING_PAYMENT_WINDOW_DAYS} />
