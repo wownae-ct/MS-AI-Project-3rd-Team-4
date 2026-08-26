@@ -1,4 +1,5 @@
 export type {
+  BudgetBenchmarkSummary,
   DashboardCategorySummary,
   DashboardSummary,
   DashboardUpcomingItem,

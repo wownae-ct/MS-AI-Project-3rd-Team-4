@@ -15,7 +15,8 @@ function isDashboardSummary(value: unknown): value is DashboardSummary {
     typeof v.total_planned === "number" &&
     typeof v.remaining_budget === "number" &&
     Array.isArray(v.categories) &&
-    Array.isArray(v.upcoming_items)
+    Array.isArray(v.upcoming_items) &&
+    (v.budget_benchmark === null || typeof v.budget_benchmark === "object")
   );
 }
 
