@@ -14,6 +14,12 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 // 가 모두 이 그래프를 동기로 태운다(CLAUDE.md "Personalization" 절) — 이 넷만 기본값보다 길게 준다.
 export const PERSONALIZATION_TIMEOUT_MS = 45_000;
 
+// 영수증 OCR(POST /payments/receipt-extract) 전용 — 트러블슈팅 STEP 1-C(2026-08-26). 백엔드가
+// Blob 업로드 + vision 호출을 순차로 하는데, 사진 용량이 크거나 모델 응답이 느리면(vision 모델
+// 특성상 20~30초는 드물지 않음) 기본 15초보다 오래 걸려 정상적으로 성공했을 요청이 프론트에서
+// 먼저 끊겼다. 백엔드 azure_openai_timeout_seconds 기본값(45초)과 맞춘다.
+export const RECEIPT_OCR_TIMEOUT_MS = 45_000;
+
 // 401 구독 — shared 는 최하층이라 entities/session 을 import 할 수 없다(oxlint 가 막는다).
 // 그래서 방향을 뒤집는다: shared 는 「누군가 듣는다」만 알고, 배선은 app 레이어가 한다.
 const unauthorizedHandlers = new Set<() => void>();
@@ -138,7 +144,15 @@ export function apiFetch(path: string, init: RequestInit = {}, timeoutMs?: numbe
 /**
  * 멀티파트 요청. **`apiFetch` 를 태우지 않는다** — `FormData` 는 브라우저가 boundary 를 포함한
  * Content-Type 을 자동 설정해야 하므로 JSON 래퍼를 거치면 깨진다(layers.md 부록 A 가 "의도된 설계"로 명시).
+ *
+ * `timeoutMs` 를 생략하면 기본 15초 — 영수증 OCR 호출부는 `RECEIPT_OCR_TIMEOUT_MS` 를 명시적으로
+ * 넘긴다(트러블슈팅 STEP 1-C).
  */
-export function apiFetchMultipart(path: string, form: FormData, init: RequestInit = {}): Promise<unknown> {
-  return send(path, { method: "POST", ...init, body: form, credentials: "include" });
+export function apiFetchMultipart(
+  path: string,
+  form: FormData,
+  init: RequestInit = {},
+  timeoutMs?: number,
+): Promise<unknown> {
+  return send(path, { method: "POST", ...init, body: form, credentials: "include" }, timeoutMs);
 }

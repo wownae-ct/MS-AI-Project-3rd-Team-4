@@ -1,6 +1,13 @@
 // shared/api 공개 표면.
 export { checkApiBase, isLocalOnlyApiBase } from "./api-base";
-export { apiFetch, apiFetchMultipart, notifyUnauthorized, onUnauthorized, PERSONALIZATION_TIMEOUT_MS } from "./client";
+export {
+  apiFetch,
+  apiFetchMultipart,
+  notifyUnauthorized,
+  onUnauthorized,
+  PERSONALIZATION_TIMEOUT_MS,
+  RECEIPT_OCR_TIMEOUT_MS,
+} from "./client";
 export { reportClientError, type ClientErrorReport } from "./client-error-report";
 export { apiBase } from "./env";
 export { ApiError, isApiError, parseApiError } from "./errors";

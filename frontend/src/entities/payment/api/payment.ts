@@ -1,4 +1,4 @@
-import { apiFetch, apiFetchMultipart } from "@/shared/api";
+import { apiFetch, apiFetchMultipart, RECEIPT_OCR_TIMEOUT_MS } from "@/shared/api";
 import type {
   BenchmarkComparison,
   Payment,
@@ -59,5 +59,10 @@ export function getBenchmarkCompare(params: {
 export function getReceiptExtract(file: File, signal?: AbortSignal): Promise<ReceiptExtractResult> {
   const form = new FormData();
   form.set("file", file);
-  return apiFetchMultipart("/api/v1/payments/receipt-extract", form, { signal }) as Promise<ReceiptExtractResult>;
+  return apiFetchMultipart(
+    "/api/v1/payments/receipt-extract",
+    form,
+    { signal },
+    RECEIPT_OCR_TIMEOUT_MS,
+  ) as Promise<ReceiptExtractResult>;
 }
