@@ -15,12 +15,24 @@ import { RegenerateButton } from "@/entities/personalization";
 import { ApiError } from "@/shared/api";
 import { Card, Page } from "@/shared/ui";
 import { AddTimelineItemRow } from "./AddTimelineItemRow";
-import { groupTimelineItemsByPhase } from "./group-by-phase";
+import { groupTimelineItemsByPhase, type TimelinePhaseGroup } from "./group-by-phase";
 import { TimelineItemRow } from "./TimelineItemRow";
 
 interface TimelineData {
   items: TimelineItem[];
   weddingDate: string | undefined;
+}
+
+// STEP 8 — "D-12개월부터"를 고정 문구로 박아뒀었는데, 실제 최상단 구간은 LLM이 생성한 카탈로그의
+// 최대 offset이나 완료 구간 재배치(그룹 전체가 DONE이면 아래로 내려감)에 따라 달라질 수 있어
+// 부제와 화면이 어긋났다. 실제로 화면 맨 위에 렌더되는 첫 그룹(groups[0])의 라벨에서 동적으로
+// 만든다 — 그래야 카탈로그가 바뀌거나 구간이 재배치돼도 항상 일치한다.
+const GENERIC_TIMELINE_SUBTITLE = "비활성 카테고리는 제외됩니다";
+
+export function timelineSubtitle(groups: TimelinePhaseGroup[]): string {
+  const topLabel = groups[0]?.label;
+  if (topLabel === undefined || topLabel === "일정 미정") return GENERIC_TIMELINE_SUBTITLE;
+  return `${topLabel}부터 결혼식 당일까지, ${GENERIC_TIMELINE_SUBTITLE}`;
 }
 
 export function TimelinePage() {
@@ -74,7 +86,7 @@ export function TimelinePage() {
 
   if (error !== null) {
     return (
-      <Page title="타임라인" subtitle="D-12개월부터 결혼식 당일까지, 비활성 카테고리는 제외됩니다">
+      <Page title="타임라인" subtitle={GENERIC_TIMELINE_SUBTITLE}>
         <p role="alert" className="rounded-md border border-line bg-primary-soft px-3 py-2 text-sm text-primary">
           {error}
         </p>
@@ -84,7 +96,7 @@ export function TimelinePage() {
 
   if (data === null) {
     return (
-      <Page title="타임라인" subtitle="D-12개월부터 결혼식 당일까지, 비활성 카테고리는 제외됩니다">
+      <Page title="타임라인" subtitle={GENERIC_TIMELINE_SUBTITLE}>
         <p className="text-sm text-ink-soft">불러오는 중…</p>
       </Page>
     );
@@ -93,7 +105,7 @@ export function TimelinePage() {
   const groups = groupTimelineItemsByPhase(data.items, data.weddingDate);
 
   return (
-    <Page title="타임라인" subtitle="D-12개월부터 결혼식 당일까지, 비활성 카테고리는 제외됩니다">
+    <Page title="타임라인" subtitle={timelineSubtitle(groups)}>
       <output className="sr-only">{announcement}</output>
       <div className="flex flex-col gap-5">
         <div className="flex justify-end">
