@@ -1,6 +1,15 @@
 // 카테고리별 시세비교 조회 훅 — DashboardPage.tsx에서 뽑아냈다(oxlint max-lines 300줄 상한,
 // 훅 단위로 독립 테스트하기 위함이기도 하다).
 //
+// **entities로 승격하지 않는다(2026-08-26, UX 개편 2차 — 처음엔 entities/wedding으로 옮겼다가
+// 되돌렸다).** 예산탭(BudgetPage)도 같은 시세비교가 필요해졌지만, 이 훅은 `@/entities/wedding`
+// (getCategories)과 `@/entities/payment`(getBenchmarkCompare) 둘 다에 의존한다 — FSD 경계
+// 규칙(`.oxlintrc.json`의 `entities/**` override)이 "entities는 다른 entity 슬라이스를
+// import할 수 없다"를 강제해서, 어느 한쪽 entities 슬라이스 안에도 넣을 수 없다(cross-entity
+// 조립은 pages/app 레이어의 일이다). 이 저장소엔 그런 조립을 위한 features/widgets 레이어가
+// 없으므로, 승격 대신 예산탭에 같은 내용의 독립 사본(`pages/budget/ui/use-category-benchmarks.ts`)을
+// 둔다 — 억지로 공유하려다 아키텍처 규칙과 계속 부딪히는 것보다 짧은 중복이 낫다는 판단.
+//
 // `GET /benchmarks/compare`(category_code+item_code+amount 필수)는 "내 금액 하나를 시세와
 // 비교"하는 API지 카테고리 전체를 훑는 개요 위젯이 아니다 — 그래서 카테고리마다 item_code="TOTAL"
 // + 그 카테고리의 배정 예산(planned_budget)으로 개별 호출해 "배정 예산 vs 지역 시세"를 만든다.
@@ -10,12 +19,19 @@
 // `has_benchmark=true`인 카테고리는 지금 VENUE/SDM 둘뿐이다(backend/app/core/categories.py) —
 // N+1이 아니라 사실상 최대 2회 호출이다. 이 숫자가 늘어나 배치 조회가 필요해지면 그때
 // dev-35에게 백엔드 배치 엔드포인트를 인계한다(지금은 인계하지 않는다).
+//
+// 파라미터는 `DashboardCategorySummary` 전용 타입이 아니라 구조적 타입으로 받는다 — 예산탭 사본의
+// `WeddingCategory`도 category_code/planned_budget을 그대로 갖고 있어 같은 모양을 쓴다.
 import { useEffect, useState } from "react";
-import type { DashboardCategorySummary } from "@/entities/dashboard";
 import { getBenchmarkCompare, type BenchmarkComparison } from "@/entities/payment";
 import { getCategories } from "@/entities/wedding";
 
 const BENCHMARK_ITEM_CODE = "TOTAL";
+
+export interface BenchmarkTargetCategory {
+  category_code: string;
+  planned_budget: number;
+}
 
 export interface CategoryBenchmarks {
   /** 카테고리 상수(GET /categories)의 has_benchmark — 이 카테고리가 시세비교 "대상"인지.
@@ -26,7 +42,7 @@ export interface CategoryBenchmarks {
   benchmarkByCode: ReadonlyMap<string, BenchmarkComparison>;
 }
 
-export function useCategoryBenchmarks(categories: readonly DashboardCategorySummary[]): CategoryBenchmarks {
+export function useCategoryBenchmarks(categories: readonly BenchmarkTargetCategory[]): CategoryBenchmarks {
   const [hasBenchmarkByCode, setHasBenchmarkByCode] = useState<ReadonlyMap<string, boolean>>(new Map());
   const [benchmarkByCode, setBenchmarkByCode] = useState<ReadonlyMap<string, BenchmarkComparison>>(new Map());
 

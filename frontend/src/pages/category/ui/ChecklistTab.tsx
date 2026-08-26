@@ -32,17 +32,21 @@ const GROUP_LABEL: Record<ChecklistItemType, string> = {
   PREP: "준비 사항",
 };
 
-// 기본 보기(계약 조항만 보기 OFF)에서 계약 조항이 화면을 다 차지하지 않도록 상위 N개만 낸다
-// (2026-08-26 사용자 지시) — 전체는 "계약 조항만 보기" 토글로 본다. 순위는 서버가 이미 주는
-// priority(high/mid/low)를 그대로 쓴다 — 프론트가 중요도를 새로 판단하지 않는다.
-const CONTRACT_TERM_DEFAULT_LIMIT = 5;
+// 계약 조항을 5개씩 페이지네이션한다(2026-08-26 사용자 지시, 2차 — 원래는 상위 5개만 보여주고
+// 나머지는 힌트 문구로 안내했으나, "계약 조항만 보기"를 켰을 때 전체를 한 번에 쏟아내는 것도
+// 마찬가지로 불편하다는 지적에 토글 여부와 무관하게 항상 이 페이지네이션을 적용한다). 순위는
+// 서버가 이미 주는 priority(high/mid/low)를 그대로 쓴다 — 프론트가 중요도를 새로 판단하지 않는다.
+const CONTRACT_TERM_PAGE_SIZE = 5;
 const PRIORITY_RANK: Record<ChecklistPriority, number> = { high: 0, mid: 1, low: 2 };
+const PAGE_BUTTON =
+  "text-xs font-bold text-ink-soft transition-colors duration-150 enabled:hover:text-primary disabled:cursor-not-allowed disabled:opacity-50";
 
 export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) {
   const [items, setItems] = useState<ChecklistItem[] | null>(null);
   const [vendorCases, setVendorCases] = useState<VendorCasesResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [contractOnly, setContractOnly] = useState(false);
+  const [contractPage, setContractPage] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,6 +60,8 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
         if (cancelled) return;
         setError(err instanceof ApiError ? err.message : "체크리스트를 불러오지 못했습니다.");
       });
+    // 카테고리를 바꾸면 이전 카테고리의 계약 조항 페이지 번호가 그대로 남아 있으면 안 된다.
+    setContractPage(0);
     return () => {
       cancelled = true;
     };
@@ -143,7 +149,10 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
           <input
             type="checkbox"
             checked={contractOnly}
-            onChange={(e) => setContractOnly(e.target.checked)}
+            onChange={(e) => {
+              setContractOnly(e.target.checked);
+              setContractPage(0); // 토글을 바꾸면 이전 상태의 페이지 번호가 새 목록엔 안 맞을 수 있다.
+            }}
             className="size-4"
           />
           계약 조항만 보기
@@ -156,19 +165,43 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
         .map((group) => {
           const allGroupItems = visibleItems.filter((i) => i.item_type === group);
           if (allGroupItems.length === 0) return null;
-          // 계약 조항 + 기본 보기일 때만 상위 N개로 자른다 — "계약 조항만 보기"가 켜져 있으면
-          // 그 토글의 목적 자체가 전체 확인이므로 자르지 않는다.
-          const isCappedContractTerm = group === "CONTRACT_TERM" && !contractOnly;
-          const groupItems = isCappedContractTerm
-            ? allGroupItems
-                .toSorted((a, b) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority])
-                .slice(0, CONTRACT_TERM_DEFAULT_LIMIT)
-            : allGroupItems;
-          const hiddenCount = allGroupItems.length - groupItems.length;
+
+          // 추가 비용/준비 사항은 그대로 전체를 낸다 — 페이지네이션은 계약 조항에만 적용한다.
+          if (group !== "CONTRACT_TERM") {
+            return (
+              <Card key={group} title={GROUP_LABEL[group]}>
+                <ul className="flex flex-col gap-3">
+                  {allGroupItems.map((item) => (
+                    <ChecklistItemRow
+                      key={item.id}
+                      item={item}
+                      categoryCode={categoryCode}
+                      onStatusChange={(i, next) => void handleStatusChange(i, next)}
+                    />
+                  ))}
+                </ul>
+              </Card>
+            );
+          }
+
+          // 계약 조항 — priority 순으로 정렬한 뒤 5개씩 페이지네이션한다. "계약 조항만 보기"
+          // 토글 여부와 무관하게 항상 이 페이지네이션을 적용한다(2026-08-26 사용자 지시).
+          const sortedContractItems = allGroupItems.toSorted(
+            (a, b) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority],
+          );
+          const totalPages = Math.max(1, Math.ceil(sortedContractItems.length / CONTRACT_TERM_PAGE_SIZE));
+          // 항목이 줄어들어(예: 재생성) 이전 페이지 번호가 더는 유효하지 않을 수 있다 — 렌더 시점에
+          // 항상 유효 범위로 되돌린다(state 자체를 강제로 고치지 않아도 다음 클릭부터 정상 동작).
+          const safePage = Math.min(contractPage, totalPages - 1);
+          const pageItems = sortedContractItems.slice(
+            safePage * CONTRACT_TERM_PAGE_SIZE,
+            (safePage + 1) * CONTRACT_TERM_PAGE_SIZE,
+          );
+
           return (
             <Card key={group} title={GROUP_LABEL[group]}>
               <ul className="flex flex-col gap-3">
-                {groupItems.map((item) => (
+                {pageItems.map((item) => (
                   <ChecklistItemRow
                     key={item.id}
                     item={item}
@@ -177,10 +210,28 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
                   />
                 ))}
               </ul>
-              {hiddenCount > 0 && (
-                <p className="mt-2 text-xs text-ink-soft">
-                  가장 중요한 {CONTRACT_TERM_DEFAULT_LIMIT}개만 보여드려요. 나머지 {hiddenCount}개는 위 「계약 조항만 보기」에서 확인하세요.
-                </p>
+              {totalPages > 1 && (
+                <div className="mt-3 flex items-center justify-center gap-4 border-t border-line pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setContractPage((p) => Math.max(0, p - 1))}
+                    disabled={safePage === 0}
+                    className={PAGE_BUTTON}
+                  >
+                    ‹ 이전
+                  </button>
+                  <span className="text-xs text-ink-soft tabular-nums">
+                    {safePage + 1} / {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setContractPage((p) => Math.min(totalPages - 1, p + 1))}
+                    disabled={safePage >= totalPages - 1}
+                    className={PAGE_BUTTON}
+                  >
+                    다음 ›
+                  </button>
+                </div>
               )}
             </Card>
           );

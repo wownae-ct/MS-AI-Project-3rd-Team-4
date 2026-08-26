@@ -78,5 +78,12 @@ export function groupTimelineItemsByPhase(items: TimelineItem[], weddingDate: st
   }
   const sortedGroups = [...groups.values()].toSorted((a, b) => a.sortKey - b.sortKey);
   for (const group of sortedGroups) group.items = sortDoneLast(group.items);
-  return sortedGroups;
+
+  // 구간 자체도 완료 여부로 재배치한다(2026-08-26 사용자 지시) — 각 구간 안에서만 완료 항목을
+  // 아래로 내리는 것만으로는, 이미 다 끝난 구간이 여전히 날짜순 그대로 화면 위쪽을 차지해
+  // 매번 스크롤을 내려야 남은 할 일을 본다. 미완료 항목이 하나라도 있는 구간을 먼저(날짜순
+  // 그대로), 구간 전체가 DONE인 구간을 뒤에(역시 그들끼리는 날짜순 그대로) 이어 붙인다.
+  const pending = sortedGroups.filter((group) => group.items.some((item) => item.status !== "DONE"));
+  const done = sortedGroups.filter((group) => group.items.every((item) => item.status === "DONE"));
+  return [...pending, ...done];
 }
