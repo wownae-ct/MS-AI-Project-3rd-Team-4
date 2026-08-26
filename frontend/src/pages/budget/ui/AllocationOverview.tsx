@@ -2,6 +2,7 @@
 // 아니라 **모듈 의존성 상한**(`import/max-dependencies`, 10개) 때문이다 — CostManagementTab
 // 추가로 BudgetPage.tsx의 import가 11개가 됐다. 두 카드 다 "지금 얼마를 어디에 배정했는지"라는
 // 같은 질문에 답하는 화면이라(도넛=전체 요약, 배정 목록=카테고리별 상세) 묶는 것 자체도 자연스럽다.
+import type { BudgetBenchmarkSummary } from "@/entities/dashboard";
 import type { BenchmarkComparison } from "@/entities/payment";
 import type { WeddingCategory } from "@/entities/wedding";
 import { deriveBudgetSummary } from "@/entities/wedding";
@@ -20,6 +21,10 @@ export interface AllocationOverviewProps {
       (2026-08-26, UX 개편 2차, 사용자 지시). 대시보드 `CategoryRow.tsx`와 같은 데이터. */
   hasBenchmarkByCode: ReadonlyMap<string, boolean>;
   benchmarkByCode: ReadonlyMap<string, BenchmarkComparison>;
+  /** 총예산 vs 지역 시세 — 대시보드에서 옮겨온 것(UX 개편 3차, 2026-08-26, 사용자 지시).
+      카테고리별이 아니라 웨딩 전체 단위라 위 hasBenchmarkByCode/benchmarkByCode(카테고리별)와는
+      별개 데이터다 — BudgetPage가 getDashboardSummary()로 따로 조회해 내려준다. */
+  budgetBenchmark: BudgetBenchmarkSummary | null;
   isEditingScenario: boolean;
   onDraftChange: (categoryCode: string, plannedBudget: number) => void;
   onTotalBudgetSaved: (nextTotal: number) => void;
@@ -32,19 +37,25 @@ export function AllocationOverview({
   hasCostByCode,
   hasBenchmarkByCode,
   benchmarkByCode,
+  budgetBenchmark,
   isEditingScenario,
   onDraftChange,
   onTotalBudgetSaved,
 }: AllocationOverviewProps) {
   return (
     <>
-      {/* 대시보드에 있던 도넛을 이 화면으로 옮겼다(UX 개편, 2026-08-26) — deriveBudgetSummary가
+      {/* 대시보드에 있던 도넛을 이 화면으로 옮겼다(UX 개편 2차, 2026-08-26) — deriveBudgetSummary가
           draft-aware한 rows를 받으므로, 시나리오 편집 중 슬라이더를 움직이면 도넛도 같이
           움직인다(entities/wedding/model/derive-budget-summary.ts 머리말 — 예전 대시보드
-          도넛의 "미배정이 거의 항상 안 그려지던" 버그도 여기서 함께 고쳐졌다). */}
-      <Card title="예산 현황">
-        <BudgetDonut summary={deriveBudgetSummary(rows, totalBudget)} onTotalBudgetSaved={onTotalBudgetSaved} />
-      </Card>
+          도넛의 "미배정이 거의 항상 안 그려지던" 버그도 여기서 함께 고쳐졌다).
+          UX 개편 3차(2026-08-26)로 대시보드의 "예산 시세 비교" 카드도 여기 흡수됐다 —
+          BudgetDonut이 자기 Card(제목 "예산 현황" + titleAction 수정 버튼)를 직접 그리므로
+          여기서는 더 이상 Card로 감싸지 않는다. */}
+      <BudgetDonut
+        summary={deriveBudgetSummary(rows, totalBudget)}
+        onTotalBudgetSaved={onTotalBudgetSaved}
+        benchmark={budgetBenchmark}
+      />
 
       <Card title="카테고리별 배정">
         <div>
