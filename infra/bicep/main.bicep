@@ -27,8 +27,8 @@ param postgresAdminLogin string = 'pgadmin'
 @description('Postgres 관리자 비밀번호. CI에서는 secrets.POSTGRES_ADMIN_PASSWORD로 주입')
 param postgresAdminPassword string
 
-@description('RAG 스키마가 들어갈 데이터베이스 이름. infra/.env의 DATABASE_NAME으로 채움')
-param postgresDatabaseName string = 'postgres'
+@description('RAG 스키마가 들어갈 데이터베이스 이름. 2026-08-26 발견 — infra-deploy.yml에 DATABASE_NAME env var가 안 걸려있어 실배포마다 이 기본값(postgres)으로 조용히 되돌아가던 버그(로그인 500, modules/postgres.bicep 머리말 참고) — 실제 마이그레이션 DB로 기본값 자체를 바꾼다.')
+param postgresDatabaseName string = 'team4db-wd'
 
 @description('kubectl AAD RBAC 클러스터 관리자로 등록할 AAD 오브젝트 ID들. 이메일이 아니라 GUID 필요 —\ndev.bicepparam에서 infra/.env의 CLUSTER_ADMIN_OBJECT_IDS(쉼표구분)로 채움')
 param clusterAdminPrincipalIds array = []

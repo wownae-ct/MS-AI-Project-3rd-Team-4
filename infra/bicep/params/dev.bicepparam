@@ -10,7 +10,10 @@ param environment = readEnvironmentVariable('DEPLOY_ENVIRONMENT', 'dev')
 // CI(infra-deploy.yml)는 GitHub Secrets에서 주입. 둘 다 없으면 아래 기본값(dev 전용, 프로덕션 배포 금지)으로 폴백.
 param postgresAdminLogin = readEnvironmentVariable('POSTGRES_ADMIN_LOGIN', 'pgadmin')
 param postgresAdminPassword = readEnvironmentVariable('POSTGRES_ADMIN_PASSWORD', 'CHANGE_ME_LOCAL_ONLY')
-param postgresDatabaseName = readEnvironmentVariable('DATABASE_NAME', 'postgres')
+// 2026-08-26 발견 — 폴백 기본값이 postgres(서버 기본 DB)였는데 CI(infra-deploy.yml)에
+// DATABASE_NAME env var가 실제로는 연결돼 있지 않아 실배포마다 이 폴백으로 조용히 되돌아가던
+// 버그(로그인 500 "relation users does not exist", modules/postgres.bicep 머리말 참고).
+param postgresDatabaseName = readEnvironmentVariable('DATABASE_NAME', 'team4db-wd')
 
 // kubectl AAD RBAC 클러스터 관리자 오브젝트 ID(쉼표구분, GUID). 빈 문자열이면 빈 배열 — 아무도 없어도
 // az aks get-credentials --admin(구독 Owner/Contributor)으로는 항상 접근 가능하니 배포 자체는 안 막힘
