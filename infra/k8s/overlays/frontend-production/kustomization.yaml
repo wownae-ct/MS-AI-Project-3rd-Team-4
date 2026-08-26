@@ -9,3 +9,13 @@ resources:
 images:
   - name: team4hcacr-drascbaqe8f2gcca.azurecr.io/frontend
     newTag: production-latest
+patches:
+  # 2026-08-26 사용자 지시 — backend-production/kustomization.yaml과 대칭. staging은
+  # base(replica=1) 그대로 두고 production만 이중화한다.
+  - target:
+      kind: Deployment
+      name: frontend
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
