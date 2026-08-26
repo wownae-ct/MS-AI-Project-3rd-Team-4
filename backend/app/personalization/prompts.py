@@ -144,7 +144,37 @@ _CHECKLIST_OUTPUT_SCHEMA = """체크리스트 항목은 각각 이 필드만 채
 마세요 — group_label/status는 서비스 레이어가 결정론적으로 채웁니다):
 {"category_code": "...", "item_type": "CONTRACT_TERM 또는 EXTRA_COST 또는 PREP", "title": "...",
 "body": "...", "priority": "high 또는 mid 또는 low", "option_group": null 또는 "...",
-"tag": null 또는 "..."}"""
+"tag": null 또는 "...", "source_ref_id": null 또는 [근거 자료] 번호}"""
+
+# FOCUS 카테고리(VENUE/SDM)의 CONTRACT_TERM 항목을 DS3(표준계약서) RAG 청크에 근거를 달 때 쓰는
+# 검색 질의. "계약"/"위약금" 키워드가 F9_CONTRACT_FOCUS 가산점(app/rag/retrieval.py의
+# needs_contract_term_bonus)을 자연히 발동시켜, 결합 호출로 두 카테고리를 한 번에 검색해도 별도
+# 필터링 없이 CONTRACT_TERM 청크가 우선 랭킹된다.
+CONTRACT_GROUNDING_QUERY_BY_CATEGORY: dict[str, str] = {
+    "VENUE": "예식장 계약 시 확인해야 할 계약 조건과 위약금 기준",
+    "SDM": "스드메 계약 시 확인해야 할 계약 조건과 위약금 기준",
+}
+
+
+def build_contract_citation_menu(chunks: list) -> str | None:
+    """DS3 RAG 검색 결과를 few-shot이 아니라 "실제로 인용해도 되는 목록"으로 프롬프트에 얹는다.
+    LLM이 목록 밖 조항을 스스로 지어내 인용하는 걸 막는 게 핵심이라(§8 "새 통계 수치 창작 금지"
+    원칙과 동일한 이유), source_label/source_url 문구 자체는 LLM에게 작성시키지 않고 번호
+    (chunk_id)만 고르게 한다 — 실제 label/url은 app/personalization/graph.py::generate_node가
+    이 번호로 코드에서 직접 조회해 채운다(LLM 출력은 정수 선택지일 뿐, 인용 문구를 신뢰하지 않음)."""
+    if not chunks:
+        return None
+    lines = [
+        (
+            "[근거 자료 — 실제 표준계약서 조항입니다. CONTRACT_TERM 항목이 아래 내용과 실제로 "
+            "관련 있으면 source_ref_id에 그 번호를 쓰세요. 관련 있는 조항이 없으면 반드시 "
+            "null로 두세요 — 이 목록에 없는 근거를 스스로 만들어내지 마세요."
+        )
+    ]
+    for chunk in chunks:
+        lines.append(f"[{chunk.chunk_id}] ({chunk.title}) {chunk.content}")
+    return "\n".join(lines)
+
 
 _TIMELINE_OUTPUT_SCHEMA = """타임라인 항목은 각각 이 필드만 채우세요:
 {"category_code": null 또는 "...", "title": "...", "default_dday_offset_days": 정수}"""
@@ -268,13 +298,16 @@ def build_generate_prompt(
     profile: dict,
     protected_items: dict,
     retry_feedback: dict[str, list[str]] | None = None,
+    contract_citations: list | None = None,
 ) -> str:
     """affected_domains가 한쪽뿐이면 해당 단독 규칙+few-shot+출력 스키마만, 둘 다면 두 블록을
     하나의 프롬프트 문자열에 순서대로 이어붙이고 응답 JSON 스키마를 두 키
     {"checklist_items": [...], "timeline_items": [...]}로 통합해 요청한다 — 런타임에 두 문자열을
     단순 concat하는 게 아니라 이 함수가 매번 완결된 프롬프트를 조립한다. retry_feedback은
     validate→generate 재시도 때만(2026-08-25 결정) 채워지며, 있으면 프롬프트 맨 앞에 반려
-    사유를 덧붙인다."""
+    사유를 덧붙인다. contract_citations는 app/rag/retrieval.py::RetrievedChunk 리스트로,
+    generate_node가 CHECKLIST 대상일 때 FOCUS 카테고리(VENUE/SDM) 기준으로 미리 검색해 넘긴다 —
+    이 함수는 그걸 build_contract_citation_menu로 문자열화만 하고 검색 자체는 하지 않는다."""
     include_checklist = "CHECKLIST" in affected_domains
     include_timeline = "TIMELINE" in affected_domains
 
@@ -286,6 +319,9 @@ def build_generate_prompt(
 
     if include_checklist:
         parts += [_CHECKLIST_RULES, _build_checklist_few_shot()]
+        citation_menu = build_contract_citation_menu(contract_citations or [])
+        if citation_menu:
+            parts.append(citation_menu)
     if include_timeline:
         parts += [_TIMELINE_RULES, _build_timeline_few_shot()]
 

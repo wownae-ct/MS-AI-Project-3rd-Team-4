@@ -13,8 +13,10 @@ from app.personalization.prompts import (
     _MOCKUP_FEW_SHOT_SAMPLE_SIZE,
     _build_checklist_few_shot,
     _build_timeline_few_shot,
+    build_contract_citation_menu,
     build_generate_prompt,
 )
+from app.rag.retrieval import RetrievedChunk
 
 
 class TestChecklistFewShotSampleSize:
@@ -128,3 +130,44 @@ class TestGenerateRetryFeedback:
         # [재시도] 섹션 자체가 안 생겨야 한다(빈 불릿만 찍히는 것 방지).
         prompt = build_generate_prompt(["CHECKLIST"], {}, {}, retry_feedback={"CHECKLIST": []})
         assert "[재시도]" not in prompt
+
+
+class TestContractCitationMenu:
+    """체크리스트 CONTRACT_TERM 항목에 DS3(표준계약서) RAG 근거를 다는 기능 — LLM은 번호
+    (source_ref_id)만 고르고 실제 label/url 문구는 코드가 채운다(생성-시-환각 방지)."""
+
+    def test_no_chunks_returns_none(self):
+        assert build_contract_citation_menu([]) is None
+
+    def test_menu_lists_chunk_id_title_and_content(self):
+        chunk = RetrievedChunk(
+            chunk_id=42,
+            content="계약금은 예식비용의 10%를 초과할 수 없다.",
+            title="공정위 예식장이용 표준약관(제10030호)",
+            source_tier="OFFICIAL",
+            source_url="https://example.com/venue-terms",
+        )
+        menu = build_contract_citation_menu([chunk])
+        assert "[42]" in menu
+        assert "공정위 예식장이용 표준약관(제10030호)" in menu
+        assert "계약금은 예식비용의 10%를 초과할 수 없다." in menu
+
+    def test_generate_prompt_includes_citation_menu_only_when_checklist_included(self):
+        # 출력 스키마 설명 자체에도 "[근거 자료] 번호"라는 고정 문구가 항상 있으므로, 실제
+        # 인용 메뉴 본문에서만 나오는 문장으로 구분해서 검사한다.
+        _MENU_MARKER = "관련 있으면 source_ref_id에"
+        chunk = RetrievedChunk(
+            chunk_id=1, content="내용", title="제목", source_tier="OFFICIAL", source_url=None
+        )
+        with_checklist = build_generate_prompt(["CHECKLIST"], {}, {}, contract_citations=[chunk])
+        assert _MENU_MARKER in with_checklist
+
+        without_citations = build_generate_prompt(["CHECKLIST"], {}, {})
+        assert _MENU_MARKER not in without_citations
+
+        timeline_only = build_generate_prompt(["TIMELINE"], {}, {}, contract_citations=[chunk])
+        assert _MENU_MARKER not in timeline_only
+
+    def test_generate_prompt_output_schema_mentions_source_ref_id(self):
+        prompt = build_generate_prompt(["CHECKLIST"], {}, {})
+        assert "source_ref_id" in prompt
