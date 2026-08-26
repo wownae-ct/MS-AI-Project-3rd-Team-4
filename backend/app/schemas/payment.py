@@ -10,7 +10,7 @@ contact_name/contact_phone/receipt_url 3개는 [프로토타입 반영] 컬럼(0
 from datetime import date
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.schemas.common import CategoryCode, PaymentStatus, PaymentType
 
@@ -69,6 +69,16 @@ class PaymentUpdate(BaseModel):
     status: PaymentStatus | None = None
     receipt_url: str | None = None
     memo: str | None = None
+
+    @model_validator(mode="after")
+    def _reject_planned_with_paid_date(self) -> "PaymentUpdate":
+        """트러블슈팅 STEP 6(2026-08-26) — status="PLANNED"인데 paid_date가 채워지는 모순
+        상태를 요청 단계에서 막는다. status를 안 보낸 경우(None)는 여기 안 걸린다 — 그 경우는
+        app/services/payment.py::update_payment이 paid_date 유무로 PAID를 자동 유도한다
+        (create_payment과 동일 원칙)."""
+        if self.status == "PLANNED" and self.paid_date is not None:
+            raise ValueError("status가 PLANNED면 paid_date를 함께 보낼 수 없습니다.")
+        return self
 
 
 class ReceiptExtractOut(BaseModel):
