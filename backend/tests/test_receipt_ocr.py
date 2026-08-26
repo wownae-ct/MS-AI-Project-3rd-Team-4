@@ -136,3 +136,50 @@ class TestHeicConversion:
             await extract_receipt_fields(client, "chat-mini", b"not-a-real-heic-file", "image/heic")
 
         client.chat.completions.create.assert_not_called()
+
+
+class TestAmountParsing:
+    """STEP 1-B — 한국 영수증은 금액에 쉼표/원표시가 흔하다. 프롬프트가 숫자만 요구해도
+    LLM이 그대로 베낄 수 있어, ReceiptExtractOut(amount: int | None)로 가기 전에 정리한다."""
+
+    @pytest.mark.asyncio
+    async def test_amount_with_comma_and_currency_symbol_is_parsed_to_int(self):
+        client = _client_returning(
+            {
+                "item_name": "부케",
+                "vendor_name": "플라워샵",
+                "amount": "15,000원",
+                "paid_date": None,
+            }
+        )
+
+        result = await extract_receipt_fields(client, "chat-mini", b"fake-bytes", "image/jpeg")
+
+        assert result["amount"] == 15000
+
+    @pytest.mark.asyncio
+    async def test_plain_int_amount_passes_through_unchanged(self):
+        client = _client_returning(
+            {"item_name": None, "vendor_name": None, "amount": 500000, "paid_date": None}
+        )
+
+        result = await extract_receipt_fields(client, "chat-mini", b"fake-bytes", "image/jpeg")
+
+        assert result["amount"] == 500000
+
+    @pytest.mark.asyncio
+    async def test_unparseable_amount_falls_back_to_none_other_fields_still_filled(self):
+        client = _client_returning(
+            {
+                "item_name": "드레스 피팅",
+                "vendor_name": "메리스튜디오",
+                "amount": "약 오십만원",
+                "paid_date": "2026-08-25",
+            }
+        )
+
+        result = await extract_receipt_fields(client, "chat-mini", b"fake-bytes", "image/jpeg")
+
+        assert result["amount"] is None
+        assert result["item_name"] == "드레스 피팅"
+        assert result["paid_date"] == date(2026, 8, 25)
