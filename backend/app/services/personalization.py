@@ -138,8 +138,15 @@ def _checklist_row_from_draft(active_categories: set[str], item: dict) -> Checkl
         body=item.get("body"),
         priority=item.get("priority") or "mid",
         tag=item.get("tag"),
-        # source_tier/source_label/source_url: LLM 생성분은 인용 출처가 없어 전부 None —
-        # 03_API_spec.md #12에 source_tier: null → "AI 추천" 프론트 계약을 별도로 남긴다.
+        # source_tier/source_label/source_url: 대부분의 LLM 생성분은 인용 출처가 없어 None —
+        # 03_API_spec.md #12에 source_tier: null → "AI 추천" 프론트 계약을 별도로 남긴다. FOCUS
+        # 카테고리(VENUE/SDM)의 CONTRACT_TERM 항목만, app/personalization/graph.py::
+        # generate_node가 DS3 RAG 검색 결과로 미리 채워둔 값이 있으면 여기 그대로 전달된다
+        # (이 함수는 그 값을 신뢰만 하고 직접 검색하지 않음 — 검색/근거 판단은 generate_node의
+        # 책임).
+        source_tier=item.get("source_tier"),
+        source_label=item.get("source_label"),
+        source_url=item.get("source_url"),
     )
 
 
@@ -258,7 +265,9 @@ async def run_personalization(
         user_id=str(wedding.owner_user_id),  # 이메일 등 PII 대신 UUID만 전달
     ) as trace:
         try:
-            result = await _GRAPH.ainvoke(initial_state, {"configurable": {"settings": settings}})
+            result = await _GRAPH.ainvoke(
+                initial_state, {"configurable": {"settings": settings, "session": session}}
+            )
             affected_domains = result["affected_domains"]
             domain_statuses: dict[str, str] = result["validation_status"]
             domain_errors: dict[str, list[str]] = result["validation_errors"]

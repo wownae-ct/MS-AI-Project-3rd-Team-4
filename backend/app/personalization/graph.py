@@ -23,9 +23,14 @@ from langgraph.graph.state import CompiledStateGraph
 from app.core.config import Settings, get_settings
 from app.core.embeddings import get_azure_openai_client
 from app.core.tracing import traced_span
-from app.personalization.prompts import build_generate_prompt, build_route_prompt
+from app.personalization.prompts import (
+    CONTRACT_GROUNDING_QUERY_BY_CATEGORY,
+    build_generate_prompt,
+    build_route_prompt,
+)
 from app.personalization.state import PersonalizationState
 from app.personalization.validation import validate_personalization_draft
+from app.rag.retrieval import RetrievedChunk, retrieve
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +71,55 @@ async def route_node(state: PersonalizationState, config: RunnableConfig) -> dic
         }
 
 
+# DS3(표준계약서) RAG grounding — FOCUS 카테고리(VENUE/SDM)가 활성일 때만, CHECKLIST가 생성
+# 대상일 때만 검색한다(온보딩마다 무조건 임베딩 호출을 태우지 않기 위함). config에 session이
+# 없으면(테스트 등 DB 세션을 안 주는 호출) 조용히 빈 리스트로 스킵 — 근거 없이 생성되는 기존
+# 동작과 동일하다.
+async def _fetch_contract_citations(
+    state: PersonalizationState, settings: Settings, config: RunnableConfig
+) -> list[RetrievedChunk]:
+    if "CHECKLIST" not in state["affected_domains"]:
+        return []
+    session = config["configurable"].get("session")
+    if session is None:
+        return []
+    active_categories = set(state["profile"].get("active_categories", []))
+    focus_categories = active_categories & CONTRACT_GROUNDING_QUERY_BY_CATEGORY.keys()
+    if not focus_categories:
+        return []
+    chunks_by_id: dict[int, RetrievedChunk] = {}
+    for category_code in sorted(focus_categories):
+        query = CONTRACT_GROUNDING_QUERY_BY_CATEGORY[category_code]
+        for chunk in await retrieve(session, query, category_code, settings=settings):
+            chunks_by_id[chunk.chunk_id] = chunk
+    return list(chunks_by_id.values())
+
+
+def _resolve_checklist_citations(
+    checklist_draft: list[dict] | None, citations: list[RetrievedChunk]
+) -> list[dict] | None:
+    """LLM은 source_ref_id(정수)만 고르고, 실제 source_tier/label/url은 여기서 검색 결과를
+    코드로 직접 조회해 채운다 — LLM이 인용 문구 자체를 지어내는 경로를 원천 차단한다. ref_id가
+    없거나(대부분) 목록에 없는 값이면 기존 동작 그대로 전부 None(프론트 "AI 추천" 계약,
+    03_API_spec.md #12)."""
+    if not checklist_draft or not citations:
+        return checklist_draft
+    citation_by_id = {chunk.chunk_id: chunk for chunk in citations}
+    resolved = []
+    for item in checklist_draft:
+        ref_id = item.pop("source_ref_id", None)
+        chunk = citation_by_id.get(ref_id) if isinstance(ref_id, int) else None
+        if chunk is not None:
+            item = {
+                **item,
+                "source_tier": chunk.source_tier,
+                "source_label": chunk.title,
+                "source_url": chunk.source_url,
+            }
+        resolved.append(item)
+    return resolved
+
+
 # ② generate: affected_domains가 둘 다면 단일 결합 LLM 호출로 두 도메인을 한 번에 만든다(§1-3
 # "결합 호출" 명시 — 특히 온보딩은 항상 양쪽 다라 이 경로가 상시 경로). retry_count > 0(=validate
 # 재시도로 다시 들어온 경우, 2026-08-25 결정)면 이전 validation_errors를 프롬프트에 피드백으로
@@ -78,10 +132,16 @@ async def generate_node(state: PersonalizationState, config: RunnableConfig) -> 
         if not state["affected_domains"]:
             return {"checklist_draft": None, "timeline_draft": None}
 
+        contract_citations = await _fetch_contract_citations(state, settings, config)
+
         client = get_azure_openai_client(settings)
         retry_feedback = state["validation_errors"] if state.get("retry_count", 0) > 0 else None
         prompt = build_generate_prompt(
-            state["affected_domains"], state["profile"], state["protected_items"], retry_feedback
+            state["affected_domains"],
+            state["profile"],
+            state["protected_items"],
+            retry_feedback,
+            contract_citations,
         )
         response = await client.chat.completions.create(
             model=settings.azure_openai_chat_deployment,
@@ -92,6 +152,7 @@ async def generate_node(state: PersonalizationState, config: RunnableConfig) -> 
         checklist_draft = (
             parsed.get("checklist_items") if "CHECKLIST" in state["affected_domains"] else None
         )
+        checklist_draft = _resolve_checklist_citations(checklist_draft, contract_citations)
         timeline_draft = (
             parsed.get("timeline_items") if "TIMELINE" in state["affected_domains"] else None
         )
