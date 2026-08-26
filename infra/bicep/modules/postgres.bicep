@@ -15,8 +15,8 @@ param backendIdentityPrincipalId string
 @description('pg-connstr 시크릿을 써넣을 대상 Key Vault 이름 — keyvault.bicep이 이 모듈보다 먼저 배포되므로(main.bicep 순서 4번→5번) 여기서 existing으로 참조 가능')
 param keyVaultName string
 
-@description('RAG 스키마(rag_documents/rag_chunks 등)가 들어갈 데이터베이스 이름. infra/.env의 DATABASE_NAME으로 채움')
-param databaseName string = 'postgres'
+@description('RAG 스키마(rag_documents/rag_chunks 등)가 들어갈 데이터베이스 이름. 2026-08-26 발견 — 이 기본값이 postgres(서버 기본 DB, users 테이블 없음)였는데 infra-deploy.yml에 DATABASE_NAME env var가 실제로는 연결돼 있지 않아 CI로 실배포할 때마다 조용히 이 기본값으로 DATABASE_URL 시크릿이 되돌아갔다 — 로그인 500(relation users does not exist) 실사고로 발견. 실제 마이그레이션이 적용된 DB(team4db-wd)를 기본값으로 바꿔 이 함정을 없앤다.')
+param databaseName string = 'team4db-wd'
 
 resource postgres 'Microsoft.DBforPostgreSQL/flexibleServers@2026-04-01-preview' = {
   name: '${namePrefix}-pg'
