@@ -32,10 +32,14 @@ def resolve_region_fallback_chain(region_code: RegionCode) -> list[RegionCode]:
 
 
 def compute_ratio_and_label(amount: int, median_price: int) -> tuple[float, PercentileLabel]:
-    """03_API_spec.md #23: "0.9 미만 낮음 / 0.9~1.1 평균 / 1.1 초과 높음" 3단 라벨."""
-    ratio = round(amount / median_price, 2)
-    label: PercentileLabel = "낮음" if ratio < 0.9 else "높음" if ratio > 1.1 else "평균"
-    return ratio, label
+    """03_API_spec.md #23: "0.9 미만 낮음 / 0.9~1.1 평균 / 1.1 초과 높음" 3단 라벨.
+
+    트러블슈팅 STEP 11(2026-08-26): 임계값 비교를 반올림 *후* 값으로 하면 경계에서 오분류된다
+    (예: ratio=1.101은 "높음"이어야 하는데 반올림하면 1.10이 되어 "평균"으로 잘못 분류됨).
+    반올림은 표시용 반환값에만 적용하고, 라벨 판정은 원본(반올림 전) 값으로 한다."""
+    raw_ratio = amount / median_price
+    label: PercentileLabel = "낮음" if raw_ratio < 0.9 else "높음" if raw_ratio > 1.1 else "평균"
+    return round(raw_ratio, 2), label
 
 
 async def get_latest_benchmark(
