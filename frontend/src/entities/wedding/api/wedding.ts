@@ -1,4 +1,4 @@
-import { apiFetch } from "@/shared/api";
+import { apiFetch, PERSONALIZATION_TIMEOUT_MS } from "@/shared/api";
 import type {
   CategoriesResponse,
   TotalAverageBenchmark,
@@ -9,11 +9,14 @@ import type {
   WeddingUpdateInput,
 } from "../model/types";
 
+// createWedding·updateMyWedding·putWeddingCategories 는 개인화 라우터 에이전트를 동기로 기다린다
+// (백엔드 `run_personalization()`) — 기본 타임아웃(15초)보다 긴 PERSONALIZATION_TIMEOUT_MS 를 쓴다.
 export function createWedding(input: WeddingCreateInput): Promise<WeddingProfile> {
-  return apiFetch("/api/v1/weddings", {
-    method: "POST",
-    body: JSON.stringify(input),
-  }) as Promise<WeddingProfile>;
+  return apiFetch(
+    "/api/v1/weddings",
+    { method: "POST", body: JSON.stringify(input) },
+    PERSONALIZATION_TIMEOUT_MS,
+  ) as Promise<WeddingProfile>;
 }
 
 export function getMyWedding(): Promise<WeddingProfile> {
@@ -21,10 +24,11 @@ export function getMyWedding(): Promise<WeddingProfile> {
 }
 
 export function updateMyWedding(input: WeddingUpdateInput): Promise<WeddingProfile> {
-  return apiFetch("/api/v1/weddings/me", {
-    method: "PATCH",
-    body: JSON.stringify(input),
-  }) as Promise<WeddingProfile>;
+  return apiFetch(
+    "/api/v1/weddings/me",
+    { method: "PATCH", body: JSON.stringify(input) },
+    PERSONALIZATION_TIMEOUT_MS,
+  ) as Promise<WeddingProfile>;
 }
 
 export function getWeddingCategories(): Promise<WeddingCategoriesResponse> {
@@ -32,10 +36,11 @@ export function getWeddingCategories(): Promise<WeddingCategoriesResponse> {
 }
 
 export function putWeddingCategories(categories: WeddingCategoryUpdateInput[]): Promise<WeddingCategoriesResponse> {
-  return apiFetch("/api/v1/wedding-categories", {
-    method: "PUT",
-    body: JSON.stringify({ categories }),
-  }) as Promise<WeddingCategoriesResponse>;
+  return apiFetch(
+    "/api/v1/wedding-categories",
+    { method: "PUT", body: JSON.stringify({ categories }) },
+    PERSONALIZATION_TIMEOUT_MS,
+  ) as Promise<WeddingCategoriesResponse>;
 }
 
 // 온보딩 예산 단계 전용(#6 호출 전, 웨딩 미존재) — API 스펙 §8.
