@@ -7,11 +7,17 @@
 // 목록 엔드포인트가 없어 backend/scripts/seed_price_benchmarks.py 의 시트→코드 매핑에서 가져왔다
 // (VENUE/SDM 실측 확인, 그 외 has_benchmark 카테고리는 공통 TOTAL 만 폴백 제공 — 카탈로그 미확인).
 import { useEffect, useState } from "react";
-import { getBenchmarkCompare, getPayments, type BenchmarkComparison, type Payment } from "@/entities/payment";
+import {
+  AddPaymentRow,
+  PaymentListRow,
+  getBenchmarkCompare,
+  getPayments,
+  type BenchmarkComparison,
+  type Payment,
+} from "@/entities/payment";
 import type { CategoryConstant } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
 import { Badge, Card, Money } from "@/shared/ui";
-import { AddPaymentRow } from "./AddPaymentRow";
 
 interface CostTabProps {
   categoryCode: string;
@@ -33,13 +39,6 @@ const ITEM_CODE_OPTIONS: Record<string, { value: string; label: string }[]> = {
   ],
 };
 const FALLBACK_ITEM_CODE_OPTIONS = [{ value: "TOTAL", label: "전체" }];
-
-const PAYMENT_TYPE_LABEL: Record<string, string> = {
-  DEPOSIT: "계약금",
-  INTERIM: "중도금",
-  BALANCE: "잔금",
-  ETC: "기타",
-};
 
 export function CostTab({ categoryCode, categoryMeta }: CostTabProps) {
   const [payments, setPayments] = useState<Payment[] | null>(null);
@@ -113,27 +112,7 @@ export function CostTab({ categoryCode, categoryMeta }: CostTabProps) {
         ) : (
           <ul className="flex flex-col gap-3">
             {payments.map((p) => (
-              <li key={p.id} className="flex items-center justify-between gap-3 border-b border-line pb-3 last:border-0 last:pb-0">
-                <div className="flex min-w-0 flex-col gap-0.5">
-                  <div className="flex items-center gap-2">
-                    <Badge>{PAYMENT_TYPE_LABEL[p.payment_type] ?? p.payment_type}</Badge>
-                    <p className="truncate text-sm font-bold text-ink">{p.item_name}</p>
-                  </div>
-                  <p className="text-xs text-ink-soft">
-                    {p.vendor_name} ·{" "}
-                    {/* status는 PLANNED/PAID 2갈래만 아니라 CANCELED도 있다(backend/app/schemas/
-                        common.py:53) — 이걸 놓치면 취소된 결제가 "예정일..."로 잘못 보인다
-                        (레드팀 감사 라운드 2). 지금은 CANCELED로 바꾸는 UI가 없어 잠재적이지만,
-                        서버가 이미 이 값을 낼 수 있는 이상 렌더 쪽은 3갈래를 그대로 반영한다. */}
-                    {p.status === "PAID"
-                      ? `지급완료 ${p.paid_date ?? ""}`
-                      : p.status === "CANCELED"
-                        ? "취소됨"
-                        : `예정일 ${p.due_date ?? "미정"}`}
-                  </p>
-                </div>
-                <Money value={p.amount} className="shrink-0" />
-              </li>
+              <PaymentListRow key={p.id} payment={p} />
             ))}
           </ul>
         )}

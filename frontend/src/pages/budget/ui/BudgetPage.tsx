@@ -20,8 +20,9 @@ import { useEffect, useState } from "react";
 import { getUpcomingPayments, type UpcomingPaymentEntry } from "@/entities/payment";
 import { getCategories, getMyWedding, getWeddingCategories, putWeddingCategories, type WeddingCategory } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
-import { Card, Page } from "@/shared/ui";
-import { CategoryAllocationRow } from "./CategoryAllocationRow";
+import { Page } from "@/shared/ui";
+import { AllocationOverview } from "./AllocationOverview";
+import { CostManagementTab } from "./CostManagementTab";
 import { TotalBudgetCard } from "./TotalBudgetCard";
 import { UpcomingPaymentsCard } from "./UpcomingPaymentsCard";
 import { WeddingDateCard } from "./WeddingDateCard";
@@ -38,6 +39,11 @@ interface BudgetData {
       상수(`GET /categories`)만 안다. "비용 없음" 카테고리는 슬라이더/바 대신 안내 텍스트만
       보여주려면 이 조회가 하나 더 필요하다 — 하드코딩 대신 응답을 그대로 따른다. */
   hasCostByCode: ReadonlyMap<string, boolean>;
+  /** "비용 관리" 섹션이 결제 목록의 category_code를 사람이 읽는 이름으로 보여줄 때 쓴다. */
+  categoryLabelByCode: ReadonlyMap<string, string>;
+  /** has_cost인 카테고리만 — "비용 관리"의 새 결제 추가 폼(AddPaymentRow)이 카테고리 선택
+      드롭다운에 쓴다. 비용 개념이 없는 카테고리(MEETING 등)엔 결제를 만들 수 없게 미리 거른다. */
+  costEligibleCategoryOptions: readonly { code: string; name_ko: string }[];
 }
 
 const PRIMARY_BUTTON = "rounded-md bg-primary px-4 py-2 text-sm font-bold text-surface disabled:opacity-50";
@@ -68,6 +74,11 @@ export function BudgetPage() {
             weddingDate: wedding.wedding_date,
             categories: sorted,
             hasCostByCode: new Map(constants.categories.map((c) => [c.code, c.has_cost])),
+            categoryLabelByCode: new Map(constants.categories.map((c) => [c.code, c.name_ko])),
+            costEligibleCategoryOptions: constants.categories
+              .filter((c) => c.has_cost)
+              .toSorted((a, b) => a.display_order - b.display_order)
+              .map((c) => ({ code: c.code, name_ko: c.name_ko })),
           });
         }
       })
@@ -93,6 +104,23 @@ export function BudgetPage() {
       cancelled = true;
     };
   }, []);
+
+  // 비용 관리 섹션에서 결제가 새로 등록되면(특히 paid_date 있는 건 — 서버가 status=PAID로
+  // 자동 유도) 그 카테고리의 paid_amount가 바뀐다. 도넛(deriveBudgetSummary)과 「카테고리별
+  // 배정」 목록이 낡은 값을 보여주지 않게 카테고리만 다시 불러온다 — 총예산/날짜는 그 액션과
+  // 무관하니 건드리지 않는다. 시나리오 편집 중에 호출돼도 안전하다 — draft는 그대로 두고
+  // `data.categories`(원본)만 갱신한다.
+  function refetchCategories() {
+    getWeddingCategories()
+      .then((res) => {
+        const sorted = res.categories.toSorted((a, b) => a.display_order - b.display_order);
+        setData((prev) => (prev ? { ...prev, categories: sorted } : prev));
+      })
+      .catch(() => {
+        // 비용 관리는 이미 성공적으로 결제를 저장했다 — 이 재조회 실패로 그 성공까지 에러로
+        // 덮지 않는다. 다음에 페이지를 새로고침하면 어차피 최신값을 받는다.
+      });
+  }
 
   function startScenario() {
     if (!data) return;
@@ -188,26 +216,20 @@ export function BudgetPage() {
           <UpcomingPaymentsCard payments={upcomingPayments} windowDays={UPCOMING_PAYMENT_WINDOW_DAYS} />
         )}
 
-        <Card title="카테고리별 배정">
-          <div>
-            {rows.map((category) => {
-              const hasCost = data.hasCostByCode.get(category.category_code) ?? true;
-              const original = data.categories.find((c) => c.category_code === category.category_code);
-              const originalAmount = original?.planned_budget ?? category.planned_budget;
-              return (
-                <CategoryAllocationRow
-                  key={category.category_code}
-                  category={category}
-                  hasCost={hasCost}
-                  totalBudget={data.totalBudget}
-                  isEditingScenario={isEditingScenario}
-                  originalAmount={originalAmount}
-                  onDraftChange={updateDraftBudget}
-                />
-              );
-            })}
-          </div>
-        </Card>
+        <CostManagementTab
+          categoryLabelByCode={data.categoryLabelByCode}
+          categoryOptions={data.costEligibleCategoryOptions}
+          onPaymentAdded={refetchCategories}
+        />
+
+        <AllocationOverview
+          rows={rows}
+          originalCategories={data.categories}
+          totalBudget={data.totalBudget}
+          hasCostByCode={data.hasCostByCode}
+          isEditingScenario={isEditingScenario}
+          onDraftChange={updateDraftBudget}
+        />
 
         {isEditingScenario ? (
           <div className="flex items-center gap-3">

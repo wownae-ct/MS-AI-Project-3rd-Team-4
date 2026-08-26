@@ -273,12 +273,17 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
           (레드팀 감사). aria-relevant="additions text" 로 텍스트 갱신까지 announce 한다 — 매
           토큰마다 announce 되면 너무 시끄러우니 스트리밍 도중이 아니라 완결 단위(문단)로 뜨는
           기본 동작에 맡긴다. */}
+      {/* 채팅 칸을 더 크게, 반응형으로(사용자 요청, 2026-08-26) — `vh`가 아니라 `dvh`를 쓴다
+          (router.tsx의 min-h-dvh와 같은 이유: 모바일 브라우저 주소창이 접히고 펴질 때 vh는
+          안 따라온다). 모바일 상한을 62dvh로 눌러둔 이유 — AppShell이 모바일에서 fixed 하단
+          탭바 + pb-24를 쓰는데, 그 위에 Page 헤더 + 입력 행 + Card 패딩까지 겹치면 70dvh 이상은
+          페이지 자체가 세로 스크롤돼 스크롤 영역이 이중이 된다. */}
       <div
         ref={listRef}
         role="log"
         aria-live="polite"
         aria-relevant="additions text"
-        className="flex max-h-[60vh] min-h-[240px] flex-col gap-3 overflow-y-auto"
+        className="flex min-h-[45dvh] max-h-[62dvh] md:min-h-[55dvh] md:max-h-[70dvh] lg:min-h-[60dvh] lg:max-h-[72dvh] flex-col gap-3 overflow-y-auto"
       >
         {messages.length === 0 && !draft && (
           // 첫 진입 안내를 회색 텍스트가 아니라 어시스턴트 말풍선으로 보여준다(사용자 요청,
