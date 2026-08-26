@@ -18,7 +18,6 @@ app/routers/wedding/checklist.py, 웨딩별 실DB 행)로 대체돼 여기서 �
 `/checklists/*` 자체가 없다."""
 
 import logging
-from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +28,7 @@ from app.core.db import get_session
 from app.core.embeddings import get_azure_openai_client
 from app.core.errors import api_error
 from app.core.storage import upload_receipt_image
+from app.core.timezone import today_kst
 from app.deps import get_current_user, get_current_wedding
 from app.models import Payment, User, Wedding
 from app.schemas.benchmark import BenchmarkCompareOut, TotalBudgetPlaceholderOut
@@ -201,7 +201,7 @@ async def list_upcoming_payments(
     wedding: Wedding = Depends(get_current_wedding),  # noqa: B008
     session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> UpcomingPaymentListOut:
-    today = datetime.now(UTC).date()
+    today = today_kst()
     rows = await list_upcoming_payments_service(session, wedding.id, days, today)
     return UpcomingPaymentListOut(
         days=days,
