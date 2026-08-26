@@ -81,8 +81,13 @@ resource deployerSecretsOfficerRoleAssignment 'Microsoft.Authorization/roleAssig
   properties: {
     principalId: deployer().objectId
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7') // Key Vault Secrets Officer
-    // deployer()는 principalType을 안 알려줌 — userPrincipalName이 있으면 사람 계정, 없으면 SP/관리 ID로 판단
-    principalType: empty(deployer().userPrincipalName) ? 'ServicePrincipal' : 'User'
+    // deployer()는 principalType을 안 알려줌 — userPrincipalName이 있으면 사람 계정, 없으면 SP/관리 ID로 판단.
+    // 2026-08-26 수정: 사람이 로컬에서 배포할 땐 deployer().userPrincipalName이 존재해서 이 식이 그대로
+    // 동작했지만, GitHub Actions OIDC(서비스 프린시펄)로 배포하면 그 속성 자체가 아예 없어서(빈 문자열이
+    // 아니라 "존재하지 않음") ARM이 "property doesn't exist" 오류로 배포 전체를 실패시킴(실제 CI 배포에서
+    // 최초 발견). 안전 역참조 연산자(`.?`)로 없으면 null을 받게 해서 이 문제를 피한다 — empty(null)은
+    // true이므로 분기 로직 자체는 그대로 유지된다.
+    principalType: empty(deployer().?userPrincipalName) ? 'ServicePrincipal' : 'User'
   }
 }
 
