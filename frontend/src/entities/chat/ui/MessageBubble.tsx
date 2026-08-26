@@ -3,6 +3,7 @@
 // 별도 파일로 뺐다. entities/chat/ui/ 소속 유지(ChatPanel과 같은 슬라이스).
 import { useState, type ReactNode } from "react";
 import { Badge } from "@/shared/ui";
+import { safeExternalUrl } from "@/shared/lib/safe-url";
 import { SOURCE_TIER_LABEL } from "@/shared/lib/source-tier";
 import type { ChatMessage, MessageRating } from "../model";
 
@@ -15,19 +16,6 @@ interface MessageBubbleProps {
   // 없다(.oxlintrc.json no-restricted-imports — entities는 다른 entity를 못 가져온다). 그래서
   // 실제 버튼은 pages 레이어(CategoryPage/ChatPage)가 만들어 이 render prop으로 내려준다.
   renderReportAction?: (messageId: string) => ReactNode;
-}
-
-// source_url이 있어도 스킴 검증 없이 href에 그대로 꽂으면 안 된다(react/security.md 「Unsafe URL
-// Schemes」) — RAG 코퍼스 데이터라 신뢰도는 높지만, 값 자체는 이 컴포넌트 바깥(백엔드/색인 스크립트)
-// 에서 온 문자열이라 방어적으로 http(s)만 허용한다.
-function safeExternalUrl(url: string): string | undefined {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol === "http:" || parsed.protocol === "https:") return url;
-  } catch {
-    return undefined;
-  }
-  return undefined;
 }
 
 export function MessageBubble({ message, onRate, renderReportAction }: MessageBubbleProps) {
