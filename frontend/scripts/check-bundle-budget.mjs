@@ -139,7 +139,13 @@ const BUDGETS = [
   // 도달 가능한 채로 소폭 커졌다(위 jsGzip 항목과 같은 원인). 여유를 192 B 로 좁게 유지한다
   // — 이 지표는 화면 기능이 아니라 shared/entities 공용 코드가 커질 때만 움직여야 한다는
   // 기존 관례를 그대로 따른다.
-  { key: "jsChunkGzip", limit: 96_600, measured: 96_408, label: "최대 단일 JS 청크 (gzip)" },
+  // ── 2026-08-26 대시보드 예산 시세비교 카드(budget_benchmark, dev-e4 요청)로 96,600 → 96,700 ──
+  // 96,408 → 96,639(초과 39 B) — DashboardPage.tsx는 첫 화면이라 초기 청크에 그대로 남는다
+  // (위 2026-08-22 결정 그대로) — BudgetBenchmarkCard.tsx 신설 + isDashboardSummary 필드 검증
+  // 추가가 그 화면 자체의 기능 증가다(shared/entities 공용 코드 증가가 아니라도, 이 화면
+  // 자체가 예외적으로 초기 청크에 남아 있는 한 이 지표에 반영되는 게 맞다). 여유를 61 B 로
+  // 좁게 유지한다.
+  { key: "jsChunkGzip", limit: 96_700, measured: 96_639, label: "최대 단일 JS 청크 (gzip)" },
   { key: "cssGzip", limit: 6_000, measured: 4_237, label: "CSS (gzip, @font-face 제외)" },
   // 폰트는 unicode-range 로 분할돼 전량 전송되지 않으므로 이 값은 전송량이 아니라 **배포 크기** 가드다.
   // 잡으려는 사고: variable/split(2.3 MB) 대신 static/split(8.8 MB)이나 static/complete(4.7 MB)를

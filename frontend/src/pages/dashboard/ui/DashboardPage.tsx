@@ -26,6 +26,7 @@ import { ApiError } from "@/shared/api";
 import { formatDDay } from "@/shared/lib/format-d-day";
 import { Card, Page } from "@/shared/ui";
 import { adaptCategories, adaptHeadline } from "./adapt-summary";
+import { BudgetBenchmarkCard } from "./BudgetBenchmarkCard";
 import { CategoryRow } from "./CategoryRow";
 import { PaymentRow } from "./PaymentRow";
 import { useCategoryBenchmarks } from "./use-category-benchmarks";
@@ -120,6 +121,8 @@ export function DashboardPage() {
         <p className="text-4xl font-bold tracking-tight text-ink tabular-nums">{formatDDay(headline.dDay)}</p>
         <p className="text-sm text-ink-soft">{headline.dateLabel} 결혼식</p>
       </div>
+
+      <BudgetBenchmarkCard benchmark={summary.budget_benchmark} />
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] gap-5">
         <Card title="다가오는 할 일">
