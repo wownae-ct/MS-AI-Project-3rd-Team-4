@@ -76,6 +76,9 @@ const SUMMARY: DashboardSummary = {
     { source: "timeline", id: "t1", category_code: "VENUE", title: "예식장 중도금 납부", target_date: "2026-09-01", d_day: 12 },
     { source: "checklist", id: "c1", category_code: "VENUE", title: "예식장 계약서 검토", status: "DOING" },
   ],
+  // 기본 픽스처는 null(해당 지역에 참가격 데이터 없음) — "예산 시세 비교" 카드를 다루는
+  // describe 블록만 개별적으로 값을 채워 넣는다.
+  budget_benchmark: null,
 };
 
 // has_benchmark은 VENUE만 true — 실제 배포 상태(backend/app/core/categories.py)와 같은 모양.
@@ -203,6 +206,34 @@ describe("카테고리별 체크리스트 · 시세비교", () => {
 
     expect(getBenchmarkCompareMock).not.toHaveBeenCalled();
     expect(await screen.findByText("예산을 배정하면 시세와 비교할 수 있어요.")).toBeInTheDocument();
+  });
+});
+
+describe("예산 시세 비교 카드 — GET /dashboard/summary의 budget_benchmark", () => {
+  it("budget_benchmark가 null이면(해당 지역 참가격 데이터 없음) 카드 자체를 그리지 않는다", async () => {
+    await renderDashboard();
+
+    expect(screen.queryByRole("heading", { level: 2, name: "예산 시세 비교" })).not.toBeInTheDocument();
+  });
+
+  it("budget_benchmark가 있으면 중앙값·배율·시세 대비 수준을 보여준다", async () => {
+    getDashboardSummaryMock.mockResolvedValue({
+      ...SUMMARY,
+      budget_benchmark: {
+        region_code: "SEOUL_OTHER",
+        median_price: 40_000_000,
+        ratio_to_median: 1.125,
+        percentile_label: "높음",
+        source_url: "https://example.com/price-stat",
+      },
+    });
+    await renderDashboard();
+
+    expect(await screen.findByRole("heading", { level: 2, name: "예산 시세 비교" })).toBeInTheDocument();
+    expect(screen.getByText("40,000,000원")).toBeInTheDocument();
+    expect(screen.getByText("1.13배")).toBeInTheDocument();
+    expect(screen.getByText(/지역 시세 대비 높음/u)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "출처 보기" })).toHaveAttribute("href", "https://example.com/price-stat");
   });
 });
 
