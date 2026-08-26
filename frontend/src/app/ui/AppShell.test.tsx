@@ -102,12 +102,15 @@ describe("내비게이션 마크업", () => {
     expect(screen.queryAllByRole("tab")).toHaveLength(0);
   });
 
-  // [2026-08-27] 데스크톱 사이드바(보조 메뉴 안)에만 로그아웃이 있고 모바일엔 없었다 — 실사용자
-  // 리포트로 확인된 실제 갭. 모바일 상단 바 버전을 추가했고, 둘 다 항상 같은 DOM에 있다(§"단일
-  // DOM + CSS 재배치"). 2개인 것 자체가 계약이다 — 1개면 어느 한쪽이 도로 없어진 회귀다.
-  it("로그아웃 버튼이 데스크톱 사이드바·모바일 상단 바 양쪽에 있다", async () => {
+  // [2026-08-27, 정정] 처음엔 이 자리에 로그아웃 버튼 자체를 뒀었다(데스크톱 사이드바에만 있고
+  // 모바일엔 없던 실제 갭). 곧이어 docs/wedding/refactor/bug-todo.md [결정됨]에 따라 로그아웃을
+  // `pages/settings/ui/SettingsPage.tsx`로 옮기고 이 자리엔 그 화면으로 가는 설정(⚙️) 링크만
+  // 남겼다 — 그래서 지금 고정하는 건 "로그아웃 버튼 2개"가 아니라 "설정 진입 링크 2개"다.
+  // 둘 다 항상 같은 DOM에 있다(§"단일 DOM + CSS 재배치") — 2개인 것 자체가 계약이고, 1개면
+  // 어느 한쪽이 없어진 회귀다.
+  it("설정 진입 링크가 데스크톱 사이드바·모바일 상단 바 양쪽에 있다", async () => {
     await renderShellAt("/");
-    expect(screen.getAllByRole("button", { name: "로그아웃" })).toHaveLength(2);
+    expect(screen.getAllByRole("link", { name: "설정" })).toHaveLength(2);
   });
 
   // layout.md §3 의 4개(홈·타임라인·예산·리포트)에 2026-08-24 "AI상담"이 5번째로 추가됐다
