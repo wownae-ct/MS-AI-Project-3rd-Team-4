@@ -1,28 +1,31 @@
-// 카테고리별 예산 한 줄 (시각 스펙: docs/mockups/s2-dashboard.html:219-284).
+// 카테고리별 체크리스트 진행률 + 시세비교 한 줄 (UX 개편, 2026-08-26 — 예산 집행률 표시를
+// 이 자리에서 걷어내고 체크리스트 진행률+시세비교로 바꿨다. 예산 상세는 이제 예산 페이지가
+// 전담한다). 원래 시각 스펙: docs/mockups/s2-dashboard.html:219-284 — 그 목업이 그리던 "예산
+// 집행률" 축을 이 화면에서는 더 이상 쓰지 않는다(ADR 0006 — 규범/요구사항 변경이 목업을 이긴다).
 //
-// **`budget === null` 은 0 과 다르다.** 목업의 `.no-cost` 행(s2:219-224 「상견례」)은 금액도 바도 없다.
-// 0 으로 두고 0% 바를 그리면 *"예산이 있는데 하나도 안 썼다"* 로 읽힌다 — `Progress` 가 불확정을
-// 0% 로 그리지 않기로 한 것(D11)과 같은 종류의 구분이다.
+// **체크리스트 진행률은 모든 카테고리에 있다** — 예산 유무(has_cost)와 무관하다. 그래서 예전
+// `budget === null` 분기(비용 없는 카테고리는 바를 안 그림)가 없다 — 진행률 바가 항상 뜬다.
 //
-// **금액 위계는 크기로 준다.** 목업은 총액을 `ink-soft` + 보통 굵기로 흐리지만(s2:131-132),
-// 규범은 *"금액은 항상 tabular-nums + 700"*(docs/design/README.md) 이고 ADR 0006 상 규범이 목업을
-// 이긴다. 그래서 둘 다 굵은 `ink` 로 두고 **집행액만 한 단계 크게** 해 위계를 만든다 —
-// 규범이 제약하지 않는 축(크기)을 쓴 것이다.
+// **시세비교는 `hasBenchmark`(카테고리 상수의 has_benchmark, use-category-benchmarks.ts)가
+// true인 카테고리에서만 그 자리가 생긴다.** `benchmark`가 undefined면 "아직 비교할 수 없다"는
+// 뜻(예산 미배정 또는 조회 실패) — 숫자를 지어내지 않고 안내 문구만 낸다.
+//
+// **D6 — 상태색을 쓰지 않는다.** "높음/평균/낮음"(percentile_label)을 색으로 구분하지 않고
+// 텍스트+배지로만 전달한다(D8 팔레트 게이트가 임의 색 추가를 어차피 막는다).
 import { Link } from "@tanstack/react-router";
+import type { BenchmarkComparison } from "@/entities/payment";
 import type { CategoryBudget } from "@/entities/wedding";
 import { Badge, Money, Progress } from "@/shared/ui";
 
 export interface CategoryRowProps {
   category: CategoryBudget;
+  hasBenchmark: boolean;
+  /** undefined = 이 카테고리에 대해 아직 비교 결과가 없다(예산 미배정 또는 조회 실패/데이터 없음). */
+  benchmark: BenchmarkComparison | undefined;
 }
 
-// 조건부 클래스는 **완성된 리터럴 두 개 중 하나를 고른다.** 조각을 이어 붙이면 Tailwind 스캐너가
-// 찾지 못해 유틸리티가 생성되지 않는다(CLAUDE.md §5.1).
-const TOP_ROW = "flex items-center justify-between gap-2";
-const TOP_ROW_WITH_BAR = "mb-1.5 flex items-center justify-between gap-2";
-
-export function CategoryRow({ category }: CategoryRowProps) {
-  const { id, name, focus, budget, spent, checklistProgress } = category;
+export function CategoryRow({ category, hasBenchmark, benchmark }: CategoryRowProps) {
+  const { id, name, focus, checklistProgress } = category;
 
   // 12_final_prototype_mockup.html의 renderHome()은 이 행 전체를 카테고리 상세로 가는 진입점으로
   // 쓴다(대시보드에서 카테고리 상세로 갈 유일한 경로). 문구/디자인 토큰은 그대로 두고 클릭 가능하다는
@@ -37,32 +40,31 @@ export function CategoryRow({ category }: CategoryRowProps) {
       params={{ id: id.toLowerCase() }}
       className="block border-b border-line py-3 first:pt-0 last:border-b-0 last:pb-0"
     >
-      <div className={budget === null ? TOP_ROW : TOP_ROW_WITH_BAR}>
+      <div className="mb-1.5 flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-1.5">
           <span className="text-sm font-bold whitespace-nowrap text-ink">{name}</span>
           {focus && <Badge>FOCUS</Badge>}
         </div>
-
-        <div className="flex items-center gap-1.5">
-          {budget !== null && (
-            <span className="text-xs whitespace-nowrap text-ink-soft">
-              <Money value={spent} unit={null} className="text-sm" /> / <Money value={budget} className="text-xs" />
-            </span>
-          )}
-          <span aria-hidden="true" className="text-ink-soft">
-            ›
-          </span>
-        </div>
+        <span aria-hidden="true" className="text-ink-soft">
+          ›
+        </span>
       </div>
 
-      {budget !== null && (
-        <div className="mb-1.5">
-          {/* 접근명은 카테고리마다 달라야 한다 — 같은 이름의 진행률이 6개면 구분이 되지 않는다. */}
-          <Progress value={budget > 0 ? spent / budget : 0} label={`${name} 예산 집행률`} />
-        </div>
-      )}
-
+      <div className="mb-1.5">
+        {/* 접근명은 카테고리마다 달라야 한다 — 같은 이름의 진행률이 6개면 구분이 되지 않는다. */}
+        <Progress value={checklistProgress} label={`${name} 체크리스트 진행률`} />
+      </div>
       <p className="text-xs text-ink-soft">체크리스트 {Math.round(checklistProgress * 100)}%</p>
+
+      {hasBenchmark &&
+        (benchmark ? (
+          <p className="mt-1 flex items-center gap-1.5 text-xs text-ink-soft">
+            시세 대비 {benchmark.percentile_label} · 중앙값 <Money value={benchmark.median_price} className="text-xs" />
+            <Badge>{benchmark.ratio_to_median.toFixed(2)}배</Badge>
+          </p>
+        ) : (
+          <p className="mt-1 text-xs text-ink-soft">예산을 배정하면 시세와 비교할 수 있어요.</p>
+        ))}
     </Link>
   );
 }

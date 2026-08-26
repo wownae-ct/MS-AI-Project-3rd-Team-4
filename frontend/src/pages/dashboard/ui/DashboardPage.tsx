@@ -4,11 +4,16 @@
 // 이유는 브레이크포인트를 늘리지 않고 카드가 스스로 재배치되게 하기 위해서다(§7) — 그래서 `Page` 에
 // `max-w-none` 을 주어 폭 제한은 셸(최대 1160px)에 맡긴다.
 //
-// **목업과 의도적으로 다른 점 3가지** (전부 규범이 목업을 이기는 경우 — ADR 0006)
+// **목업과 의도적으로 다른 점** (전부 규범/요구사항이 목업을 이기는 경우 — ADR 0006)
 //   1. 브랜드 블록(s2:146-149)을 그리지 않는다 — 사이드바 소관이다(layout.md §4).
 //      화면이 함께 그리면 데스크톱에서 두 번 나온다.
 //   2. 카드 제목을 `<p>` 가 아니라 `<h2>` 로 낸다 — WCAG 1.3.1 F2 (a11y.md §4).
 //   3. 금액은 총액까지 굵은 `ink` 다 — "금액은 항상 tabular-nums + 700"(docs/design/README.md).
+//   4. **예산 도넛을 걷어냈다(UX 개편, 2026-08-26)** — 예산 상세는 예산 페이지가 전담하고,
+//      대시보드는 카테고리별 진행 상황(체크리스트·시세비교)에 집중한다. 도넛 자체는
+//      `pages/budget/ui/BudgetDonut.tsx`로 이동했다(`git mv`, 이력 보존).
+//   5. **"카테고리별 예산"을 "카테고리별 체크리스트 · 시세비교"로 바꿨다** — `CategoryRow.tsx`
+//      머리말 참고.
 //
 // **실API 연동 이후 생긴 것들**
 //   · 로딩/에러 상태: 실 fetch 는 실패할 수 있어 최소 텍스트만 추가했다("불러오는 중…",
@@ -16,14 +21,14 @@
 //   · "다가오는 납부" → "다가오는 할 일": `PaymentRow.tsx` 머리말 참고 — API 응답에 금액이 없다.
 //   · 카테고리 → S3 상세 진입: `CategoryRow.tsx`가 행 전체를 `/category/$id` 링크로 감싼다.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { getDashboardSummary, type DashboardSummary } from "@/entities/dashboard";
+import { getDashboardSummary, type DashboardCategorySummary, type DashboardSummary } from "@/entities/dashboard";
 import { ApiError } from "@/shared/api";
 import { formatDDay } from "@/shared/lib/format-d-day";
 import { Card, Page } from "@/shared/ui";
-import { adaptBudgetSummary, adaptCategories, adaptHeadline } from "./adapt-summary";
-import { BudgetDonut } from "./BudgetDonut";
+import { adaptCategories, adaptHeadline } from "./adapt-summary";
 import { CategoryRow } from "./CategoryRow";
 import { PaymentRow } from "./PaymentRow";
+import { useCategoryBenchmarks } from "./use-category-benchmarks";
 
 // 행들을 감싸는 컨테이너. `first:`/`last:` 변이는 **형제 중 첫/마지막**을 보는데 `Card` 가 `<h2>`
 // 제목을 먼저 렌더하므로, 감싸지 않으면 첫 행이 `:first-child` 가 되지 못해 위 패딩이 남는다.
@@ -33,6 +38,10 @@ const ROWS = "flex flex-col";
 // 후보 확정")의 표시 라벨 — 레드팀 감사 라운드 2, HIGH. 이전엔 이 값을 non-nullable 타입으로
 // 잘못 선언해 `?? item.category_code`가 `undefined ?? null`이 돼 문자열 "null"이 그대로 찍혔다.
 const GENERAL_CATEGORY_LABEL = "일반";
+
+// summary 로딩/에러 중 useCategoryBenchmarks에 넘길 안정된 빈 배열 — 매 렌더 새 리터럴(`[]`)을
+// 넘기면 그 훅의 `useEffect` deps가 매번 바뀐 것으로 보여 getCategories()를 계속 다시 부른다.
+const NO_CATEGORIES: readonly DashboardCategorySummary[] = [];
 
 export function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
@@ -73,6 +82,10 @@ export function DashboardPage() {
     return categoryLabelByCode.get(categoryCode) ?? categoryCode;
   }
 
+  // summary가 null인 동안(로딩/에러)에도 훅은 호출돼야 한다(Hooks 규칙 — 조건부 호출 금지) —
+  // 빈 배열을 넘기면 훅 내부에서 아무 조회도 하지 않는다.
+  const { hasBenchmarkByCode, benchmarkByCode } = useCategoryBenchmarks(summary?.categories ?? NO_CATEGORIES);
+
   if (error !== null) {
     return (
       <Page title="대시보드" width="max-w-none">
@@ -99,7 +112,6 @@ export function DashboardPage() {
   }
 
   const headline = adaptHeadline(summary);
-  const budget = adaptBudgetSummary(summary);
   const categories = adaptCategories(summary.categories);
 
   return (
@@ -110,10 +122,6 @@ export function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] gap-5">
-        <Card title="예산 현황">
-          <BudgetDonut summary={budget} />
-        </Card>
-
         <Card title="다가오는 할 일">
           {summary.upcoming_items.length === 0 ? (
             <p className="text-sm text-ink-soft">다가오는 할 일이 없습니다.</p>
@@ -126,13 +134,18 @@ export function DashboardPage() {
           )}
         </Card>
 
-        <Card title="카테고리별 예산">
+        <Card title="카테고리별 체크리스트 · 시세비교">
           {categories.length === 0 ? (
             <p className="text-sm text-ink-soft">등록된 카테고리가 없습니다.</p>
           ) : (
             <div className={ROWS}>
               {categories.map((category) => (
-                <CategoryRow key={category.id} category={category} />
+                <CategoryRow
+                  key={category.id}
+                  category={category}
+                  hasBenchmark={hasBenchmarkByCode.get(category.id) ?? false}
+                  benchmark={benchmarkByCode.get(category.id)}
+                />
               ))}
             </div>
           )}

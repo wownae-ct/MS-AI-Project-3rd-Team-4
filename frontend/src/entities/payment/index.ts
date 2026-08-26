@@ -19,3 +19,6 @@ export {
   getUpcomingPayments,
   patchPayment,
 } from "./api/payment";
+export { AddPaymentRow, type AddPaymentRowProps } from "./ui/AddPaymentRow";
+export { PaymentListRow, type PaymentListRowProps } from "./ui/PaymentListRow";
+export { PAYMENT_TYPE_LABEL } from "./ui/payment-labels";
