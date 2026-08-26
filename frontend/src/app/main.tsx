@@ -1,7 +1,7 @@
-import { StrictMode } from "react";
+import { StrictMode, type ErrorInfo } from "react";
 import { createRoot } from "react-dom/client";
 import { invalidateSession } from "@/entities/session";
-import { onUnauthorized } from "@/shared/api";
+import { onUnauthorized, reportClientError } from "@/shared/api";
 import { ErrorBoundary } from "@/shared/ui";
 import "@/shared/ui/styles.css";
 import App from "./App";
@@ -12,6 +12,19 @@ import App from "./App";
 // 그러면 배선이 import 순서에 숨고 트리셰이킹으로 조용히 사라질 수 있기 때문이다.
 onUnauthorized(invalidateSession);
 
+// 렌더 크래시가 사용자 본인 브라우저 콘솔 밖으로 전혀 안 나가던 것(로깅 관측성 감사,
+// 2026-08-26)을 고친다 — ErrorBoundary 자신의 console.error 는 유지된 채, 백엔드
+// POST /api/v1/client-errors(PR #78, 인증 불필요)로도 fire-and-forget 전송한다.
+function handleRenderCrash(error: Error, info: ErrorInfo): void {
+  reportClientError({
+    message: error.message,
+    stack: error.stack ?? null,
+    componentStack: info.componentStack ?? null,
+    url: location.href,
+    userAgent: navigator.userAgent,
+  });
+}
+
 // 마운트 지점이 없으면 여기서 원인을 말하고 멈춘다.
 // non-null 단언(`!`)으로 넘기면 createRoot가 내부에서 불투명한 오류를 던져 원인이 지워진다.
 const rootElement = document.querySelector("#root");
@@ -21,7 +34,7 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <ErrorBoundary>
+    <ErrorBoundary onError={handleRenderCrash}>
       <App />
     </ErrorBoundary>
   </StrictMode>,

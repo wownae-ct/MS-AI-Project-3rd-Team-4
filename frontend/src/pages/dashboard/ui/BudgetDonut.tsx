@@ -28,7 +28,10 @@ const SERIES: readonly Series[] = [
   // 「잔여」가 아니라 「미배정」이다 — 45,000,000 − 3,800,000 ≠ 1,000,000 이라 「잔여」로 적으면
   // 숫자가 맞지 않아 보인다. 여기 도넛은 세 계열이 총액을 채우므로 문맥이 뜻을 잡아 주지만,
   // 리포트(S5)는 계획 항목 없이 세 값만 나열해 혼자 서면 오독된다. 같은 필드에 두 이름을 두지 않는다.
-  { label: "미배정", color: "var(--color-line)", amount: (s) => s.remaining },
+  // 초과지출(paid+planned > total)이면 backend 는 음수를 그대로 돌려준다(캡을 안 두기로 한 결정,
+  // done.md 2026-08-26) — 여기서 0 으로 클램프한다. 음수 그대로 내면 "미배정 -1,000,000원"처럼
+  // 읽혀 총액이 잘못 나온 것처럼 보인다(레드팀 감사 파생 발견, todo.md).
+  { label: "미배정", color: "var(--color-line)", amount: (s) => Math.max(0, s.remaining) },
 ];
 
 export interface BudgetDonutProps {
@@ -40,8 +43,12 @@ export function BudgetDonut({ summary }: BudgetDonutProps) {
 
   // total 이 0 이면 나눗셈이 NaN 이 되고 conic-gradient 가 통째로 무효가 된다(조용히 배경이 사라진다).
   const safeTotal = total > 0 ? total : 1;
-  const paidEnd = (paid / safeTotal) * 100;
-  const plannedEnd = ((paid + planned) / safeTotal) * 100;
+  // 초과지출(paid+planned > total)이면 100% 를 넘는 stop 이 나온다 — conic-gradient 는 이걸
+  // 그대로 클램프하긴 하지만 마지막 계열("미배정") 구간이 통째로 사라지는 대신 세 번째 색이
+  // 아예 안 그려지는 결과가 되어 링이 "잘려나간" 것처럼 보인다(레드팀 감사 파생 발견). 100 으로
+  // 명시적으로 클램프해 최소한 paid/planned 두 계열은 항상 정확한 비율로 채워지게 한다.
+  const paidEnd = Math.min((paid / safeTotal) * 100, 100);
+  const plannedEnd = Math.min(((paid + planned) / safeTotal) * 100, 100);
 
   // ⚠️ 변수 이름에 **Tailwind 유틸리티와 같은 단어**를 쓰지 말 것. 스캐너는 소스를 평문으로 읽어
   // 식별자든 주석이든 가리지 않고 후보로 삼는다 — D9 가 금지한 「테두리 강조」 유틸리티와 같은
