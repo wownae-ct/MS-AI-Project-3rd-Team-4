@@ -21,7 +21,7 @@ export function CategoryChecklistSection({ categories: rawCategories }: Category
   const categories = adaptCategories(rawCategories);
 
   return (
-    <Card title="카테고리별 체크리스트 · 시세비교">
+    <Card title="카테고리별 체크리스트 진행률 · 시세비교">
       {categories.length === 0 ? (
         <p className="text-sm text-ink-soft">등록된 카테고리가 없습니다.</p>
       ) : (
