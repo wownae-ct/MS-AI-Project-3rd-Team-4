@@ -25,7 +25,17 @@ export function GeneratingOverlay() {
     // 된다(직전 수정 커밋이 겪은 사고 그대로 — 클래스는 고쳤는데 설명 주석에 그 값을 그대로
     // 남겨 게이트가 다시 잡았다).
     <output className="fixed inset-0 z-50 flex items-center justify-center bg-bg p-4" aria-live="polite">
-      <Card className="flex max-w-xs flex-col items-center gap-3 text-center">
+      {/*
+        w-full 이 꼭 필요하다 — Card 는 `@container`(container-type: inline-size)를 쓰는데, 이
+        컨테인먼트는 박스 자신의 크기가 콘텐츠에 좌우되지 않아야 한다(CSS Containment 스펙 —
+        size containment). 이 화면의 다른 모든 Card 사용부는 stretch 되는 flex-col 부모(Page의
+        <main>) 안에서 폭을 이미 정해서 받는데, 여기서만 Card가 `justify-center`인 flex-row
+        부모(바로 위 <output>)의 shrink-to-fit 자식이라 폭을 콘텐츠 기준으로 잡으려 한다 — 그
+        컨테인먼트에 막혀 실제로는 폭이 거의 0으로 무너지고, 안의 두 문장이 글자 하나마다
+        줄바꿈되어 세로로 깨져 보였다(2026-08-26 실사용 중 확인). w-full + max-w-xs 로 Card가
+        부모(뷰포트) 폭에서 정의된 크기를 받게 하면 콘텐츠 의존 없이 폭이 정해진다.
+      */}
+      <Card className="flex w-full max-w-xs flex-col items-center gap-3 text-center">
         <div className="flex items-center gap-1.5">
           <span className="size-2 animate-pulse rounded-pill bg-primary [animation-delay:-0.3s]" />
           <span className="size-2 animate-pulse rounded-pill bg-primary [animation-delay:-0.15s]" />
