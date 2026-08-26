@@ -15,7 +15,7 @@
 export interface BudgetSummary {
   /** 총예산 */
   total: number;
-  /** 집행(지급 완료) */
+  /** 지불(완료) */
   paid: number;
   /** 계획(미지급) */
   planned: number;

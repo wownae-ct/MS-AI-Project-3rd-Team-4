@@ -28,12 +28,17 @@
 //      — `UpcomingPaymentsSection.tsx`. 5번에서 이름을 뺏긴 그 "다가오는 납부"가 별개 카드로
 //      돌아온 것이다(같은 이름을 다른 두 의미로 다시 쓰지 않게, 원본 데이터는 여전히 다르다 —
 //      하나는 결제 예정, 하나는 체크리스트/타임라인 혼합 피드).
+//
+// **UX 개편 3차(2026-08-26, 사용자 지시)**
+//   8. "예산 시세 비교" 카드(`BudgetBenchmarkCard.tsx`, 삭제됨)를 걷어냈다 — 예산 페이지
+//      "총 예산 현황" 카드로 흡수됐다(`pages/budget/ui/BudgetDonut.tsx`). `summary.budget_benchmark`는
+//      이 화면에서 더 이상 안 쓴다(백엔드 응답 자체는 그대로 내려온다 — 필드를 소비하는 화면만
+//      바뀐 것).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getDashboardSummary, type DashboardSummary } from "@/entities/dashboard";
 import { ApiError } from "@/shared/api";
 import { Card, Page } from "@/shared/ui";
 import { adaptHeadline } from "./adapt-summary";
-import { BudgetBenchmarkCard } from "./BudgetBenchmarkCard";
 import { CategoryChecklistSection } from "./CategoryChecklistSection";
 import { PaymentRow } from "./PaymentRow";
 import { UpcomingPaymentsSection } from "./UpcomingPaymentsSection";
@@ -122,8 +127,6 @@ export function DashboardPage() {
         weddingDate={summary.wedding_date}
         onDateSaved={() => fetchSummary()}
       />
-
-      <BudgetBenchmarkCard benchmark={summary.budget_benchmark} />
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] gap-5">
         <Card title="다가오는 할 일">

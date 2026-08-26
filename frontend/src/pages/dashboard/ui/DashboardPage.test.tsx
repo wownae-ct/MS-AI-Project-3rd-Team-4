@@ -76,8 +76,8 @@ const SUMMARY: DashboardSummary = {
     { source: "timeline", id: "t1", category_code: "VENUE", title: "예식장 중도금 납부", target_date: "2026-09-01", d_day: 12 },
     { source: "checklist", id: "c1", category_code: "VENUE", title: "예식장 계약서 검토", status: "DOING" },
   ],
-  // 기본 픽스처는 null(해당 지역에 참가격 데이터 없음) — "예산 시세 비교" 카드를 다루는
-  // describe 블록만 개별적으로 값을 채워 넣는다.
+  // 이 화면은 budget_benchmark를 더 이상 안 읽는다(UX 개편 3차, BudgetDonut.test.tsx로 이전) —
+  // DashboardSummary 타입 자체는 여전히 이 필드를 요구하므로 픽스처에는 남겨 둔다.
   budget_benchmark: null,
 };
 
@@ -145,7 +145,7 @@ describe("다가오는 할 일 — 금액 없이 D-Day/상태만 보여준다", 
 });
 
 describe("카테고리별 체크리스트 · 시세비교", () => {
-  it("진행률 바마다 어느 카테고리인지 말한다 — 접근명이 서로 다르고, 예산 집행률이 아니라 체크리스트 진행률이다", async () => {
+  it("진행률 바마다 어느 카테고리인지 말한다 — 접근명이 서로 다르고, 예산 지불률이 아니라 체크리스트 진행률이다", async () => {
     await renderDashboard();
 
     const names = screen.getAllByRole("progressbar").map((bar) => bar.getAttribute("aria-label"));
@@ -209,33 +209,9 @@ describe("카테고리별 체크리스트 · 시세비교", () => {
   });
 });
 
-describe("예산 시세 비교 카드 — GET /dashboard/summary의 budget_benchmark", () => {
-  it("budget_benchmark가 null이면(해당 지역 참가격 데이터 없음) 카드 자체를 그리지 않는다", async () => {
-    await renderDashboard();
-
-    expect(screen.queryByRole("heading", { level: 2, name: "예산 시세 비교" })).not.toBeInTheDocument();
-  });
-
-  it("budget_benchmark가 있으면 중앙값·배율·시세 대비 수준을 보여준다", async () => {
-    getDashboardSummaryMock.mockResolvedValue({
-      ...SUMMARY,
-      budget_benchmark: {
-        region_code: "SEOUL_OTHER",
-        median_price: 40_000_000,
-        ratio_to_median: 1.125,
-        percentile_label: "높음",
-        source_url: "https://example.com/price-stat",
-      },
-    });
-    await renderDashboard();
-
-    expect(await screen.findByRole("heading", { level: 2, name: "예산 시세 비교" })).toBeInTheDocument();
-    expect(screen.getByText("40,000,000원")).toBeInTheDocument();
-    expect(screen.getByText("1.13배")).toBeInTheDocument();
-    expect(screen.getByText(/지역 시세 대비 높음/u)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "출처 보기" })).toHaveAttribute("href", "https://example.com/price-stat");
-  });
-});
+// "예산 시세 비교 카드 — GET /dashboard/summary의 budget_benchmark" describe 블록은 여기 있었다.
+// UX 개편 3차(2026-08-26)로 그 카드가 예산 페이지 "총 예산 현황" 카드로 옮겨가면서
+// `BudgetDonut.test.tsx`로 이전됐다 — 이 화면은 더 이상 budget_benchmark를 그리지 않는다.
 
 describe("셸과 화면의 경계", () => {
   it("브랜드를 화면이 그리지 않는다 — 셸 소관이다", async () => {

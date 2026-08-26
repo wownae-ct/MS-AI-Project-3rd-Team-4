@@ -1,6 +1,6 @@
 // 카테고리별 준비 진행률 한 줄 (시각 스펙: docs/mockups/s5-report.html:91-97).
 //
-// **S2 의 바와 뜻이 다르다.** S2 는 예산 집행률(`spent / budget`)이라 비용이 없는 카테고리에는
+// **S2 의 바와 뜻이 다르다.** S2 는 예산 지불률(`spent / budget`)이라 비용이 없는 카테고리에는
 // 바를 그리지 않았다. 여기는 체크리스트 진행률(`checklistProgress`, 0~1 비율)이라
 // **상견례도 바를 갖고, 0% 도 그린다** — 0 은 「예산이 없다」가 아니라 「하나도 안 했다」는 실제 값이다.
 //
@@ -35,7 +35,7 @@ export function CompletionRow({ category }: CompletionRowProps) {
       <div className="min-w-0 flex-1">
         {/* 접근명은 행마다 달라야 한다 — 바가 7개인 화면에서 같은 이름이면 구분되지 않는다.
             role="progressbar" 는 **접근명이 필수**다(WAI-ARIA 1.2 — name required).
-            S2 의 「예산 집행률」과 뜻이 다르므로 이름도 다르게 짓는다. */}
+            S2 의 「예산 지불률」과 뜻이 다르므로 이름도 다르게 짓는다. */}
         <Progress value={percent / 100} label={`${category.name} 준비 진행률`} />
       </div>
 

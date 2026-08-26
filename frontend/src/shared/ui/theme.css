@@ -47,6 +47,20 @@
   --color-success: #166534; /* surface 대비 7.13 · bg 대비 6.60 · line 대비 5.58 (WCAG 상대휘도) */
   --color-success-soft: #e1f4e8; /* 배지 배경 — 위에 success 6.22 */
 
+  /* 결제 유형(계약금/중도금/잔금/기타) 배지 색 — D13 (docs/design/decisions.md), 2026-08-27,
+     사용자 지시. D6/D12는 "상태(성공/경고/위험) 색"에 관한 결정이고 이건 카테고리 색이라 범위가
+     다르지만, "새 색은 이 문서 → theme.css 순서로"라는 D8의 절차는 그대로 따른다. 넷 다
+     surface/bg/line 전부에서 WCAG AA(4.5:1)를 여유 있게 넘는다(node로 상대휘도 직접 계산,
+     추정치 아님) — soft 배경 위 자기 색 글자도 전부 4.5:1 이상. */
+  --color-payment-deposit: #8a5a12; /* 계약금 — surface 5.91 · bg 5.47 · line 4.63 */
+  --color-payment-deposit-soft: #f5ebd9; /* 배지 배경 — 위에 deposit 5.00 */
+  --color-payment-interim: #2f5f8f; /* 중도금 — surface 6.66 · bg 6.16 · line 5.21 */
+  --color-payment-interim-soft: #dfe8f2; /* 배지 배경 — 위에 interim 5.38 */
+  --color-payment-balance: #54407e; /* 잔금 — surface 8.71 · bg 8.06 · line 6.82 */
+  --color-payment-balance-soft: #e6e1f2; /* 배지 배경 — 위에 balance 6.81 */
+  --color-payment-etc: #5f4f43; /* 기타 — surface 7.82 · bg 7.24 · line 6.12 */
+  --color-payment-etc-soft: #eee7df; /* 배지 배경 — 위에 etc 6.38 */
+
   /* Typography — Wanted Sans Variable.
      원 디자인 문서가 Pretendard 를 "브랜드 식별력이 떨어진다"는 이유로 명시 기각했다.
      Apple SD Gothic Neo 는 iOS 전용이라 임베드 불가 — 폴백으로만 둔다.

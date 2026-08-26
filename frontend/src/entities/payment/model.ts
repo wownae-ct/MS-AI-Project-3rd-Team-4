@@ -50,7 +50,14 @@ export interface PaymentCreateInput {
   receipt_url?: string;
 }
 
+// 백엔드 PaymentUpdate(schemas/payment.py)는 전체 컬럼을 optional로 열어 두지만("금액 오기입"
+// 같은 정정도 PATCH로 가능해야 한다는 문서 근거), 프론트는 실제로 편집 화면이 쓰는 필드만
+// 노출한다 — category_code/payment_type/vendor_name/contact_*는 이번 수정 기능(item_name·
+// amount·날짜)의 범위 밖이라 아직 안 넣는다.
 export interface PaymentPatchInput {
+  item_name?: string;
+  amount?: number;
+  due_date?: string;
   status?: PaymentStatus;
   paid_date?: string;
   receipt_url?: string;

@@ -40,7 +40,7 @@ interface Stat {
 
 const STATS: readonly Stat[] = [
   { label: "총 예산", amount: (s) => s.total },
-  { label: "집행", amount: (s) => s.paid },
+  { label: "지불 완료", amount: (s) => s.paid },
   { label: "미배정", amount: (s) => s.remaining },
 ];
 

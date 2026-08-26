@@ -1,5 +1,5 @@
 // 카테고리별 시세비교 조회 훅 — `pages/dashboard/ui/use-category-benchmarks.ts`의 독립 사본이다
-// (2026-08-26, UX 개편 2차, 사용자 지시로 "카테고리별 배정" 행에도 같은 시세비교를 붙이며 추가).
+// (2026-08-26, UX 개편 2차, 사용자 지시로 "카테고리별 예산 현황" 행에도 같은 시세비교를 붙이며 추가).
 // 내용을 그대로 복제한 이유는 그 파일 머리말 참고 — `@/entities/wedding`과 `@/entities/payment`
 // 둘 다에 의존하는 cross-entity 조립이라 어느 한쪽 entities 슬라이스로도 승격할 수 없다
 // (`.oxlintrc.json`의 `entities/**` override, "entities는 다른 entity 슬라이스를 import할 수
