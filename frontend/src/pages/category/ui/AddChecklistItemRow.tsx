@@ -7,7 +7,7 @@ import { ApiError } from "@/shared/api";
 
 const ADD_BTN =
   "w-full rounded-sm border border-dashed border-line bg-transparent py-2.5 text-sm font-bold text-ink-soft";
-const FORM_INPUT = "min-h-tap w-full rounded-md border border-line bg-surface px-2.5 text-sm text-ink";
+const FORM_INPUT = "min-h-tap w-full rounded-md border border-line bg-surface px-2.5 text-base text-ink";
 
 const ITEM_TYPE_LABEL: Record<ChecklistItemType, string> = {
   CONTRACT_TERM: "계약 조항",
@@ -28,6 +28,7 @@ export function AddChecklistItemRow({ categoryCode, onAdded }: AddChecklistItemR
   const [priority, setPriority] = useState<ChecklistPriority>("mid");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   function reset() {
     setItemType("PREP");
@@ -51,6 +52,10 @@ export function AddChecklistItemRow({ categoryCode, onAdded }: AddChecklistItemR
         title: title.trim(),
         priority,
       });
+      // 폼이 바로 닫혀 성공 메시지를 보여줄 자리가 없다 — 스크린리더 사용자는 실패(아래
+      // role="alert")만 안내받고 성공은 알 방법이 없었다(접근성 감사 2026-08-26). 폼 바깥에
+      // 항상 떠 있는 sr-only 영역에 잠깐 담아 announce한다.
+      setSuccessMessage(`"${title.trim()}" 항목을 추가했어요.`);
       reset();
       setOpen(false);
       onAdded();
@@ -63,35 +68,57 @@ export function AddChecklistItemRow({ categoryCode, onAdded }: AddChecklistItemR
 
   if (!open) {
     return (
-      <button type="button" className={ADD_BTN} onClick={() => setOpen(true)}>
-        + 항목 추가
-      </button>
+      <>
+        {/* 폼이 닫혀도 방금 추가 성공 announce는 살아있어야 한다. */}
+        <output className="sr-only">{successMessage}</output>
+        <button
+          type="button"
+          className={ADD_BTN}
+          onClick={() => {
+            setSuccessMessage(null);
+            setOpen(true);
+          }}
+        >
+          + 항목 추가
+        </button>
+      </>
     );
   }
 
   return (
     <div className="flex flex-col gap-2 rounded-md border border-line bg-bg p-3">
-      <select className={FORM_INPUT} value={itemType} onChange={(e) => setItemType(e.target.value as ChecklistItemType)}>
-        {Object.entries(ITEM_TYPE_LABEL).map(([value, label]) => (
-          <option key={value} value={value}>
-            {label}
-          </option>
-        ))}
-      </select>
+      <label className="flex flex-col gap-1 text-xs text-ink-soft">
+        항목 유형
+        <select
+          className={FORM_INPUT}
+          value={itemType}
+          onChange={(e) => setItemType(e.target.value as ChecklistItemType)}
+        >
+          {Object.entries(ITEM_TYPE_LABEL).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
       <input
         className={FORM_INPUT}
+        aria-label="항목 이름"
         placeholder="항목 이름"
         value={title}
         maxLength={CHECKLIST_TITLE_MAX_LENGTH}
         onChange={(e) => setTitle(e.target.value)}
       />
-      <select className={FORM_INPUT} value={priority} onChange={(e) => setPriority(e.target.value as ChecklistPriority)}>
-        {Object.entries(PRIORITY_LABEL).map(([value, label]) => (
-          <option key={value} value={value}>
-            {label}
-          </option>
-        ))}
-      </select>
+      <label className="flex flex-col gap-1 text-xs text-ink-soft">
+        중요도
+        <select className={FORM_INPUT} value={priority} onChange={(e) => setPriority(e.target.value as ChecklistPriority)}>
+          {Object.entries(PRIORITY_LABEL).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
       {error && (
         <p role="alert" className="text-xs text-primary">
           {error}

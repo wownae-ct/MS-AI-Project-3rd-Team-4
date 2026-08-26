@@ -46,7 +46,7 @@ export function RegenerateButton({ domain, label, onRegenerated }: RegenerateBut
       >
         {pending ? "다시 생성하는 중…" : label}
       </button>
-      {note && <span className="text-xs text-ink-soft">{note}</span>}
+      {note && <output className="text-xs text-ink-soft">{note}</output>}
       {error && (
         <span role="alert" className="text-xs text-primary">
           {error}

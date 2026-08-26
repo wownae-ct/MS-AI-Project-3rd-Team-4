@@ -152,7 +152,9 @@ const BUDGETS = [
   // bundle-budget-numeric-conflict.md` 참고). 산술로 더해 추정하지 않고 병합 후 재빌드해
   // 다시 실측했다: 97,247B(CategoryChecklistSection.tsx 추출 등 import/max-dependencies
   // 정리 이후 값). 여유를 53 B 로 좁게 유지한다.
-  { key: "jsChunkGzip", limit: 97_300, measured: 97_247, label: "최대 단일 JS 청크 (gzip)" },
+  // 접근성 감사 수정 배치(2026-08-26, 라벨/터치타겟/live region 다수)로 97,247 → 97,250 —
+  // 오차 3B라 한도는 그대로 둔다.
+  { key: "jsChunkGzip", limit: 97_300, measured: 97_250, label: "최대 단일 JS 청크 (gzip)" },
   { key: "cssGzip", limit: 6_000, measured: 4_237, label: "CSS (gzip, @font-face 제외)" },
   // 폰트는 unicode-range 로 분할돼 전량 전송되지 않으므로 이 값은 전송량이 아니라 **배포 크기** 가드다.
   // 잡으려는 사고: variable/split(2.3 MB) 대신 static/split(8.8 MB)이나 static/complete(4.7 MB)를

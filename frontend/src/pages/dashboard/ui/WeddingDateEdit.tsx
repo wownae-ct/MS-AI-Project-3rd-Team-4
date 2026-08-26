@@ -20,7 +20,7 @@ import { useState } from "react";
 import { updateMyWedding } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
 
-const INLINE_DATE_INPUT = "w-40 rounded-md border border-line bg-surface px-2.5 py-1.5 text-sm text-ink focus-visible:border-primary";
+const INLINE_DATE_INPUT = "min-h-tap w-40 rounded-md border border-line bg-surface px-2.5 text-base text-ink focus-visible:border-primary";
 const GHOST_BUTTON = "text-xs font-bold text-ink-soft transition-colors duration-150 hover:text-primary";
 
 export interface WeddingDateEditProps {

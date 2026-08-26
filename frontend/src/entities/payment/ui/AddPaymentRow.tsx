@@ -23,7 +23,7 @@ import { PAYMENT_TYPE_LABEL } from "./payment-labels";
 
 const ADD_BTN =
   "mt-3 w-full rounded-sm border border-dashed border-line bg-transparent py-2.5 text-sm font-bold text-ink-soft";
-const FORM_INPUT = "min-h-tap w-full rounded-md border border-line bg-surface px-2.5 text-sm text-ink";
+const FORM_INPUT = "min-h-tap w-full rounded-md border border-line bg-surface px-2.5 text-base text-ink";
 const RECEIPT_BTN =
   "min-h-tap w-full cursor-pointer rounded-md border border-dashed border-primary bg-primary-soft " +
   "text-center text-sm font-bold text-primary disabled:cursor-not-allowed disabled:opacity-50";
@@ -56,6 +56,7 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
   const [isExtracting, setIsExtracting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // 진행 중인 OCR 요청을 취소하기 위한 컨트롤러 — 이전엔 취소 수단이 없어, "취소"로 폼을 닫아도
   // 요청은 계속 진행되다가 나중에 도착한 결과가 이미 닫은(리셋된) 폼 상태를 조용히 채웠다
@@ -135,6 +136,10 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
         paid_date: paidDate === "" ? undefined : paidDate,
         receipt_url: receiptUrl ?? undefined,
       });
+      // 폼이 바로 닫혀 성공 메시지를 보여줄 자리가 없다 — 스크린리더 사용자는 실패(아래
+      // role="alert")만 안내받고 성공은 알 방법이 없었다(접근성 감사 2026-08-26). 폼 바깥에
+      // 항상 떠 있는 sr-only 영역에 잠깐 담아 announce한다.
+      setSuccessMessage(`"${itemName}" 납부 항목을 추가했어요.`);
       reset();
       setOpen(false);
       onAdded();
@@ -147,9 +152,20 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
 
   if (!open) {
     return (
-      <button type="button" className={ADD_BTN} onClick={() => setOpen(true)}>
-        + 납부 항목 추가
-      </button>
+      <>
+        {/* 폼이 닫혀도 방금 추가 성공 announce는 살아있어야 한다. */}
+        <output className="sr-only">{successMessage}</output>
+        <button
+          type="button"
+          className={ADD_BTN}
+          onClick={() => {
+            setSuccessMessage(null);
+            setOpen(true);
+          }}
+        >
+          + 납부 항목 추가
+        </button>
+      </>
     );
   }
 
@@ -176,7 +192,12 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
           없다(마크업이 바이트 단위로 그대로 유지된다). 카테고리는 영수증 OCR도 추론하지 않는다
           (ReceiptExtractResult에 category_code가 아예 없다) — 항상 사용자가 직접 고른다. */}
       {categoryOptions !== undefined && (
-        <select className={FORM_INPUT} value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)}>
+        <select
+          className={FORM_INPUT}
+          aria-label="카테고리"
+          value={selectedCategory}
+          onChange={(e) => setSelectedCategory(e.target.value)}
+        >
           {categoryOptions.map((option) => (
             <option key={option.code} value={option.code}>
               {option.name_ko}
@@ -184,9 +205,16 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
           ))}
         </select>
       )}
-      <input className={FORM_INPUT} placeholder="항목명" value={itemName} onChange={(e) => setItemName(e.target.value)} />
+      <input
+        className={FORM_INPUT}
+        aria-label="항목명"
+        placeholder="항목명"
+        value={itemName}
+        onChange={(e) => setItemName(e.target.value)}
+      />
       <select
         className={FORM_INPUT}
+        aria-label="결제 유형"
         value={paymentType}
         onChange={(e) => setPaymentType(e.target.value as PaymentType)}
       >
@@ -196,11 +224,18 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
           </option>
         ))}
       </select>
-      <input className={FORM_INPUT} placeholder="업체명" value={vendorName} onChange={(e) => setVendorName(e.target.value)} />
+      <input
+        className={FORM_INPUT}
+        aria-label="업체명"
+        placeholder="업체명"
+        value={vendorName}
+        onChange={(e) => setVendorName(e.target.value)}
+      />
       <input
         className={FORM_INPUT}
         type="number"
         min={0}
+        aria-label="금액(원)"
         placeholder="금액(원)"
         value={amount}
         onChange={(e) => setAmount(e.target.value)}

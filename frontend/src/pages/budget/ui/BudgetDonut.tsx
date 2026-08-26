@@ -27,7 +27,7 @@ import { manwonToWon, wonToManwon } from "@/shared/lib/money";
 import { Money } from "@/shared/ui";
 
 const INLINE_INPUT =
-  "w-28 rounded-md border border-line bg-surface px-2.5 py-1.5 text-right text-sm text-ink " +
+  "min-h-tap w-28 rounded-md border border-line bg-surface px-2.5 text-right text-base text-ink " +
   "[font-variant-numeric:tabular-nums] focus-visible:border-primary";
 const GHOST_BUTTON = "text-xs font-bold text-ink-soft transition-colors duration-150 hover:text-primary";
 

@@ -60,7 +60,7 @@ export function ChecklistItemRow({ item, categoryCode, onStatusChange }: Checkli
               aria-expanded={isExpanded}
               aria-label={`근거 자세히 보기: ${tierLabel} · ${item.source_label}`}
               onClick={() => setIsExpanded((prev) => !prev)}
-              className="max-w-[160px] shrink-0 rounded-pill border-none bg-transparent p-0 text-left enabled:hover:opacity-80"
+              className="min-h-tap max-w-[160px] shrink-0 rounded-pill border-none bg-transparent p-0 text-left enabled:hover:opacity-80"
             >
               <Badge className="w-full truncate bg-bg text-ink-soft" title={`${tierLabel} · ${item.source_label}`}>
                 {tierLabel} · {item.source_label}
@@ -90,8 +90,9 @@ export function ChecklistItemRow({ item, categoryCode, onStatusChange }: Checkli
       <div className="mt-1 flex items-center gap-2">
         <select
           value={item.status}
+          aria-label={`${item.title} 상태`}
           onChange={(e) => onStatusChange(item, e.target.value as ChecklistStatus)}
-          className="w-fit rounded-md border border-line bg-surface px-2 py-1 text-xs text-ink"
+          className="min-h-tap w-fit rounded-md border border-line bg-surface px-2 text-base text-ink"
         >
           {statusOptionsFor(categoryCode).map((opt) => (
             <option key={opt.value} value={opt.value}>
