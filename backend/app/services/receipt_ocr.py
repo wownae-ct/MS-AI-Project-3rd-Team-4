@@ -8,11 +8,18 @@ app/personalization/graph.py)을 그대로 따른다: response_format={"type": "
 트러블슈팅 STEP 1-A(2026-08-26): HEIC는 Azure OpenAI vision이 지원하지 않는 경우가 흔한데,
 iPhone 기본 사진 포맷이 HEIC라 "영수증을 못 읽는다" 증상의 가장 유력한 원인이었다. vision
 호출 직전에만 JPEG로 변환하고, Blob에 저장되는 원본(app/core/storage.py)은 건드리지 않는다
-— 원본 보존이 이 기능의 핵심 요구사항이라는 기존 결정을 그대로 유지."""
+— 원본 보존이 이 기능의 핵심 요구사항이라는 기존 결정을 그대로 유지.
+
+트러블슈팅 STEP 1-B(2026-08-26): 프롬프트가 "쉼표 없이 숫자만"을 요구하지만, 한국 영수증은
+"15,000원"처럼 쉼표/통화기호가 흔해 LLM이 그대로 베껴 쓰는 경우가 있다. 이 값이 그대로
+ReceiptExtractOut(amount: int | None)에 들어가면 pydantic ValidationError로 500이 난다 —
+여기서 정규식으로 쉼표/원표시/공백을 제거한 뒤 int() 시도, 실패하면 null-fallback(다른
+필드는 채워지고 금액만 사용자가 직접 입력)."""
 
 import base64
 import io
 import json
+import re
 from datetime import date
 
 import pillow_heif
@@ -78,7 +85,7 @@ async def extract_receipt_fields(
     return {
         "item_name": parsed.get("item_name"),
         "vendor_name": parsed.get("vendor_name"),
-        "amount": parsed.get("amount"),
+        "amount": _parse_amount(parsed.get("amount")),
         "paid_date": _parse_date(parsed.get("paid_date")),
     }
 
@@ -91,4 +98,23 @@ def _parse_date(value: str | None) -> date | None:
     except ValueError:
         # LLM이 스키마를 어기고 다른 형식을 낼 수 있다 — 날짜 파싱 실패는 "모르겠다"와 동치로
         # 취급(전체 추출을 실패시키지 않음, 사용자가 폼에서 직접 채우면 됨).
+        return None
+
+
+_AMOUNT_NOISE_PATTERN = re.compile(r"[,\s원₩]")
+
+
+def _parse_amount(value: str | float | None) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    cleaned = _AMOUNT_NOISE_PATTERN.sub("", value)
+    try:
+        return int(cleaned)
+    except ValueError:
+        # 날짜와 동일한 취급 — 금액 파싱 실패로 전체 추출을 실패시키지 않고, 이 필드만
+        # null로 두어 사용자가 직접 입력하게 한다.
         return None
