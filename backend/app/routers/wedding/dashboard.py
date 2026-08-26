@@ -31,7 +31,9 @@ from app.schemas.report import (
     RecommendedCheckOut,
     ReportOut,
 )
+from app.services.benchmark import get_latest_benchmark
 from app.services.dashboard import (
+    build_budget_benchmark,
     get_checklist_progress_by_category,
     list_next_recommended_checks,
     list_upcoming_items,
@@ -62,6 +64,11 @@ async def dashboard_summary(
 
     total_paid = sum(c.paid_amount for c in active_categories)
     total_planned = sum(c.planned_budget for c in active_categories)
+    # #23 /benchmarks/compare와 같은 TOTAL/TOTAL 특수값(app/models/benchmark.py) — 카테고리별
+    # 비교가 아니라 "이 지역에서 결혼식 전체에 보통 얼마나 쓰는지" 지역 중간값과 total_budget을
+    # 비교한다. #31 온보딩 placeholder(GET /benchmarks/total-average)와 같은 조회를 재사용.
+    total_benchmark = await get_latest_benchmark(session, wedding.region_code, "TOTAL", "TOTAL")
+    budget_benchmark = build_budget_benchmark(wedding.total_budget, total_benchmark)
 
     return DashboardSummaryOut(
         wedding_date=wedding.wedding_date,
@@ -70,6 +77,7 @@ async def dashboard_summary(
         total_paid=total_paid,
         total_planned=total_planned,
         remaining_budget=wedding.total_budget - total_paid,
+        budget_benchmark=budget_benchmark,
         categories=[
             DashboardCategoryOut(
                 category_code=c.category_code,
