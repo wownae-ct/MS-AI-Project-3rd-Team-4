@@ -10,10 +10,34 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import VendorCaseExample
+from app.rag.retrieval import retrieve_ds2_kca_cases
+from app.schemas.chat import CitationOut
 
 FOCUS_CATEGORIES: frozenset[str] = frozenset({"VENUE", "SDM"})
 
 DISCLAIMER = "아래 사례는 여러 실제 사례를 재구성한 예시이며 특정 업체를 지칭하지 않습니다."
+
+# top_k=1 — DS2_KCA가 청크 2개뿐인 코퍼스라(app/rag/retrieval.py::retrieve_ds2_kca_cases
+# 주석 참고) 카드 하나에 여러 개를 붙일 만큼의 양 자체가 없다.
+_DS2_RELATED_CASE_TOP_K = 1
+
+
+async def related_ds2_cases(
+    session: AsyncSession, category_code: str, situation: str, key_lesson: str
+) -> list[CitationOut]:
+    """F10 업체사례(팀이 재구성한 예시 카드)에 실제 공식 분쟁조정 사례(DS2_KCA) 근거를 붙인다.
+    situation+key_lesson 텍스트로 DS2_KCA만 검색하고(LLM/임베딩 개입 없음), 실제로 겹치는
+    단어가 없으면 빈 리스트를 그대로 반환한다 — 관련 없는 사례를 억지로 연결하지 않는다."""
+    query_text = f"{situation} {key_lesson}"
+    chunks = await retrieve_ds2_kca_cases(
+        session, category_code, query_text, top_k=_DS2_RELATED_CASE_TOP_K
+    )
+    return [
+        CitationOut(
+            chunk_id=c.chunk_id, title=c.title, source_tier=c.source_tier, source_url=c.source_url
+        )
+        for c in chunks
+    ]
 
 
 async def list_vendor_cases(

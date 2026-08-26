@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
 from app.core.errors import api_error
 from app.schemas.vendor_case import VendorCaseListOut, VendorCaseOut
-from app.services.vendor_case import DISCLAIMER, FOCUS_CATEGORIES
+from app.services.vendor_case import DISCLAIMER, FOCUS_CATEGORIES, related_ds2_cases
 from app.services.vendor_case import list_vendor_cases as list_vendor_cases_service
 
 router = APIRouter(tags=["vendor-case"])
@@ -34,6 +34,9 @@ async def list_vendor_cases(
             404, "VENDOR_CASE_NOT_AVAILABLE", f"{category_code}는 업체 사례를 제공하지 않습니다."
         )
     rows = await list_vendor_cases_service(session, category_code, case_type)
+    # 카드마다 DS2_KCA 관련 사례를 개별 조회한다 — 카드가 최대 몇 장뿐(F10, 카테고리당 소수)
+    # 이라 N+1이 문제가 될 규모가 아니고, 각 카드의 situation/key_lesson으로 각각 다르게
+    # 검색해야 해서 한 번에 묶어 조회할 방법도 없다.
     cases = [
         VendorCaseOut(
             id=row.id,
@@ -43,6 +46,9 @@ async def list_vendor_cases(
             key_lesson=row.key_lesson,
             related_item_type=row.related_item_type,
             source_tier=row.source_tier,
+            related_cases=await related_ds2_cases(
+                session, category_code, row.situation, row.key_lesson
+            ),
         )
         for row in rows
     ]

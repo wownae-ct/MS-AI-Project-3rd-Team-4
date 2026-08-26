@@ -105,6 +105,53 @@ _SEARCH_SQL = text("""
 """)
 
 
+# F10 업체사례(vendor_case_examples)와 DS2_KCA(분쟁조정 사례) 상호 링크 전용(2026-08-26) —
+# app/services/vendor_case.py가 쓴다. DS2_KCA는 청크 2개뿐인 아주 얇은 코퍼스(RagDocument 1건)
+# 라 retrieve()의 하이브리드(벡터+tsvector) 검색까지는 필요 없다 — 임베딩(Azure OpenAI 호출)
+# 없이 tsvector 단독으로 충분하고, GET /vendor-cases처럼 페이지뷰마다 반복 호출되는 경로에
+# 매번 임베딩 API를 새로 부르지 않아도 된다(이 기능은 LLM/임베딩 개입 없는 결정론적 연결이라는
+# 설계 의도와도 맞는다, dev-e4 2026-08-26). `tsv @@ plainto_tsquery(...)` 조건으로 실제 단어
+# 겹침이 없으면 0건을 반환한다 — 관련 없는 사례를 억지로 붙이지 않는다(§8 "새 통계 수치 창작
+# 금지"와 같은 원칙: 근거 없는 연결을 지어내지 않는다).
+_DS2_KCA_SEARCH_SQL = text("""
+    SELECT
+        c.id AS chunk_id,
+        c.content,
+        d.title,
+        d.source_tier,
+        COALESCE(c.source_url, d.source_url) AS source_url
+    FROM rag_chunks c
+    JOIN rag_documents d ON d.id = c.document_id
+    WHERE d.dataset_code = 'DS2_KCA'
+      AND c.category_codes @> ARRAY[CAST(:category_code AS TEXT)]
+      AND c.tsv @@ plainto_tsquery('simple', :query_text)
+    ORDER BY ts_rank(c.tsv, plainto_tsquery('simple', :query_text)) DESC
+    LIMIT :top_k
+""")
+
+
+async def retrieve_ds2_kca_cases(
+    session: AsyncSession,
+    category_code: str,
+    query_text: str,
+    top_k: int = 1,
+) -> list[RetrievedChunk]:
+    result = await session.execute(
+        _DS2_KCA_SEARCH_SQL,
+        {"category_code": category_code, "query_text": query_text, "top_k": top_k},
+    )
+    return [
+        RetrievedChunk(
+            chunk_id=row.chunk_id,
+            content=row.content,
+            title=row.title,
+            source_tier=row.source_tier,
+            source_url=row.source_url,
+        )
+        for row in result
+    ]
+
+
 async def retrieve(
     session: AsyncSession,
     query: str,
