@@ -23,26 +23,6 @@ export interface BudgetSummary {
   remaining: number;
 }
 
-export interface UpcomingPayment {
-  id: string;
-  /** 남은 일수. 표시는 `D-{dDay}`. */
-  dDay: number;
-  item: string;
-  /** 카테고리명 · 납부일 을 한 줄로 보조 표시한다. */
-  category: string;
-  date: string;
-  amount: number;
-  /**
-   * 좁은 카드용 짧은 설명 — S5 리포트의 압축 행이 쓴다(`docs/mockups/s5-report.html:134-136`).
-   *
-   * **`category` 와 `item` 에서 합성할 수 없다.** 두 가지가 동시에 막는다.
-   *   1. 목업 3행이 카테고리명을 그대로 쓰지 않는다 — `청첩장·답례품` 카테고리의 행이 `청첩장 인쇄비` 다.
-   *   2. `item` 에는 업체명이 붙어 있어 문자열 조작으로 안전하게 벗겨낼 수 없고, 길이도 안 맞는다
-   *      (실측 @`text-sm`: `D-12 · 예식장 중도금` 116.09px vs `D-12 · 그레이스웨딩홀 중도금` 164.49px —
-   *      후자는 금액과 합쳐 최소 카드 내부폭 226.67px 를 23px 초과한다).
-   */
-  compactLabel: string;
-}
 
 export interface CategoryBudget {
   id: string;
