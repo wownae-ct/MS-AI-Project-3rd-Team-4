@@ -9,6 +9,7 @@ import {
   patchChecklistItem,
   type ChecklistItem,
   type ChecklistItemType,
+  type ChecklistPriority,
   type ChecklistStatus,
 } from "@/entities/checklist";
 import { ReportButton } from "@/entities/feedback";
@@ -16,6 +17,7 @@ import { RegenerateButton } from "@/entities/personalization";
 import { getVendorCases, type VendorCase, type VendorCasesResponse } from "@/entities/vendor-case";
 import type { CategoryConstant } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
+import { SOURCE_TIER_LABEL } from "@/shared/lib/source-tier";
 import { Badge, Card } from "@/shared/ui";
 import { AddChecklistItemRow } from "./AddChecklistItemRow";
 
@@ -29,6 +31,12 @@ const GROUP_LABEL: Record<ChecklistItemType, string> = {
   EXTRA_COST: "추가 비용",
   PREP: "준비 사항",
 };
+
+// 기본 보기(계약 조항만 보기 OFF)에서 계약 조항이 화면을 다 차지하지 않도록 상위 N개만 낸다
+// (2026-08-26 사용자 지시) — 전체는 "계약 조항만 보기" 토글로 본다. 순위는 서버가 이미 주는
+// priority(high/mid/low)를 그대로 쓴다 — 프론트가 중요도를 새로 판단하지 않는다.
+const CONTRACT_TERM_DEFAULT_LIMIT = 5;
+const PRIORITY_RANK: Record<ChecklistPriority, number> = { high: 0, mid: 1, low: 2 };
 
 // HOMEWARE(혼수)만 다른 상태기계를 쓴다 — 03_API_spec.md #12 표. 나머지 8개 카테고리는 공통 4상태.
 const HOMEWARE_STATUS_OPTIONS: { value: ChecklistStatus; label: string }[] = [
@@ -164,8 +172,17 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
       {groups
         .filter((g) => !contractOnly || g === "CONTRACT_TERM")
         .map((group) => {
-          const groupItems = visibleItems.filter((i) => i.item_type === group);
-          if (groupItems.length === 0) return null;
+          const allGroupItems = visibleItems.filter((i) => i.item_type === group);
+          if (allGroupItems.length === 0) return null;
+          // 계약 조항 + 기본 보기일 때만 상위 N개로 자른다 — "계약 조항만 보기"가 켜져 있으면
+          // 그 토글의 목적 자체가 전체 확인이므로 자르지 않는다.
+          const isCappedContractTerm = group === "CONTRACT_TERM" && !contractOnly;
+          const groupItems = isCappedContractTerm
+            ? allGroupItems
+                .toSorted((a, b) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority])
+                .slice(0, CONTRACT_TERM_DEFAULT_LIMIT)
+            : allGroupItems;
+          const hiddenCount = allGroupItems.length - groupItems.length;
           return (
             <Card key={group} title={GROUP_LABEL[group]}>
               <ul className="flex flex-col gap-3">
@@ -180,7 +197,7 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
                       {item.origin === "USER" ? (
                         <Badge>내가 추가</Badge>
                       ) : (
-                        item.source_tier !== null && <Badge>{item.source_tier}</Badge>
+                        item.source_tier !== null && <Badge>{SOURCE_TIER_LABEL[item.source_tier] ?? item.source_tier}</Badge>
                       )}
                     </div>
                     <p className="break-words text-xs text-ink-soft">{item.body}</p>
@@ -203,6 +220,11 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
                   </li>
                 ))}
               </ul>
+              {hiddenCount > 0 && (
+                <p className="mt-2 text-xs text-ink-soft">
+                  가장 중요한 {CONTRACT_TERM_DEFAULT_LIMIT}개만 보여드려요. 나머지 {hiddenCount}개는 위 「계약 조항만 보기」에서 확인하세요.
+                </p>
+              )}
             </Card>
           );
         })}
@@ -222,7 +244,10 @@ function VendorCaseSection({ response }: { response: VendorCasesResponse }) {
         {response.cases.map((c: VendorCase) => (
           <li key={c.id} className="flex flex-col gap-1 rounded-md border border-line p-3">
             <div className="flex items-center gap-2">
-              <Badge className={c.case_type === "BAD" ? "bg-primary-soft text-primary" : undefined}>
+              {/* GOOD 은 success 색(D12, decisions.md — 업체 사례 배지 한 곳에 한해 D6을 좁게 뒤집은
+                  예외). BAD 는 Badge 기본값(bg-primary-soft text-primary)을 그대로 쓴다 — 예전엔
+                  여기서 그 기본값과 완전히 같은 문자열을 다시 지정하는 죽은 분기였다. */}
+              <Badge className={c.case_type === "GOOD" ? "bg-success-soft text-success" : undefined}>
                 {c.case_type === "GOOD" ? "잘한 사례" : "주의할 사례"}
               </Badge>
               <p className="text-sm font-bold text-ink">{c.case_label}</p>
