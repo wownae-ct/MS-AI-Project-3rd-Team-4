@@ -103,9 +103,10 @@ class TestChatSessionsSmoke:
     ):
         """실LLM 스트리밍은 자동 스모크 대상이 아니므로(클래스 docstring) 서비스 진입점만
         기록용으로 바꿔치기해 라우터→서비스 인자 배선을 검증한다 — DB/외부 API는 모킹하지
-        않는다(웨딩/세션/유저 id는 전부 실제 API로 만들고 읽는다). app/routers/chat.py가
+        않는다(웨딩/세션/유저 id는 전부 실제 API로 만들고 읽는다). app/routers/ai/chat.py가
         `from app.services.chat import stream_chat_response`로 심볼을 직접 import하므로
-        app.routers.chat 네임스페이스를 패치해야 한다."""
+        app.routers.ai.chat 네임스페이스를 패치해야 한다(2026-08-26 라우터 폴더
+        리스트럭처링으로 app/routers/chat.py → app/routers/ai/chat.py 이동)."""
         recorded: list[tuple[tuple, dict]] = []
 
         def _recording_stream(*args, **kwargs):
@@ -117,7 +118,7 @@ class TestChatSessionsSmoke:
 
             return _empty_stream()
 
-        monkeypatch.setattr("app.routers.chat.stream_chat_response", _recording_stream)
+        monkeypatch.setattr("app.routers.ai.chat.stream_chat_response", _recording_stream)
 
         me = await wedding_client.get("/auth/me")
         created = await wedding_client.post("/chat/sessions", json={"category_code": "VENUE"})
