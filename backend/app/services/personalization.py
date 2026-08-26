@@ -11,7 +11,7 @@ protected_items(user_edited_at 있는 행)는 DB에서 직접 조회해 그래�
 커밋되어야 하므로)."""
 
 import logging
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from uuid import UUID
 
 from sqlalchemy import delete, select
@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.checklist_catalog import CHECKLIST_FALLBACK_CATALOG, GROUP_LABEL_BY_ITEM_TYPE
 from app.core.config import Settings
+from app.core.timezone import today_kst
 from app.core.tracing import traced_span
 from app.models import AiInvocation, ChecklistItem, TimelineItem, Wedding, WeddingCategory
 from app.personalization.graph import build_graph
@@ -237,7 +238,7 @@ async def run_personalization(
     done_so_far: list[str] | None = None,
     requested_domains: list[str] | None = None,
 ) -> AiInvocation:
-    today = datetime.now(UTC).date()
+    today = today_kst()
     protected_items = await _fetch_protected_items(session, wedding.id)
     # done_so_far가 명시적으로 넘어온 경우(ONBOARDING_INITIAL, 빈 리스트 포함)는 그 값을 그대로
     # 쓰고, 아예 안 넘어온 경우(FIELD_UPDATED/MANUAL_REGENERATE)만 DB의 현재 DONE 상태로

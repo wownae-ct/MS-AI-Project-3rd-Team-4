@@ -11,12 +11,11 @@ remaining_budget은 두 엔드포인트 모두 total_budget - total_paid다(03_A
 table, #26 응답 예시 둘 다 이 산식으로 정합적이다 — #25 자체의 JSON 예시 숫자는 field table과
 안 맞는 문서 오기로 보여 여기서는 field table을 따른다)."""
 
-from datetime import UTC, datetime
-
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
+from app.core.timezone import today_kst
 from app.deps import get_current_wedding
 from app.models import Wedding
 from app.schemas.dashboard import (
@@ -55,7 +54,7 @@ async def dashboard_summary(
     wedding: Wedding = Depends(get_current_wedding),  # noqa: B008
     session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> DashboardSummaryOut:
-    today = datetime.now(UTC).date()
+    today = today_kst()
     all_categories = await list_wedding_categories_out(session, wedding.id)
     active_categories = [c for c in all_categories if c.is_active]
     active_category_codes = {c.category_code for c in active_categories}
@@ -99,7 +98,7 @@ async def get_my_report(
     wedding: Wedding = Depends(get_current_wedding),  # noqa: B008
     session: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> ReportOut:
-    today = datetime.now(UTC).date()
+    today = today_kst()
     all_categories = await list_wedding_categories_out(session, wedding.id)
     active_categories = [c for c in all_categories if c.is_active]
     active_category_codes = {c.category_code for c in active_categories}
