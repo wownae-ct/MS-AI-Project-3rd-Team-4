@@ -12,6 +12,8 @@ const SWATCHES: readonly { name: string; hex: string; box: string; note: string 
   { name: "bg", hex: "#F7F6F4", box: "bg-bg", note: "페이지 배경" },
   { name: "surface", hex: "#FFFFFF", box: "bg-surface", note: "카드 표면" },
   { name: "line", hex: "#E7E3DE", box: "bg-line", note: "1px 헤어라인 보더 · 진행률 트랙" },
+  { name: "success", hex: "#166534", box: "bg-success", note: "D12 — 업체 사례 GOOD 배지 전용. surface 대비 7.13" },
+  { name: "success-soft", hex: "#E1F4E8", box: "bg-success-soft", note: "배지 배경 — 위에 success 6.22" },
 ];
 
 export function ColorSection() {
@@ -39,7 +41,7 @@ export function ColorSection() {
       </Card>
       <Rule>
         Tailwind 기본 팔레트를 <code className="font-bold">--color-*: initial</code> 로 폐기했습니다. 위
-        7색 밖의 <span className="font-bold">명명 유틸리티</span>(<code>bg-red-500</code> 류)는 없습니다.
+        9색 밖의 <span className="font-bold">명명 유틸리티</span>(<code>bg-red-500</code> 류)는 없습니다.
         {/* 예시 토큰을 쪼개 쓴다 — 붙여 쓰면 Tailwind 스캐너가 이 문장에서 진짜 유틸리티를 만들고(실측: 게이트가 잡았다)
             산출 CSS 에 팔레트 밖 색이 들어간다. 설명하는 문장이 설명하는 사고를 일으키는 셈이다. */}
         단 임의값(<code>{["bg-[#", "77354F]"].join("")}</code>)은 테마와 무관하게 그대로 컴파일되므로 —
@@ -47,10 +49,12 @@ export function ColorSection() {
         막습니다.</span> 막았다고 적은 것이 아니라 실제로 막힙니다.
       </Rule>
       <Rule>
-        상태 색(성공 · 경고 · 위험)은 도입하지 않습니다 — 열린 결정이었다가 닫았습니다. 화면 6개 목업이
-        빨강 · 초록 없이 전 상태(완료 · 진행 · 예정 · 기한 지남 · 주의)를 보더 · 배경 톤 · 텍스트 · 형태로
-        표현했습니다. 색만으로 정보를 전달하지 않는다는 WCAG 1.4.1 에도 유리합니다. 진짜로 색 없이는 안 되는
-        화면이 나오면 그때 이 결정을 폐기하고 새로 정합니다.
+        상태 색(성공 · 경고 · 위험)은 원칙적으로 도입하지 않습니다 — 열린 결정이었다가 닫았습니다(D6). 화면
+        6개 목업이 빨강 · 초록 없이 전 상태(완료 · 진행 · 예정 · 기한 지남 · 주의)를 보더 · 배경 톤 · 텍스트 ·
+        형태로 표현했습니다. 색만으로 정보를 전달하지 않는다는 WCAG 1.4.1 에도 유리합니다.
+        <span className="font-bold"> 단 하나, 업체 사례의 「잘한 사례」 배지만 예외</span>입니다(D12,
+        2026-08-26) — 제품 담당자가 이 화면 하나를 지목해 요청했습니다. 다른 화면에 색이 새로 필요하면
+        그 화면을 지목한 별도 결정을 먼저 씁니다.
       </Rule>
       <Rule>
         primary 면 채움은 <span className="font-bold">면적으로 등급</span>이 갈립니다 — 버튼 · 배지 ·

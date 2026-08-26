@@ -6,6 +6,14 @@ import { ApiError, parseApiError } from "./errors";
 // 멈추면(예: 개인화 LangGraph 동기 대기) 화면이 취소 수단 없이 무한정 막혔다(레드팀 감사).
 const DEFAULT_TIMEOUT_MS = 15_000;
 
+// 개인화 라우터 에이전트(route→generate→validate)를 동기로 기다리는 엔드포인트 전용 — 실사용 중
+// 확인된 버그(2026-08-26): LLM 생성이 15초를 넘기면 백엔드는 계속 처리해 결국 성공하는데 클라이언트만
+// 먼저 TIMEOUT 으로 포기해 버렸다. 화면엔 "다시 시도해 주세요"가 뜨지만 재시도는 이미 만들어진
+// 자원과 충돌해 409(WEDDING_ALREADY_EXISTS)로 막힌다 — 재시도 성공 여부가 타이밍 도박이 된다.
+// `POST /weddings`·`PATCH /weddings/me`·`PUT /wedding-categories`·`POST /personalization/regenerate`
+// 가 모두 이 그래프를 동기로 태운다(CLAUDE.md "Personalization" 절) — 이 넷만 기본값보다 길게 준다.
+export const PERSONALIZATION_TIMEOUT_MS = 45_000;
+
 // 401 구독 — shared 는 최하층이라 entities/session 을 import 할 수 없다(oxlint 가 막는다).
 // 그래서 방향을 뒤집는다: shared 는 「누군가 듣는다」만 알고, 배선은 app 레이어가 한다.
 const unauthorizedHandlers = new Set<() => void>();
@@ -44,9 +52,9 @@ function isTimeoutAbort(signal: AbortSignal): boolean {
   return signal.aborted && signal.reason instanceof DOMException && signal.reason.name === "TimeoutError";
 }
 
-/** 호출자가 자기 AbortSignal 을 줬으면 그 신호 + 기본 타임아웃을 합성하고, 안 줬으면 타임아웃만 건다. */
-function withTimeout(callerSignal: AbortSignal | null | undefined): AbortSignal {
-  const timeoutSignal = AbortSignal.timeout(DEFAULT_TIMEOUT_MS);
+/** 호출자가 자기 AbortSignal 을 줬으면 그 신호 + 타임아웃을 합성하고, 안 줬으면 타임아웃만 건다. */
+function withTimeout(callerSignal: AbortSignal | null | undefined, timeoutMs: number): AbortSignal {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
   return callerSignal ? AbortSignal.any([callerSignal, timeoutSignal]) : timeoutSignal;
 }
 
@@ -61,18 +69,18 @@ async function readBody(response: Response): Promise<unknown> {
   }
 }
 
-async function send(path: string, init: RequestInit): Promise<unknown> {
+async function send(path: string, init: RequestInit, timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<unknown> {
   // apiBase() 를 try 밖에서 부른다. 안에 두면 VITE_API_BASE 형식 위반으로 던지는
   // ApiError(API_BASE_INVALID) 가 같은 catch 에 잡혀 NETWORK_ERROR 로 재포장된다 —
   // 설정 오류가 "네트워크를 확인하라"는 오진으로 둔갑한다(client.test.ts 가 고정한다).
   const url = `${apiBase()}${path}`;
-  const signal = withTimeout(init.signal);
+  const signal = withTimeout(init.signal, timeoutMs);
   let response: Response;
   try {
     response = await fetch(url, { ...init, signal });
   } catch (cause) {
     if (isTimeoutAbort(signal)) {
-      console.warn(`[client] 타임아웃(${DEFAULT_TIMEOUT_MS}ms): ${init.method ?? "GET"} ${url}`);
+      console.warn(`[client] 타임아웃(${timeoutMs}ms): ${init.method ?? "GET"} ${url}`);
       throw new ApiError({
         code: "TIMEOUT",
         message: "요청이 시간 초과되었습니다. 잠시 후 다시 시도해 주세요.",
@@ -111,13 +119,20 @@ async function send(path: string, init: RequestInit): Promise<unknown> {
  * ⚠️ `...init` 을 먼저 펼치고 `headers` 를 뒤에 둔다. 순서를 되돌리면 호출자가 헤더를 넘겼을 때
  *    Content-Type 이 통째로 사라진다(layers.md 부록 A — 실제로 났던 버그. client.test.ts 가 고정한다).
  * ⚠️ `credentials` 도 뒤에 둔다. 호출자가 끌 수 없어야 한다 — 빠뜨리면 대부분의 API 가 401 이다.
+ *
+ * `timeoutMs` 를 생략하면 기본 15초 — 개인화 LangGraph 를 동기로 태우는 호출부는
+ * `PERSONALIZATION_TIMEOUT_MS` 를 명시적으로 넘긴다.
  */
-export function apiFetch(path: string, init: RequestInit = {}): Promise<unknown> {
-  return send(path, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...init.headers },
-    credentials: "include",
-  });
+export function apiFetch(path: string, init: RequestInit = {}, timeoutMs?: number): Promise<unknown> {
+  return send(
+    path,
+    {
+      ...init,
+      headers: { "Content-Type": "application/json", ...init.headers },
+      credentials: "include",
+    },
+    timeoutMs,
+  );
 }
 
 /**

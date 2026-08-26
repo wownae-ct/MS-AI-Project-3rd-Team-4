@@ -45,12 +45,21 @@ export interface TimelinePhaseGroup {
 }
 
 /**
+ * 완료(DONE) 항목을 그룹 맨 아래로 — 앞으로 할 일이 항상 위에 먼저 보이게 한다(2026-08-26 사용자
+ * 지시). `toSorted`는 안정 정렬이라 완료/미완료 각각의 내부 순서(원래 도착 순 = 대체로 날짜순)는
+ * 그대로 유지된다 — 완료 여부만 재배치한다.
+ */
+function sortDoneLast(items: TimelineItem[]): TimelineItem[] {
+  return items.toSorted((a, b) => Number(a.status === "DONE") - Number(b.status === "DONE"));
+}
+
+/**
  * 웨딩 날짜가 없으면(온보딩에서 "미정" 선택) offset을 계산할 기준이 없다 — 이 경우 전부 한 그룹
  * "일정 미정"으로 묶는다. 날짜를 지어내지 않는다(ADR 0006과 같은 원칙).
  */
 export function groupTimelineItemsByPhase(items: TimelineItem[], weddingDate: string | undefined): TimelinePhaseGroup[] {
   if (weddingDate === undefined) {
-    return items.length > 0 ? [{ label: "일정 미정", sortKey: 0, date: undefined, items }] : [];
+    return items.length > 0 ? [{ label: "일정 미정", sortKey: 0, date: undefined, items: sortDoneLast(items) }] : [];
   }
 
   const groups = new Map<string, TimelinePhaseGroup>();
@@ -67,5 +76,7 @@ export function groupTimelineItemsByPhase(items: TimelineItem[], weddingDate: st
       groups.set(label, { label, sortKey: offsetDays, date: item.target_date, items: [item] });
     }
   }
-  return [...groups.values()].toSorted((a, b) => a.sortKey - b.sortKey);
+  const sortedGroups = [...groups.values()].toSorted((a, b) => a.sortKey - b.sortKey);
+  for (const group of sortedGroups) group.items = sortDoneLast(group.items);
+  return sortedGroups;
 }

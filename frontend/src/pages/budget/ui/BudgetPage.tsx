@@ -18,36 +18,34 @@
 // 재배분(PUT /wedding-categories)과는 완전히 별개의 액션이라 별도 상태로 관리한다.
 import { useEffect, useState } from "react";
 import { getUpcomingPayments, type UpcomingPaymentEntry } from "@/entities/payment";
-import {
-  getCategories,
-  getMyWedding,
-  getWeddingCategories,
-  putWeddingCategories,
-  updateMyWedding,
-  type WeddingCategory,
-} from "@/entities/wedding";
+import { getCategories, getMyWedding, getWeddingCategories, putWeddingCategories, type WeddingCategory } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
-import { manwonToWon, wonToManwon } from "@/shared/lib/money";
-import { Card, Money, Page } from "@/shared/ui";
-import { CategoryAllocationRow } from "./CategoryAllocationRow";
+import { Page } from "@/shared/ui";
+import { AllocationOverview } from "./AllocationOverview";
+import { CostManagementTab } from "./CostManagementTab";
+import { TotalBudgetCard } from "./TotalBudgetCard";
 import { UpcomingPaymentsCard } from "./UpcomingPaymentsCard";
+import { WeddingDateCard } from "./WeddingDateCard";
 
 // 서버가 D-day까지 계산해 준다(backend/app/routers/budget.py) — 프론트에서 날짜 계산을 다시 하지 않는다.
 const UPCOMING_PAYMENT_WINDOW_DAYS = 30;
 
 interface BudgetData {
   totalBudget: number;
+  /** "미정"(NO_PLAN)이면 undefined — WeddingDateCard.tsx 머리말 참고. */
+  weddingDate: string | undefined;
   categories: WeddingCategory[];
   /** `WeddingCategory`(GET /wedding-categories)엔 `has_cost`가 없다 — 비용 유무는 카테고리
       상수(`GET /categories`)만 안다. "비용 없음" 카테고리는 슬라이더/바 대신 안내 텍스트만
       보여주려면 이 조회가 하나 더 필요하다 — 하드코딩 대신 응답을 그대로 따른다. */
   hasCostByCode: ReadonlyMap<string, boolean>;
+  /** "비용 관리" 섹션이 결제 목록의 category_code를 사람이 읽는 이름으로 보여줄 때 쓴다. */
+  categoryLabelByCode: ReadonlyMap<string, string>;
+  /** has_cost인 카테고리만 — "비용 관리"의 새 결제 추가 폼(AddPaymentRow)이 카테고리 선택
+      드롭다운에 쓴다. 비용 개념이 없는 카테고리(MEETING 등)엔 결제를 만들 수 없게 미리 거른다. */
+  costEligibleCategoryOptions: readonly { code: string; name_ko: string }[];
 }
 
-const INLINE_INPUT =
-  "w-28 rounded-md border border-line bg-surface px-2.5 py-1.5 text-right text-sm text-ink " +
-  "[font-variant-numeric:tabular-nums] focus-visible:border-primary";
-const GHOST_BUTTON = "text-xs font-bold text-ink-soft transition-colors duration-150 hover:text-primary";
 const PRIMARY_BUTTON = "rounded-md bg-primary px-4 py-2 text-sm font-bold text-surface disabled:opacity-50";
 
 export function BudgetPage() {
@@ -65,11 +63,6 @@ export function BudgetPage() {
   // 두 곳만 그 관례를 안 따르고 있었다.
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
 
-  // 총예산 인라인 편집 — 카테고리 시나리오와 무관한 별도 액션(위 머리말 참조).
-  const [totalBudgetDraft, setTotalBudgetDraft] = useState<string | null>(null);
-  const [totalBudgetSaveState, setTotalBudgetSaveState] = useState<"idle" | "saving" | "error">("idle");
-  const [totalBudgetErrorMessage, setTotalBudgetErrorMessage] = useState<string | null>(null);
-
   useEffect(() => {
     let cancelled = false;
     Promise.all([getMyWedding(), getWeddingCategories(), getCategories()])
@@ -78,8 +71,14 @@ export function BudgetPage() {
           const sorted = categoriesResponse.categories.toSorted((a, b) => a.display_order - b.display_order);
           setData({
             totalBudget: wedding.total_budget ?? 0,
+            weddingDate: wedding.wedding_date,
             categories: sorted,
             hasCostByCode: new Map(constants.categories.map((c) => [c.code, c.has_cost])),
+            categoryLabelByCode: new Map(constants.categories.map((c) => [c.code, c.name_ko])),
+            costEligibleCategoryOptions: constants.categories
+              .filter((c) => c.has_cost)
+              .toSorted((a, b) => a.display_order - b.display_order)
+              .map((c) => ({ code: c.code, name_ko: c.name_ko })),
           });
         }
       })
@@ -105,6 +104,23 @@ export function BudgetPage() {
       cancelled = true;
     };
   }, []);
+
+  // 비용 관리 섹션에서 결제가 새로 등록되면(특히 paid_date 있는 건 — 서버가 status=PAID로
+  // 자동 유도) 그 카테고리의 paid_amount가 바뀐다. 도넛(deriveBudgetSummary)과 「카테고리별
+  // 배정」 목록이 낡은 값을 보여주지 않게 카테고리만 다시 불러온다 — 총예산/날짜는 그 액션과
+  // 무관하니 건드리지 않는다. 시나리오 편집 중에 호출돼도 안전하다 — draft는 그대로 두고
+  // `data.categories`(원본)만 갱신한다.
+  function refetchCategories() {
+    getWeddingCategories()
+      .then((res) => {
+        const sorted = res.categories.toSorted((a, b) => a.display_order - b.display_order);
+        setData((prev) => (prev ? { ...prev, categories: sorted } : prev));
+      })
+      .catch(() => {
+        // 비용 관리는 이미 성공적으로 결제를 저장했다 — 이 재조회 실패로 그 성공까지 에러로
+        // 덮지 않는다. 다음에 페이지를 새로고침하면 어차피 최신값을 받는다.
+      });
+  }
 
   function startScenario() {
     if (!data) return;
@@ -156,35 +172,6 @@ export function BudgetPage() {
     }
   }
 
-  function startEditTotalBudget() {
-    if (!data) return;
-    setTotalBudgetDraft(String(wonToManwon(data.totalBudget)));
-    setTotalBudgetSaveState("idle");
-    setTotalBudgetErrorMessage(null);
-  }
-
-  function cancelEditTotalBudget() {
-    setTotalBudgetDraft(null);
-    setTotalBudgetSaveState("idle");
-    setTotalBudgetErrorMessage(null);
-  }
-
-  async function handleSaveTotalBudget() {
-    if (!data || totalBudgetDraft === null) return;
-    const nextTotal = manwonToWon(Number(totalBudgetDraft));
-    setTotalBudgetSaveState("saving");
-    setTotalBudgetErrorMessage(null);
-    try {
-      await updateMyWedding({ total_budget: nextTotal });
-      setData((prev) => (prev ? { ...prev, totalBudget: nextTotal } : prev));
-      setTotalBudgetDraft(null);
-      setTotalBudgetSaveState("idle");
-    } catch (err) {
-      setTotalBudgetSaveState("error");
-      setTotalBudgetErrorMessage(err instanceof ApiError ? err.message : "총예산을 저장하지 못했어요. 다시 시도해 주세요.");
-    }
-  }
-
   if (error !== null) {
     return (
       <Page title="예산 재배분" subtitle="카테고리 사이로 예산을 옮겨 봅니다.">
@@ -214,83 +201,35 @@ export function BudgetPage() {
   return (
     <Page title="예산 재배분" subtitle="카테고리 사이로 예산을 옮겨 봅니다.">
       <div className="flex flex-col gap-5">
-        <Card title="남은예산">
-          <div className="flex items-baseline justify-between">
-            <Money value={remaining} className="text-2xl" />
-            {totalBudgetDraft === null ? (
-              <span className="flex items-center gap-2 text-xs text-ink-soft">
-                총예산 {data.totalBudget.toLocaleString("ko-KR")}원 중
-                {/* 카테고리 재배분과 별개 액션이라, 시나리오 편집 중에도(isEditingScenario 무관)
-                    항상 눌러볼 수 있게 둔다 — 다만 실제로 편집 UI가 뜨면 아래 브랜치로 넘어간다. */}
-                <button type="button" onClick={startEditTotalBudget} className={GHOST_BUTTON}>
-                  수정
-                </button>
-              </span>
-            ) : (
-              <span className="flex items-center gap-1.5">
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  value={totalBudgetDraft}
-                  onChange={(event) => setTotalBudgetDraft(event.target.value)}
-                  className={INLINE_INPUT}
-                  aria-label="총예산(만원)"
-                />
-                <span className="text-xs text-ink-soft">만원</span>
-                <button
-                  type="button"
-                  onClick={() => void handleSaveTotalBudget()}
-                  disabled={totalBudgetSaveState === "saving"}
-                  className={GHOST_BUTTON}
-                >
-                  {totalBudgetSaveState === "saving" ? "저장 중…" : "저장"}
-                </button>
-                {/* 저장 진행 중엔 취소를 막는다 — 안 막으면 draft 를 null 로 되돌린 뒤에도
-                    이미 시작된 저장 함수가 클릭 시점 draft 로 계속 진행해 성공 시 그 값을
-                    되살린다(레드팀 감사 HIGH, BudgetPage.tsx:285 와 같은 패턴). */}
-                <button
-                  type="button"
-                  onClick={cancelEditTotalBudget}
-                  disabled={totalBudgetSaveState === "saving"}
-                  className={GHOST_BUTTON}
-                >
-                  취소
-                </button>
-              </span>
-            )}
-          </div>
-          {totalBudgetSaveState === "error" && (
-            <p role="alert" className="mt-1.5 text-xs text-primary">
-              {totalBudgetErrorMessage}
-            </p>
-          )}
-        </Card>
+        <TotalBudgetCard
+          totalBudget={data.totalBudget}
+          remaining={remaining}
+          onSaved={(nextTotal) => setData((prev) => (prev ? { ...prev, totalBudget: nextTotal } : prev))}
+        />
+
+        <WeddingDateCard
+          weddingDate={data.weddingDate}
+          onSaved={(nextDate) => setData((prev) => (prev ? { ...prev, weddingDate: nextDate } : prev))}
+        />
 
         {upcomingPayments !== null && (
           <UpcomingPaymentsCard payments={upcomingPayments} windowDays={UPCOMING_PAYMENT_WINDOW_DAYS} />
         )}
 
-        <Card title="카테고리별 배정">
-          <div>
-            {rows.map((category) => {
-              const hasCost = data.hasCostByCode.get(category.category_code) ?? true;
-              const original = data.categories.find((c) => c.category_code === category.category_code);
-              const originalAmount = original?.planned_budget ?? category.planned_budget;
-              return (
-                <CategoryAllocationRow
-                  key={category.category_code}
-                  category={category}
-                  hasCost={hasCost}
-                  totalBudget={data.totalBudget}
-                  isEditingScenario={isEditingScenario}
-                  originalAmount={originalAmount}
-                  onDraftChange={updateDraftBudget}
-                />
-              );
-            })}
-          </div>
-        </Card>
+        <CostManagementTab
+          categoryLabelByCode={data.categoryLabelByCode}
+          categoryOptions={data.costEligibleCategoryOptions}
+          onPaymentAdded={refetchCategories}
+        />
+
+        <AllocationOverview
+          rows={rows}
+          originalCategories={data.categories}
+          totalBudget={data.totalBudget}
+          hasCostByCode={data.hasCostByCode}
+          isEditingScenario={isEditingScenario}
+          onDraftChange={updateDraftBudget}
+        />
 
         {isEditingScenario ? (
           <div className="flex items-center gap-3">

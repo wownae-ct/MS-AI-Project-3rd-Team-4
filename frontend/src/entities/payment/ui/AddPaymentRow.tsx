@@ -1,8 +1,12 @@
 // "+ 납부 항목 추가" — 목업(s3-category-detail.html:341)엔 버튼만 있고 클릭 이후 폼은 그려져
 // 있지 않다(정적 프로토타입이라 상호작용까지는 스펙 대상이 아니었다). 클릭 시 펼쳐지는 최소
 // 인라인 폼은 이 저장소의 기존 관례(모달 없이 인라인으로 상태 전환하는 패턴)를 따라 새로
-// 설계했다. `CostTab.tsx`에서 분리한 이유는 파일 크기 게이트(`eslint/max-lines`, 300줄) 때문 —
-// 로직 자체는 CostTab 전용이라 별도 슬라이스로 승격하지 않고 같은 `ui/` 폴더에 둔다.
+// 설계했다.
+//
+// **entities/payment/ui로 승격됨(UX 개편 Phase 1, 2026-08-26)** — 원래 `pages/category/ui`에
+// 있었으나(파일 크기 게이트 회피 목적), 예산 페이지의 새 "비용 관리" 섹션도 이 폼이 필요해졌고
+// `pages/budget`은 `pages/category`를 import할 수 없다(.oxlintrc.json FSD 경계) — entities가
+// 유일한 공유 지점이다.
 //
 // **영수증 사진 OCR 자동채움(2026-08-26 사용자 지시)** — `getReceiptExtract()`(#34
 // POST /payments/receipt-extract)로 사진을 올리면 항목명/업체명/금액/결제일을 채워준다.
@@ -12,8 +16,10 @@
 // 문서와 동일 원칙). OCR이 못 읽은 필드(null)는 기존 입력값을 지우지 않는다 — 사용자가 이미
 // 손으로 채워둔 값을 빈 결과로 덮어쓰면 오히려 손해다.
 import { useRef, useState } from "react";
-import { createPayment, getReceiptExtract, type PaymentType } from "@/entities/payment";
 import { ApiError } from "@/shared/api";
+import { createPayment, getReceiptExtract } from "../api/payment";
+import type { PaymentType } from "../model";
+import { PAYMENT_TYPE_LABEL } from "./payment-labels";
 
 const ADD_BTN =
   "mt-3 w-full rounded-sm border border-dashed border-line bg-transparent py-2.5 text-sm font-bold text-ink-soft";
@@ -23,20 +29,23 @@ const RECEIPT_BTN =
   "text-center text-sm font-bold text-primary disabled:cursor-not-allowed disabled:opacity-50";
 const FIELD_NOTE = "text-xs text-ink-soft";
 
-const PAYMENT_TYPE_LABEL: Record<PaymentType, string> = {
-  DEPOSIT: "계약금",
-  INTERIM: "중도금",
-  BALANCE: "잔금",
-  ETC: "기타",
-};
-
 // 백엔드 허용치와 동일하게 맞춘다(backend/app/routers/budget.py:56-58) — 서버 왕복 없이
 // 바로 알려주는 편이 사용자 경험이 낫다. 서버 쪽 검증은 그대로 최종 방어선으로 남는다.
 const ALLOWED_RECEIPT_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic"];
 const MAX_RECEIPT_BYTES = 15 * 1024 * 1024;
 
-export function AddPaymentRow({ categoryCode, onAdded }: { categoryCode: string; onAdded: () => void }) {
+export interface AddPaymentRowProps {
+  /** 카테고리가 이미 고정된 화면(S3 비용 탭)이 넘긴다 — categoryOptions와 동시에 줄 수 없다. */
+  categoryCode?: string;
+  /** 넘기면 카테고리 선택 드롭다운을 렌더한다(예산 페이지의 전 카테고리 통합 "비용 관리").
+      비용을 다루지 않는 카테고리(has_cost=false)는 호출부가 미리 걸러서 넘겨야 한다. */
+  categoryOptions?: readonly { code: string; name_ko: string }[];
+  onAdded: () => void;
+}
+
+export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPaymentRowProps) {
   const [open, setOpen] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState(() => categoryCode ?? categoryOptions?.[0]?.code ?? "");
   const [itemName, setItemName] = useState("");
   const [paymentType, setPaymentType] = useState<PaymentType>("DEPOSIT");
   const [vendorName, setVendorName] = useState("");
@@ -54,6 +63,7 @@ export function AddPaymentRow({ categoryCode, onAdded }: { categoryCode: string;
   const receiptAbortRef = useRef<AbortController | null>(null);
 
   function reset() {
+    setSelectedCategory(categoryCode ?? categoryOptions?.[0]?.code ?? "");
     setItemName("");
     setPaymentType("DEPOSIT");
     setVendorName("");
@@ -101,7 +111,14 @@ export function AddPaymentRow({ categoryCode, onAdded }: { categoryCode: string;
     const parsedAmount = Number(amount);
     // due_date는 무조건 필수가 아니다 — backend PaymentCreate.due_date도 optional이고, 영수증
     // OCR로 결제일(paidDate)이 이미 채워진 건은 "언제까지 낼지"가 더 이상 의미가 없을 수 있다.
-    if (!itemName || !vendorName || (!dueDate && !paidDate) || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+    if (
+      !selectedCategory ||
+      !itemName ||
+      !vendorName ||
+      (!dueDate && !paidDate) ||
+      !Number.isFinite(parsedAmount) ||
+      parsedAmount <= 0
+    ) {
       setError("모든 항목을 올바르게 입력해 주세요.");
       return;
     }
@@ -109,7 +126,7 @@ export function AddPaymentRow({ categoryCode, onAdded }: { categoryCode: string;
     setError(null);
     try {
       await createPayment({
-        category_code: categoryCode,
+        category_code: selectedCategory,
         item_name: itemName,
         payment_type: paymentType,
         vendor_name: vendorName,
@@ -155,6 +172,18 @@ export function AddPaymentRow({ categoryCode, onAdded }: { categoryCode: string;
         {isExtracting ? "영수증 분석 중…" : "📷 영수증으로 채우기"}
       </button>
       {receiptUrl !== null && !isExtracting && <p className={FIELD_NOTE}>영수증에서 읽은 값이에요 — 확인하고 필요하면 고쳐주세요.</p>}
+      {/* categoryOptions가 있을 때만 렌더 — 카테고리가 이미 고정된 S3 비용 탭은 이 select 자체가
+          없다(마크업이 바이트 단위로 그대로 유지된다). 카테고리는 영수증 OCR도 추론하지 않는다
+          (ReceiptExtractResult에 category_code가 아예 없다) — 항상 사용자가 직접 고른다. */}
+      {categoryOptions !== undefined && (
+        <select className={FORM_INPUT} value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)}>
+          {categoryOptions.map((option) => (
+            <option key={option.code} value={option.code}>
+              {option.name_ko}
+            </option>
+          ))}
+        </select>
+      )}
       <input className={FORM_INPUT} placeholder="항목명" value={itemName} onChange={(e) => setItemName(e.target.value)} />
       <select
         className={FORM_INPUT}

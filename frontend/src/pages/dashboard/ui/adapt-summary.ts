@@ -1,10 +1,16 @@
-// `GET /dashboard/summary` 응답 → 기존 프레젠테이션 컴포넌트(BudgetDonut/CategoryRow) props 변환.
+// `GET /dashboard/summary` 응답 → 기존 프레젠테이션 컴포넌트(CategoryRow) props 변환.
 //
 // 교체 지점을 여기 하나로 모으는 이유는 `entities/wedding/model/sample-data.ts` 머리말이 이미
 // 예견한 것과 같다 — "백엔드가 붙으면 이 파일이 사라지고 types.ts 만 남는다. 그때 교체 지점이
-// 한 곳이어야 한다." BudgetDonut·CategoryRow 는 그대로 두고, 여기서만 API → 화면 타입을 잇는다.
+// 한 곳이어야 한다." CategoryRow 는 그대로 두고, 여기서만 API → 화면 타입을 잇는다.
+//
+// **`adaptBudgetSummary`는 여기 없다(UX 개편, 2026-08-26 제거)** — BudgetDonut이 예산 페이지로
+// 옮겨가면서 대시보드는 더 이상 BudgetSummary를 조립하지 않는다. 예산 페이지는 같은 이름의
+// 별개 함수 대신 `entities/wedding/model/derive-budget-summary.ts`(순수 계산, API 응답이 아니라
+// `GET /wedding-categories`에서 파생)를 쓴다 — `pages/report/ui/adapt-report.ts`에도 동명 함수가
+// 있는데 그건 S5 리포트 전용이라 서로 무관하다(헷갈리지 말 것).
 import type { DashboardCategorySummary, DashboardSummary } from "@/entities/dashboard";
-import type { BudgetSummary, CategoryBudget, WeddingHeadline } from "@/entities/wedding";
+import type { CategoryBudget, WeddingHeadline } from "@/entities/wedding";
 
 // **`budget: number | null` 의 `null`(「비용이 없는 카테고리」) 분기는 여기서 쓰지 않는다.**
 // 그 개념은 구 sample-data(목업 `.no-cost`, 상견례)에만 있었고, 실제 `03_API_spec.md` #25 응답은
@@ -24,15 +30,6 @@ function toCategoryBudget(category: DashboardCategorySummary): CategoryBudget {
 
 export function adaptCategories(categories: readonly DashboardCategorySummary[]): CategoryBudget[] {
   return categories.map((category) => toCategoryBudget(category));
-}
-
-export function adaptBudgetSummary(summary: DashboardSummary): BudgetSummary {
-  return {
-    total: summary.total_budget,
-    paid: summary.total_paid,
-    planned: summary.total_planned,
-    remaining: summary.remaining_budget,
-  };
 }
 
 const WEEKDAY_LABEL = ["일", "월", "화", "수", "목", "금", "토"] as const;
