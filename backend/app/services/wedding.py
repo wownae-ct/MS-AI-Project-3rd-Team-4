@@ -15,7 +15,7 @@ update_wedding()(날짜 외 필드 변경)과 update_wedding_categories()(카테
 않는다(규칙 3)."""
 
 import logging
-from datetime import UTC, date, datetime
+from datetime import date
 
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.categories import CATEGORY_META, CATEGORY_META_BY_CODE
 from app.core.config import Settings
 from app.core.errors import api_error
+from app.core.timezone import today_kst
 from app.models import AiInvocation, TimelineItem, User, Wedding, WeddingCategory
 from app.schemas.wedding import (
     WeddingCategoriesUpdate,
@@ -94,9 +95,7 @@ async def create_wedding(
 
     wedding_date = payload.wedding_date
     if payload.wedding_date_precision != "EXACT":
-        wedding_date = approximate_wedding_date(
-            datetime.now(UTC).date(), payload.wedding_date_precision
-        )
+        wedding_date = approximate_wedding_date(today_kst(), payload.wedding_date_precision)
     assert wedding_date is not None  # EXACT+None 조합은 WeddingCreate.model_validator가 이미 막음
 
     total_budget = await _resolve_total_budget(session, payload)

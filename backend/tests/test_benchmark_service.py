@@ -51,3 +51,15 @@ class TestComputeRatioAndLabel:
         ratio, label = compute_ratio_and_label(amount=1_100_000, median_price=1_000_000)
         assert ratio == 1.1
         assert label == "평균"
+
+    def test_just_above_high_threshold_rounds_to_display_boundary_but_stays_high(self):
+        # STEP 11 — raw_ratio=1.101을 반올림 후 비교하면 1.10이 되어 "평균"으로 오분류됐다.
+        # 반환되는 표시용 ratio는 반올림돼 1.1이지만, 라벨 판정은 반올림 전 값을 써야 한다.
+        ratio, label = compute_ratio_and_label(amount=1_101_000, median_price=1_000_000)
+        assert ratio == 1.1
+        assert label == "높음"
+
+    def test_just_below_low_threshold_rounds_to_display_boundary_but_stays_low(self):
+        ratio, label = compute_ratio_and_label(amount=899_000, median_price=1_000_000)
+        assert ratio == 0.9
+        assert label == "낮음"
