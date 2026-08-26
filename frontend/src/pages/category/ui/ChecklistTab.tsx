@@ -13,12 +13,13 @@ import {
   type ChecklistStatus,
 } from "@/entities/checklist";
 import { RegenerateButton } from "@/entities/personalization";
-import { getVendorCases, type VendorCase, type VendorCasesResponse } from "@/entities/vendor-case";
+import { getVendorCases, type VendorCasesResponse } from "@/entities/vendor-case";
 import type { CategoryConstant } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
-import { Badge, Card } from "@/shared/ui";
+import { Card } from "@/shared/ui";
 import { AddChecklistItemRow } from "./AddChecklistItemRow";
 import { ChecklistItemRow } from "./ChecklistItemRow";
+import { VendorCaseSection } from "./VendorCaseSection";
 
 interface ChecklistTabProps {
   categoryCode: string;
@@ -187,32 +188,5 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
 
       <AddChecklistItemRow categoryCode={categoryCode} onAdded={refetchItems} />
     </div>
-  );
-}
-
-function VendorCaseSection({ response }: { response: VendorCasesResponse }) {
-  return (
-    <Card title="업체 사례">
-      {/* PRD RQ-F10-02 — 이 문구는 응답이 항상 포함하며 생략 없이 그대로 렌더해야 한다.
-          하드코딩하지 않고 API 응답을 그대로 쓰는 이유: 문구가 바뀌어도 프론트가 뒤따라가지 않게. */}
-      <p className="mb-3 text-xs text-ink-soft">{response.disclaimer}</p>
-      <ul className="flex flex-col gap-2">
-        {response.cases.map((c: VendorCase) => (
-          <li key={c.id} className="flex flex-col gap-1 rounded-md border border-line p-3">
-            <div className="flex items-center gap-2">
-              {/* GOOD 은 success 색(D12, decisions.md — 업체 사례 배지 한 곳에 한해 D6을 좁게 뒤집은
-                  예외). BAD 는 Badge 기본값(bg-primary-soft text-primary)을 그대로 쓴다 — 예전엔
-                  여기서 그 기본값과 완전히 같은 문자열을 다시 지정하는 죽은 분기였다. */}
-              <Badge className={c.case_type === "GOOD" ? "bg-success-soft text-success" : undefined}>
-                {c.case_type === "GOOD" ? "잘한 사례" : "주의할 사례"}
-              </Badge>
-              <p className="text-sm font-bold text-ink">{c.case_label}</p>
-            </div>
-            <p className="text-xs text-ink-soft">{c.situation}</p>
-            <p className="text-xs font-bold text-ink">{c.key_lesson}</p>
-          </li>
-        ))}
-      </ul>
-    </Card>
   );
 }
