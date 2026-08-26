@@ -20,17 +20,23 @@
 // **UX 개편 2차(2026-08-26, 사용자 지시)** — 이 화면에서 3개 컴포넌트가 빠졌다:
 //   · 결혼식 날짜 수정(`WeddingDateCard`) → 대시보드 헤드라인으로 이동
 //     (`pages/dashboard/ui/WeddingHeadline.tsx`).
-//   · 총예산 수정("남은예산" 카드, `TotalBudgetCard`) → `AllocationOverview`의 "예산 현황"
-//     카드 안 `BudgetDonut.tsx`로 흡수. "예산 현황"에 도넛·범례·총예산 수정이 이미 다 모여
+//   · 총예산 수정("남은예산" 카드, `TotalBudgetCard`) → `AllocationOverview`의 "총 예산 현황"
+//     카드 안 `BudgetDonut.tsx`로 흡수. "총 예산 현황"에 도넛·범례·총예산 수정이 이미 다 모여
 //     있는데 남은예산만 별개 카드로 둘 이유가 없다는 판단.
-// 대신 "카테고리별 배정" 행에 대시보드와 같은 시세비교 줄이 새로 붙는다(`useCategoryBenchmarks`,
+// 대신 "카테고리별 예산 현황" 행에 대시보드와 같은 시세비교 줄이 새로 붙는다(`useCategoryBenchmarks`,
 // `entities/wedding`로 승격됨) — 편집(슬라이더) 중엔 드래그마다 다시 조회하지 않도록
 // draft가 아니라 저장된 원본 `data.categories`로만 훅을 호출한다.
 //
 // **UX 개편 3차(2026-08-26, 사용자 지시)** — 대시보드의 "예산 시세 비교" 카드(전체 웨딩
-// 단위, 위 카테고리별 시세비교와는 별개)도 이 화면 "예산 현황" 카드로 흡수됐다. 그 자리를
+// 단위, 위 카테고리별 시세비교와는 별개)도 이 화면 "총 예산 현황" 카드로 흡수됐다. 그 자리를
 // 비우려고 총예산 수정 트리거를 카드 제목 옆으로 옮겼다(`BudgetDonut.tsx`, `Card`의 새
 // `titleAction` 슬롯). 이 페이지가 처음으로 `GET /dashboard/summary`를 직접 조회한다.
+//
+// **UX 개편 4차(2026-08-27, 사용자 지시)** — 카드 제목 "예산 현황" → "총 예산 현황",
+// "카테고리별 배정" → "카테고리별 예산 현황"(짝을 맞춤). 카테고리별 예산 현황 행에서
+// 예산 미배정인데 지출이 생긴 카테고리(예: 혼수)의 막대·금액이 0으로만 보이던 버그도
+// 함께 고쳤다(`CategoryAllocationRow.tsx`) — 사용자 신고. "집행"이라는 말도 전부
+// "지불"로 바꿨다.
 import { useEffect, useState } from "react";
 import { getDashboardSummary, type BudgetBenchmarkSummary } from "@/entities/dashboard";
 import { getUpcomingPayments, UpcomingPaymentsCard, type UpcomingPaymentEntry } from "@/entities/payment";
@@ -147,7 +153,7 @@ export function BudgetPage() {
   }, []);
 
   // 편집(슬라이더) 중에도 draft가 아니라 원본 data.categories로만 호출한다 — 드래그마다
-  // GET /benchmarks/compare를 다시 부르지 않기 위해서다(카테고리별 배정 행의 시세비교는
+  // GET /benchmarks/compare를 다시 부르지 않기 위해서다(카테고리별 예산 현황 행의 시세비교는
   // "저장된 값 기준"이라는 뜻).
   const { hasBenchmarkByCode, benchmarkByCode } = useCategoryBenchmarks(data?.categories ?? NO_CATEGORIES);
 

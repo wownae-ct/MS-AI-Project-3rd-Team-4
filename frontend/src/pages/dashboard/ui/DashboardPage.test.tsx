@@ -145,7 +145,7 @@ describe("다가오는 할 일 — 금액 없이 D-Day/상태만 보여준다", 
 });
 
 describe("카테고리별 체크리스트 · 시세비교", () => {
-  it("진행률 바마다 어느 카테고리인지 말한다 — 접근명이 서로 다르고, 예산 집행률이 아니라 체크리스트 진행률이다", async () => {
+  it("진행률 바마다 어느 카테고리인지 말한다 — 접근명이 서로 다르고, 예산 지불률이 아니라 체크리스트 진행률이다", async () => {
     await renderDashboard();
 
     const names = screen.getAllByRole("progressbar").map((bar) => bar.getAttribute("aria-label"));
@@ -210,7 +210,7 @@ describe("카테고리별 체크리스트 · 시세비교", () => {
 });
 
 // "예산 시세 비교 카드 — GET /dashboard/summary의 budget_benchmark" describe 블록은 여기 있었다.
-// UX 개편 3차(2026-08-26)로 그 카드가 예산 페이지 "예산 현황" 카드로 옮겨가면서
+// UX 개편 3차(2026-08-26)로 그 카드가 예산 페이지 "총 예산 현황" 카드로 옮겨가면서
 // `BudgetDonut.test.tsx`로 이전됐다 — 이 화면은 더 이상 budget_benchmark를 그리지 않는다.
 
 describe("셸과 화면의 경계", () => {

@@ -48,14 +48,14 @@ describe("BudgetDonut", () => {
 
   it("카드 제목 옆에 총예산 수정 트리거가 있다", () => {
     render(<BudgetDonut summary={summary({})} onTotalBudgetSaved={() => {}} benchmark={null} />);
-    expect(screen.getByRole("heading", { level: 2, name: "예산 현황" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "총 예산 현황" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "수정" })).toBeInTheDocument();
   });
 });
 
 // 대시보드 "예산 시세 비교" 카드(BudgetBenchmarkCard.tsx, 삭제됨)에서 이전된 테스트 — UX 개편
-// 3차(2026-08-26)로 이 값이 예산 페이지 "예산 현황" 카드 하단(예전 "총예산 …원 중 수정" 자리)
-// 으로 옮겨왔다.
+// 3차(2026-08-26)로 이 값이 예산 페이지 "총 예산 현황" 카드 하단(예전 "총예산 …원 중 수정" 자리)
+// 으로 옮겨왔다. 카드 제목 자체는 UX 개편 4차(2026-08-27)로 "예산 현황" → "총 예산 현황"이 됐다.
 describe("BudgetDonut — 총예산 vs 지역 시세(benchmark)", () => {
   it("benchmark가 null이면(해당 지역 참가격 데이터 없음) 비교 문구 자체를 그리지 않는다", () => {
     render(<BudgetDonut summary={summary({})} onTotalBudgetSaved={() => {}} benchmark={null} />);

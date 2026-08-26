@@ -31,7 +31,7 @@
 //
 // **UX 개편 3차(2026-08-26, 사용자 지시)**
 //   8. "예산 시세 비교" 카드(`BudgetBenchmarkCard.tsx`, 삭제됨)를 걷어냈다 — 예산 페이지
-//      "예산 현황" 카드로 흡수됐다(`pages/budget/ui/BudgetDonut.tsx`). `summary.budget_benchmark`는
+//      "총 예산 현황" 카드로 흡수됐다(`pages/budget/ui/BudgetDonut.tsx`). `summary.budget_benchmark`는
 //      이 화면에서 더 이상 안 쓴다(백엔드 응답 자체는 그대로 내려온다 — 필드를 소비하는 화면만
 //      바뀐 것).
 import { useCallback, useEffect, useMemo, useState } from "react";
