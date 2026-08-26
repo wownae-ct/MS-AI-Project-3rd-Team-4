@@ -1,21 +1,29 @@
 """체크리스트 개인화 라우터 에이전트 비상 폴백 카탈로그 — 13_personalization_router_agent_design.md
-§2. VENUE/SDM은 docs/wedding/ing/ds6-checklist-seed-data-prep.md의 OFFICIAL-tier 24항목(VENUE
-CONTRACT_TERM 10 + SDM CONTRACT_TERM 14) 전사, 나머지 7개 MOCKUP 카테고리(MEETING/GIFT/
-HOMEWARE/INVITATION/HONEYMOON/HOMENEW/ETC)는 00_BASELINE.md §0-2 Should "MOCKUP 7개 카테고리
-얇은 시드" — 5개(MEETING/GIFT/HOMEWARE/INVITATION/HONEYMOON)는 같은 문서의 CONSENSUS-tier
-항목 전사, HOMENEW/ETC 2개(v3.0에 없던 v4.0 신규 카테고리라 ds6 문서에 원본이 없음)는 같은
-스타일로 이 자리에서 새로 저작했다.
+§2. VENUE(25개: CONTRACT_TERM 10 + EXTRA_COST 10 + PREP 5)·SDM(35개: CONTRACT_TERM 14 +
+EXTRA_COST 18 + PREP 3)은 data/rag_corpus/DS6_CHECK/checklist.md(팀 자체 체크리스트 85항목
+코퍼스, chunk_index 0-59)를 전사했다. 나머지 7개 MOCKUP 카테고리(MEETING/GIFT/HOMEWARE/
+INVITATION/HONEYMOON/HOMENEW/ETC)는 00_BASELINE.md §0-2 Should "MOCKUP 7개 카테고리 얇은
+시드" — 5개(MEETING/GIFT/HOMEWARE/INVITATION/HONEYMOON)는 같은 코퍼스(chunk_index 60-69)
+전사, HOMENEW/ETC 2개(v3.0에 없던 v4.0 신규 카테고리라 코퍼스에 원본이 없음)는 같은 스타일로
+이 자리에서 새로 저작했다.
 
-validate 노드가 BLOCKED를 반환했을 때만 쓰이는 최후 폴백이다. VENUE/SDM은 공정위 표준약관/
-표준계약서 조문을 직접 근거로 삼은 OFFICIAL 항목만 담고, 나머지 7개 MOCKUP 카테고리는 업계 통념·
-실무 관행에 기반한 CONSENSUS 항목이다(§8 "새 통계 수치 창작 금지" 원칙에 따라 구체적 수치·법령
-근거를 새로 지어내지 않고 일반적인 확인·준비 사항으로만 구성).
+[2026-08-26 수정] VENUE/SDM의 EXTRA_COST/PREP 항목은 원래 이 카탈로그에 없었다 — 코퍼스
+파일엔 처음부터 있었는데 최초 전사가 CONTRACT_TERM만 옮기고 끝난 게 원인이다(프론트 사용자
+리포트: 체크리스트 탭 "계약 조항만 보기"를 꺼도 계약 조항 외엔 빈 화면 — validate가 BLOCKED로
+이 폴백을 탈 때마다 VENUE/SDM은 항상 계약 조항만 보였다). 코퍼스에 이미 있던 나머지 항목을
+마저 옮겨 채웠다.
 
-group_label은 VENUE/SDM은 원본(ds6-checklist-seed-data-prep.md)에 필드 자체가 없어 카테고리
-단위로 직접 부여했다(item_type이 전부 CONTRACT_TERM이라 item_type 기반 매핑을 쓰면 항목 전부가
-같은 값 하나로 뭉개지기 때문). 나머지 7개 MOCKUP 카테고리는 item_type이 CONTRACT_TERM/
-EXTRA_COST/PREP로 섞여 있어 반대로 item_type 기반 매핑(GROUP_LABEL_BY_ITEM_TYPE)이 의미 있게
-구분되므로 그대로 사용한다."""
+validate 노드가 BLOCKED를 반환했을 때만 쓰이는 최후 폴백이다. VENUE/SDM의 CONTRACT_TERM
+24개(10+14)와 SDM EXTRA_COST 1개("위약금이 촬영일에 가까울수록 급증" 항목, 공정위 표준계약서
+붙임2 근거)는 OFFICIAL 등급이고, VENUE/SDM의 나머지 EXTRA_COST/PREP과 7개 MOCKUP 카테고리는
+업계 통념·실무 관행에 기반한 CONSENSUS 항목이다(§8 "새 통계 수치 창작 금지" 원칙에 따라 구체적
+수치·법령 근거를 새로 지어내지 않고 일반적인 확인·준비 사항으로만 구성).
+
+group_label은 VENUE/SDM의 CONTRACT_TERM(OFFICIAL, 법조문 근거)만 카테고리 전용 라벨
+(_VENUE_GROUP_LABEL/_SDM_GROUP_LABEL)을 쓴다 — "표준약관/표준계약서 확인"이 CONSENSUS 항목
+(추가비용·준비사항 실무 팁)에는 어울리지 않아서다. VENUE/SDM의 EXTRA_COST/PREP과 나머지 7개
+MOCKUP 카테고리는 item_type이 CONTRACT_TERM/EXTRA_COST/PREP로 섞여 있어 item_type 기반 매핑
+(GROUP_LABEL_BY_ITEM_TYPE)이 의미 있게 구분되므로 그대로 사용한다."""
 
 from dataclasses import dataclass
 
@@ -53,7 +61,9 @@ class ChecklistTemplateItem:
 
 
 CHECKLIST_FALLBACK_CATALOG: tuple[ChecklistTemplateItem, ...] = (
-    # ===== VENUE — 공정위 예식장이용 표준약관(제10030호), CONTRACT_TERM 10개 =====
+    # ===== VENUE — 공정위 예식장이용 표준약관(제10030호) CONTRACT_TERM 10개
+    #       + CONSENSUS EXTRA_COST 10개·PREP 5개
+    #       (data/rag_corpus/DS6_CHECK/checklist.md chunk_index 0-24 전사) =====
     ChecklistTemplateItem(
         "VENUE",
         "CONTRACT_TERM",
@@ -178,7 +188,183 @@ CHECKLIST_FALLBACK_CATALOG: tuple[ChecklistTemplateItem, ...] = (
         _FTC_VENUE_URL,
         10,
     ),
-    # ===== SDM — 공정위 결혼준비대행업 표준계약서(제10082호), CONTRACT_TERM 14개 =====
+    ChecklistTemplateItem(
+        "VENUE",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "기본 예식비용에 포함된 항목과 별도 청구 항목을 구분해서 확인",
+        "홀 대관료 외 식대·주차·조명·꽃장식 등이 기본 포함인지 별도 옵션인지 항목별로 나눠 "
+        "받으세요. 총액만 보면 계약 후 추가 청구를 예상하기 어렵습니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리(예식장 이용 실무 관행)",
+        None,
+        11,
+    ),
+    ChecklistTemplateItem(
+        "VENUE",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "최소 보증인원(개런티) 기준과 미달 시 정산 방식 확인",
+        "대부분의 예식장은 최소 보증인원을 정해두고, 실제 하객이 이보다 적어도 보증인원 기준 "
+        "식대를 청구합니다. 개런티 인원과 정산 방식을 계약 전에 정확히 확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(예식장 이용 실무 관행)",
+        None,
+        12,
+    ),
+    ChecklistTemplateItem(
+        "VENUE",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "식대 단가가 성수기·비수기·요일별로 다른지 확인",
+        "같은 예식장이라도 봄·가을 성수기나 주말 예식은 식대 단가가 다르게 책정되는 경우가 "
+        "많습니다. 견적서에 적용 시기가 명시돼 있는지 확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(예식장 이용 실무 관행)",
+        None,
+        13,
+    ),
+    ChecklistTemplateItem(
+        "VENUE",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "대관시간 초과 시 추가 요금 기준 확인",
+        "예식 진행이 예정 시간을 넘기면 분당 또는 시간당 추가 요금이 청구될 수 있습니다. "
+        "초과 시 요금 산정 방식을 미리 물어보세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(예식장 이용 실무 관행)",
+        None,
+        14,
+    ),
+    ChecklistTemplateItem(
+        "VENUE",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "폐백실·신부대기실 등 부대공간 이용료가 별도인지 확인",
+        "부대공간이 기본 대관료에 포함되는지, 시간이나 인원에 따라 별도 요금이 붙는지 확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(예식장 이용 실무 관행)",
+        None,
+        15,
+    ),
+    ChecklistTemplateItem(
+        "VENUE",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "주차 지원 대수 초과 시 추가 비용 여부 확인",
+        "제공되는 무료 주차 대수를 초과하면 하객이 개별 주차비를 부담하거나 예식장에 추가 "
+        "요금이 발생할 수 있습니다. 지원 대수와 초과 시 처리 방식을 확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(예식장 이용 실무 관행)",
+        None,
+        16,
+    ),
+    ChecklistTemplateItem(
+        "VENUE",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "답례품·부케 등 예식장 자체 판매 물품의 강매 여부 확인",
+        "일부 예식장은 자체 판매 물품(답례품, 촛대 등)을 반강제로 권유하기도 합니다. 외부 "
+        "반입이 가능한지, 반입 시 추가 비용이 있는지 확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(예식장 이용 실무 관행)",
+        None,
+        17,
+    ),
+    ChecklistTemplateItem(
+        "VENUE",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "외부 음식·이바지 반입 가능 여부와 추가 비용 확인",
+        "외부 음식 반입을 허용하지 않거나, 허용하더라도 위생관리비·청소비 명목의 추가 비용을 "
+        "청구하는 경우가 있습니다. 반입 정책을 사전에 확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(예식장 이용 실무 관행)",
+        None,
+        18,
+    ),
+    ChecklistTemplateItem(
+        "VENUE",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "온라인 중계(스트리밍) 서비스 추가 비용 확인",
+        "원거리 하객을 위한 온라인 생중계는 기본 제공이 아닌 유료 옵션인 경우가 많습니다. "
+        "필요하다면 비용과 화질·안정성을 미리 확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(예식장 이용 실무 관행)",
+        None,
+        19,
+    ),
+    ChecklistTemplateItem(
+        "VENUE",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "성수기 예약 시 할증(프리미엄) 요금 여부 확인",
+        "봄·가을 성수기나 인기 시간대(낮 12~2시)는 별도 할증이 붙는 경우가 있습니다. "
+        "견적서에 시기별 요금 차이가 반영돼 있는지 확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(예식장 이용 실무 관행)",
+        None,
+        20,
+    ),
+    ChecklistTemplateItem(
+        "VENUE",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "최소 6개월 전부터 예식장 여러 곳을 투어하며 비교",
+        "한 곳만 보고 결정하면 가격·조건 비교가 불가능합니다. 최소 2~3곳 이상 투어 후 계약하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리",
+        None,
+        21,
+    ),
+    ChecklistTemplateItem(
+        "VENUE",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "하객 규모에 맞는 홀의 최소·최대 보증인원을 계산해서 비교",
+        "예상 하객 수 대비 홀이 너무 크거나 작으면 개런티 초과 비용이나 좌석 부족 문제가 생깁니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리",
+        None,
+        22,
+    ),
+    ChecklistTemplateItem(
+        "VENUE",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "예식장 위치의 교통·주차 접근성을 하객 동선 기준으로 점검",
+        "혼주·하객 대다수의 거주지를 고려해 대중교통·주차 접근성을 확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리",
+        None,
+        23,
+    ),
+    ChecklistTemplateItem(
+        "VENUE",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "예식 당일 리허설 가능 여부와 소요 시간을 사전에 확인",
+        "리허설 없이 당일 진행하면 식순 혼선이 생길 수 있으니 가능 여부를 미리 확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리",
+        None,
+        24,
+    ),
+    ChecklistTemplateItem(
+        "VENUE",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "우천 시 야외 예식을 대체할 실내 공간(플랜B) 여부 확인",
+        "야외 예식을 고려한다면 우천 시 대체 공간과 전환 절차를 미리 확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리",
+        None,
+        25,
+    ),
+    # ===== SDM — 공정위 결혼준비대행업 표준계약서(제10082호) CONTRACT_TERM 14개
+    #       + EXTRA_COST 18개(CONSENSUS 17 + OFFICIAL 1)·PREP 3개 CONSENSUS
+    #       (data/rag_corpus/DS6_CHECK/checklist.md chunk_index 25-59 전사) =====
     ChecklistTemplateItem(
         "SDM",
         "CONTRACT_TERM",
@@ -347,6 +533,247 @@ CHECKLIST_FALLBACK_CATALOG: tuple[ChecklistTemplateItem, ...] = (
         "공정위 결혼준비대행업 표준계약서(제10082호) 제8조",
         _FTC_AGENCY_URL,
         14,
+    ),
+    ChecklistTemplateItem(
+        "SDM",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "드레스 피팅 횟수 제한과 초과 시 추가비용 기준 확인",
+        "패키지에 포함된 피팅 횟수를 넘으면 회당 추가 비용이 발생할 수 있습니다. 계약 전 "
+        "횟수와 초과 요금을 확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(스드메 준비 실무 관행)",
+        None,
+        15,
+    ),
+    ChecklistTemplateItem(
+        "SDM",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "드레스 연장 대여(리허설·2부 촬영 등) 시 추가 요금 여부 확인",
+        "본식 외 리허설 촬영이나 2부 의상으로 드레스를 더 대여하면 추가 요금이 붙는 경우가 "
+        "많습니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리(스드메 준비 실무 관행)",
+        None,
+        16,
+    ),
+    ChecklistTemplateItem(
+        "SDM",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "드레스 파손·오염 시 배상 기준이 계약서에 명시됐는지 확인",
+        "대여 중 파손·오염이 생기면 변상 비율이 얼마인지 계약서로 미리 확인해두세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(스드메 준비 실무 관행)",
+        None,
+        17,
+    ),
+    ChecklistTemplateItem(
+        "SDM",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "원본 파일·추가 앨범 페이지 비용이 별도인지 확인",
+        "기본 패키지에 포함된 사진 수와 원본 파일 제공 여부를 확인하고, 추가 페이지·파일 "
+        "구매 단가를 미리 확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(스드메 준비 실무 관행)",
+        None,
+        18,
+    ),
+    ChecklistTemplateItem(
+        "SDM",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "촬영 컨셉 변경(야외 로케이션 등) 시 추가 비용 확인",
+        "실내 스튜디오 기본 패키지에서 야외 로케이션으로 바꾸면 추가 비용이 발생하는 경우가 "
+        "많습니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리(스드메 준비 실무 관행)",
+        None,
+        19,
+    ),
+    ChecklistTemplateItem(
+        "SDM",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "앨범 표지·디자인 업그레이드 옵션 가격 확인",
+        "기본 앨범 사양과 프리미엄 표지·디자인 업그레이드의 가격 차이를 확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(스드메 준비 실무 관행)",
+        None,
+        20,
+    ),
+    ChecklistTemplateItem(
+        "SDM",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "원판(전체 촬영본) 구매 여부와 가격 확인",
+        "선택된 컷 외 전체 원판을 받으려면 별도 구매가 필요한 경우가 많습니다. 가격과 파일 "
+        "형식을 확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(스드메 준비 실무 관행)",
+        None,
+        21,
+    ),
+    ChecklistTemplateItem(
+        "SDM",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "서브스냅(보조 촬영작가) 추가 투입 비용 확인",
+        "본식 당일 주작가 외 보조 스냅작가를 추가로 쓰려면 별도 비용이 발생합니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리(스드메 준비 실무 관행)",
+        None,
+        22,
+    ),
+    ChecklistTemplateItem(
+        "SDM",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "야간·공휴일 촬영 시 할증 요금 여부 확인",
+        "일반 시간대를 벗어난 야간이나 공휴일 촬영은 할증이 붙을 수 있습니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리(스드메 준비 실무 관행)",
+        None,
+        23,
+    ),
+    ChecklistTemplateItem(
+        "SDM",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "로케이션 촬영 시 교통비 별도 청구 여부 확인",
+        "스튜디오 밖 장소로 이동해 촬영하면 작가·장비 교통비가 별도 청구될 수 있습니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리(스드메 준비 실무 관행)",
+        None,
+        24,
+    ),
+    ChecklistTemplateItem(
+        "SDM",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "리허설(헤메 테스트) 비용이 별도 청구되는지 확인",
+        "본식 전 헤어·메이크업 스타일을 미리 테스트하는 리허설은 기본 포함이 아닌 유료 "
+        "옵션인 경우가 많습니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리(스드메 준비 실무 관행)",
+        None,
+        25,
+    ),
+    ChecklistTemplateItem(
+        "SDM",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "부모님(혼주) 헤어메이크업이 패키지에 포함되는지 확인",
+        "신랑신부 패키지와 별개로 혼주 헤어메이크업은 추가 비용인 경우가 많으니 미리 확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(스드메 준비 실무 관행)",
+        None,
+        26,
+    ),
+    ChecklistTemplateItem(
+        "SDM",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "본식 당일 헬퍼(도우미) 인원·시간 초과 시 추가 요금 확인",
+        "계약된 헬퍼 인원·시간을 넘기면 시간당 추가 요금이 발생할 수 있습니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리(스드메 준비 실무 관행)",
+        None,
+        27,
+    ),
+    ChecklistTemplateItem(
+        "SDM",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "예복(턱시도) 사이즈 수선비가 기본 포함인지 확인",
+        "대여 예복 사이즈 조정이 무료인지, 정도에 따라 별도 수선비가 붙는지 확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(스드메 준비 실무 관행)",
+        None,
+        28,
+    ),
+    ChecklistTemplateItem(
+        "SDM",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "혼주 한복이 패키지에 포함되는지, 별도 대여인지 확인",
+        "혼주 한복이 스드메 패키지에 포함되지 않는 경우가 많아 별도 대여 비용을 미리 확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(스드메 준비 실무 관행)",
+        None,
+        29,
+    ),
+    ChecklistTemplateItem(
+        "SDM",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "취소·일정 변경 시 위약금이 촬영일에 가까울수록 급증하는 구조임을 인지",
+        "공정위 표준계약서 붙임2 예시는 스튜디오·드레스·헤어메이크업 위약금이 촬영일에 "
+        "임박할수록 단계적으로 급증(예: 촬영 181일 전 계약금의 50% → 당일 총금액의 100%)"
+        "한다는 참고 수치를 보여줍니다. 법적 구속력은 없는 예시지만 일반적 경향을 보여줍니다.",
+        "OFFICIAL",
+        "공정위 결혼준비대행업 표준계약서(제10082호) 붙임2",
+        _FTC_AGENCY_URL,
+        30,
+    ),
+    ChecklistTemplateItem(
+        "SDM",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "패키지 가격에 포함된 항목과 별도 옵션 항목을 서면으로 구분해서 받기",
+        "구두 설명만 듣고 계약하면 나중에 '포함인 줄 알았다'는 분쟁이 생기기 쉽습니다. "
+        "포함/별도 항목을 서면으로 받으세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(스드메 준비 실무 관행)",
+        None,
+        31,
+    ),
+    ChecklistTemplateItem(
+        "SDM",
+        "EXTRA_COST",
+        GROUP_LABEL_BY_ITEM_TYPE["EXTRA_COST"],
+        "웨딩플래너 헬퍼비가 결혼식 당일 현금으로 요구되는지 사전 확인",
+        "일부 업체는 헬퍼비를 결혼식 당일 현장에서 현금으로 요구하기도 합니다. 결제 방식과 "
+        "시점을 미리 확인하세요.",
+        "CONSENSUS",
+        "메리맵 자체 정리(스드메 준비 실무 관행)",
+        None,
+        32,
+    ),
+    ChecklistTemplateItem(
+        "SDM",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "스드메 투어는 최소 3~4개 업체를 비교한 뒤 계약",
+        "패키지 구성과 가격 차이가 업체마다 커서 비교 없이 계약하면 손해를 보기 쉽습니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리",
+        None,
+        33,
+    ),
+    ChecklistTemplateItem(
+        "SDM",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "드레스 가봉 일정을 예식일과 충분히 간격을 두고 잡기(체형 변화 대비)",
+        "예식 직전 가봉만 잡으면 체형 변화 시 수선 시간이 부족할 수 있습니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리",
+        None,
+        34,
+    ),
+    ChecklistTemplateItem(
+        "SDM",
+        "PREP",
+        GROUP_LABEL_BY_ITEM_TYPE["PREP"],
+        "촬영 컨셉·의상 매수를 계약 전에 구체적으로 합의해 문서로 남기기",
+        "구두로만 협의하면 촬영 당일 컨셉 오해로 다투는 경우가 많습니다.",
+        "CONSENSUS",
+        "메리맵 자체 정리",
+        None,
+        35,
     ),
     # ===== MEETING — CONSENSUS 5개(전부 PREP, BASELINE §6-1 배분표 그대로) =====
     ChecklistTemplateItem(
