@@ -220,7 +220,12 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
                   >
                     ‹ 이전
                   </button>
-                  <span className="text-xs text-ink-soft tabular-nums">
+                  {/* 이전/다음을 눌러도 포커스는 버튼에 그대로 남고 목록만 바뀐다 — 스크린리더
+                      사용자에게 페이지가 바뀌었음을 알리려면 이 값의 변경 자체를 announce해야
+                      한다(WCAG 4.1.3 상태 메시지). role="alert"(에러용, 이 파일도 이미 그렇게
+                      씀)보다 약한 aria-live="polite"가 맞다 — 사용자 조작으로 인한 예상된 변경이라
+                      즉시 끼어들 필요는 없다. */}
+                  <span aria-live="polite" aria-atomic="true" className="text-xs text-ink-soft tabular-nums">
                     {safePage + 1} / {totalPages}
                   </span>
                   <button
