@@ -1,8 +1,9 @@
 // ChatPanel.tsx에서 분리(2026-08-24, eslint max-lines 300줄 제한) — 좋아요/싫어요 평가 버튼
 // 추가로 ChatPanel.tsx가 300줄을 넘겨서, 재사용 가능한 프레젠테이션 조각인 이 컴포넌트를
 // 별도 파일로 뺐다. entities/chat/ui/ 소속 유지(ChatPanel과 같은 슬라이스).
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Badge } from "@/shared/ui";
+import { SOURCE_TIER_LABEL } from "@/shared/lib/source-tier";
 import type { ChatMessage, MessageRating } from "../model";
 
 interface MessageBubbleProps {
@@ -16,8 +17,32 @@ interface MessageBubbleProps {
   renderReportAction?: (messageId: string) => ReactNode;
 }
 
+// source_url이 있어도 스킴 검증 없이 href에 그대로 꽂으면 안 된다(react/security.md 「Unsafe URL
+// Schemes」) — RAG 코퍼스 데이터라 신뢰도는 높지만, 값 자체는 이 컴포넌트 바깥(백엔드/색인 스크립트)
+// 에서 온 문자열이라 방어적으로 http(s)만 허용한다.
+function safeExternalUrl(url: string): string | undefined {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") return url;
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
 export function MessageBubble({ message, onRate, renderReportAction }: MessageBubbleProps) {
   const isUser = message.role === "user";
+  // 인용 배지는 여러 개가 동시에 펼쳐질 수 있다 — chunk_id는 세션 내에서 안정적인 서버 발급 id라
+  // key로도, 펼침 상태 추적에도 그대로 쓴다.
+  const [expandedCitations, setExpandedCitations] = useState<Set<number>>(new Set());
+  function toggleCitation(chunkId: number) {
+    setExpandedCitations((prev) => {
+      const next = new Set(prev);
+      if (next.has(chunkId)) next.delete(chunkId);
+      else next.add(chunkId);
+      return next;
+    });
+  }
   return (
     <div className={`flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
       <div
@@ -45,25 +70,67 @@ export function MessageBubble({ message, onRate, renderReportAction }: MessageBu
         // (사용자 리포트 2026-08-26 "화면이 깨져보여 · 박스가 커"). rounded-pill 배지는 원래
         // 한 줄짜리 짧은 라벨 전용이라 title이 줄바꿈되면 모양 자체가 일그러진다 — 그래서 개별
         // 배지도 truncate로 한 줄을 강제한다.
-        <div className="flex max-w-[85%] flex-wrap items-center gap-1.5">
-          <Badge>
-            {/* 문구는 목업 그대로다(s3-category-detail.html:355,361) — "출처"가 아니라 "근거", 체크마크 포함.
-                verdict 3종은 backend/app/schemas/common.py:56 원본 그대로("WEAK"가 실제 값 — 이전엔
-                "UNSUPPORTED"로 잘못 알고 있었다, entities/chat/model.ts 머리말 참조). */}
-            {message.verification.verdict === "SUPPORTED"
-              ? "✓ 근거 확인됨"
-              : message.verification.verdict === "WEAK"
-                ? "근거 불충분"
-                : "일반 정보 · 근거 없음"}
-          </Badge>
-          {message.citations?.map((c) => (
-            <Badge key={c.chunk_id} className="max-w-[220px] truncate bg-bg text-ink-soft" title={`${c.source_tier} · ${c.title}`}>
-              {/* 목업 형식(s3-category-detail.html:352-353): "{티어} · {제목}" — 티어만 보여주면
-                  어떤 근거인지 사람이 알 수 없다. 전체 제목은 title 속성(hover 툴팁)으로 남긴다 —
-                  잘린 텍스트만으로는 무슨 근거인지 못 알아볼 수 있어서다. */}
-              {c.source_tier} · {c.title}
+        <div className="flex max-w-[85%] flex-col gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge>
+              {/* 문구는 목업 그대로다(s3-category-detail.html:355,361) — "출처"가 아니라 "근거", 체크마크 포함.
+                  verdict 3종은 backend/app/schemas/common.py:56 원본 그대로("WEAK"가 실제 값 — 이전엔
+                  "UNSUPPORTED"로 잘못 알고 있었다, entities/chat/model.ts 머리말 참조). */}
+              {message.verification.verdict === "SUPPORTED"
+                ? "✓ 근거 확인됨"
+                : message.verification.verdict === "WEAK"
+                  ? "근거 불충분"
+                  : "일반 정보 · 근거 없음"}
             </Badge>
-          ))}
+            {message.citations?.map((c) => {
+              // source_tier는 백엔드 ENUM 원문(OFFICIAL/CONSENSUS/INDUSTRY)이라 그대로 보여주면
+              // 사용자가 못 알아본다(사용자 리포트 2026-08-26) — SOURCE_TIER_LABEL로 옮기되, 모르는
+              // 값이 와도 지어내지 않고 원문을 그대로 보여준다(PaymentRow.tsx와 같은 원칙).
+              const tierLabel = SOURCE_TIER_LABEL[c.source_tier] ?? c.source_tier;
+              const isExpanded = expandedCitations.has(c.chunk_id);
+              return (
+                <button
+                  key={c.chunk_id}
+                  type="button"
+                  aria-expanded={isExpanded}
+                  aria-label={`근거 자세히 보기: ${tierLabel} · ${c.title}`}
+                  onClick={() => toggleCitation(c.chunk_id)}
+                  className="max-w-[220px] rounded-pill border-none bg-transparent p-0 text-left enabled:hover:opacity-80"
+                >
+                  <Badge className="w-full truncate bg-bg text-ink-soft" title={`${tierLabel} · ${c.title}`}>
+                    {/* 목업 형식(s3-category-detail.html:352-353): "{티어} · {제목}" — 티어만 보여주면
+                        어떤 근거인지 사람이 알 수 없다. 전체 제목은 title 속성(hover 툴팁)뿐 아니라
+                        클릭 시 아래 펼침 영역에도 남긴다 — 터치 기기는 hover가 없어 잘린 텍스트만으론
+                        무슨 근거인지 못 알아본다(사용자 요청 2026-08-26). */}
+                    {tierLabel} · {c.title}
+                  </Badge>
+                </button>
+              );
+            })}
+          </div>
+          {message.citations
+            ?.filter((c) => expandedCitations.has(c.chunk_id))
+            .map((c) => {
+              const tierLabel = SOURCE_TIER_LABEL[c.source_tier] ?? c.source_tier;
+              const safeUrl = c.source_url ? safeExternalUrl(c.source_url) : undefined;
+              return (
+                <div key={c.chunk_id} className="rounded-md border border-line bg-bg px-3 py-2 text-xs text-ink-soft">
+                  <p className="font-bold text-ink">
+                    {tierLabel} · {c.title}
+                  </p>
+                  {safeUrl ? (
+                    <a href={safeUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-primary underline">
+                      원문 보기
+                    </a>
+                  ) : (
+                    // source_url이 null인 경우(entities/chat/model.ts 머리말) — 팀 자체 저작 콘텐츠라
+                    // 원문 링크가 없는 게 정상이다. 링크 없이 조용히 비우면 "왜 안 눌려?" 로 보이니
+                    // 이유를 문구로 남긴다.
+                    <p className="mt-1">팀에서 직접 정리한 자료라 원문 링크는 없어요.</p>
+                  )}
+                </div>
+              );
+            })}
         </div>
       )}
       {/* 좋아요/싫어요 평가 — AI 답변에만(백엔드 규칙과 동일하게 verification이 있는 메시지만
