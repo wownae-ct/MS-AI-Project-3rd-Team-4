@@ -8,13 +8,19 @@
 // 공유하는 슬라이스이므로(layers.md) 여기로 옮기는 게 맞는 위치다. FSD 공식 세그먼트 5종에 `ui`가
 // 포함되므로 entities 에 `ui` 세그먼트를 두는 것 자체는 규범 위반이 아니다.
 //
+// **[2026-08-27 정정]** 위 문단은 이 파일이 옮겨진 시점의 배경 설명일 뿐, 지금의 실제 사용처를
+// 뜻하지 않는다 — 카테고리별 AI상담 탭은 2026-08-26 사용자 지시로 빠졌다(pages/category/ui/
+// CategoryPage.tsx 주석). 지금은 `pages/chat/ui/ChatPage.tsx` 하나만 이 컴포넌트를 쓴다. 그래도
+// 파일 위치는 entities 그대로 둔다 — 다시 카테고리 탭이 생겨도 옮길 필요가 없고, pages 밑에 두면
+// 나중에 재사용이 필요해질 때 같은 `.oxlintrc.json` 제약에 다시 걸린다.
+//
 // 세션은 첫 메시지 전송 시점에만 생성한다(탭을 열자마자 만들지 않음 — 체크리스트/비용 탭만 보고
 // 나가는 방문마다 세션이 쌓이는 것을 막는다). 세션 id는 호출자(CategoryPage/ChatPage)가 들고
 // 있다가 이 컴포넌트에 내려준다 — Base UI Tabs.Panel이 비활성 탭을 언마운트할 수 있어(keepMounted
 // 기본값 미확인), 이 컴포넌트 로컬 state에만 두면 탭을 나갔다 돌아올 때 세션을 잃을 수 있다.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ApiError } from "@/shared/api";
-import { Card } from "@/shared/ui";
+import { Button, Card } from "@/shared/ui";
 import { createChatSession, getChatMessages, rateChatMessage, sendChatMessage } from "../api/chat";
 import type { ChatCitation, ChatMessage, ChatStage, ChatVerification, MessageRating } from "../model";
 import { MessageBubble } from "./MessageBubble";
@@ -267,23 +273,26 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
   }
 
   return (
-    <Card className="flex flex-col gap-3">
+    <Card className="flex min-h-0 flex-1 flex-col gap-3">
       {/* role="log" + aria-live="polite" — 스트리밍 토큰/출처 배지/검증 결과가 이 컨테이너에
           조용히 추가되기만 해서, 이전엔 스크린리더가 답변이 도착한다는 사실 자체를 몰랐다
           (레드팀 감사). aria-relevant="additions text" 로 텍스트 갱신까지 announce 한다 — 매
           토큰마다 announce 되면 너무 시끄러우니 스트리밍 도중이 아니라 완결 단위(문단)로 뜨는
           기본 동작에 맡긴다. */}
-      {/* 채팅 칸을 더 크게, 반응형으로(사용자 요청, 2026-08-26) — `vh`가 아니라 `dvh`를 쓴다
-          (router.tsx의 min-h-dvh와 같은 이유: 모바일 브라우저 주소창이 접히고 펴질 때 vh는
-          안 따라온다). 모바일 상한을 62dvh로 눌러둔 이유 — AppShell이 모바일에서 fixed 하단
-          탭바 + pb-24를 쓰는데, 그 위에 Page 헤더 + 입력 행 + Card 패딩까지 겹치면 70dvh 이상은
-          페이지 자체가 세로 스크롤돼 스크롤 영역이 이중이 된다. */}
+      {/* [2026-08-27 개편] dvh% 클램프를 flex-1 min-h-0로 교체 — 사용자 요청("대화창이 꽉 차지
+          않고 작게 보인다", iPhone 16 Pro 실기기). 이전엔 62dvh 같은 퍼센트를 감으로 잡았는데,
+          세로가 긴 기기에서는 그 상한 아래로 실제 여유 공간이 남아도 못 채웠다 — 그 캡을 보수적
+          으로 잡은 이유 자체는 정당했다(모바일 하단 탭바+헤더+입력행을 다 얹으면 70dvh 이상에서
+          페이지 자체가 세로 스크롤돼 스크롤 영역이 이중이 됐다), 다만 해결 방법이 틀렸다. 이제는
+          이 컴포넌트가 감쌘 `Card`(위)와 `ChatPage.tsx`가 `Page fill`로 넘겨준 뷰포트-고정 높이
+          체인(shared/ui/Page.tsx) 안에서 "남는 공간 전부"를 flex가 정확히 계산해 채운다 —
+          퍼센트를 다시 조정할 필요 없이 헤더/입력행 높이가 바뀌어도 자동으로 맞다. */}
       <div
         ref={listRef}
         role="log"
         aria-live="polite"
         aria-relevant="additions text"
-        className="flex min-h-[45dvh] max-h-[62dvh] md:min-h-[55dvh] md:max-h-[70dvh] lg:min-h-[60dvh] lg:max-h-[72dvh] flex-col gap-3 overflow-y-auto"
+        className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto"
       >
         {messages.length === 0 && !draft && (
           // 첫 진입 안내를 회색 텍스트가 아니라 어시스턴트 말풍선으로 보여준다(사용자 요청,
@@ -351,14 +360,14 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
           disabled={sending}
           className="min-h-tap flex-1 rounded-md border border-line bg-surface px-3 text-base text-ink disabled:opacity-50"
         />
-        <button
-          type="button"
-          onClick={() => void handleSend()}
-          disabled={sending || !input.trim()}
-          className="min-h-tap rounded-md border border-transparent bg-primary px-4 text-sm font-bold text-surface enabled:hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
-        >
+        {/* [2026-08-27] 이전엔 raw <button>이라 shared/ui/Button.tsx의 `inline-flex items-center
+            justify-center` 컨벤션이 빠져 있었다 — min-h-tap이 박스를 텍스트 줄높이보다 키울 때
+            콘텐츠를 수직 중앙 정렬하는 이 프로젝트의 표준 방식인데, 여기만 누락돼 입력창과
+            글자 위치가 안 맞아 보였다(사용자 리포트, 아이폰 실기기). 직접 유틸리티를 추가하는
+            대신 공용 Button으로 교체 — 새 위치에서 같은 버그가 재발할 여지 자체를 없앤다. */}
+        <Button onClick={() => void handleSend()} disabled={sending || !input.trim()}>
           보내기
-        </button>
+        </Button>
       </div>
     </Card>
   );
