@@ -53,6 +53,14 @@ describe("내비게이션 마크업", () => {
     expect(screen.queryAllByRole("tab")).toHaveLength(0);
   });
 
+  // [2026-08-27] 데스크톱 사이드바(보조 메뉴 안)에만 로그아웃이 있고 모바일엔 없었다 — 실사용자
+  // 리포트로 확인된 실제 갭. 모바일 상단 바 버전을 추가했고, 둘 다 항상 같은 DOM에 있다(§"단일
+  // DOM + CSS 재배치"). 2개인 것 자체가 계약이다 — 1개면 어느 한쪽이 도로 없어진 회귀다.
+  it("로그아웃 버튼이 데스크톱 사이드바·모바일 상단 바 양쪽에 있다", async () => {
+    await renderShellAt("/");
+    expect(screen.getAllByRole("button", { name: "로그아웃" })).toHaveLength(2);
+  });
+
   // layout.md §3 의 4개(홈·타임라인·예산·리포트)에 2026-08-24 "AI상담"이 5번째로 추가됐다
   // (12_final_prototype_mockup.html의 탭바 — AppShell.tsx PRIMARY_NAV 머리말 참조).
   it("주 메뉴는 5개다 — 순서가 계약이다", async () => {
