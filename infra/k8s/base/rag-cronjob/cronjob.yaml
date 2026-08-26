@@ -31,6 +31,16 @@ spec:
               image: team4hcacr-drascbaqe8f2gcca.azurecr.io/backend:latest
               imagePullPolicy: Always
               command: ["python", "-m", "app.rag.indexing"]
+              resources: # 2026-08-26 추가 — backend Deployment와 같은 이유(BestEffort 방지).
+                  # 임베딩 배치(140청크) + pgvector upsert라 backend 웹서버보다 메모리 여유를
+                  # 조금 더 준다. 오토스케일러 없는 고정 2노드라 비용 영향 없음 — 하루 한 번,
+                  # 짧게 실행되는 배치라 상시 점유 부담도 없다.
+                  requests:
+                      cpu: 100m
+                      memory: 256Mi
+                  limits:
+                      cpu: 500m
+                      memory: 512Mi
               env:
                 - name: DATABASE_URL
                   valueFrom:
