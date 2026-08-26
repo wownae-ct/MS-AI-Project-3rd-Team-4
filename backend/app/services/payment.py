@@ -64,7 +64,16 @@ async def get_payment(session: AsyncSession, wedding_id: UUID, payment_id: str) 
 async def update_payment(
     session: AsyncSession, payment: Payment, payload: PaymentUpdate
 ) -> Payment:
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    """트러블슈팅 STEP 6(2026-08-26) — create_payment과 달리 paid_date만 보내고 status를
+    안 보내면(예: 영수증으로 결제일만 채운 정정) status가 PLANNED로 방치돼 "결제일은 있는데
+    상태는 예정"인 모순이 생겼다. status를 명시적으로 함께 보낸 경우(예: 환불 처리로 CANCELED
+    로 바꾸면서 과거 paid_date는 그대로 두는 경우)는 그 값을 그대로 존중한다 — 여기서
+    자동 유도하지 않는다. PaymentUpdate._reject_planned_with_paid_date가 status=PLANNED와
+    paid_date를 함께 보내는 진짜 모순 조합만 요청 단계에서 이미 막는다."""
+    changed = payload.model_dump(exclude_unset=True)
+    if "paid_date" in changed and changed["paid_date"] is not None and "status" not in changed:
+        changed["status"] = "PAID"
+    for field, value in changed.items():
         setattr(payment, field, value)
     await session.commit()
     await session.refresh(payment)
