@@ -265,6 +265,10 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
         <button
           type="button"
           onClick={() => {
+            // STEP 1-D — 컨트롤러를 만들어 두기만 하고 실제로 abort()를 부르지 않아, "취소"를
+            // 눌러도 요청은 백그라운드에서 계속 진행되다가 나중에 도착한 결과가 그 사이 새로
+            // 연 다른 폼 상태를 조용히 채우는 버그가 있었다.
+            receiptAbortRef.current?.abort();
             reset();
             setOpen(false);
           }}

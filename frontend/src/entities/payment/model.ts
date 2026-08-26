@@ -13,7 +13,9 @@ export interface Payment {
   category_code: string;
   item_name: string;
   payment_type: PaymentType;
-  vendor_name: string;
+  // STEP 7 — backend PaymentOut.vendor_name은 str | None(schemas/payment.py)인데 이 타입만
+  // non-null이었다. 실제로 null인 값을 만나도 컴파일 타임에 못 잡아 런타임에만 드러났다.
+  vendor_name: string | null;
   contact_name: string | null;
   contact_phone: string | null;
   amount: number;

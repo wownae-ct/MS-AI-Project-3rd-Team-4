@@ -32,6 +32,14 @@ export function wonToManwon(won: number): number {
   return Math.round(won / 10_000);
 }
 
+/** 원 단위 숫자 → 만원 단위로 올림. STEP 12 — 슬라이더 하한처럼 "이 금액 아래로는 절대 못
+ * 내려간다"는 값을 만원 단위로 맞출 땐 반올림(wonToManwon)이 아니라 올림이어야 한다 —
+ * 반올림은 실결제액(예: 1,234,567원)을 1,230,000원처럼 실제보다 낮게 내림할 수 있어,
+ * 그 값이 저장되면 이미 지급한 금액 아래로 예산이 내려가는 모순이 생긴다. */
+export function wonToManwonCeil(won: number): number {
+  return Math.ceil(won / 10_000);
+}
+
 /** 만원 단위 숫자 → 원 단위 숫자. */
 export function manwonToWon(manwon: number): number {
   return manwon * 10_000;

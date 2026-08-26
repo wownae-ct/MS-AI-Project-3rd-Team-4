@@ -225,4 +225,18 @@ describe("계약 5 — 멀티파트는 Content-Type 을 건드리지 않는다",
     expect(headers.get("content-type")).toBeNull();
     expect(lastInit().credentials).toBe("include");
   });
+
+  // 트러블슈팅 STEP 1-C — 이전엔 timeoutMs 를 넘길 방법이 없어 기본 15초로 고정이었다(영수증
+  // OCR 은 vision 응답이 느리면 20~30초도 드물지 않아 정상 성공할 요청이 먼저 끊겼다).
+  it("timeoutMs 를 넘기면 기본값(15초) 대신 그 값으로 AbortSignal.timeout 이 걸린다", async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+    fetchMock.mockResolvedValue(jsonResponse({ receipt_url: "https://x" }, 201));
+    const form = new FormData();
+    form.append("file", new Blob(["x"], { type: "image/png" }), "r.png");
+
+    await apiFetchMultipart("/api/v1/payments/receipt-extract", form, {}, 45_000);
+
+    expect(timeoutSpy).toHaveBeenCalledWith(45_000);
+    timeoutSpy.mockRestore();
+  });
 });

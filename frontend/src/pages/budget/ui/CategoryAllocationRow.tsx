@@ -4,7 +4,7 @@
 import { Slider } from "@base-ui/react/slider";
 import type { BenchmarkComparison } from "@/entities/payment";
 import type { WeddingCategory } from "@/entities/wedding";
-import { manwonToWon, wonToManwon } from "@/shared/lib/money";
+import { manwonToWon, wonToManwon, wonToManwonCeil } from "@/shared/lib/money";
 import { Badge, Money, Progress } from "@/shared/ui";
 
 export interface CategoryAllocationRowProps {
@@ -107,8 +107,12 @@ export function CategoryAllocationRow({
         disabled={!category.is_active}
         aria-label={`${category.name_ko} 예산 조절`}
         onValueChange={(manwonValue) => {
-          // 이미 지급한 금액 아래로는 못 내린다 — paid_amount 가 슬라이더 하한이다.
-          const next = Math.max(category.paid_amount, manwonToWon(manwonValue));
+          // 이미 지급한 금액 아래로는 못 내린다 — paid_amount 가 슬라이더 하한이다. STEP 12 —
+          // paid_amount 는 만원 단위가 아닐 수 있는 실결제액이라(예: 1,234,567원), 그대로 하한에
+          // 쓰면 화면엔 만원 단위로만 보이는데 저장값은 그 결제액 그대로가 될 수 있었다. 만원
+          // 단위로 올림(ceil)해 화면 표시-저장값 단위를 맞춘다.
+          const paidAmountFloor = manwonToWon(wonToManwonCeil(category.paid_amount));
+          const next = Math.max(paidAmountFloor, manwonToWon(manwonValue));
           onDraftChange(category.category_code, next);
         }}
       >

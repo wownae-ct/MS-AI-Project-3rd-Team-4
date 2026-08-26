@@ -97,7 +97,10 @@ export function CostTab({ categoryCode, categoryMeta }: CostTabProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      {categoryMeta?.has_benchmark && <BenchmarkWidget categoryCode={categoryCode} />}
+      {/* STEP 5 — key가 없으면 카테고리를 이동해도 리마운트되지 않아 이전 카테고리의
+          itemCode/result state가 그대로 남는다(CostTab 자신은 useEffect로 재조회하지만
+          BenchmarkWidget은 리마운트에 의존하는 로컬 state라 별도 key가 필요하다). */}
+      {categoryMeta?.has_benchmark && <BenchmarkWidget key={categoryCode} categoryCode={categoryCode} />}
 
       <Card title="납부 내역">
         {error && (

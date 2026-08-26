@@ -25,7 +25,7 @@ export function PaymentListRow({ payment: p, categoryLabel }: PaymentListRowProp
           <p className="truncate text-sm font-bold text-ink">{p.item_name}</p>
         </div>
         <p className="text-xs text-ink-soft">
-          {p.vendor_name} ·{" "}
+          {p.vendor_name ?? "업체명 미상"} ·{" "}
           {/* status는 PLANNED/PAID 2갈래만 아니라 CANCELED도 있다(backend/app/schemas/
               common.py:53) — 이걸 놓치면 취소된 결제가 "예정일..."로 잘못 보인다
               (레드팀 감사 라운드 2). 지금은 CANCELED로 바꾸는 UI가 없어 잠재적이지만,

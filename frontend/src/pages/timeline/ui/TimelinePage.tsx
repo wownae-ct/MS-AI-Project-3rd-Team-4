@@ -5,22 +5,45 @@
 // 머리말 참고. 비활성 카테고리 항목은 서버가 이미 응답에서 뺀다(`03_API_spec.md` #15 — 이
 // 화면에서 따로 필터링하지 않는다).
 //
-// `GET /timeline-items`와 `GET /weddings/me`를 병렬로 불러온다 — 후자는 phase 계산의 기준일
-// (wedding_date)을 얻기 위해서고, 카테고리 라벨은 항목의 category_code를 그대로 보여준다
-// (이 응답엔 카테고리 이름이 없고, 이름 하나 때문에 세 번째 호출을 추가하지 않는다 — YAGNI).
+// `GET /timeline-items`·`GET /weddings/me`·`GET /categories`를 병렬로 불러온다 — 웨딩은 phase
+// 계산의 기준일(wedding_date)을 얻기 위해서고, 카테고리는 라벨(name_ko) 매핑을 위해서다.
+// STEP 10 — 예전엔 "이름 하나 때문에 세 번째 호출을 추가하지 않는다"(YAGNI)며 item.category_code를
+// 그대로 보여줬는데, 그 결과 화면에 "VENUE" 같은 원시 ENUM 코드가 그대로 노출됐다. GET /categories는
+// 활성/비활성 전체 9개를 돌려주므로(비활성 카테고리 소속 잔존 항목도 라벨이 있어야 함) 활성만
+// 거르지 않고 그대로 맵으로 쓴다.
 import { useEffect, useRef, useState } from "react";
 import { getTimelineItems, type TimelineItem } from "@/entities/timeline";
-import { getMyWedding } from "@/entities/wedding";
+import { getCategories, getMyWedding } from "@/entities/wedding";
 import { RegenerateButton } from "@/entities/personalization";
 import { ApiError } from "@/shared/api";
 import { Card, Page } from "@/shared/ui";
 import { AddTimelineItemRow } from "./AddTimelineItemRow";
-import { groupTimelineItemsByPhase } from "./group-by-phase";
+import { groupTimelineItemsByPhase, type TimelinePhaseGroup } from "./group-by-phase";
 import { TimelineItemRow } from "./TimelineItemRow";
 
 interface TimelineData {
   items: TimelineItem[];
   weddingDate: string | undefined;
+  categoryLabelByCode: Map<string, string>;
+}
+
+// STEP 8 — "D-12개월부터"를 고정 문구로 박아뒀었는데, 실제 최상단 구간은 LLM이 생성한 카탈로그의
+// 최대 offset이나 완료 구간 재배치(그룹 전체가 DONE이면 아래로 내려감)에 따라 달라질 수 있어
+// 부제와 화면이 어긋났다. 실제로 화면 맨 위에 렌더되는 첫 그룹(groups[0])의 라벨에서 동적으로
+// 만든다 — 그래야 카탈로그가 바뀌거나 구간이 재배치돼도 항상 일치한다.
+const GENERIC_TIMELINE_SUBTITLE = "비활성 카테고리는 제외됩니다";
+
+export function timelineSubtitle(groups: TimelinePhaseGroup[]): string {
+  const topLabel = groups[0]?.label;
+  if (topLabel === undefined || topLabel === "일정 미정") return GENERIC_TIMELINE_SUBTITLE;
+  return `${topLabel}부터 결혼식 당일까지, ${GENERIC_TIMELINE_SUBTITLE}`;
+}
+
+/** STEP 10 — 맵에 없는 코드(카테고리 목록 조회 실패 등)는 원시 코드로라도 폴백해 최소한
+ * 화면이 빈칸이 되진 않게 한다. */
+export function resolveCategoryLabel(categoryCode: string | null, categoryLabelByCode: Map<string, string>): string | null {
+  if (categoryCode === null) return null;
+  return categoryLabelByCode.get(categoryCode) ?? categoryCode;
 }
 
 export function TimelinePage() {
@@ -29,9 +52,14 @@ export function TimelinePage() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getTimelineItems(), getMyWedding()])
-      .then(([itemsResponse, wedding]) => {
-        if (!cancelled) setData({ items: itemsResponse.items, weddingDate: wedding.wedding_date });
+    Promise.all([getTimelineItems(), getMyWedding(), getCategories()])
+      .then(([itemsResponse, wedding, categoriesResponse]) => {
+        if (cancelled) return;
+        setData({
+          items: itemsResponse.items,
+          weddingDate: wedding.wedding_date,
+          categoryLabelByCode: new Map(categoriesResponse.categories.map((c) => [c.code, c.name_ko])),
+        });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -74,7 +102,7 @@ export function TimelinePage() {
 
   if (error !== null) {
     return (
-      <Page title="타임라인" subtitle="D-12개월부터 결혼식 당일까지, 비활성 카테고리는 제외됩니다">
+      <Page title="타임라인" subtitle={GENERIC_TIMELINE_SUBTITLE}>
         <p role="alert" className="rounded-md border border-line bg-primary-soft px-3 py-2 text-sm text-primary">
           {error}
         </p>
@@ -84,7 +112,7 @@ export function TimelinePage() {
 
   if (data === null) {
     return (
-      <Page title="타임라인" subtitle="D-12개월부터 결혼식 당일까지, 비활성 카테고리는 제외됩니다">
+      <Page title="타임라인" subtitle={GENERIC_TIMELINE_SUBTITLE}>
         <p className="text-sm text-ink-soft">불러오는 중…</p>
       </Page>
     );
@@ -93,7 +121,7 @@ export function TimelinePage() {
   const groups = groupTimelineItemsByPhase(data.items, data.weddingDate);
 
   return (
-    <Page title="타임라인" subtitle="D-12개월부터 결혼식 당일까지, 비활성 카테고리는 제외됩니다">
+    <Page title="타임라인" subtitle={timelineSubtitle(groups)}>
       <output className="sr-only">{announcement}</output>
       <div className="flex flex-col gap-5">
         <div className="flex justify-end">
@@ -106,7 +134,12 @@ export function TimelinePage() {
           <Card key={group.label} title={group.date ? `${group.label} · ${group.date}` : group.label}>
             <div className="flex flex-col">
               {group.items.map((item) => (
-                <TimelineItemRow key={item.id} item={item} categoryLabel={item.category_code} onStatusChange={handleItemChange} />
+                <TimelineItemRow
+                  key={item.id}
+                  item={item}
+                  categoryLabel={resolveCategoryLabel(item.category_code, data.categoryLabelByCode)}
+                  onStatusChange={handleItemChange}
+                />
               ))}
             </div>
           </Card>
