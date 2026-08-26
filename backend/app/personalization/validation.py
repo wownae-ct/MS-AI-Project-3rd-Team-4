@@ -20,11 +20,19 @@ _VALID_CATEGORY_CODES: frozenset[str] = frozenset(get_args(CategoryCode))
 def _validate_category_membership(
     domain_label: str, active_categories: set[str], items: list[dict]
 ) -> list[str]:
-    """규칙 (1): category_code가 ENUM 안에 있고, 해당 웨딩의 활성 카테고리에 속하는가."""
+    """규칙 (1): category_code가 ENUM 안에 있고, 해당 웨딩의 활성 카테고리에 속하는가.
+
+    트러블슈팅 STEP 3(2026-08-26): category_code=null 허용은 타임라인의 "범용 일정" 개념
+    전용이다 — 체크리스트엔 그런 개념이 없어 반드시 카테고리에 속해야 한다. 이 함수가 두
+    도메인에 공유돼 예전엔 체크리스트도 null을 그냥 통과시켰고, 그 결과 row 생성 단계
+    (_checklist_row_from_draft)가 `None not in active_categories`로 항상 True가 되어
+    아무 로그도 없이 조용히 항목이 사라졌다."""
     errors = []
     for item in items:
         code = item.get("category_code")
         if code is None:
+            if domain_label == "CHECKLIST":
+                errors.append(f"{domain_label}: category_code가 없는 항목이 있습니다.")
             continue  # 타임라인 범용 항목(category_code=null)은 이 규칙 대상이 아님
         if code not in _VALID_CATEGORY_CODES or code not in active_categories:
             errors.append(

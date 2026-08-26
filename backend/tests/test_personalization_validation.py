@@ -39,6 +39,16 @@ class TestCategoryMembership:
 
         assert not errors
 
+    def test_checklist_item_with_null_category_fails(self):
+        # STEP 3 — 체크리스트엔 타임라인의 "범용 일정" 개념이 없다. 예전엔 이 값이 그냥
+        # 통과했고, 이후 row 생성 단계가 조용히 필터링해 항목이 로그 없이 사라졌다.
+        active = {"VENUE"}
+        items = [{"category_code": None, "title": "제목"}]
+
+        errors = validate_checklist_items(active, items)
+
+        assert any("category_code" in e for e in errors)
+
 
 class TestCategoryCoverage:
     def test_missing_active_category_fails(self):
