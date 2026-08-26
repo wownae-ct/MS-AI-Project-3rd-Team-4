@@ -29,15 +29,14 @@
 //      돌아온 것이다(같은 이름을 다른 두 의미로 다시 쓰지 않게, 원본 데이터는 여전히 다르다 —
 //      하나는 결제 예정, 하나는 체크리스트/타임라인 혼합 피드).
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { getDashboardSummary, type DashboardCategorySummary, type DashboardSummary } from "@/entities/dashboard";
+import { getDashboardSummary, type DashboardSummary } from "@/entities/dashboard";
 import { ApiError } from "@/shared/api";
 import { Card, Page } from "@/shared/ui";
-import { adaptCategories, adaptHeadline } from "./adapt-summary";
+import { adaptHeadline } from "./adapt-summary";
 import { BudgetBenchmarkCard } from "./BudgetBenchmarkCard";
-import { CategoryRow } from "./CategoryRow";
+import { CategoryChecklistSection } from "./CategoryChecklistSection";
 import { PaymentRow } from "./PaymentRow";
 import { UpcomingPaymentsSection } from "./UpcomingPaymentsSection";
-import { useCategoryBenchmarks } from "./use-category-benchmarks";
 import { WeddingHeadline } from "./WeddingHeadline";
 
 // 행들을 감싸는 컨테이너. `first:`/`last:` 변이는 **형제 중 첫/마지막**을 보는데 `Card` 가 `<h2>`
@@ -48,10 +47,6 @@ const ROWS = "flex flex-col";
 // 후보 확정")의 표시 라벨 — 레드팀 감사 라운드 2, HIGH. 이전엔 이 값을 non-nullable 타입으로
 // 잘못 선언해 `?? item.category_code`가 `undefined ?? null`이 돼 문자열 "null"이 그대로 찍혔다.
 const GENERAL_CATEGORY_LABEL = "일반";
-
-// summary 로딩/에러 중 useCategoryBenchmarks에 넘길 안정된 빈 배열 — 매 렌더 새 리터럴(`[]`)을
-// 넘기면 그 훅의 `useEffect` deps가 매번 바뀐 것으로 보여 getCategories()를 계속 다시 부른다.
-const NO_CATEGORIES: readonly DashboardCategorySummary[] = [];
 
 export function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
@@ -92,10 +87,6 @@ export function DashboardPage() {
     return categoryLabelByCode.get(categoryCode) ?? categoryCode;
   }
 
-  // summary가 null인 동안(로딩/에러)에도 훅은 호출돼야 한다(Hooks 규칙 — 조건부 호출 금지) —
-  // 빈 배열을 넘기면 훅 내부에서 아무 조회도 하지 않는다.
-  const { hasBenchmarkByCode, benchmarkByCode } = useCategoryBenchmarks(summary?.categories ?? NO_CATEGORIES);
-
   if (error !== null) {
     return (
       <Page title="대시보드" width="max-w-none">
@@ -122,7 +113,6 @@ export function DashboardPage() {
   }
 
   const headline = adaptHeadline(summary);
-  const categories = adaptCategories(summary.categories);
 
   return (
     <Page title="대시보드" width="max-w-none">
@@ -150,22 +140,7 @@ export function DashboardPage() {
 
         <UpcomingPaymentsSection />
 
-        <Card title="카테고리별 체크리스트 · 시세비교">
-          {categories.length === 0 ? (
-            <p className="text-sm text-ink-soft">등록된 카테고리가 없습니다.</p>
-          ) : (
-            <div className={ROWS}>
-              {categories.map((category) => (
-                <CategoryRow
-                  key={category.id}
-                  category={category}
-                  hasBenchmark={hasBenchmarkByCode.get(category.id) ?? false}
-                  benchmark={benchmarkByCode.get(category.id)}
-                />
-              ))}
-            </div>
-          )}
-        </Card>
+        <CategoryChecklistSection categories={summary.categories} />
       </div>
     </Page>
   );

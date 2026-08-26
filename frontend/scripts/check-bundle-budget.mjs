@@ -145,13 +145,14 @@ const BUDGETS = [
   // 추가가 그 화면 자체의 기능 증가다(shared/entities 공용 코드 증가가 아니라도, 이 화면
   // 자체가 예외적으로 초기 청크에 남아 있는 한 이 지표에 반영되는 게 맞다). 여유를 61 B 로
   // 좁게 유지한다.
-  // ── 2026-08-26 대시보드/예산 UX 개편 2차(독립 브랜치, 병합 재측정)로 96,700 → (재측정 예정) ──
+  // ── 2026-08-26 대시보드/예산 UX 개편 2차(독립 브랜치, 병합 재측정)로 96,700 → 97,300 ────────
   // `feature/frontend-dashboard-benchmark-card`(위 항목, 96,639B)와 이 브랜치가 같은 96,600
   // 기준에서 각자 독립적으로 이 줄을 올려뒀다가 병합 시점에 충돌 — 두 값 다 병합 후 실제
   // 크기를 반영하지 못한다(같은 클래스의 사고, `errors/2026-08-26-parallel-branch-shared-
   // bundle-budget-numeric-conflict.md` 참고). 산술로 더해 추정하지 않고 병합 후 재빌드해
-  // 다시 실측한다 — 아래 값이 그 결과다.
-  { key: "jsChunkGzip", limit: 97_400, measured: 97_337, label: "최대 단일 JS 청크 (gzip)" },
+  // 다시 실측했다: 97,247B(CategoryChecklistSection.tsx 추출 등 import/max-dependencies
+  // 정리 이후 값). 여유를 53 B 로 좁게 유지한다.
+  { key: "jsChunkGzip", limit: 97_300, measured: 97_247, label: "최대 단일 JS 청크 (gzip)" },
   { key: "cssGzip", limit: 6_000, measured: 4_237, label: "CSS (gzip, @font-face 제외)" },
   // 폰트는 unicode-range 로 분할돼 전량 전송되지 않으므로 이 값은 전송량이 아니라 **배포 크기** 가드다.
   // 잡으려는 사고: variable/split(2.3 MB) 대신 static/split(8.8 MB)이나 static/complete(4.7 MB)를
