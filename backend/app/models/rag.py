@@ -55,7 +55,7 @@ class RagDocument(Base):
 
 
 class RagChunk(Base):
-    """검색 가능한 조각 + 임베딩. 하이브리드 검색(벡터 ivfflat + tsvector GIN)의 실제 대상."""
+    """검색 가능한 조각 + 임베딩. 하이브리드 검색(벡터 HNSW + tsvector GIN)의 실제 대상."""
 
     __tablename__ = "rag_chunks"
     __table_args__ = (
