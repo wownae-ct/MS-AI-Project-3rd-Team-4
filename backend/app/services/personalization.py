@@ -68,6 +68,25 @@ async def _fetch_protected_items(session: AsyncSession, wedding_id: UUID) -> dic
     }
 
 
+async def _fetch_done_timeline_categories(session: AsyncSession, wedding_id: UUID) -> set[str]:
+    """트러블슈팅 STEP 2 — FIELD_UPDATED/MANUAL_REGENERATE는 done_so_far를 넘길 방법이 없다
+    (그 시점엔 과거 온보딩 답변이 DB 어디에도 원본 형태로 안 남아있고, 오직 "타임라인 행의
+    현재 status"로만 남아있다). done_so_far가 아예 안 넘어온 경우에만 호출되며, 현재
+    status="DONE"인 미보호 TIMELINE 행의 category_code를 모아 done_so_far와 동일한 의미로
+    재사용한다 — 재생성 후에도 "이미 완료로 답한 카테고리"가 다시 TODO로 되돌아가지 않는다."""
+    rows = (
+        await session.execute(
+            select(TimelineItem.category_code).where(
+                TimelineItem.wedding_id == wedding_id,
+                TimelineItem.status == "DONE",
+                TimelineItem.user_edited_at.is_(None),
+                TimelineItem.category_code.is_not(None),
+            )
+        )
+    ).all()
+    return {row.category_code for row in rows}
+
+
 async def _delete_unprotected_items(
     session: AsyncSession, wedding_id: UUID, affected_domains: list[str]
 ) -> None:
@@ -220,7 +239,14 @@ async def run_personalization(
 ) -> AiInvocation:
     today = datetime.now(UTC).date()
     protected_items = await _fetch_protected_items(session, wedding.id)
-    done_categories = set(done_so_far or [])
+    # done_so_far가 명시적으로 넘어온 경우(ONBOARDING_INITIAL, 빈 리스트 포함)는 그 값을 그대로
+    # 쓰고, 아예 안 넘어온 경우(FIELD_UPDATED/MANUAL_REGENERATE)만 DB의 현재 DONE 상태로
+    # 대체한다(STEP 2) — 새 웨딩은 TIMELINE 행 자체가 없어 이 쿼리가 항상 빈 집합이라 안전하다.
+    done_categories = (
+        set(done_so_far)
+        if done_so_far is not None
+        else await _fetch_done_timeline_categories(session, wedding.id)
+    )
     selected_options_rows = (
         await session.execute(
             select(WeddingCategory.category_code, WeddingCategory.selected_options).where(
@@ -316,7 +342,7 @@ async def run_personalization(
                         domain_errors.get("TIMELINE"),
                     )
                     timeline_rows = _timeline_fallback_rows(
-                        wedding.wedding_date, active_categories, done_so_far, today
+                        wedding.wedding_date, active_categories, sorted(done_categories), today
                     )
 
             # ai_invocations.status/error_message는 이 실행 전체를 요약하는 감사로그다 —
@@ -355,7 +381,7 @@ async def run_personalization(
                 checklist_rows = _checklist_fallback_rows(active_categories)
             if "TIMELINE" in affected_domains:
                 timeline_rows = _timeline_fallback_rows(
-                    wedding.wedding_date, active_categories, done_so_far, today
+                    wedding.wedding_date, active_categories, sorted(done_categories), today
                 )
         trace.update(
             metadata={
