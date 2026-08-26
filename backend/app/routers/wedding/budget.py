@@ -50,7 +50,7 @@ from app.services.payment import get_payment as get_payment_service
 from app.services.payment import list_payments as list_payments_service
 from app.services.payment import list_upcoming_payments as list_upcoming_payments_service
 from app.services.payment import update_payment as update_payment_service
-from app.services.receipt_ocr import extract_receipt_fields
+from app.services.receipt_ocr import ReceiptImageDecodeError, extract_receipt_fields
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +144,15 @@ async def extract_receipt(
         fields = await extract_receipt_fields(
             openai_client, settings.receipt_vision_deployment, content, file.content_type
         )
+    except ReceiptImageDecodeError as exc:
+        # 트러블슈팅 STEP 1-A — HEIC 디코딩 실패는 일반 500이 아니라 사용자가 대응 가능한
+        # 422로 구분한다(업로드된 원본은 위에서 이미 Blob에 저장돼 유실되지 않음).
+        logger.warning("Receipt HEIC decode failed for wedding_id=%s", wedding.id)
+        raise api_error(
+            422,
+            "RECEIPT_IMAGE_UNREADABLE",
+            "이미지를 읽을 수 없습니다. 다시 촬영해 업로드해주세요.",
+        ) from exc
     except Exception:
         logger.exception("Receipt vision extraction failed for wedding_id=%s", wedding.id)
         raise
