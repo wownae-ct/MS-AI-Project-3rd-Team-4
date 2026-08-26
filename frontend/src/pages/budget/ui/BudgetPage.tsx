@@ -257,7 +257,7 @@ export function BudgetPage() {
         <CostManagementTab
           categoryLabelByCode={data.categoryLabelByCode}
           categoryOptions={data.costEligibleCategoryOptions}
-          onPaymentAdded={refetchCategories}
+          onPaymentsChanged={refetchCategories}
         />
 
         <AllocationOverview

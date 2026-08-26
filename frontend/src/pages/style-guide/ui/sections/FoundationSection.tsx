@@ -14,6 +14,14 @@ const SWATCHES: readonly { name: string; hex: string; box: string; note: string 
   { name: "line", hex: "#E7E3DE", box: "bg-line", note: "1px 헤어라인 보더 · 진행률 트랙" },
   { name: "success", hex: "#166534", box: "bg-success", note: "D12 — 업체 사례 GOOD 배지 전용. surface 대비 7.13" },
   { name: "success-soft", hex: "#E1F4E8", box: "bg-success-soft", note: "배지 배경 — 위에 success 6.22" },
+  { name: "payment-deposit", hex: "#8A5A12", box: "bg-payment-deposit", note: "D13 — 계약금 배지. surface 대비 5.91" },
+  { name: "payment-deposit-soft", hex: "#F5EBD9", box: "bg-payment-deposit-soft", note: "배지 배경 — 위에 deposit 5.00" },
+  { name: "payment-interim", hex: "#2F5F8F", box: "bg-payment-interim", note: "D13 — 중도금 배지. surface 대비 6.66" },
+  { name: "payment-interim-soft", hex: "#DFE8F2", box: "bg-payment-interim-soft", note: "배지 배경 — 위에 interim 5.38" },
+  { name: "payment-balance", hex: "#54407E", box: "bg-payment-balance", note: "D13 — 잔금 배지. surface 대비 8.71" },
+  { name: "payment-balance-soft", hex: "#E6E1F2", box: "bg-payment-balance-soft", note: "배지 배경 — 위에 balance 6.81" },
+  { name: "payment-etc", hex: "#5F4F43", box: "bg-payment-etc", note: "D13 — 기타 배지. surface 대비 7.82" },
+  { name: "payment-etc-soft", hex: "#EEE7DF", box: "bg-payment-etc-soft", note: "배지 배경 — 위에 etc 6.38" },
 ];
 
 export function ColorSection() {
@@ -41,7 +49,7 @@ export function ColorSection() {
       </Card>
       <Rule>
         Tailwind 기본 팔레트를 <code className="font-bold">--color-*: initial</code> 로 폐기했습니다. 위
-        9색 밖의 <span className="font-bold">명명 유틸리티</span>(<code>bg-red-500</code> 류)는 없습니다.
+        스와치 밖의 <span className="font-bold">명명 유틸리티</span>(<code>bg-red-500</code> 류)는 없습니다.
         {/* 예시 토큰을 쪼개 쓴다 — 붙여 쓰면 Tailwind 스캐너가 이 문장에서 진짜 유틸리티를 만들고(실측: 게이트가 잡았다)
             산출 CSS 에 팔레트 밖 색이 들어간다. 설명하는 문장이 설명하는 사고를 일으키는 셈이다. */}
         단 임의값(<code>{["bg-[#", "77354F]"].join("")}</code>)은 테마와 무관하게 그대로 컴파일되므로 —
@@ -55,6 +63,12 @@ export function ColorSection() {
         <span className="font-bold"> 단 하나, 업체 사례의 「잘한 사례」 배지만 예외</span>입니다(D12,
         2026-08-26) — 제품 담당자가 이 화면 하나를 지목해 요청했습니다. 다른 화면에 색이 새로 필요하면
         그 화면을 지목한 별도 결정을 먼저 씁니다.
+      </Rule>
+      <Rule>
+        위 <code className="font-bold">payment-*</code> 4쌍은 상태 색이 아니라{" "}
+        <span className="font-bold">카테고리 색</span>입니다(D13, 2026-08-27) — 결제 유형(계약금·
+        중도금·잔금·기타)을 구분할 뿐 「성공/위험」 같은 판단을 싣지 않으므로 위 D6과는 범위가 다릅니다.
+        적용 범위는 비용 관리의 결제 유형 배지 하나뿐입니다.
       </Rule>
       <Rule>
         primary 면 채움은 <span className="font-bold">면적으로 등급</span>이 갈립니다 — 버튼 · 배지 ·
