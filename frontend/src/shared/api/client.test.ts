@@ -184,6 +184,37 @@ describe("401 구독 — shared 는 누가 듣는지 모른다", () => {
   });
 });
 
+describe("로깅 관측성 — send() 의 실패 경로 두 곳이 콘솔에 흔적을 남긴다 (2026-08-26 감사)", () => {
+  it("네트워크 실패를 console.error 로 남긴다", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    await expect(apiFetch("/api/v1/x")).rejects.toThrow();
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it("HTTP 비정상 응답을 console.error 로 남긴다", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    fetchMock.mockResolvedValue(jsonResponse({ error: { code: "WEDDING_NOT_FOUND", message: "x" } }, 404));
+    await expect(apiFetch("/api/v1/x")).rejects.toThrow();
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it("onUnauthorized 구독자가 던져도 삼키는 대신 console.error 로 흔적을 남긴다", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const off = onUnauthorized(() => {
+      throw new Error("구독자 버그");
+    });
+    fetchMock.mockResolvedValue(jsonResponse({ error: { code: "UNAUTHORIZED", message: "x" } }, 401));
+    await expect(apiFetch("/api/v1/x")).rejects.toThrow();
+    // HTTP 에러 로그 1건 + 구독자 실패 로그 1건, 최소 2번은 불려야 한다.
+    expect(errorSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+    off();
+    errorSpy.mockRestore();
+  });
+});
+
 describe("계약 5 — 멀티파트는 Content-Type 을 건드리지 않는다", () => {
   it("boundary 를 브라우저가 정하도록 헤더를 비운다", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ receipt_url: "https://x" }, 201));
