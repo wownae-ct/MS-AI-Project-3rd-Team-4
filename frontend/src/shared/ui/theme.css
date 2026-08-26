@@ -38,9 +38,14 @@
   --color-surface: #ffffff; /* 카드 등 표면 */
   --color-line: #e7e3de; /* 카드 보더, 구분선, 진행률 바 트랙 */
 
-  /* semantic color(성공/경고/위험)는 도입하지 않기로 닫았다 — D6 (docs/design/decisions.md).
-     6화면 목업이 색 없이 전 상태를 표현했다. 상태는 보더 · 배경 톤 · 텍스트 · 형태로.
-     지어내지 않는다. 필요해지면 D6 을 폐기하는 결정을 먼저 쓰고 여기로 옮긴다. */
+  /* semantic color(성공/경고/위험) 전면 도입은 여전히 닫혀 있다 — D6 (docs/design/decisions.md).
+     6화면 목업이 색 없이 전 상태를 표현했다. 상태는 원칙적으로 보더 · 배경 톤 · 텍스트 · 형태로.
+     지어내지 않는다.
+     아래 success 만 예외다 — D12 가 D6 을 "업체 사례 GOOD 배지" 딱 한 곳에 한해 좁게 뒤집었다
+     (2026-08-26, 사용자 지시). 다른 상태(경고·위험 등)에 색을 새로 지어내려면 D12 처럼 그
+     화면 하나를 지목한 별도 결정이 먼저 있어야 한다 — 이 토큰의 존재가 일반 허가는 아니다. */
+  --color-success: #166534; /* surface 대비 7.13 · bg 대비 6.60 · line 대비 5.58 (WCAG 상대휘도) */
+  --color-success-soft: #e1f4e8; /* 배지 배경 — 위에 success 6.22 */
 
   /* Typography — Wanted Sans Variable.
      원 디자인 문서가 Pretendard 를 "브랜드 식별력이 떨어진다"는 이유로 명시 기각했다.

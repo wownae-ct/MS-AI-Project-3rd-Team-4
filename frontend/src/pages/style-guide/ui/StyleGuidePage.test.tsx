@@ -120,7 +120,11 @@ describe("규범 표시", () => {
 
   it("닫은 결정은 규범으로 표시한다 — 상태 색(D6) · primary 면적(D2)", () => {
     render(<StyleGuidePage />);
-    expect(screen.getByText(/상태 색\(성공 · 경고 · 위험\)은 도입하지 않습니다/u)).toBeInTheDocument();
+    // D6은 2026-08-26에 D12가 업체 사례 GOOD 배지 한 곳에 한해 좁게 뒤집었다 — 문구도 "원칙적으로"로
+    // 바뀌었다(decisions.md D6/D12, FoundationSection.tsx). 전면 폐기가 아니라는 것은 아래 예외
+    // 문구 단언이 고정한다.
+    expect(screen.getByText(/상태 색\(성공 · 경고 · 위험\)은 원칙적으로 도입하지 않습니다/u)).toBeInTheDocument();
+    expect(screen.getByText(/업체 사례의 「잘한 사례」 배지만 예외/u)).toBeInTheDocument();
     // D2 는 2026-08-22 에 닫혔다. 「열린 결정」 쪽에 있던 단언을 여기로 옮긴 것이라, 문구가
     // 어느 쪽에도 없으면 이 단언이 실패한다 — 규범이 조용히 사라지지 않는다.
     expect(screen.getByText(/카드 전면 채움은 하지 않습니다/u)).toBeInTheDocument();

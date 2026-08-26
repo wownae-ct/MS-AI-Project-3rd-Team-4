@@ -33,3 +33,4 @@ export {
   putWeddingCategories,
   updateMyWedding,
 } from "./api/wedding";
+export { deriveBudgetSummary } from "./model/derive-budget-summary";
