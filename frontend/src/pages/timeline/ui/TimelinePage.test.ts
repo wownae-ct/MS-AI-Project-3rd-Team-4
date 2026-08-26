@@ -2,7 +2,7 @@
 // 어긋나던 문제. 부제는 이제 화면에 렌더되는 groups[0]의 라벨에서 동적으로 만든다.
 import { describe, expect, it } from "vitest";
 import type { TimelinePhaseGroup } from "./group-by-phase";
-import { timelineSubtitle } from "./TimelinePage";
+import { resolveCategoryLabel, timelineSubtitle } from "./TimelinePage";
 
 function group(label: string): TimelinePhaseGroup {
   return { label, sortKey: 0, date: "2026-01-01", items: [] };
@@ -21,5 +21,20 @@ describe("timelineSubtitle", () => {
 
   it("웨딩 날짜 미정이라 전부 '일정 미정' 그룹뿐이면 날짜 범위 없이 일반 문구만 낸다", () => {
     expect(timelineSubtitle([group("일정 미정")])).toBe("비활성 카테고리는 제외됩니다");
+  });
+});
+
+describe("resolveCategoryLabel", () => {
+  it("STEP 10 — 매핑에 있는 코드는 한글 라벨(name_ko)로 바뀐다(원시 ENUM 코드 노출 방지)", () => {
+    const map = new Map([["VENUE", "예식장"]]);
+    expect(resolveCategoryLabel("VENUE", map)).toBe("예식장");
+  });
+
+  it("category_code가 null이면(범용 항목) null을 그대로 유지한다", () => {
+    expect(resolveCategoryLabel(null, new Map())).toBeNull();
+  });
+
+  it("매핑에 없는 코드(카테고리 목록 조회 실패 등)는 원시 코드로 폴백한다", () => {
+    expect(resolveCategoryLabel("HOMENEW", new Map())).toBe("HOMENEW");
   });
 });
