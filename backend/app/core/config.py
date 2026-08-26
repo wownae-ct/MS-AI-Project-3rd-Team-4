@@ -23,6 +23,17 @@ class Settings(BaseSettings):
     # (원래 브리프코치_기술설계서.md §8 미결 항목 — 문서는 docs/old/brief/plan/에 아카이브,
     # 메리맵 기술설계서에서 같은 항목 재확인 필요).
     azure_openai_api_version: str = "2024-10-21"
+    # 2026-08-26 챗 SSE 타임아웃 회귀 수정 — 이전엔 이 값이 없어 openai SDK 기본 타임아웃(600초)이
+    # 그대로 적용됐다. 챗 그래프(app/rag/graph.py)의 verify/reformulate_query처럼 스트리밍 없이
+    # 통으로 기다리는 호출이 오래 걸리면, 그 구간엔 SSE로 바이트가 하나도 안 나가서 nginx ingress의
+    # proxy-read-timeout(기본 60초, infra/k8s/overlays/*/ingress.yaml)이 먼저 커넥션을 끊어버려
+    # "타임아웃 에러"로 보였다. 45초로 못박아 이 구간이 무한정 열려있지 않게 하고(프론트가 이미
+    # personalization 쪽에 쓰는 PERSONALIZATION_TIMEOUT_MS=45000과 같은 값으로 맞춤), verify/
+    # reformulate_query 대기 중엔 별도로 SSE heartbeat도 흘려보내(app/rag/graph.py) 프록시가 그
+    # 45초 안에서도 "죽은 연결"로 오인하지 않게 한다. get_azure_openai_client()가 만드는 클라이언트
+    # 전부(임베딩·챗·개인화)가 이 값을 공유한다 — 인덱싱(짧은 텍스트 16개 배치)이나 개인화 생성
+    # 호출도 45초 안에 끝나는 게 정상이라 별도 값을 둘 이유가 없다(YAGNI).
+    azure_openai_timeout_seconds: float = 45.0
 
     # 05_RAG_design.md §4: 벡터 top-8 + tsvector top-4 → RRF 융합 → top-5 컨텍스트.
     rag_vector_top_k: int = 8
