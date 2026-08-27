@@ -1,15 +1,28 @@
-"""app/services/wedding.py의 순수 로직(approximate_wedding_date, find_budget_below_paid_violation)
-+ app/schemas/wedding.py의 WeddingCreate 검증기 — DB 없이 도는 것만."""
+"""app/services/wedding.py의 순수 로직(approximate_wedding_date, find_budget_below_paid_violation,
+stream_wedding_creation의 heartbeat 래핑) + app/schemas/wedding.py의 WeddingCreate 검증기 —
+DB 없이 도는 것만. stream_wedding_creation은 내부에서 create_wedding()을 부르지만, 아래
+테스트들은 create_wedding() 자체를 통째로 모킹해 실DB/실LLM 없이 스트리밍 레이어만 검증한다
+(app/rag/graph.py 챗 heartbeat 테스트, test_chat_graph.py::TestVerifyHeartbeat와 동일 접근)."""
 
-from datetime import date
+import asyncio
+from datetime import UTC, date, datetime
+from types import SimpleNamespace
 from typing import ClassVar
+from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
 import pytest
+from conftest import parse_sse_frames
 from pydantic import ValidationError
 
 from app.core.categories import CATEGORY_META
+from app.core.errors import api_error
 from app.schemas.wedding import WeddingCreate
-from app.services.wedding import approximate_wedding_date, find_budget_below_paid_violation
+from app.services.wedding import (
+    approximate_wedding_date,
+    find_budget_below_paid_violation,
+    stream_wedding_creation,
+)
 
 _ALL_ACTIVE_ZERO_BUDGET_CATEGORIES = [
     {
@@ -157,3 +170,105 @@ class TestFindBudgetBelowPaidViolation:
         planned = {"VENUE": 1_000_000, "SDM": 2_000_000}
         paid = {"VENUE": 5_000_000, "SDM": 9_000_000}
         assert find_budget_below_paid_violation(planned, paid) == ("VENUE", 5_000_000)
+
+
+def _fake_user() -> SimpleNamespace:
+    """stream_wedding_creation()이 성공/실패 로깅에 user.id를 직접 읽는다(create_wedding()이
+    모킹돼도 이 부분은 실행된다) — object()로는 AttributeError가 나서 최소 속성을 갖춘다."""
+    return SimpleNamespace(id=uuid4())
+
+
+def _fake_wedding() -> SimpleNamespace:
+    """WeddingOut.model_validate(from_attributes=True)가 읽을 수 있는 최소 속성 집합 — 실
+    SQLAlchemy Wedding 행 대신 써서 DB 없이 stream_wedding_creation()을 검증한다."""
+    return SimpleNamespace(
+        id=uuid4(),
+        user_role="BRIDE",
+        wedding_date=date(2027, 5, 15),
+        wedding_date_precision="EXACT",
+        total_budget=45_000_000,
+        total_budget_unsure=False,
+        region_code="SEOUL_GANGNAM",
+        guest_count=None,
+        guest_count_unsure=True,
+        taste_preference=None,
+        venue_priority=None,
+        sdm_priority=None,
+        primary_goals=None,
+        created_at=datetime(2026, 8, 28, 12, 0, 0, tzinfo=UTC),
+    )
+
+
+class TestStreamWeddingCreationHeartbeat:
+    """2026-08-28 — POST /weddings를 SSE로 전환하며 추가한 heartbeat
+    (app/services/wedding.py::stream_wedding_creation). red-bug.md §3 "온보딩 개인화 생성이
+    프론트 타임아웃보다 오래 걸리는 경우가 실사용 조건에서 실제로 발생"의 근본 원인 대응."""
+
+    @pytest.mark.asyncio
+    async def test_emits_heartbeat_while_create_wedding_is_slow(self):
+        wedding = _fake_wedding()
+
+        async def _slow_create(*_args, **_kwargs):
+            await asyncio.sleep(0.05)
+            return wedding
+
+        with (
+            patch("app.services.wedding.create_wedding", AsyncMock(side_effect=_slow_create)),
+            patch("app.services.wedding._WEDDING_CREATE_HEARTBEAT_INTERVAL_SECONDS", 0.01),
+        ):
+            chunks = [
+                chunk async for chunk in stream_wedding_creation(object(), _fake_user(), object())
+            ]
+
+        events = parse_sse_frames("".join(chunks))
+        heartbeats = [e for e in events if e[0] is None]
+        assert len(heartbeats) >= 1
+        assert events[-1][0] == "done"
+
+    @pytest.mark.asyncio
+    async def test_emits_done_event_with_wedding_payload_on_success(self):
+        wedding = _fake_wedding()
+
+        with patch("app.services.wedding.create_wedding", AsyncMock(return_value=wedding)):
+            chunks = [
+                chunk async for chunk in stream_wedding_creation(object(), _fake_user(), object())
+            ]
+
+        events = parse_sse_frames("".join(chunks))
+        assert len(events) == 1
+        event_name, data = events[0]
+        assert event_name == "done"
+        assert data["id"] == str(wedding.id)
+        assert data["user_role"] == "BRIDE"
+        assert data["total_budget"] == 45_000_000
+
+    @pytest.mark.asyncio
+    async def test_emits_error_event_on_wedding_already_exists_instead_of_raising(self):
+        already_exists = api_error(409, "WEDDING_ALREADY_EXISTS", "이미 웨딩 프로필이 있습니다.")
+
+        with patch("app.services.wedding.create_wedding", AsyncMock(side_effect=already_exists)):
+            chunks = [
+                chunk async for chunk in stream_wedding_creation(object(), _fake_user(), object())
+            ]
+
+        events = parse_sse_frames("".join(chunks))
+        assert events == [
+            ("error", {"code": "WEDDING_ALREADY_EXISTS", "message": "이미 웨딩 프로필이 있습니다."})
+        ]
+
+    @pytest.mark.asyncio
+    async def test_emits_error_event_on_budget_exceeded(self):
+        over_budget = api_error(400, "BUDGET_EXCEEDED", "배정 합계가 예산을 1,000원 초과합니다.")
+
+        with patch("app.services.wedding.create_wedding", AsyncMock(side_effect=over_budget)):
+            chunks = [
+                chunk async for chunk in stream_wedding_creation(object(), _fake_user(), object())
+            ]
+
+        events = parse_sse_frames("".join(chunks))
+        assert events == [
+            (
+                "error",
+                {"code": "BUDGET_EXCEEDED", "message": "배정 합계가 예산을 1,000원 초과합니다."},
+            )
+        ]

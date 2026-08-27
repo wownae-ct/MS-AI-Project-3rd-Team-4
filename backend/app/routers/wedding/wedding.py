@@ -1,7 +1,14 @@
 """#6-10 — 03_API_spec.md ① 웨딩 핵심(온보딩, 조회/수정, 카테고리 On/Off·예산). v4.0: wedding_id는
-항상 세션에서 서버가 유도(get_current_wedding) — URL/body에 없다."""
+항상 세션에서 서버가 유도(get_current_wedding) — URL/body에 없다.
 
-from fastapi import APIRouter, Depends, Request, status
+2026-08-28 — POST /weddings는 더 이상 평범한 JSON 응답이 아니다(SSE, text/event-stream).
+app/services/wedding.py::stream_wedding_creation() 모듈 docstring 참고 — 온보딩 동기 개인화
+LLM 호출(p95=45.9초)의 타임아웃 위험 대응, chat SSE heartbeat와 동일 패턴. 성공은
+`event: done`(WeddingOut), 실패(409/400 등)는 `event: error`로 온다 — HTTP 상태코드로는
+더 이상 성패를 구분할 수 없다(03_API_spec.md 갱신 필요, 아직 반영 전)."""
+
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -17,10 +24,8 @@ from app.schemas.wedding import (
     WeddingUpdate,
 )
 from app.services.wedding import (
-    create_wedding as create_wedding_service,
-)
-from app.services.wedding import (
     list_wedding_categories_out,
+    stream_wedding_creation,
 )
 from app.services.wedding import (
     update_wedding as update_wedding_service,
@@ -32,17 +37,24 @@ from app.services.wedding import (
 router = APIRouter(tags=["wedding"])
 
 
-@router.post("/weddings", response_model=WeddingOut, status_code=status.HTTP_201_CREATED)
+@router.post("/weddings")
 @limiter.limit("10/minute", key_func=user_or_ip_key)
 # 17_qa_e2e_test_plan.md §10-2/§14-2 — 온보딩 1회당 LLM 호출(개인화 그래프)이 걸리는 엔드포인트
-# (Phase 1 실측 17.5~28.76s). 계정 기준 제한 — Azure OpenAI 비용 선형 증가 방지.
+# (Phase 1 실측 17.5~28.76s). 계정 기준 제한 — Azure OpenAI 비용 선형 증가 방지. SSE 전환
+# 이후에도 이 데코레이터는 응답 스트리밍 여부와 무관하게 핸들러 호출 자체를 제한한다.
 async def create_wedding(
     request: Request,
     payload: WeddingCreate,
     user: User = Depends(get_current_user),  # noqa: B008
-    session: AsyncSession = Depends(get_session),  # noqa: B008
-) -> Wedding:
-    return await create_wedding_service(session, get_settings(), user, payload)
+) -> StreamingResponse:
+    # session은 일부러 Depends(get_session)으로 주입받지 않는다 — stream_wedding_creation()
+    # 모듈 docstring 참고(StreamingResponse 핸들러가 리턴하는 즉시 주입된 세션이 닫혀버리는
+    # 문제, chat과 동일 패턴).
+    return StreamingResponse(
+        stream_wedding_creation(get_settings(), user, payload),
+        media_type="text/event-stream",
+        headers={"X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("/weddings/me", response_model=WeddingOut)

@@ -6,6 +6,7 @@ DB(개발자가 평소 실DB 검증에 쓰는 것과 동일)를 그대로 쓰고
 pgvector/pgvector 서비스 컨테이너로 매 실행마다 빈 DB에 마이그레이션을 새로 적용한 뒤 돈다
 (2026-08-24, PR #37 CI 실패로 발견해 추가)."""
 
+import json
 from collections.abc import AsyncIterator, Callable, Coroutine
 from datetime import date
 from uuid import UUID, uuid4
@@ -22,6 +23,30 @@ from app.main import app
 from app.models import ChatMessage, PriceBenchmark
 
 API_PREFIX = "/api/v1"
+
+
+def parse_sse_frames(text: str) -> list[tuple[str | None, dict | str]]:
+    """text/event-stream 바디를 (event, data) 튜플 리스트로 파싱한다. `:`로 시작하는
+    heartbeat 주석 줄은 (None, 원문)으로 남긴다. app/services/wedding.py::stream_wedding_creation
+    (2026-08-28)/app/services/chat.py처럼 SSE로 응답하는 엔드포인트를 테스트하는 곳(test_smoke.py,
+    test_wedding_service.py)이 공유한다."""
+    parsed: list[tuple[str | None, dict | str]] = []
+    for block in text.split("\n\n"):
+        if not block:
+            continue
+        if block.startswith(":"):
+            parsed.append((None, block[1:].strip()))
+            continue
+        event_name, data_line = None, None
+        for line in block.split("\n"):
+            if line.startswith("event:"):
+                event_name = line.removeprefix("event:").strip()
+            elif line.startswith("data:"):
+                data_line = line.removeprefix("data:").strip()
+        if event_name is not None and data_line is not None:
+            parsed.append((event_name, json.loads(data_line)))
+    return parsed
+
 
 # 스모크 테스트는 같은 ASGITransport 클라이언트로 회원가입/로그인/웨딩 생성을 매 테스트마다
 # 반복 호출한다(위 독스트링 — 테스트 DB 정리/롤백 인프라가 아직 없어 실DB에 계속 쌓는 방식).
