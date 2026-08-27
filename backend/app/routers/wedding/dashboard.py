@@ -7,6 +7,13 @@ app/services/wedding.py의 list_wedding_categories_out()을 그대로 재사용�
 /wedding-categories와 같은 계산을 두 번 짜지 않는다 — 체크리스트 진행률/우선순위 추천/다가오는
 일정 결합 조회만 app/services/dashboard.py에서 새로 짰다.
 
+2026-08-28부로 categories[].progress_rate(#25)와 category_completion[].progress_rate(#26)의
+소스가 갈라졌다 — #25는 계속 get_checklist_progress_by_category(체크리스트 기준), #26은
+get_timeline_progress_by_category(타임라인 기준)를 쓴다. 필드명(progress_rate)과 타입(0.0~1.0
+float)은 양쪽 다 동일해 응답 스키마 변경은 없다 — S2(대시보드)와 S5(리포트)가 "같은 원천을
+다른 각도로 보여준다"던 기존 설계를 깨고 서로 다른 진행률을 보여주기로 한 의도적 결정
+(docs/wedding/refactor/bug-todo.md "S5 리포트탭..." 항목).
+
 remaining_budget은 두 엔드포인트 모두 total_budget - total_paid다(03_API_spec.md #25 field
 table, #26 응답 예시 둘 다 이 산식으로 정합적이다 — #25 자체의 JSON 예시 숫자는 field table과
 안 맞는 문서 오기로 보여 여기서는 field table을 따른다)."""
@@ -34,6 +41,7 @@ from app.services.benchmark import get_latest_benchmark
 from app.services.dashboard import (
     build_budget_benchmark,
     get_checklist_progress_by_category,
+    get_timeline_progress_by_category,
     list_next_recommended_checks,
     list_upcoming_items,
 )
@@ -102,7 +110,7 @@ async def get_my_report(
     all_categories = await list_wedding_categories_out(session, wedding.id)
     active_categories = [c for c in all_categories if c.is_active]
     active_category_codes = {c.category_code for c in active_categories}
-    progress_by_category = await get_checklist_progress_by_category(session, wedding.id)
+    progress_by_category = await get_timeline_progress_by_category(session, wedding.id)
     upcoming_payments = await list_upcoming_payments_service(
         session, wedding.id, REPORT_UPCOMING_PAYMENTS_DAYS, today
     )
