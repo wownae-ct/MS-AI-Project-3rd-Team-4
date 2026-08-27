@@ -3,7 +3,7 @@ run_personalization 자체는 라이브 DB가 있는 사용자 환경에서 확�
 checklist.py·wedding.py 테스트와 같은 이 레포의 기존 컨벤션). ORM 모델(ChecklistItem/TimelineItem)
 을 세션에 add하지 않고 순수 인스턴스로만 만들어 필드 값을 검증한다."""
 
-from datetime import date
+from datetime import date, timedelta
 
 from app.models import Wedding
 from app.services.personalization import (
@@ -183,16 +183,42 @@ class TestChecklistFallbackRows:
 
 
 class TestTimelineRowFromDraft:
-    def test_target_date_is_wedding_date_plus_offset(self):
+    def test_target_date_is_wedding_date_plus_scaled_offset(self):
         item = {"category_code": "VENUE", "title": "제목", "default_dday_offset_days": -30}
-        row = _timeline_row_from_draft(date(2027, 5, 15), set(), date(2026, 8, 24), 1, item)
+        row = _timeline_row_from_draft(
+            date(2027, 5, 15), set(), date(2026, 8, 24), 1, item, scale_factor=1.0
+        )
         assert row.target_date == date(2027, 4, 15)
+
+    def test_scale_factor_actually_scales_negative_offset(self):
+        # 2026-08-28 — LLM 경로도 카탈로그 경로(generate_timeline_items)와 동일하게 스케일된다.
+        item = {"category_code": "VENUE", "title": "제목", "default_dday_offset_days": -30}
+        row = _timeline_row_from_draft(
+            date(2027, 5, 15), set(), date(2026, 8, 24), 1, item, scale_factor=0.5
+        )
+        assert row.target_date == date(2027, 5, 15) - timedelta(days=15)
+        assert row.default_dday_offset_days == -15
 
     def test_origin_is_llm_and_not_date_overridden(self):
         item = {"category_code": "VENUE", "title": "제목", "default_dday_offset_days": 0}
-        row = _timeline_row_from_draft(date(2027, 5, 15), set(), date(2026, 8, 24), 1, item)
+        row = _timeline_row_from_draft(
+            date(2027, 5, 15), set(), date(2026, 8, 24), 1, item, scale_factor=1.0
+        )
         assert row.origin == "LLM"
         assert row.date_overridden is False
+
+    def test_done_status_uses_raw_offset_not_scaled_offset(self):
+        # done_so_far DONE 판정은 스케일 전(raw) target_date 기준 — 스케일된 target_date로는
+        # 카탈로그 최솟값과 동일한 계산 성질 때문에 "이미 지남"이 절대 나올 수 없다(2026-08-28
+        # 사용자 결정, app/services/timeline.py 모듈 docstring 참고).
+        item = {"category_code": "VENUE", "title": "제목", "default_dday_offset_days": -300}
+        # raw target_date = 2027-05-15 - 300일 = 2026-07-19, today(2026-08-24)보다 과거.
+        row = _timeline_row_from_draft(
+            date(2027, 5, 15), {"VENUE"}, date(2026, 8, 24), 1, item, scale_factor=0.5
+        )
+        assert row.status == "DONE"
+        # 저장된 target_date 자체는 스케일된 값(offset=-150)이라 today보다 미래다.
+        assert row.target_date == date(2027, 5, 15) - timedelta(days=150)
 
 
 class TestTimelineFallbackRows:
