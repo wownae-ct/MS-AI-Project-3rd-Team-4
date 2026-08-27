@@ -1,8 +1,15 @@
 // S5 리포트 — 시각 스펙: docs/mockups/s5-report.html
 //
-// **새 데이터가 없는 화면이다.** 숫자 대부분이 S2 대시보드와 같은 원천(`GET /reports/me`가
-// `GET /dashboard/summary`와 겹치는 값을 다른 각도로 준다)이고, 보는 각도만 다르다 — 예산은
-// 도넛 대신 3분할로, 카테고리는 예산 지불률 대신 체크리스트 진행률로.
+// **예산은 S2 대시보드와 같은 원천이다.** `GET /reports/me`가 `GET /dashboard/summary`와
+// 겹치는 예산 값을 다른 각도로 준다 — 도넛 대신 3분할로.
+//
+// **카테고리별 진행률은 더 이상 S2 와 같은 값이 아니다(2026-08-28부터).** 이전엔 `GET
+// /reports/me`/`GET /dashboard/summary` 둘 다 체크리스트 진행률을 같은 값으로 줬지만, 이 화면의
+// `category_completion[].progress_rate`는 이제 타임라인 진행률로 산출 기준이 바뀌었다(백엔드
+// `get_timeline_progress_by_category()`) — `GET /dashboard/summary`의 `categories[].progress_rate`
+// (S2, 체크리스트 기준)는 이 변경과 무관하게 그대로다. "같은 값의 다른 뷰"였던 원래 설계는 이
+// 카드에 한해 더 이상 사실이 아니다 — `CompletionRow.tsx`/`adapt-report.ts`의 `timelineProgress`
+// 참고.
 //
 // **"다가오는 납부" 카드 제거(2026-08-27, 사용자 지시).** 홈 탭(S2)에 이미 같은 성격의 카드
 // (`UpcomingPaymentsCard`, `getUpcomingPayments()` 기반)가 있어 중복이었다 — 이 화면이 쓰던
