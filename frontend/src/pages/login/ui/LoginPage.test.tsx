@@ -123,10 +123,11 @@ describe("로그인 폼", () => {
   });
 });
 
-describe("가입 → 로그인 자동 채움", () => {
-  // 요구 플로우 ③: 가입에 성공하면 로그인 폼에 방금 쓴 아이디·비밀번호가 남아 있어야 한다.
-  // 어디에도 저장하지 않는다 — 컴포넌트 상태로만 들고 있다가 로그인 제출 시 소비된다.
-  it("가입에 성공하면 로그인 모드로 돌아가고 입력값이 그대로 남는다", async () => {
+describe("가입 → 로그인 인계", () => {
+  // 가입에 성공하면 이메일만 로그인 폼으로 넘긴다(재입력 부담 제거). 비밀번호는 비운다 —
+  // 어깨너머 노출과 「이미 로그인된 건가」 오해를 막고 로그인을 명시적 행위로 남긴다.
+  // 어느 값도 저장하지 않는다 — 컴포넌트 상태로만 들고 있다가 로그인 제출 시 소비된다.
+  it("가입에 성공하면 로그인 모드로 돌아가고 이메일만 남는다", async () => {
     signupFn.mockResolvedValue({ id: "u", email: "new@b.c", displayName: null, hasWedding: false });
     render(<LoginPage />);
 
@@ -144,7 +145,57 @@ describe("가입 → 로그인 자동 채움", () => {
 
     expect(await screen.findByRole("button", { name: "로그인" })).toBeInTheDocument();
     expect(screen.getByLabelText("이메일")).toHaveValue("new@b.c");
-    expect(screen.getByLabelText("비밀번호")).toHaveValue("pw123456!");
+    expect(screen.getByLabelText("비밀번호")).toHaveValue("");
+  });
+
+  // 무음으로 폼만 바뀌면 사용자는 가입이 됐는지 실패했는지 알 수 없다.
+  it("가입 완료를 배너로 알린다 — role=status(polite)로", async () => {
+    signupFn.mockResolvedValue({ id: "u", email: "new@b.c", displayName: null, hasWedding: false });
+    render(<LoginPage />);
+
+    await userEvent.click(screen.getByRole("button", { name: "계정이 없으신가요? 회원가입" }));
+    await userEvent.type(screen.getByLabelText("닉네임"), "홍길동");
+    await userEvent.type(screen.getByLabelText("이메일"), "new@b.c");
+    await userEvent.type(screen.getByLabelText("비밀번호"), "pw123456!");
+    await userEvent.click(screen.getByRole("button", { name: "회원가입" }));
+
+    const banner = await screen.findByRole("status");
+    expect(banner).toHaveTextContent(/회원가입이 완료되었습니다/u);
+    // 닉네임으로 부른다 — 누구의 계정이 만들어졌는지가 드러나야 확인이 된다.
+    expect(banner).toHaveTextContent(/홍길동/u);
+    // 실패와 같은 자리·같은 강도로 낭독되면 안 된다.
+    expect(screen.queryByRole("alert")).toBeNull();
+    // 비운 비밀번호 칸이 다음 할 일이다.
+    expect(screen.getByLabelText("비밀번호")).toHaveFocus();
+  });
+
+  it("모드를 다시 바꾸면 완료 배너는 걷힌다 — 회원가입 폼 위에 남으면 안 된다", async () => {
+    signupFn.mockResolvedValue({ id: "u", email: "new@b.c", displayName: null, hasWedding: false });
+    render(<LoginPage />);
+
+    await userEvent.click(screen.getByRole("button", { name: "계정이 없으신가요? 회원가입" }));
+    await userEvent.type(screen.getByLabelText("닉네임"), "홍길동");
+    await userEvent.type(screen.getByLabelText("이메일"), "new@b.c");
+    await userEvent.type(screen.getByLabelText("비밀번호"), "pw123456!");
+    await userEvent.click(screen.getByRole("button", { name: "회원가입" }));
+    expect(await screen.findByRole("status")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "계정이 없으신가요? 회원가입" }));
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+});
+
+describe("화면 제목은 모드를 따라간다", () => {
+  // 버튼 라벨만 바뀌고 제목이 "로그인"으로 고정되면 지금 무엇을 하는 중인지 어긋난다.
+  it("회원가입 모드에서는 제목이 '회원가입'이다", async () => {
+    render(<LoginPage />);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("로그인");
+
+    await userEvent.click(screen.getByRole("button", { name: "계정이 없으신가요? 회원가입" }));
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("회원가입");
+
+    await userEvent.click(screen.getByRole("button", { name: "이미 계정이 있으신가요? 로그인" }));
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("로그인");
   });
 
   it("이메일·닉네임 앞뒤 공백은 잘라내고 보낸다", async () => {
