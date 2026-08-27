@@ -1,7 +1,11 @@
 // S5 리포트 — 시각 스펙: docs/mockups/s5-report.html
 //
-// **예산은 S2 대시보드와 같은 원천이다.** `GET /reports/me`가 `GET /dashboard/summary`와
-// 겹치는 예산 값을 다른 각도로 준다 — 도넛 대신 3분할로.
+// **예산은 S6 예산 탭과 같은 함수로 계산한다(2026-08-28, red-bug.md #7 근본 수정).** 예전엔
+// `report.budget_summary`(paid/remaining 3값)를 역산해 썼는데, 그 정의가 S6
+// (`deriveBudgetSummary`, 배정액 기준)와 달라서 같은 웨딩의 "미배정"이 두 화면에서 다르게
+// 보였다. 이제 이 화면도 `deriveBudgetSummary(weddingCategories, ...)`를 직접 호출한다 —
+// `report.budget_summary`는 `total_budget` 값 하나만 쓴다(어차피 카테고리 목록을 이미
+// 병렬로 불러오고 있으므로 새 API 호출은 없다).
 //
 // **카테고리별 진행률은 더 이상 S2 와 같은 값이 아니다(2026-08-28부터).** 이전엔 `GET
 // /reports/me`/`GET /dashboard/summary` 둘 다 체크리스트 진행률을 같은 값으로 줬지만, 이 화면의
@@ -19,7 +23,7 @@
 //
 // **목업과 의도적으로 다른 점** (전부 규범이 목업을 이기는 경우 — ADR 0006)
 //   1. 카드 제목을 `<p>` 가 아니라 `<h2>` 로 낸다 — WCAG 1.3.1 F2 (a11y.md §4).
-//   2. 「잔여」→「미배정」 — 세 값이 총액과 맞지 않아 보인다(BudgetStats 주석).
+//   2. 「잔여」→「미배정」 — 네 값이 총액과 맞지 않아 보인다(BudgetStats 주석).
 //   3. 추천 카드는 자주색 전면 채움이 아니다 — D2 종결(2026-08-22).
 //   4. 추천 행이 2줄이다 — 260px 열에서 제목이 말줄임된다(RecoRow 주석).
 //   5. 카테고리명은 데이터의 전체 이름을 쓴다 — 목업은 이 화면에서만 줄여 적었다.
@@ -33,10 +37,10 @@
 //     낮음)를 쓴다, API가 실제로 그 필드를 준다.
 import { useEffect, useState } from "react";
 import { getMyReport, type MyReport } from "@/entities/dashboard";
-import { getWeddingCategories, type WeddingCategory } from "@/entities/wedding";
+import { deriveBudgetSummary, getWeddingCategories, type WeddingCategory } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
 import { Card, Page } from "@/shared/ui";
-import { adaptBudgetSummary, adaptCategoryCompletions } from "./adapt-report";
+import { adaptCategoryCompletions } from "./adapt-report";
 import { BudgetStats } from "./BudgetStats";
 import { completionPercent, CompletionRow } from "./CompletionRow";
 import { RecoRow } from "./RecoRow";
@@ -88,7 +92,7 @@ export function ReportPage() {
   }
 
   const { report, weddingCategories } = data;
-  const budget = adaptBudgetSummary(report);
+  const budget = deriveBudgetSummary(weddingCategories, report.budget_summary.total_budget);
   const categoryCompletions = adaptCategoryCompletions(report.category_completion, weddingCategories);
 
   // **S5 는 정렬하고 S2 는 안 한다.** S2 의 「카테고리별 예산」은 배열 순서(= 준비 순서)를 그대로
