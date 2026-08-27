@@ -490,6 +490,43 @@ class TestDashboardSmoke:
         assert body["budget_summary"]["total_budget"] == 50_000_000
         assert len(body["next_recommended_checks"]) <= 5
 
+    async def test_my_report_progress_rate_is_timeline_based_and_independent_of_dashboard(
+        self, wedding_client
+    ):
+        """2026-08-28 — #26 category_completion[].progress_rate가 체크리스트가 아니라
+        타임라인 기준으로 바뀌었는지 확인(app/services/dashboard.py::
+        get_timeline_progress_by_category, #25는 여전히 체크리스트 기준). 타임라인 항목 하나만
+        DONE으로 바꾼 뒤, /reports/me의 해당 카테고리 progress_rate는 올라가지만
+        /dashboard/summary의 같은 카테고리 progress_rate(체크리스트 기준, 이 테스트가 손대지
+        않음)는 그대로 0.0이어야 한다 — 두 진행률 소스가 실제로 분리됐다는 걸 증명하는 유일한
+        방법."""
+        timeline_items = (await wedding_client.get("/timeline-items")).json()["items"]
+        target = next(item for item in timeline_items if item["category_code"] is not None)
+        category_code = target["category_code"]
+
+        before_dashboard = await wedding_client.get("/dashboard/summary")
+        before_category = next(
+            c for c in before_dashboard.json()["categories"] if c["category_code"] == category_code
+        )
+        assert before_category["progress_rate"] == 0.0
+
+        patch_response = await wedding_client.patch(
+            f"/timeline-items/{target['id']}", json={"status": "DONE"}
+        )
+        assert patch_response.status_code == 200
+
+        report = await wedding_client.get("/reports/me")
+        report_completion = next(
+            c for c in report.json()["category_completion"] if c["category_code"] == category_code
+        )
+        assert report_completion["progress_rate"] > 0.0
+
+        after_dashboard = await wedding_client.get("/dashboard/summary")
+        after_category = next(
+            c for c in after_dashboard.json()["categories"] if c["category_code"] == category_code
+        )
+        assert after_category["progress_rate"] == 0.0
+
     async def test_my_report_without_cookie_returns_401(self, client):
         response = await client.get("/reports/me")
 
