@@ -77,6 +77,32 @@ async def get_checklist_progress_by_category(
     return {code: dones[code] / total for code, total in totals.items() if total > 0}
 
 
+async def get_timeline_progress_by_category(
+    session: AsyncSession, wedding_id: UUID
+) -> dict[str, float]:
+    """카테고리별 타임라인 완료율(#26 GET /reports/me 전용 — #25 GET /dashboard/summary는
+    get_checklist_progress_by_category를 그대로 쓴다, S2/S5 진행률 소스를 분리하는 게 이번
+    변경의 목적이다). timeline_items.status는 'TODO'/'DONE' 이진뿐이라(app/models/timeline.py
+    CHECK 제약) 체크리스트처럼 카테고리별 완료 상태 분기가 없다. category_code가 NULL인 범용
+    항목(혼인신고 등 — checklist_items와 달리 timeline_items만 category_code가 nullable)은
+    분자/분모 양쪽에서 제외한다. 항목이 아직 없는 카테고리는
+    get_checklist_progress_by_category와 동일하게 결과 dict에서 빠지고 호출부가
+    .get(code, 0.0)으로 0 취급한다."""
+    is_done = case((TimelineItem.status == "DONE", 1), else_=0)
+    stmt = select(TimelineItem.category_code, is_done.label("done")).where(
+        TimelineItem.wedding_id == wedding_id,
+        TimelineItem.category_code.is_not(None),
+    )
+    rows = (await session.execute(stmt)).all()
+
+    totals: dict[str, int] = {}
+    dones: dict[str, int] = {}
+    for category_code, done in rows:
+        totals[category_code] = totals.get(category_code, 0) + 1
+        dones[category_code] = dones.get(category_code, 0) + done
+    return {code: dones[code] / total for code, total in totals.items() if total > 0}
+
+
 async def list_upcoming_items(
     session: AsyncSession, wedding_id: UUID, today: date, active_category_codes: set[str]
 ) -> list[dict]:
