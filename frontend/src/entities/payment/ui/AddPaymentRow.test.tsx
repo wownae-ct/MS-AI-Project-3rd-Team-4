@@ -16,8 +16,8 @@ vi.mock("../api/payment", () => ({
 
 function selectReceiptFile() {
   const file = new File(["fake"], "receipt.jpg", { type: "image/jpeg" });
-  // 파일 입력은 sr-only + capture="environment" 라 접근성 쿼리로 잡히지 않는다 — 실제
-  // 사용자 흐름(버튼 클릭 → 숨은 input.click())과 동일하게 change 이벤트로 시뮬레이션한다.
+  // 파일 입력은 sr-only 라 접근성 쿼리로 잡히지 않는다 — 실제 사용자 흐름(버튼 클릭 → 숨은
+  // input.click())과 동일하게 change 이벤트로 시뮬레이션한다.
   const input = document.querySelector('input[type="file"]') as HTMLInputElement;
   fireEvent.change(input, { target: { files: [file] } });
   return file;
@@ -50,5 +50,16 @@ describe("영수증 OCR 취소 버튼", () => {
     await user.click(screen.getByRole("button", { name: "취소" }));
 
     expect(capturedSignal?.aborted).toBe(true);
+  });
+});
+
+describe("영수증 파일 입력", () => {
+  it("capture 속성이 없어 브라우저 기본 선택 UI(카메라/갤러리 둘 다)를 사용한다", async () => {
+    const user = userEvent.setup();
+    render(<AddPaymentRow categoryCode="VENUE" onAdded={() => {}} />);
+    await user.click(screen.getByRole("button", { name: "+ 납부 항목 추가" }));
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(input.hasAttribute("capture")).toBe(false);
   });
 });
