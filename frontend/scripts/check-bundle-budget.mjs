@@ -161,7 +161,17 @@ const BUDGETS = [
   // `invalidateSession()` 호출은 이제 lazy `pages/settings` 청크로 옮겨져 초기 청크에서
   // 빠졌다(순감소 방향 변경도 있었다는 뜻). 실측 128B 증가를 그대로 반영 — 여유를 22B로
   // 좁게 유지한다.
-  { key: "jsChunkGzip", limit: 97_400, measured: 97_378, label: "최대 단일 JS 청크 (gzip)" },
+  // ── 2026-08-28 온보딩 createWedding SSE 스트림 전환으로 97,400 → 97,850 ────────────────
+  // 97,378 → 97,829(증가 451B) — `entities/wedding/api/wedding.ts::createWedding()`이
+  // 백엔드 `POST /weddings` 응답의 JSON 단발 → `text/event-stream` 전환(개인화 LLM 생성이
+  // 오래 걸릴 때 heartbeat로 프록시 타임아웃을 피하는 백엔드 변경, dev-af 세션 구현)에 맞춰
+  // fetch+ReadableStream SSE 프레임 파서로 재작성됐고, `shared/api/client.ts`에서 TIMEOUT/
+  // NETWORK_ERROR 분류 로직을 `classifyFetchFailure()`로 추출·공유했다 — 둘 다 `entities/
+  // wedding`을 통해 초기 청크에서 이미 도달 가능한 모듈이라(위 2026-08-26 항목들과 같은
+  // 원인) 화면 기능과 무관하게 여기서 바로 걸린다. 측정은 같은 워킹트리의 다른 93개
+  // 미커밋 파일(CRLF 개행 차이뿐, 내용은 HEAD와 동일 — `git stash`로 이 4개 파일만 분리해
+  // 재확인)의 오염 가능성을 배제하고 격리해서 잡았다. 여유를 21B로 좁게 유지한다.
+  { key: "jsChunkGzip", limit: 97_850, measured: 97_829, label: "최대 단일 JS 청크 (gzip)" },
   { key: "cssGzip", limit: 6_000, measured: 4_237, label: "CSS (gzip, @font-face 제외)" },
   // 폰트는 unicode-range 로 분할돼 전량 전송되지 않으므로 이 값은 전송량이 아니라 **배포 크기** 가드다.
   // 잡으려는 사고: variable/split(2.3 MB) 대신 static/split(8.8 MB)이나 static/complete(4.7 MB)를
