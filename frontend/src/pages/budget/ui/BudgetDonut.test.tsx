@@ -1,14 +1,25 @@
-// 초과지출(paid+planned > total) 시 "미배정"이 음수로 찍히던 회귀를 고정한다.
+// 초과지출(paid+scheduled+allocated > total) 시 "미배정"이 음수로 찍히던 회귀를 고정한다.
 // 원인/배경: docs/wedding/ing/todo.md, done.md 2026-08-26 — backend 가 결제 상한을 두지 않기로
-// 결정해(캡 없음) remaining = total - paid - planned 가 음수로 내려올 수 있다. 프론트는 그 음수를
-// 그대로 "미배정 -1,000,000원"으로 보여줬다 — 총액이 틀린 것처럼 오독된다.
+// 결정해(캡 없음) unallocated = total - Σplanned_budget 가 음수로 내려올 수 있다. 프론트는 그
+// 음수를 그대로 "미배정 -1,000,000원"으로 보여줬다 — 총액이 틀린 것처럼 오독된다.
+//
+// 4계열 전환(2026-08-28, red-bug.md #7) — `planned`/`remaining` 두 필드가 `scheduled`/`allocated`/
+// `unallocated` 세 필드로 갈라졌다. 이 파일의 회귀 시나리오(초과지출 클램프) 자체는 그대로다 —
+// 필드 이름과 계열 수만 맞춘다.
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import type { BudgetSummary } from "@/entities/wedding";
 import { BudgetDonut } from "./BudgetDonut";
 
 function summary(overrides: Partial<BudgetSummary>): BudgetSummary {
-  return { total: 45_000_000, paid: 3_800_000, planned: 40_200_000, remaining: 1_000_000, ...overrides };
+  return {
+    total: 45_000_000,
+    paid: 3_800_000,
+    scheduled: 2_000_000,
+    allocated: 38_200_000,
+    unallocated: 1_000_000,
+    ...overrides,
+  };
 }
 
 describe("BudgetDonut", () => {
@@ -17,8 +28,8 @@ describe("BudgetDonut", () => {
     expect(screen.getByText("1,000,000원")).toBeInTheDocument();
   });
 
-  it("초과지출로 remaining 이 음수여도 미배정은 0으로 표시한다 — 음수를 그대로 내면 오독된다", () => {
-    const overspent = summary({ paid: 3_800_000, planned: 42_200_000, remaining: -1_000_000 });
+  it("초과지출로 unallocated 가 음수여도 미배정은 0으로 표시한다 — 음수를 그대로 내면 오독된다", () => {
+    const overspent = summary({ paid: 3_800_000, scheduled: 2_000_000, allocated: 40_200_000, unallocated: -1_000_000 });
     render(<BudgetDonut summary={overspent} onTotalBudgetSaved={() => {}} benchmark={null} />);
     expect(screen.getByText("0원")).toBeInTheDocument();
     expect(screen.queryByText(/-1,000,000/u)).not.toBeInTheDocument();
@@ -30,7 +41,7 @@ describe("BudgetDonut", () => {
     // 스캐너가 걸린다(BudgetDonut.tsx 헤더 주석의 그 경고를 이 파일에서 한 번 더 재현할 뻔한
     // 사례 — 경고 주석 자체에 금지어를 적었다가 잡히는 재귀 실수를 피하려 이름을 안 적는다).
     // 같은 DOM 을 가리키는 다른 프로퍼티(`baseElement`)로 우회한다.
-    const overspent = summary({ paid: 30_000_000, planned: 25_000_000, remaining: -10_000_000 });
+    const overspent = summary({ paid: 30_000_000, scheduled: 5_000_000, allocated: 20_000_000, unallocated: -10_000_000 });
     const { baseElement } = render(<BudgetDonut summary={overspent} onTotalBudgetSaved={() => {}} benchmark={null} />);
     const donut = baseElement.querySelector<HTMLDivElement>("[style*='conic-gradient']");
     expect(donut).not.toBeNull();
@@ -42,7 +53,8 @@ describe("BudgetDonut", () => {
   it("범례가 라벨과 금액을 텍스트로 함께 낸다 — 색으로만 구분하지 않는다(WCAG 1.4.1)", () => {
     render(<BudgetDonut summary={summary({})} onTotalBudgetSaved={() => {}} benchmark={null} />);
     expect(screen.getByText("지불 완료")).toBeInTheDocument();
-    expect(screen.getByText("계획(미지급)")).toBeInTheDocument();
+    expect(screen.getByText("지불 예정")).toBeInTheDocument();
+    expect(screen.getByText("배정")).toBeInTheDocument();
     expect(screen.getByText("미배정")).toBeInTheDocument();
   });
 

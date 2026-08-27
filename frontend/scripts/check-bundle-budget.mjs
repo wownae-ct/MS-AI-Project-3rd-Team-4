@@ -171,7 +171,12 @@ const BUDGETS = [
   // 원인) 화면 기능과 무관하게 여기서 바로 걸린다. 측정은 같은 워킹트리의 다른 93개
   // 미커밋 파일(CRLF 개행 차이뿐, 내용은 HEAD와 동일 — `git stash`로 이 4개 파일만 분리해
   // 재확인)의 오염 가능성을 배제하고 격리해서 잡았다. 여유를 21B로 좁게 유지한다.
-  { key: "jsChunkGzip", limit: 97_850, measured: 97_829, label: "최대 단일 JS 청크 (gzip)" },
+  // ── 2026-08-28 예산 4분류 개편(red-bug.md #7 근본 수정)으로 97,850 → 97,880 ──────────────
+  // 97,829 → 97,861(증가 32B) — `entities/wedding`의 `deriveBudgetSummary()`/`BudgetSummary`가
+  // 3계열(paid/planned/remaining)에서 4계열(paid/scheduled/allocated/unallocated)로 늘었다 —
+  // `entities/wedding`은 위 항목들과 같은 이유로 초기 청크에서 이미 도달 가능한 모듈이라 이
+  // 지표에 바로 반영된다. 여유를 19B로 좁게 유지한다.
+  { key: "jsChunkGzip", limit: 97_880, measured: 97_861, label: "최대 단일 JS 청크 (gzip)" },
   { key: "cssGzip", limit: 6_000, measured: 4_237, label: "CSS (gzip, @font-face 제외)" },
   // 폰트는 unicode-range 로 분할돼 전량 전송되지 않으므로 이 값은 전송량이 아니라 **배포 크기** 가드다.
   // 잡으려는 사고: variable/split(2.3 MB) 대신 static/split(8.8 MB)이나 static/complete(4.7 MB)를
