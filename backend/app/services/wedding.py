@@ -279,6 +279,8 @@ async def update_wedding(
             )
             raise api_error(400, "BUDGET_EXCEEDED", f"배정 합계가 예산을 {over:,}원 초과합니다.")
 
+    old_wedding_date = wedding.wedding_date
+
     for field, value in changed.items():
         setattr(wedding, field, value)
 
@@ -297,12 +299,22 @@ async def update_wedding(
                 ).where(TimelineItem.wedding_id == wedding.id)
             )
         ).all()
-        updates = recalculate_timeline_dates(wedding.wedding_date, [tuple(r) for r in rows])
-        for item_id, new_target_date in updates.items():
+        # 2026-08-28 준비기간 스케일링 — 변경 폭이 5개월 이상이면 온보딩 시점(wedding.created_at)
+        # 스케일을 되돌리고 새 스케일을 적용한다(recalculate_timeline_dates 내부 판정,
+        # app/services/timeline.py 모듈 docstring 참고). onboarding_date는 새 컬럼 없이
+        # created_at을 그대로 대리 지표로 쓴다.
+        updates = recalculate_timeline_dates(
+            old_wedding_date,
+            wedding.wedding_date,
+            wedding.created_at.date(),
+            today_kst(),
+            [tuple(r) for r in rows],
+        )
+        for item_id, (new_target_date, new_offset) in updates.items():
             await session.execute(
                 update(TimelineItem)
                 .where(TimelineItem.id == item_id)
-                .values(target_date=new_target_date)
+                .values(target_date=new_target_date, default_dday_offset_days=new_offset)
             )
         session.add(
             AiInvocation(
