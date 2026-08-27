@@ -15,6 +15,8 @@ GET /categories는 03_API_spec.md §5 인증 필수 목록(`/weddings*` 등)에 
 
 from uuid import uuid4
 
+from conftest import parse_sse_frames
+
 from app.core.categories import CATEGORY_META
 
 
@@ -402,7 +404,12 @@ class TestWeddingCreationSmoke:
                 "categories": categories,
             },
         )
-        assert response.status_code == 201
+        # 2026-08-28 — POST /weddings는 SSE로 응답한다(app/services/wedding.py::
+        # stream_wedding_creation). HTTP 상태코드는 항상 200이고, 성패는 마지막 이벤트로
+        # 구분한다.
+        assert response.status_code == 200
+        events = parse_sse_frames(response.text)
+        assert events[-1][0] == "done"
 
         listed = await signed_up_client.get("/wedding-categories")
         assert listed.status_code == 200
@@ -445,8 +452,12 @@ class TestWeddingCreationSmoke:
                 "categories": categories,
             },
         )
-        assert response.status_code == 400
-        assert response.json()["error"]["code"] == "BUDGET_EXCEEDED"
+        # 2026-08-28 — SSE 전환 이후 실패도 200 + event: error로 온다(위 test_categories_
+        # persist_exact_values 주석 참고).
+        assert response.status_code == 200
+        event_name, data = parse_sse_frames(response.text)[-1]
+        assert event_name == "error"
+        assert data["code"] == "BUDGET_EXCEEDED"
 
         # 웨딩 자체가 롤백돼야 한다 — 재시도가 409(WEDDING_ALREADY_EXISTS)가 아니라 다시
         # 처음부터 가능해야 정상이다.

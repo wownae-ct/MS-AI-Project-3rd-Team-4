@@ -27,13 +27,14 @@ from collections.abc import AsyncIterator
 from uuid import UUID
 
 from openai import RateLimitError
-from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.db import get_session_factory
 from app.core.errors import api_error
+from app.core.sse import sse_comment as _sse_comment
+from app.core.sse import sse_event as _sse
 from app.core.tracing import score_trace, traced_span
 from app.models import ChatMessage, ChatSession, Wedding
 from app.rag.graph import ChatState, build_graph
@@ -145,21 +146,6 @@ async def list_chat_messages(
         .order_by(ChatMessage.created_at)
     )
     return list(result.scalars().all())
-
-
-def _sse(event: str, data: BaseModel) -> str:
-    """SSE(Server-Sent Events) 한 줄을 만든다 — 브라우저가 이 정해진 포맷(event: 이름\\ndata:
-    JSON\\n\\n)을 그대로 실시간 이벤트로 받아준다."""
-    return f"event: {event}\ndata: {data.model_dump_json()}\n\n"
-
-
-# 2026-08-26 챗 SSE 타임아웃 회귀 수정(app/rag/graph.py::_await_with_heartbeat) — `:`로
-# 시작하는 줄은 SSE 스펙상 주석이라 이벤트가 아니다. event:/data: 줄이 없어 프론트의
-# dispatchSseFrame(entities/chat/api/chat.ts)이 그냥 무시하므로 프론트 변경이 필요 없다.
-# 목적은 바이트를 흘려보내는 것 자체 — nginx의 proxy-read-timeout이 "이 구간엔 아무 응답도
-# 없다"고 판단하지 않게 한다.
-def _sse_comment(text: str) -> str:
-    return f": {text}\n\n"
 
 
 def _build_citations(context: list) -> list[CitationOut]:

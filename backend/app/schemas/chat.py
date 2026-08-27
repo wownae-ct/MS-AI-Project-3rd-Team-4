@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.schemas.common import CategoryCode, ChatRating, ChatRole, ChatStage, SourceTier, Verdict
+from app.schemas.sse import SseErrorEventData
 
 # 2026-08-26 레드팀 감사 3라운드 MEDIUM #9 — 길이 제한이 전혀 없어 원문 그대로 임베딩 API에
 # 전달됐다(app/rag/retrieval.py::retrieve → embed_query). app/schemas/checklist.py의 title/body
@@ -106,10 +107,7 @@ class DoneEventData(BaseModel):
     latency_ms: int
 
 
-class ErrorEventData(BaseModel):
-    """03_API_spec.md #29 "에러 시" / 05_RAG_design.md §10 — Azure OpenAI 429·타임아웃 등으로
-    스트림 중간에 실패하면 HTTP 상태코드를 더 이상 바꿀 수 없어(이미 200 스트림 시작) 이 이벤트로
-    대신 알린다."""
-
-    code: str
-    message: str
+# 2026-08-28 — app/schemas/sse.py로 뽑아냄(app/services/wedding.py 온보딩 heartbeat
+# 스트리밍도 동일 모양이 필요해짐). 기존 import 지점(app/services/chat.py)이 안 깨지게 이름
+# 그대로 재수출한다.
+ErrorEventData = SseErrorEventData

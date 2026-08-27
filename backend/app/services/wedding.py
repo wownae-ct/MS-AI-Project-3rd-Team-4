@@ -12,24 +12,40 @@ timeline-task(2026-08-24)에서 timeline_items/ai_invocations 생성 + wedding_d
 field-updated-trigger-task(2026-08-24)에서 §1-2 규칙에 따른 FIELD_UPDATED 재트리거를
 update_wedding()(날짜 외 필드 변경)과 update_wedding_categories()(카테고리 온/오프)에
 연결했다 — wedding_date 단독 변경은 여전히 위 결정론적 재계산만 타고 에이전트를 부르지
-않는다(규칙 3)."""
+않는다(규칙 3).
 
+2026-08-28 — POST /weddings를 SSE(text/event-stream)로 전환(stream_wedding_creation).
+red-bug.md §3 "온보딩 개인화 생성이 프론트 타임아웃보다 오래 걸리는 경우가 실사용 조건에서
+실제로 발생"의 근본 원인 대응 — create_wedding() 안의 동기 run_personalization() 호출
+(ONBOARDING_INITIAL, 실측 Langfuse p95=45.9초)이 대기 중 SSE 바이트를 하나도 안 내보내
+nginx proxy-read-timeout/클라이언트 fetch 타임아웃에 걸릴 위험이 있었다 — chat SSE의
+heartbeat 완화(app/rag/graph.py::_await_with_heartbeat, 2026-08-26)와 동일 패턴을 그대로
+가져온다. create_wedding() 자체의 시그니처/로직은 전혀 안 바꾼다 — stream_wedding_creation()이
+그 위에 얇게 heartbeat 래핑만 씌운다."""
+
+import asyncio
 import logging
+from collections.abc import AsyncIterator
 from datetime import date
 
+from fastapi import HTTPException
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.categories import CATEGORY_META_BY_CODE
 from app.core.config import Settings
+from app.core.db import get_session_factory
 from app.core.errors import api_error
+from app.core.sse import sse_comment, sse_event
 from app.core.timezone import today_kst
 from app.models import AiInvocation, TimelineItem, User, Wedding, WeddingCategory
+from app.schemas.sse import SseErrorEventData
 from app.schemas.wedding import (
     WeddingCategoriesUpdate,
     WeddingCategoryOut,
     WeddingCreate,
+    WeddingOut,
     WeddingUpdate,
 )
 from app.services.benchmark import get_latest_benchmark
@@ -187,6 +203,53 @@ async def create_wedding(
     await session.commit()
     await session.refresh(wedding)
     return wedding
+
+
+# nginx ingress의 proxy-read-timeout(120초, 2026-08-26 챗 SSE 완화 커밋 154e352가 Ingress
+# 리소스 전체에 이미 올려둠 — 이 엔드포인트도 같은 Ingress를 타므로 별도 인프라 변경 불필요)
+# 보다는 훨씬 짧게, chat과 동일한 간격으로 흘려보낸다. 15초 자체는 임의값이 아니라 chat 쪽
+# _HEARTBEAT_INTERVAL_SECONDS(app/rag/graph.py)와 맞춘 것 — 두 값이 다를 이유가 없다.
+_WEDDING_CREATE_HEARTBEAT_INTERVAL_SECONDS = 15.0
+
+
+async def stream_wedding_creation(
+    settings: Settings, user: User, payload: WeddingCreate
+) -> AsyncIterator[str]:
+    """create_wedding()을 SSE로 감싼다 — 성공하면 `event: done`(WeddingOut), 실패하면(409
+    WEDDING_ALREADY_EXISTS/400 BUDGET_EXCEEDED 등) `event: error`(SseErrorEventData)를
+    낸다. 응답이 이미 200 스트림으로 시작된 뒤라 HTTP 상태코드로는 더 이상 성패를 구분할 수
+    없다 — chat SSE(app/services/chat.py)가 이미 쓰는 것과 동일한 트레이드오프.
+
+    라우터가 주입하는 Depends(get_session) 세션을 파라미터로 받지 않고 자체적으로
+    get_session_factory()로 새로 연다 — StreamingResponse를 반환하는 라우터 함수는 '리턴'하는
+    즉시(스트리밍 바디가 실제로 소비되기 전에) yield 의존성을 정리해(session.close()) 그 세션을
+    그대로 넘겨받으면 이 제너레이터가 실제로 실행될 땐 이미 닫힌 세션이 된다 —
+    app/services/chat.py::stream_chat_response 모듈 docstring이 이미 문서화한 것과 정확히
+    같은 문제를, 실제로 sqlalchemy.exc.MissingGreenlet으로 재현하고 나서 같은 방식으로
+    고쳤다(2026-08-28)."""
+    async with get_session_factory()() as session:
+        task: asyncio.Task[Wedding] = asyncio.ensure_future(
+            create_wedding(session, settings, user, payload)
+        )
+        while True:
+            done, _pending = await asyncio.wait(
+                {task}, timeout=_WEDDING_CREATE_HEARTBEAT_INTERVAL_SECONDS
+            )
+            if task in done:
+                break
+            yield sse_comment("heartbeat")
+
+        try:
+            wedding = task.result()
+        except HTTPException as exc:
+            error = exc.detail["error"]
+            logger.info("create_wedding SSE error for user_id=%s: code=%s", user.id, error["code"])
+            yield sse_event(
+                "error", SseErrorEventData(code=error["code"], message=error["message"])
+            )
+            return
+
+        yield sse_event("done", WeddingOut.model_validate(wedding))
 
 
 async def update_wedding(
