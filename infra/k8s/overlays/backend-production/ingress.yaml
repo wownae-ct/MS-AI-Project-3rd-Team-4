@@ -25,6 +25,11 @@
 # ingress.yaml과 동일 값) — 백엔드의 settings.azure_openai_timeout_seconds(45초, backend/
 # app/core/config.py)로 개별 LLM 호출을 하드 캡한 뒤에도, 여러 호출이 순차로 겹치는 챗 그래프
 # worst-case(최대 5회) 총 소요시간에 여유를 남기기 위해서다.
+#
+# proxy-body-size(2026-08-28, staging ingress.yaml과 동일 — red-bug.md #8 실측 중 발견):
+# 어노테이션이 없으면 ingress-nginx 기본값(1m)이 적용돼, 백엔드 자체는 15MB까지 허용하는
+# 영수증 OCR(_MAX_RECEIPT_BYTES)이 실제 휴대폰 사진(1~5MB 흔함)에서 앱 로직 도달 전에
+# nginx "413 Request Entity Too Large"로 막혔다. 백엔드 15MB 상한과 맞춰 16m으로 둔다.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -35,6 +40,7 @@ metadata:
     cert-manager.io/cluster-issuer: letsencrypt-nginx
     nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-body-size: "16m"
 spec:
   ingressClassName: nginx # 클러스터에 여러 Ingress 컨트롤러가 있을 수 있는데, 그중 "nginx"라는
       # 이름으로 설치된 걸 쓰겠다는 지정(이 클러스터엔 NGINX 하나뿐).
