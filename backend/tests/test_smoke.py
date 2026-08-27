@@ -15,6 +15,8 @@ GET /categories는 03_API_spec.md §5 인증 필수 목록(`/weddings*` 등)에 
 
 from uuid import uuid4
 
+from app.core.categories import CATEGORY_META
+
 
 class TestCategoriesSmoke:
     async def test_get_categories_returns_200_with_nine_items(self, client):
@@ -360,6 +362,97 @@ class TestFeedbackReportsSmoke:
         )
 
         assert response.status_code == 422
+
+
+class TestWeddingCreationSmoke:
+    """#6 — 2026-08-27 재설계: categories가 POST /weddings의 필수 필드가 되면서(온보딩
+    개인화 LLM 호출을 웨딩당 1회로 줄이기 위해, docs/AI-Sessions/wiki/dev-tasks/
+    2026-08-27-onboarding-single-personalization-call-redesign.md 참고) 이 엔드포인트가
+    처음으로 직접 스모크 커버리지를 받는다 — 예전엔 wedding_client 픽스처를 통해 간접적으로만
+    exercise됐다."""
+
+    def _categories(self, overrides: dict[str, dict] | None = None) -> list[dict]:
+        overrides = overrides or {}
+        return [
+            {
+                "category_code": meta.code,
+                "is_active": True,
+                "planned_budget": 0,
+                "display_order": meta.display_order,
+                **overrides.get(meta.code, {}),
+            }
+            for meta in CATEGORY_META
+        ]
+
+    async def test_categories_persist_exact_values(self, signed_up_client):
+        categories = self._categories(
+            {
+                "HONEYMOON": {"is_active": False, "planned_budget": 0, "skip_reason": "생략"},
+                "VENUE": {"planned_budget": 20_000_000},
+            }
+        )
+        response = await signed_up_client.post(
+            "/weddings",
+            json={
+                "user_role": "BRIDE",
+                "wedding_date": "2027-05-01",
+                "wedding_date_precision": "EXACT",
+                "total_budget": 50_000_000,
+                "region_code": "SEOUL_GANGNAM",
+                "categories": categories,
+            },
+        )
+        assert response.status_code == 201
+
+        listed = await signed_up_client.get("/wedding-categories")
+        assert listed.status_code == 200
+        by_code = {c["category_code"]: c for c in listed.json()["categories"]}
+        assert by_code["HONEYMOON"]["is_active"] is False
+        assert by_code["HONEYMOON"]["planned_budget"] == 0
+        assert by_code["VENUE"]["is_active"] is True
+        assert by_code["VENUE"]["planned_budget"] == 20_000_000
+
+    async def test_missing_one_category_returns_422(self, signed_up_client):
+        categories = [c for c in self._categories() if c["category_code"] != "ETC"]
+        response = await signed_up_client.post(
+            "/weddings",
+            json={
+                "user_role": "BRIDE",
+                "wedding_date": "2027-05-01",
+                "wedding_date_precision": "EXACT",
+                "total_budget": 50_000_000,
+                "region_code": "SEOUL_GANGNAM",
+                "categories": categories,
+            },
+        )
+        assert response.status_code == 422
+
+    async def test_categories_over_budget_returns_400_and_creates_no_wedding(
+        self, signed_up_client
+    ):
+        # 9 * 10,000,000 = 90,000,000 > total_budget(50,000,000).
+        categories = self._categories(
+            {meta.code: {"planned_budget": 10_000_000} for meta in CATEGORY_META}
+        )
+        response = await signed_up_client.post(
+            "/weddings",
+            json={
+                "user_role": "BRIDE",
+                "wedding_date": "2027-05-01",
+                "wedding_date_precision": "EXACT",
+                "total_budget": 50_000_000,
+                "region_code": "SEOUL_GANGNAM",
+                "categories": categories,
+            },
+        )
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "BUDGET_EXCEEDED"
+
+        # 웨딩 자체가 롤백돼야 한다 — 재시도가 409(WEDDING_ALREADY_EXISTS)가 아니라 다시
+        # 처음부터 가능해야 정상이다.
+        me = await signed_up_client.get("/weddings/me")
+        assert me.status_code == 404
+        assert me.json()["error"]["code"] == "WEDDING_NOT_FOUND"
 
 
 class TestDashboardSmoke:
