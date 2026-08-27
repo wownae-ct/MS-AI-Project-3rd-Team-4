@@ -74,6 +74,35 @@ function withTimeout(callerSignal: AbortSignal | null | undefined, timeoutMs: nu
   return callerSignal ? AbortSignal.any([callerSignal, timeoutSignal]) : timeoutSignal;
 }
 
+/**
+ * fetch() 자체가 던진(=응답조차 못 받은) 실패를 TIMEOUT/NETWORK_ERROR ApiError 로 분류한다.
+ * `send()` 전용이었으나, `apiFetch` 를 안 태우고 fetch+ReadableStream 을 직접 쓰는 SSE
+ * 소비부(`entities/wedding/api/wedding.ts::createWedding` 등)도 같은 분류가 필요해 공유한다
+ * — 분류 기준과 로그 포맷을 두 곳에 따로 두면 드리프트한다.
+ */
+export function classifyFetchFailure(
+  cause: unknown,
+  signal: AbortSignal,
+  context: { method: string; url: string; timeoutMs: number },
+): ApiError {
+  if (isTimeoutAbort(signal)) {
+    console.warn(`[client] 타임아웃(${context.timeoutMs}ms): ${context.method} ${context.url}`);
+    return new ApiError({
+      code: "TIMEOUT",
+      message: "요청이 시간 초과되었습니다. 잠시 후 다시 시도해 주세요.",
+      status: 0,
+      extra: {},
+    });
+  }
+  console.error(`[client] 네트워크 실패: ${context.method} ${context.url}`, cause);
+  return new ApiError({
+    code: "NETWORK_ERROR",
+    message: "서버에 연결하지 못했습니다. 네트워크를 확인해 주세요.",
+    status: 0,
+    extra: { cause: String(cause) },
+  });
+}
+
 async function readBody(response: Response): Promise<unknown> {
   if (response.status === 204 || response.headers.get("content-length") === "0") return undefined;
   const text = await response.text();
@@ -95,26 +124,11 @@ async function send(path: string, init: RequestInit, timeoutMs: number = DEFAULT
   try {
     response = await fetch(url, { ...init, signal });
   } catch (cause) {
-    if (isTimeoutAbort(signal)) {
-      console.warn(`[client] 타임아웃(${timeoutMs}ms): ${init.method ?? "GET"} ${url}`);
-      throw new ApiError({
-        code: "TIMEOUT",
-        message: "요청이 시간 초과되었습니다. 잠시 후 다시 시도해 주세요.",
-        status: 0,
-        extra: {},
-      });
-    }
     // 네트워크 실패를 그대로 흘리면 화면이 ApiError 와 TypeError 두 종류를 다뤄야 한다.
     // 한 종류로 모으고 code 로 구분한다. 화면엔 사용자용 메시지만 뜨고 원인은 아무 데도
     // 안 남았었다 — 30개 넘는 호출부 중 콘솔에 남기는 곳이 ErrorBoundary 하나뿐이라
     // 여기 이 한 지점만 고치면 전체가 커버된다(로깅 관측성 감사, 2026-08-26).
-    console.error(`[client] 네트워크 실패: ${init.method ?? "GET"} ${url}`, cause);
-    throw new ApiError({
-      code: "NETWORK_ERROR",
-      message: "서버에 연결하지 못했습니다. 네트워크를 확인해 주세요.",
-      status: 0,
-      extra: { cause: String(cause) },
-    });
+    throw classifyFetchFailure(cause, signal, { method: init.method ?? "GET", url, timeoutMs });
   }
 
   const body = await readBody(response);
