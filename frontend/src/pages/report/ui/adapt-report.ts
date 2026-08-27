@@ -1,9 +1,16 @@
 // `GET /reports/me`(#26) 응답을 기존 목업 기반 프레젠테이션 컴포넌트가 기대하는 prop 모양으로
 // 바꾼다 — §5 `pages/dashboard/ui/adapt-summary.ts`와 같은 경계 격리 패턴이다. 컴포넌트 계약은
 // 건드리지 않고 이 파일 하나로 실API 응답 ↔ 기존 타입 간극을 흡수한다.
-import type { MyReport, ReportCategoryCompletion } from "@/entities/dashboard";
+//
+// **`adaptBudgetSummary`는 여기 없다(2026-08-28 제거, red-bug.md #7 근본 수정).** 예전엔
+// `report.budget_summary`(paid/remaining만 있는 3값)를 역산해 `BudgetSummary`를 조립했는데,
+// 그 역산 정의가 S6(`deriveBudgetSummary`, 배정액 기준)와 달라서 같은 웨딩의 "미배정"이 두
+// 화면에서 다르게 보이는 게 버그였다. `ReportPage.tsx`는 이제 S6와 똑같이
+// `deriveBudgetSummary(weddingCategories, report.budget_summary.total_budget)`를 직접 호출한다
+// — `report.budget_summary`는 `total_budget` 하나만 쓴다(`total_paid`/`remaining_budget`은
+// 더 이상 쓰지 않는다, 어차피 `weddingCategories`로 다시 계산하므로).
+import type { ReportCategoryCompletion } from "@/entities/dashboard";
 import type { WeddingCategory } from "@/entities/wedding";
-import type { BudgetSummary } from "@/entities/wedding";
 
 /**
  * S5 전용 카테고리 진행률 — `entities/wedding`의 `CategoryBudget.checklistProgress`(S2)와
@@ -19,22 +26,6 @@ export interface ReportCategoryProgress {
   /** 타임라인 준비 진행률(0~1 비율). API가 실제 개수가 아니라 비율만 준다 — 화면이 표시
       시점에 그 비율을 그대로 반올림한다(개수처럼 보이는 분모를 지어내지 않는다). */
   timelineProgress: number;
-}
-
-/**
- * `budget_summary`에 `total_planned`이 없다(#26 스펙 원문 — total_budget/total_paid/
- * remaining_budget 셋뿐). `BudgetStats`는 애초에 `planned`을 쓰지 않지만(STATS 배열 참고)
- * `BudgetSummary` 타입 자체가 필수 필드로 요구하므로, 나머지 세 값으로 역산해 채운다
- * (total = paid + planned + remaining이 성립해야 하므로).
- */
-export function adaptBudgetSummary(report: MyReport): BudgetSummary {
-  const { total_budget, total_paid, remaining_budget } = report.budget_summary;
-  return {
-    total: total_budget,
-    paid: total_paid,
-    planned: total_budget - total_paid - remaining_budget,
-    remaining: remaining_budget,
-  };
 }
 
 /**

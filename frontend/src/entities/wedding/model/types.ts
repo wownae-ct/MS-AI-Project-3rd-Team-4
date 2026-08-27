@@ -12,15 +12,23 @@
 //
 // 이 파일은 **타입만** 담는다. 백엔드가 붙으면 합성 데이터 파일들은 사라지고 여기는 남는다.
 
+/**
+ * 예산 4분류(2026-08-28, red-bug.md #7 근본 수정) — 예전 3분류(`paid`/`planned`/`remaining`)의
+ * `planned`가 "배정"과 "지불예정"을 한 필드에 뭉쳐 놨던 게 S5/S6가 서로 다른 정의로 "미배정"을
+ * 계산하던 버그의 근본 원인이었다. 네 값은 서로 배타적이라 합이 정확히 `total`이 된다(불변식은
+ * `derive-budget-summary.ts` 참고).
+ */
 export interface BudgetSummary {
   /** 총예산 */
   total: number;
-  /** 지불(완료) */
+  /** 지불완료 — 실제 결제 완료(PAID). */
   paid: number;
-  /** 계획(미지급) */
-  planned: number;
-  /** 미배정 — 아직 어느 카테고리에도 배정되지 않은 금액. **「남은 돈」이 아니다.** */
-  remaining: number;
+  /** 지불예정 — 배정됐고 결제 항목(payments 행)까지 만들어졌지만 아직 결제 전(PLANNED). */
+  scheduled: number;
+  /** 배정 — 카테고리에 예산은 배정해뒀지만 아직 구체적 결제 항목은 안 만든 금액. */
+  allocated: number;
+  /** 미배정 — 아예 어느 카테고리에도 배정 안 한 금액(총예산 - Σ배정). **「남은 돈」이 아니다.** */
+  unallocated: number;
 }
 
 
@@ -112,6 +120,9 @@ export interface WeddingCategory {
   is_active: boolean;
   planned_budget: number;
   paid_amount: number;
+  /** 카테고리별 PLANNED(지불 예정) 결제 합계 — `paid_amount`와 대칭(백엔드
+      `get_scheduled_amounts_by_category`, CANCELED는 둘 다 제외). 2026-08-28 추가. */
+  scheduled_amount: number;
   remaining: number;
   selected_options: string[] | null;
   display_order: number;
