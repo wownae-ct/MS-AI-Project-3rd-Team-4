@@ -21,7 +21,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.categories import CATEGORY_META, CATEGORY_META_BY_CODE
+from app.core.categories import CATEGORY_META_BY_CODE
 from app.core.config import Settings
 from app.core.errors import api_error
 from app.core.timezone import today_kst
@@ -64,6 +64,22 @@ def approximate_wedding_date(today: date, wedding_date_precision: str) -> date:
     target_year = year + total_month // 12
     target_month = total_month % 12 + 1
     return date(target_year, target_month, 1)
+
+
+def _raise_if_budget_exceeded(wedding_id, total_planned: int, total_budget: int) -> None:
+    """Σplanned_budget이 total_budget을 넘으면 BUDGET_EXCEEDED(400) — create_wedding·
+    update_wedding_categories가 공유한다(2026-08-27, 온보딩 단일 호출 재설계로 create_wedding도
+    이 검증을 처음 필요로 하게 되면서 update_wedding_categories의 인라인 검증을 여기로 뽑아냈다:
+    03_API_spec.md #10 검증 1과 완전히 동일한 불변식이라 중복 대신 공유 함수로 둔다)."""
+    if total_planned > total_budget:
+        over = total_planned - total_budget
+        logger.info(
+            "BUDGET_EXCEEDED for wedding_id=%s: planned=%s total_budget=%s",
+            wedding_id,
+            total_planned,
+            total_budget,
+        )
+        raise api_error(400, "BUDGET_EXCEEDED", f"배정 합계가 예산을 {over:,}원 초과합니다.")
 
 
 async def _resolve_total_budget(session: AsyncSession, payload: WeddingCreate) -> int:
@@ -127,24 +143,38 @@ async def create_wedding(
         await session.rollback()
         raise api_error(409, "WEDDING_ALREADY_EXISTS", "이미 웨딩 프로필이 있습니다.") from exc
 
-    # 부작용: wedding_categories 9행 전부 켜짐(is_active=True), 예산 0원으로 생성 —
-    # CATEGORY_META(app/core/categories.py)가 카테고리 목록의 단일 소스.
-    for meta in CATEGORY_META:
+    # 2026-08-27 재설계 — 카테고리 활성/예산 배분을 payload.categories(WeddingCreate가 이미
+    # 9개 전부·중복 없음을 검증했다)로 그대로 생성한다. 예전엔 여기서 9개 전부 is_active=True·
+    # 0원으로 하드코딩해 만들고, 뒤이은 PUT /wedding-categories가 실제 값과 다르면 개인화를 또
+    # 트리거했다(온보딩마다 동기 LLM 생성이 두 번 겹쳤다 — 실측 Langfuse p95=45.9초).
+    #
+    # 예산 검증(03_API_spec.md #10 검증 1과 동일 불변식)을 카테고리 행을 add하기 전에 한다 —
+    # 위반 시 flush까지만 된 웨딩 row를 롤백하면 그만이고, 아직 세션에 넣지도 않은 카테고리
+    # 객체를 되돌릴 필요가 없다.
+    total_planned = sum(item.planned_budget for item in payload.categories)
+    if total_planned > total_budget:
+        await session.rollback()
+        _raise_if_budget_exceeded(wedding.id, total_planned, total_budget)
+
+    for item in payload.categories:
         session.add(
             WeddingCategory(
                 wedding_id=wedding.id,
-                category_code=meta.code,
-                is_active=True,
-                planned_budget=0,
-                display_order=meta.display_order,
+                category_code=item.category_code,
+                is_active=item.is_active,
+                planned_budget=item.planned_budget,
+                display_order=item.display_order,
+                selected_options=item.selected_options,
+                skip_reason=item.skip_reason,
             )
         )
 
-    # 새 웨딩은 9개 카테고리 전부 방금 is_active=True로 켰으므로 전체 집합을 active로 넘긴다.
     # run_personalization이 ai_invocations 1행 기록 + checklist_items/timeline_items 생성(LLM
     # SUCCESS 또는 BLOCKED/FAILED 결정론적 폴백)을 전부 처리한다 — 여기서는 flush만 하고 커밋은
-    # 아래에서 다른 온보딩 부작용과 함께 한 번에 한다.
-    active_categories = {meta.code for meta in CATEGORY_META}
+    # 아래에서 다른 온보딩 부작용과 함께 한 번에 한다. 활성 집합은 이제 하드코딩된 전체 9개가
+    # 아니라 payload가 실제로 고른 값이다 — ONBOARDING_INITIAL이 처음부터 정확한 카테고리로만
+    # 생성한다.
+    active_categories = {item.category_code for item in payload.categories if item.is_active}
     await run_personalization(
         session,
         settings,
@@ -327,16 +357,7 @@ async def update_wedding_categories(
     # 검증 1: Σ planned_budget(9개 전체, is_active 무관 합산) <= total_budget
     # (04_DB_schema.sql §4-②, 03_API_spec.md #10 — payload에 없는 카테고리도 기존 값 그대로 합산).
     total_planned = sum(row.planned_budget for row in existing_by_code.values())
-    if total_planned > wedding.total_budget:
-        over = total_planned - wedding.total_budget
-        logger.info(
-            "BUDGET_EXCEEDED on update_wedding_categories for wedding_id=%s: planned=%s "
-            "total_budget=%s",
-            wedding.id,
-            total_planned,
-            wedding.total_budget,
-        )
-        raise api_error(400, "BUDGET_EXCEEDED", f"배정 합계가 예산을 {over:,}원 초과합니다.")
+    _raise_if_budget_exceeded(wedding.id, total_planned, wedding.total_budget)
 
     # 검증 2: category_code별 planned_budget >= SUM(payments.amount WHERE status='PAID').
     planned_budgets = {code: row.planned_budget for code, row in existing_by_code.items()}

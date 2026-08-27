@@ -15,6 +15,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from app.core.categories import CATEGORY_META
 from app.core.db import get_session_factory
 from app.core.rate_limit import limiter
 from app.main import app
@@ -77,7 +78,12 @@ async def _signup(client: AsyncClient) -> AsyncClient:
 async def _signup_and_create_wedding(client: AsyncClient) -> AsyncClient:
     """회원가입(#2) → 웨딩 생성(#6)까지 마친 인증된 클라이언트를 만든다. 웨딩 생성이 추가로
     실DB에 웨딩 1행(+wedding_categories 9행, timeline_items 55행)을 쌓는다 — 데이터 적재에
-    대한 나머지 설명은 _signup 참고."""
+    대한 나머지 설명은 _signup 참고.
+
+    2026-08-27 재설계로 categories가 POST /weddings의 필수 필드가 됐다 — 이 픽스처를 쓰는
+    기존 테스트들(예: test_dashboard_summary_returns_200_with_all_categories_active)이 "9개
+    전부 활성·0원"이라는 예전 하드코딩 기본값을 그대로 가정하므로, 그 기본값을 여기서 명시적으로
+    재현한다(CATEGORY_META가 단일 소스)."""
     await _signup(client)
     await client.post(
         "/weddings",
@@ -87,6 +93,15 @@ async def _signup_and_create_wedding(client: AsyncClient) -> AsyncClient:
             "wedding_date_precision": "EXACT",
             "total_budget": 50000000,
             "region_code": "SEOUL_GANGNAM",
+            "categories": [
+                {
+                    "category_code": meta.code,
+                    "is_active": True,
+                    "planned_budget": 0,
+                    "display_order": meta.display_order,
+                }
+                for meta in CATEGORY_META
+            ],
         },
     )
     return client
