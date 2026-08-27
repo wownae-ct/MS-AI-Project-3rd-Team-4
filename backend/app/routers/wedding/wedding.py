@@ -5,7 +5,8 @@
 app/services/wedding.py::stream_wedding_creation() 모듈 docstring 참고 — 온보딩 동기 개인화
 LLM 호출(p95=45.9초)의 타임아웃 위험 대응, chat SSE heartbeat와 동일 패턴. 성공은
 `event: done`(WeddingOut), 실패(409/400 등)는 `event: error`로 온다 — HTTP 상태코드로는
-더 이상 성패를 구분할 수 없다(03_API_spec.md 갱신 필요, 아직 반영 전)."""
+더 이상 성패를 구분할 수 없다(03_API_spec.md #6 갱신 완료 — Request Body categories 필드
+문서화 누락도 같이 고침)."""
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
