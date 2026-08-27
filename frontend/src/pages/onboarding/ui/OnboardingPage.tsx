@@ -141,10 +141,22 @@ export function OnboardingPage() {
     setError(null);
     setIsSubmitting(true);
     try {
+      // createWedding 이 던지는 에러는 곧장 throw 하지 않고 일단 들고만 있는다 — 409
+      // (WEDDING_ALREADY_EXISTS, 레드팀 감사 1라운드 #2, dev-35 확인)뿐 아니라 TIMEOUT/
+      // NETWORK_ERROR 도 마찬가지로 "서버는 실제로 성공했는데 클라이언트만 응답을 못 받은"
+      // 경우일 수 있다(2026-08-27 staging 실사용 중 발견 — net::ERR_ABORTED로 실패한 것처럼
+      // 보였지만 서버는 이미 웨딩 생성+개인화까지 끝나 있었음). wedding_id는 URL/바디로 받지
+      // 않고 세션에서 서버가 유도하므로(03_API_spec.md:126) PUT /wedding-categories 도 같은
+      // 세션 쿠키로 대상 웨딩을 찾는다 — 즉 createWedding 응답을 못 받았어도 카테고리 저장을
+      // 밑져야 본전으로 시도할 수 있다.
+      //
+      // 예전엔 409 이외의 에러를 여기서 바로 rethrow 했다 — 그러면 putWeddingCategories 가
+      // 아예 실행되지 않고, 서버엔 이미 wedding row가 생겼는데(hasWedding=true) 카테고리
+      // 활성화·예산 배분만 통째로 유실된 채로 남았다. 게다가 라우터 가드가 hasWedding=true인
+      // /onboarding 재진입을 대시보드로 강제 리다이렉트하므로(router.tsx), 같은 페이지에서
+      // 즉시 재시도하지 않는 한 복구할 방법이 없었다.
+      let weddingCreationError: unknown = null;
       try {
-        // 응답의 웨딩 id는 쓰지 않는다 — wedding_id는 URL/바디로 받지 않고 세션에서 서버가
-        // 유도한다(03_API_spec.md:126) — PUT /wedding-categories 도 같은 세션 쿠키로 대상
-        // 웨딩을 찾는다.
         await createWedding({
           user_role: userRole,
           wedding_date: effectiveIsDateExact ? weddingDate : undefined,
@@ -161,12 +173,11 @@ export function OnboardingPage() {
           done_so_far: doneSoFar,
         });
       } catch (err) {
-        // createWedding 성공 후 putWeddingCategories 가 실패하면, 이미 웨딩이 생겼으므로
-        // "시작하기" 재시도가 매번 여기서 409(WEDDING_ALREADY_EXISTS)로 막혀 온보딩에 영원히
-        // 갇힌다(레드팀 감사 1라운드 #2, dev-35 확인 — 백엔드는 이 409 계약을 그대로 유지하기로
-        // 했고 프론트가 이 경우만 통과시키기로 함). allocationRows 는 실패와 무관하게 화면
-        // state에 남아 있으므로 사용자가 다시 고를 필요 없이 바로 카테고리 저장을 재시도한다.
-        if (!(err instanceof ApiError && err.code === "WEDDING_ALREADY_EXISTS")) throw err;
+        // 409(WEDDING_ALREADY_EXISTS)는 "이미 만들어져 있다"는 기대된 신호이므로 진짜 에러로
+        // 취급하지 않는다 — allocationRows 는 실패와 무관하게 화면 state에 남아 있으므로
+        // 사용자가 다시 고를 필요 없이 바로 카테고리 저장을 재시도한다. 그 외의 에러(타임아웃 등)는
+        // 아래에서 카테고리 저장까지 실패할 때만 진짜 원인으로 보여주기 위해 들고 있는다.
+        if (!(err instanceof ApiError && err.code === "WEDDING_ALREADY_EXISTS")) weddingCreationError = err;
       }
 
       const categoryUpdates: WeddingCategoryUpdateInput[] = allocationRows.map((row) => ({
@@ -177,7 +188,14 @@ export function OnboardingPage() {
         selected_options: row.isActive ? row.selectedOptions : null,
         ...(row.isActive ? {} : { skip_reason: "온보딩에서 사용 안 함으로 표시" }),
       }));
-      await putWeddingCategories(categoryUpdates);
+      try {
+        await putWeddingCategories(categoryUpdates);
+      } catch (categoryErr) {
+        // 카테고리 저장 실패보다 createWedding 실패가 더 정확한 원인이면(예: 둘 다 같은
+        // 타임아웃 때문에 실패) 그쪽 메시지를 보여준다 — "카테고리 저장에 실패했습니다"보다
+        // "요청이 시간 초과되었습니다"가 사용자에게 더 정확하다.
+        throw weddingCreationError ?? categoryErr;
+      }
 
       // 웨딩을 막 만들었으니 캐시된 세션의 hasWedding 은 이제 stale 이다 — 무효화해야 다음에
       // 셸 게이트를 통과할 때(대시보드 진입) 새로 조회해 true 를 본다(LoginPage.tsx 와 같은 이유).
