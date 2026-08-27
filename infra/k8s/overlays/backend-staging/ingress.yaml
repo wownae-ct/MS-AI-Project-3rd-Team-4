@@ -29,6 +29,14 @@
 # settings.azure_openai_timeout_seconds(45초, backend/app/core/config.py)로 개별 LLM 호출을
 # 하드 캡한 뒤에도, 여러 호출이 순차로 겹치는 챗 그래프 worst-case(최대 5회) 총 소요시간에
 # 여유를 남기기 위해서다.
+#
+# proxy-body-size(2026-08-28, red-bug.md #8 실측 중 발견): 어노테이션이 없으면 ingress-nginx
+# 기본값(1m)이 적용된다. 영수증 OCR(POST /payments/receipt-extract)은 백엔드 자체가 이미
+# 15MB까지 허용하는데(app/routers/wedding/budget.py의 _MAX_RECEIPT_BYTES), 실제 휴대폰
+# 카메라 사진은 1~5MB가 흔해 이 어노테이션 없이는 앱 로직까지 도달하기도 전에 nginx가
+# "413 Request Entity Too Large"(순수 HTML, 프론트가 파싱 못 하는 형태)로 막고 있었다.
+# 백엔드의 15MB 상한과 정확히 맞춰 16m(15MB + 약간의 여유)으로 둔다 — 더 낮게 잡으면 그
+# 사이 구간(예: 5~15MB)에서 똑같은 종류의 불일치가 재현된다.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -37,6 +45,7 @@ metadata:
     cert-manager.io/cluster-issuer: letsencrypt-nginx
     nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-body-size: "16m"
 spec:
   ingressClassName: nginx
   tls:
