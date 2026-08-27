@@ -468,6 +468,83 @@ class TestWeddingCreationSmoke:
         assert me.json()["error"]["code"] == "WEDDING_NOT_FOUND"
 
 
+class TestBudgetBreakdownSmoke:
+    """docs/wedding/refactor/red-bug.md #7 수정 — GET /wedding-categories의 신규
+    scheduled_amount(카테고리별 PLANNED 합계)가 실제 payments 상태 전이를 정확히 반영하는지.
+    S5/S6가 이 필드로 "지불완료/지불예정/배정/미배정" 4분류를 계산한다(paid_amount/
+    scheduled_amount는 여기서, 배정·미배정은 planned_budget/total_budget으로 프론트가 순수
+    계산 — 새 엔드포인트 불필요)."""
+
+    async def test_scheduled_amount_reflects_planned_payments_only(self, signed_up_client):
+        categories = [
+            {
+                "category_code": meta.code,
+                "is_active": True,
+                "planned_budget": 10_000_000 if meta.code == "VENUE" else 0,
+                "display_order": meta.display_order,
+            }
+            for meta in CATEGORY_META
+        ]
+        create = await signed_up_client.post(
+            "/weddings",
+            json={
+                "user_role": "BRIDE",
+                "wedding_date": "2027-05-01",
+                "wedding_date_precision": "EXACT",
+                "total_budget": 50_000_000,
+                "region_code": "SEOUL_GANGNAM",
+                "categories": categories,
+            },
+        )
+        assert parse_sse_frames(create.text)[-1][0] == "done"
+
+        # PLANNED(기본 상태, paid_date 없음) — 지불 예정에 잡혀야 한다.
+        await signed_up_client.post(
+            "/payments",
+            json={
+                "category_code": "VENUE",
+                "item_name": "계약금",
+                "payment_type": "DEPOSIT",
+                "amount": 3_000_000,
+            },
+        )
+        # paid_date를 넣어 생성 시점에 PAID로 자동 유도 — 지불 완료에 잡혀야 한다.
+        await signed_up_client.post(
+            "/payments",
+            json={
+                "category_code": "VENUE",
+                "item_name": "중도금",
+                "payment_type": "INTERIM",
+                "amount": 2_000_000,
+                "paid_date": str(today_kst()),
+            },
+        )
+        # PLANNED로 만든 뒤 CANCELED로 전환 — 어느 쪽 합계에도 잡히면 안 된다.
+        canceled = await signed_up_client.post(
+            "/payments",
+            json={
+                "category_code": "VENUE",
+                "item_name": "환불된 옵션",
+                "payment_type": "ETC",
+                "amount": 1_000_000,
+            },
+        )
+        await signed_up_client.patch(
+            f"/payments/{canceled.json()['id']}", json={"status": "CANCELED"}
+        )
+
+        listed = await signed_up_client.get("/wedding-categories")
+        assert listed.status_code == 200
+        venue = next(c for c in listed.json()["categories"] if c["category_code"] == "VENUE")
+        assert venue["planned_budget"] == 10_000_000
+        assert venue["paid_amount"] == 2_000_000
+        assert venue["scheduled_amount"] == 3_000_000
+        # 다른 카테고리는 payments가 전혀 없으므로 0이어야 한다(딕셔너리 기본값 폴백 확인).
+        sdm = next(c for c in listed.json()["categories"] if c["category_code"] == "SDM")
+        assert sdm["paid_amount"] == 0
+        assert sdm["scheduled_amount"] == 0
+
+
 class TestDashboardSmoke:
     """#25/#26 — 온보딩(POST /weddings)이 이미 checklist_items 24개(또는 폴백) + timeline_items
     55개 + wedding_categories 9행(전부 is_active=True)을 만들어두므로 별도 셋업이 필요 없다."""

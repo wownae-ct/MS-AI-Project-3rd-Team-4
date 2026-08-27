@@ -109,3 +109,19 @@ async def get_paid_amounts_by_category(session: AsyncSession, wedding_id: UUID) 
         .group_by(Payment.category_code)
     )
     return {code: int(total) for code, total in (await session.execute(stmt)).all()}
+
+
+async def get_scheduled_amounts_by_category(
+    session: AsyncSession, wedding_id: UUID
+) -> dict[str, int]:
+    """카테고리별 PLANNED(지불 예정) 합계 — get_paid_amounts_by_category와 같은 모양,
+    status만 다르다. S5/S6 예산 요약을 "지불완료/지불예정/배정/미배정" 4분류로 나누는 데 쓴다
+    (docs/wedding/refactor/red-bug.md #7 — 두 화면이 "미배정"을 다른 정의로 계산하던 버그의
+    근본 수정, name은 payments.status='PLANNED'와 wedding_categories.planned_budget의 이름
+    충돌을 피하려고 'scheduled'로 뒀다)."""
+    stmt = (
+        select(Payment.category_code, func.coalesce(func.sum(Payment.amount), 0))
+        .where(Payment.wedding_id == wedding_id, Payment.status == "PLANNED")
+        .group_by(Payment.category_code)
+    )
+    return {code: int(total) for code, total in (await session.execute(stmt)).all()}
