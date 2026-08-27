@@ -1,12 +1,13 @@
-// handleSubmit 의 createWedding→putWeddingCategories 순차 호출 회복력만 고정한다. 나머지
-// 단계별 입력/검증은 각 Step 컴포넌트 소관 — 여기선 "나중에 설정"으로 9단계(확인)까지 바로
-// 건너뛴 뒤 "시작하기"만 누른다.
+// handleSubmit 의 createWedding 단일 호출 회복력만 고정한다. 나머지 단계별 입력/검증은 각 Step
+// 컴포넌트 소관 — 여기선 "나중에 설정"으로 9단계(확인)까지 바로 건너뛴 뒤 "시작하기"만 누른다.
 //
-// 회귀 배경(2026-08-27 staging 실사용 중 발견): createWedding 이 TIMEOUT/NETWORK_ERROR 로
-// 실패해도 서버는 이미 웨딩 생성+개인화를 끝냈을 수 있다(net::ERR_ABORTED). 예전 코드는 409
-// (WEDDING_ALREADY_EXISTS) 이외의 에러를 곧장 rethrow 해서 putWeddingCategories 가 아예
-// 실행되지 않았고, 카테고리 활성화·예산 배분이 통째로 유실된 채 라우터 가드가 /onboarding
-// 재진입까지 막아 복구 불가능한 상태가 됐다.
+// 2026-08-27 재설계 배경: 원래는 createWedding(9개 카테고리 전부 활성으로 생성+개인화)→
+// putWeddingCategories(실제 온/오프로 다시 개인화 트리거)의 2콜 구조였다 — 온보딩마다 개인화 LLM
+// 생성이 두 번 겹쳐 걸렸고(실측 Langfuse p95=45.9초), 그중 createWedding이 TIMEOUT/네트워크
+// 에러로 실패하면 putWeddingCategories 가 아예 실행되지 않아 카테고리 활성화·예산 배분이 통째로
+// 유실되는 CRITICAL 버그가 있었다(net::ERR_ABORTED로 실패한 것처럼 보였지만 서버는 이미 성공한
+// 경우). 이제 카테고리를 createWedding의 categories 필드에 함께 실어 개인화를 한 번만 태운다 —
+// putWeddingCategories는 온보딩 이후 수정에만 쓰이고 여기서는 더 이상 호출하지 않는다.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -29,6 +30,7 @@ const getCategoriesFn = vi.fn();
 const getTotalAverageBenchmarkFn = vi.fn();
 vi.mock("@/entities/wedding", () => ({
   createWedding: (...a: unknown[]) => createWeddingFn(...a),
+  // 온보딩은 더 이상 이 함수를 호출하지 않는다 — 호출되지 않았음을 확인하는 용도로만 mock에 남긴다.
   putWeddingCategories: (...a: unknown[]) => putWeddingCategoriesFn(...a),
   getCategories: (...a: unknown[]) => getCategoriesFn(...a),
   getTotalAverageBenchmark: (...a: unknown[]) => getTotalAverageBenchmarkFn(...a),
@@ -73,60 +75,72 @@ async function jumpToReviewAndSubmit() {
   await userEvent.click(await screen.findByRole("button", { name: "시작하기" }));
 }
 
-describe("온보딩 제출 — createWedding 실패 후 카테고리 저장 회복력", () => {
-  it("createWedding이 TIMEOUT으로 실패해도 카테고리 저장을 시도하고, 성공하면 그대로 진행한다", async () => {
-    const { ApiError } = await import("@/shared/api");
-    createWeddingFn.mockRejectedValue(
-      new ApiError({ code: "TIMEOUT", message: "요청이 시간 초과되었습니다.", status: 0, extra: {} }),
-    );
-    putWeddingCategoriesFn.mockResolvedValue({ categories: [] });
+describe("온보딩 제출 — createWedding 단일 호출", () => {
+  it("성공하면 categories를 함께 실어 보내고, 세션을 무효화한 뒤 홈으로 이동한다", async () => {
+    createWeddingFn.mockResolvedValue({ id: "w1" });
 
     await jumpToReviewAndSubmit();
 
-    expect(putWeddingCategoriesFn).toHaveBeenCalled();
-    expect(navigate).toHaveBeenCalledWith(expect.objectContaining({ to: "/" }));
+    expect(createWeddingFn).toHaveBeenCalledTimes(1);
+    const payload = createWeddingFn.mock.calls[0][0] as { categories: unknown };
+    expect(Array.isArray(payload.categories)).toBe(true);
+    expect(payload.categories).toEqual(
+      expect.arrayContaining([expect.objectContaining({ category_code: "VENUE" })]),
+    );
+    expect(putWeddingCategoriesFn).not.toHaveBeenCalled();
     expect(invalidateSessionFn).toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith(expect.objectContaining({ to: "/" }));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("createWedding이 409(WEDDING_ALREADY_EXISTS)여도 여전히 카테고리 저장을 재시도한다", async () => {
+  it("409(WEDDING_ALREADY_EXISTS)는 이미 성공한 것으로 보고 그대로 진행한다", async () => {
     const { ApiError } = await import("@/shared/api");
     createWeddingFn.mockRejectedValue(
       new ApiError({ code: "WEDDING_ALREADY_EXISTS", message: "이미 존재합니다.", status: 409, extra: {} }),
     );
-    putWeddingCategoriesFn.mockResolvedValue({ categories: [] });
 
     await jumpToReviewAndSubmit();
 
-    expect(putWeddingCategoriesFn).toHaveBeenCalled();
+    expect(invalidateSessionFn).toHaveBeenCalled();
     expect(navigate).toHaveBeenCalledWith(expect.objectContaining({ to: "/" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("createWedding과 카테고리 저장이 모두 실패하면 createWedding 쪽 에러를 더 정확한 원인으로 보여준다", async () => {
+  it("TIMEOUT은 서버가 실제로 성공했을 수 있다고 보고 그대로 진행한다(핵심 회귀 케이스)", async () => {
     const { ApiError } = await import("@/shared/api");
     createWeddingFn.mockRejectedValue(
       new ApiError({ code: "TIMEOUT", message: "요청이 시간 초과되었습니다.", status: 0, extra: {} }),
     );
-    putWeddingCategoriesFn.mockRejectedValue(
-      new ApiError({ code: "VALIDATION_ERROR", message: "카테고리 저장에 실패했습니다.", status: 422, extra: {} }),
-    );
 
     await jumpToReviewAndSubmit();
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("요청이 시간 초과되었습니다.");
-    expect(navigate).not.toHaveBeenCalled();
+    expect(invalidateSessionFn).toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith(expect.objectContaining({ to: "/" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("createWedding은 성공하고 카테고리 저장만 실패하면 카테고리 쪽 에러를 그대로 보여준다", async () => {
+  it("NETWORK_ERROR는 진짜 실패로 보고 에러를 보여주며 페이지에 머문다", async () => {
     const { ApiError } = await import("@/shared/api");
-    createWeddingFn.mockResolvedValue({ id: "w1" });
-    putWeddingCategoriesFn.mockRejectedValue(
-      new ApiError({ code: "VALIDATION_ERROR", message: "카테고리 저장에 실패했습니다.", status: 422, extra: {} }),
+    createWeddingFn.mockRejectedValue(
+      new ApiError({ code: "NETWORK_ERROR", message: "서버에 연결하지 못했습니다.", status: 0, extra: {} }),
     );
 
     await jumpToReviewAndSubmit();
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("카테고리 저장에 실패했습니다.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("서버에 연결하지 못했습니다.");
+    expect(navigate).not.toHaveBeenCalled();
+    expect(invalidateSessionFn).not.toHaveBeenCalled();
+  });
+
+  it("BUDGET_EXCEEDED 등 확정적 검증 실패는 에러를 보여주며 페이지에 머문다", async () => {
+    const { ApiError } = await import("@/shared/api");
+    createWeddingFn.mockRejectedValue(
+      new ApiError({ code: "BUDGET_EXCEEDED", message: "배정 합계가 예산을 초과합니다.", status: 400, extra: {} }),
+    );
+
+    await jumpToReviewAndSubmit();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("배정 합계가 예산을 초과합니다.");
     expect(navigate).not.toHaveBeenCalled();
   });
 });

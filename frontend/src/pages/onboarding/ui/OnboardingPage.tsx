@@ -21,7 +21,6 @@ import { useNavigate } from "@tanstack/react-router";
 import { invalidateSession } from "@/entities/session";
 import {
   createWedding,
-  putWeddingCategories,
   type DoneSoFarCategory,
   type SdmPriority,
   type TastePreference,
@@ -141,21 +140,22 @@ export function OnboardingPage() {
     setError(null);
     setIsSubmitting(true);
     try {
-      // createWedding 이 던지는 에러는 곧장 throw 하지 않고 일단 들고만 있는다 — 409
-      // (WEDDING_ALREADY_EXISTS, 레드팀 감사 1라운드 #2, dev-35 확인)뿐 아니라 TIMEOUT/
-      // NETWORK_ERROR 도 마찬가지로 "서버는 실제로 성공했는데 클라이언트만 응답을 못 받은"
-      // 경우일 수 있다(2026-08-27 staging 실사용 중 발견 — net::ERR_ABORTED로 실패한 것처럼
-      // 보였지만 서버는 이미 웨딩 생성+개인화까지 끝나 있었음). wedding_id는 URL/바디로 받지
-      // 않고 세션에서 서버가 유도하므로(03_API_spec.md:126) PUT /wedding-categories 도 같은
-      // 세션 쿠키로 대상 웨딩을 찾는다 — 즉 createWedding 응답을 못 받았어도 카테고리 저장을
-      // 밑져야 본전으로 시도할 수 있다.
-      //
-      // 예전엔 409 이외의 에러를 여기서 바로 rethrow 했다 — 그러면 putWeddingCategories 가
-      // 아예 실행되지 않고, 서버엔 이미 wedding row가 생겼는데(hasWedding=true) 카테고리
-      // 활성화·예산 배분만 통째로 유실된 채로 남았다. 게다가 라우터 가드가 hasWedding=true인
-      // /onboarding 재진입을 대시보드로 강제 리다이렉트하므로(router.tsx), 같은 페이지에서
-      // 즉시 재시도하지 않는 한 복구할 방법이 없었다.
-      let weddingCreationError: unknown = null;
+      // 2026-08-27 재설계 — 카테고리를 createWedding payload에 함께 실어 개인화 LLM 생성을
+      // 온보딩당 한 번만 태운다(이전엔 createWedding이 9개 카테고리 전부 활성으로 먼저 생성+
+      // 개인화하고, 뒤이은 putWeddingCategories가 실제 온/오프와 달라진 걸 보고 또 한 번
+      // 개인화를 재트리거했다 — 실측 Langfuse p95=45.9초짜리 호출을 온보딩마다 두 번 겹쳐
+      // 태우던 구조였다). 백엔드가 categories 필드를 받아 처음부터 정확한 활성 집합으로 한 번만
+      // 생성하도록 바뀌는 게 전제(별도 세션 dev-35가 backend 쪽 구현). putWeddingCategories는
+      // 이제 온보딩 이후 수정(예산 페이지 등)에만 쓰인다 — 여기서는 더 이상 호출하지 않는다.
+      const categoryUpdates: WeddingCategoryUpdateInput[] = allocationRows.map((row) => ({
+        category_code: row.categoryCode,
+        is_active: row.isActive,
+        planned_budget: row.isActive ? row.plannedBudget : 0,
+        display_order: row.displayOrder,
+        selected_options: row.isActive ? row.selectedOptions : null,
+        ...(row.isActive ? {} : { skip_reason: "온보딩에서 사용 안 함으로 표시" }),
+      }));
+
       try {
         await createWedding({
           user_role: userRole,
@@ -171,30 +171,24 @@ export function OnboardingPage() {
           sdm_priority: sdmPriority ?? undefined,
           primary_goals: effectiveGoals,
           done_so_far: doneSoFar,
+          categories: categoryUpdates,
         });
       } catch (err) {
-        // 409(WEDDING_ALREADY_EXISTS)는 "이미 만들어져 있다"는 기대된 신호이므로 진짜 에러로
-        // 취급하지 않는다 — allocationRows 는 실패와 무관하게 화면 state에 남아 있으므로
-        // 사용자가 다시 고를 필요 없이 바로 카테고리 저장을 재시도한다. 그 외의 에러(타임아웃 등)는
-        // 아래에서 카테고리 저장까지 실패할 때만 진짜 원인으로 보여주기 위해 들고 있는다.
-        if (!(err instanceof ApiError && err.code === "WEDDING_ALREADY_EXISTS")) weddingCreationError = err;
-      }
-
-      const categoryUpdates: WeddingCategoryUpdateInput[] = allocationRows.map((row) => ({
-        category_code: row.categoryCode,
-        is_active: row.isActive,
-        planned_budget: row.isActive ? row.plannedBudget : 0,
-        display_order: row.displayOrder,
-        selected_options: row.isActive ? row.selectedOptions : null,
-        ...(row.isActive ? {} : { skip_reason: "온보딩에서 사용 안 함으로 표시" }),
-      }));
-      try {
-        await putWeddingCategories(categoryUpdates);
-      } catch (categoryErr) {
-        // 카테고리 저장 실패보다 createWedding 실패가 더 정확한 원인이면(예: 둘 다 같은
-        // 타임아웃 때문에 실패) 그쪽 메시지를 보여준다 — "카테고리 저장에 실패했습니다"보다
-        // "요청이 시간 초과되었습니다"가 사용자에게 더 정확하다.
-        throw weddingCreationError ?? categoryErr;
+        // 단일 호출이라 카테고리 저장으로 넘어갈 "두 번째 기회"가 더 이상 없다 — 그래서 여기서
+        // 바로 "복구 가능"과 "진짜 실패"를 가른다.
+        // - 409(WEDDING_ALREADY_EXISTS): 이미 만들어져 있다는 확실한 신호(레드팀 감사 1라운드
+        //   #2) — 재시도 시 같은 payload가 이미 반영됐을 것이므로 성공으로 취급하고 진행한다.
+        // - TIMEOUT: 클라이언트만 응답을 못 받았을 뿐 서버는 실제로 끝냈을 가능성이 높다
+        //   (2026-08-27 staging 실사용 중 발견 — net::ERR_ABORTED로 실패한 것처럼 보였지만
+        //   서버는 이미 웨딩 생성+개인화까지 끝나 있었음). 두 경우 다, 만에 하나 서버가 정말
+        //   실패했더라도 셸 라우트 가드(router.tsx의 `if (!context.user.hasWedding) throw
+        //   redirect({ to: "/onboarding" })`)가 다음 진입 시 자동으로 /onboarding으로 되돌리므로
+        //   영구히 갇히지 않는다.
+        // - 그 외(NETWORK_ERROR/BUDGET_EXCEEDED/VALIDATION_ERROR 등)는 서버가 처리하지
+        //   않았다고 확신할 수 있는 진짜 실패라 그대로 사용자에게 보여주고 페이지에 머문다.
+        const isRecoverable =
+          err instanceof ApiError && (err.code === "WEDDING_ALREADY_EXISTS" || err.code === "TIMEOUT");
+        if (!isRecoverable) throw err;
       }
 
       // 웨딩을 막 만들었으니 캐시된 세션의 hasWedding 은 이제 stale 이다 — 무효화해야 다음에
