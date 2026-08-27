@@ -13,9 +13,11 @@ personalization/regenerate(#32)까지 완료. 나머지 엔드포인트는 해�
 GET /categories는 03_API_spec.md §5 인증 필수 목록(`/weddings*` 등)에 없는 유일한 부류의
 엔드포인트라 401 케이스가 없다 — 세션 쿠키 없이도 항상 200이어야 하는 게 맞는 동작이다."""
 
+from datetime import date, timedelta
 from uuid import uuid4
 
 from app.core.categories import CATEGORY_META
+from app.core.timezone import today_kst
 
 
 class TestCategoriesSmoke:
@@ -494,6 +496,58 @@ class TestDashboardSmoke:
         response = await client.get("/reports/me")
 
         assert response.status_code == 401
+
+
+class TestTimelinePrepScalingSmoke:
+    """2026-08-28 준비기간 스케일링(app/services/timeline.py::compute_prep_scale_factor) — 카탈로그
+    경로가 온보딩(wedding_client, wedding_date=2027-05-01, 표준 준비기간 365일보다 짧음)에서
+    실제로 적용되는지, PATCH /weddings/me의 wedding_date 변경 폭에 따른 재스케일/스케일고정
+    분기(recalculate_timeline_dates의 WEDDING_DATE_RESCALE_THRESHOLD_DAYS)가 실제로 동작하는지
+    확인한다."""
+
+    async def test_freshly_onboarded_timeline_has_no_items_before_today(self, wedding_client):
+        # wedding_client의 wedding_date(2027-05-01)는 표준 준비기간(365일)보다 짧아, 스케일링
+        # 없이는 카탈로그의 이른 항목들이 온보딩 즉시 이미 과거로 찍히는 게 원래 버그였다 —
+        # 스케일링 이후엔 어떤 항목도 target_date < today일 수 없다(수학적 불변식,
+        # app/services/timeline.py::generate_timeline_items 모듈 docstring 참고).
+        response = await wedding_client.get("/timeline-items")
+
+        items = response.json()["items"]
+        today = today_kst().isoformat()
+        assert items
+        assert all(item["target_date"] >= today for item in items)
+
+    async def test_wedding_date_patch_below_threshold_keeps_offset_locked(self, wedding_client):
+        before = (await wedding_client.get("/timeline-items")).json()["items"]
+        target = next(
+            i for i in before if i["status"] == "TODO" and i["default_dday_offset_days"] < 0
+        )
+
+        new_wedding_date = date(2027, 5, 1) + timedelta(days=30)  # 5개월(150일) 미만 변경
+        patch_response = await wedding_client.patch(
+            "/weddings/me", json={"wedding_date": new_wedding_date.isoformat()}
+        )
+        assert patch_response.status_code == 200
+
+        after = (await wedding_client.get("/timeline-items")).json()["items"]
+        after_item = next(i for i in after if i["id"] == target["id"])
+        assert after_item["default_dday_offset_days"] == target["default_dday_offset_days"]
+
+    async def test_wedding_date_patch_at_or_above_threshold_rescales_offset(self, wedding_client):
+        before = (await wedding_client.get("/timeline-items")).json()["items"]
+        target = next(
+            i for i in before if i["status"] == "TODO" and i["default_dday_offset_days"] < 0
+        )
+
+        new_wedding_date = date(2027, 5, 1) + timedelta(days=400)  # 5개월(150일) 이상 변경
+        patch_response = await wedding_client.patch(
+            "/weddings/me", json={"wedding_date": new_wedding_date.isoformat()}
+        )
+        assert patch_response.status_code == 200
+
+        after = (await wedding_client.get("/timeline-items")).json()["items"]
+        after_item = next(i for i in after if i["id"] == target["id"])
+        assert after_item["default_dday_offset_days"] != target["default_dday_offset_days"]
 
 
 class TestOAuthSmoke:
