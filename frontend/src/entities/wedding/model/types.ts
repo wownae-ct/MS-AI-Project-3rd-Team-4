@@ -81,13 +81,21 @@ export interface WeddingCreateInput {
   sdm_priority?: SdmPriority;
   primary_goals?: string[];
   done_so_far?: DoneSoFarCategory[];
+  /** 2026-08-27 재설계 — 온보딩 개인화 LLM 생성을 웨딩당 한 번만 태우기 위해 카테고리
+      활성/예산 배분을 생성 시점에 함께 보낸다(이전엔 생성 직후 PUT /wedding-categories를
+      또 호출해 활성 카테고리가 바뀔 때마다 개인화가 두 번 트리거됐다 — 실측 Langfuse
+      p95=45.9초짜리 호출이 온보딩마다 두 번 겹쳤다). `PUT /wedding-categories`(별도
+      putWeddingCategories 호출)는 온보딩 이후 수정 전용으로 남는다. */
+  categories: WeddingCategoryUpdateInput[];
 }
 
 export type WeddingUpdateInput = Partial<
   Pick<WeddingCreateInput, "wedding_date" | "wedding_date_precision" | "total_budget" | "region_code" | "guest_count">
 >;
 
-export interface WeddingProfile extends WeddingCreateInput {
+/** POST /weddings 응답은 categories를 포함하지 않는다(카테고리는 GET /wedding-categories로
+    별도 조회) — WeddingCreateInput의 요청 전용 필드를 응답 타입에서 제외한다. */
+export interface WeddingProfile extends Omit<WeddingCreateInput, "categories"> {
   id: string;
   created_at: string;
 }
