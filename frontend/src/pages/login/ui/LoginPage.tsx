@@ -5,14 +5,17 @@
 // 가입 직후 로그인 폼에 도달할 수 없다. 가드를 빼도 무해하다 — 로그인이 새 세션을 발급해도
 // 백엔드가 누적할 뿐이다.
 //
-// ## 비밀번호 자동 채움은 메모리 전용이다
-// 가입 성공 시 방금 쓴 값을 로그인 폼에 채운다. **저장하지 않는다** — localStorage·
-// sessionStorage·쿠키·URL 어디에도 넣지 않고 이 컴포넌트의 상태로만 들고 있다가 1회 소비한다.
-import { useState } from "react";
+// ## 가입 후 이메일만 인계하고 비밀번호는 비운다
+// 가입 성공 시 이메일은 로그인 폼에 남겨 재입력 부담을 없애되(**저장하지 않는다** — localStorage·
+// sessionStorage·쿠키·URL 어디에도 넣지 않고 이 컴포넌트의 상태로만 들고 있다), **비밀번호는
+// 비운다**. 채워 두면 ① 어깨너머·공용 기기에서 방금 만든 비밀번호가 그대로 노출되고
+// ② 폼이 이미 다 채워져 있어 「이미 로그인된 건가?」라는 오해를 준다. 로그인은 사용자의
+// 명시적 행위로 남긴다 — 대신 완료 배너와 비밀번호 필드 포커스로 다음 할 일을 지시한다.
+import { useRef, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { getMe, invalidateSession, login, signup, socialLoginUrl } from "@/entities/session";
 import { isApiError } from "@/shared/api";
-import { Button, Card, IconGoogle, IconNaver, Page } from "@/shared/ui";
+import { Button, Card, IconCheck, IconGoogle, IconNaver, Page } from "@/shared/ui";
 import { oauthErrorMessage } from "./oauth-error";
 import { EMAIL_FORMAT_ERROR, PASSWORD_FORMAT_ERROR, isValidEmail, isValidPassword } from "./validation";
 
@@ -53,11 +56,19 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(
     search.oauth_error === undefined ? null : oauthErrorMessage(search.oauth_error),
   );
+  // 성공 알림은 error 와 **별도 상태**다 — 한 자리에 섞으면 성공이 실패와 같은 role="alert"
+  // (assertive)로 낭독되고 스타일도 구분할 수 없다. 아래 렌더에서 `<output>`(암묵 role="status"
+  // + aria-live="polite")로 나간다.
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // 가입 성공 직후 비운 비밀번호 칸으로 포커스를 옮기기 위한 참조 — 로그인·가입 두 모드에서
+  // 같은 input 이라 모드가 바뀌어도 이 노드는 유지된다(포커스가 날아가지 않는다).
+  const passwordRef = useRef<HTMLInputElement>(null);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
+    setNotice(null);
 
     // `<form noValidate>` 라 HTML5 제약(required·type="email"·minLength)은 아예 안 돈다 — 이
     // 화면 고유의 에러 UI(role="alert")로 항상 같은 문구·같은 자리에서 보여주려는 의도다.
@@ -94,8 +105,13 @@ export function LoginPage() {
         // 전에 다른 화면이 낡은(비로그인) 세션을 최대 60초 동안 볼 수 있다.
         invalidateSession();
         // 가입은 성공했지만 곧바로 홈으로 보내지 않는다 — 요구 플로우가 로그인을 한 번 더 거친다.
-        // 값은 상태에 그대로 남아 있으므로 폼이 이미 채워진 상태가 된다(메모리 전용).
         setMode("login");
+        // 이메일(email)은 그대로 두고 비밀번호만 비운다 — 근거는 파일 상단 주석.
+        setPassword("");
+        // 화면에서 값이 사라지는 것만으로는 「내가 뭘 잘못했나」로 읽힌다. 무슨 일이 일어났고
+        // 다음에 뭘 해야 하는지를 배너가 말하고, 포커스가 그 자리로 데려간다.
+        setNotice(`회원가입이 완료되었습니다. 가입한 계정과 비밀번호로 로그인해 주세요.`);
+        passwordRef.current?.focus();
         return;
       }
       const user = await login({ email: trimmedEmail, password });
@@ -131,7 +147,30 @@ export function LoginPage() {
   }
 
   return (
-    <Page title="로그인" width="max-w-[430px]">
+    // 제목·부제는 모드를 따라간다 — 버튼 라벨만 바뀌면 화면 최상단은 계속 "로그인"이라 지금
+    // 무엇을 하는 중인지 어긋난다. `width` 는 리터럴 그대로 둔다(조립하면 Tailwind 스캐너가
+    // 찾지 못해 빌드는 성공한 채 폭만 사라진다 — Page.tsx 의 width 주석).
+    <Page
+      title={mode === "signup" ? "회원가입" : "로그인"}
+      subtitle={mode === "signup" ? "가입 후 로그인하면 바로 시작할 수 있어요." : undefined}
+      width="max-w-[430px]"
+    >
+      {/* 카드 밖 위쪽에 둔다 — 폼 안에 넣으면 배너가 뜰 때 입력 필드가 통째로 밀린다.
+          `<output>`은 암묵 role="status" + aria-live="polite"라 사용자 조작의 결과로서
+          error 의 role="alert"보다 약하게 낭독된다. jsx-a11y 도 role="status" 보다 네이티브
+          `<output>`을 요구한다(선례: pages/onboarding/ui/GeneratingOverlay.tsx).
+          상태 색(초록)을 쓰지 않는다 — docs/design/decisions.md D6. 구분은 헤어라인 보더로,
+          강조는 아이콘의 text-primary 한 곳으로만 한다. */}
+      {notice !== null && (
+        <output
+          aria-live="polite"
+          className="flex items-start gap-2 rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink"
+        >
+          <IconCheck size={18} className="mt-0.5 shrink-0 text-primary" />
+          {notice}
+        </output>
+      )}
+
       <Card>
         <form className="flex flex-col gap-4" onSubmit={handleSubmit} noValidate>
           {mode === "signup" && (
@@ -163,6 +202,7 @@ export function LoginPage() {
             <label className="flex flex-col gap-1 text-sm">
               비밀번호
               <input
+                ref={passwordRef}
                 className="min-h-tap rounded-md border border-line px-3"
                 type="password"
                 value={password}
@@ -229,7 +269,9 @@ export function LoginPage() {
         // 제출 중(busy)에 모드를 바꾸면, 진행 중이던 요청이 나중에 settle될 때 이미 바뀐 폼
         // 위에 엉뚱한 에러/강제 이동을 남길 수 있다(레드팀 감사 — 경합 가드 부재).
         disabled={busy}
-        onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(null); }}
+        // 모드를 바꾸면 완료 배너도 함께 걷는다 — 안 그러면 가입 완료 문구가 회원가입 폼 위에
+        // 다시 걸려 「또 가입한 건가」로 읽힌다.
+        onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(null); setNotice(null); }}
       >
         {mode === "login" ? "계정이 없으신가요? 회원가입" : "이미 계정이 있으신가요? 로그인"}
       </Button>
