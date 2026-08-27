@@ -12,7 +12,17 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 // 자원과 충돌해 409(WEDDING_ALREADY_EXISTS)로 막힌다 — 재시도 성공 여부가 타이밍 도박이 된다.
 // `POST /weddings`·`PATCH /weddings/me`·`PUT /wedding-categories`·`POST /personalization/regenerate`
 // 가 모두 이 그래프를 동기로 태운다(CLAUDE.md "Personalization" 절) — 이 넷만 기본값보다 길게 준다.
-export const PERSONALIZATION_TIMEOUT_MS = 45_000;
+//
+// 45초→60초 상향(2026-08-27): Langfuse "MerryMap" 대시보드의 "응답 시간 p95(트레이스별)" 위젯
+// 실측 — personalization 트레이스 p95가 45.9초로, 기존 45초 타임아웃과 사실상 같은 선이라 상위
+// 5%+ 가 이미 이 값 근처에서 타임아웃나고 있었다(이번 온보딩 카테고리 유실 버그의 근본 원인,
+// docs/AI-Sessions/wiki/errors/2026-08-27-onboarding-category-loss-on-createWedding-timeout.md).
+// 인프라 쪽 ingress proxy-read/send-timeout은 이미 120초(2026-08-26, 챗 SSE 타임아웃 3중 방지
+// 커밋 154e352 — /api 전체에 적용되는 값이라 개인화 엔드포인트에도 이미 여유가 있었다)라 60초는
+// 안전하게 그 안에 들어간다. 100초까지는 필요 없다고 판단 — 온보딩이 이제 개인화 LLM 호출을
+// 한 번만 태우도록 바뀌어서(OnboardingPage.tsx, categories를 createWedding에 함께 보냄) 예전처럼
+// 두 호출이 겹쳐 최악 90초(45×2)까지 갈 위험 자체가 없어졌다.
+export const PERSONALIZATION_TIMEOUT_MS = 60_000;
 
 // 영수증 OCR(POST /payments/receipt-extract) 전용 — 트러블슈팅 STEP 1-C(2026-08-26). 백엔드가
 // Blob 업로드 + vision 호출을 순차로 하는데, 사진 용량이 크거나 모델 응답이 느리면(vision 모델
