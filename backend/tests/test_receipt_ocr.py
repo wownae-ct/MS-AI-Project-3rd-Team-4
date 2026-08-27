@@ -210,6 +210,24 @@ class TestVisionCallQuality:
 
         client.chat.completions.create.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_prompt_text_contains_the_word_json(self):
+        """트러블슈팅 STEP 2(2026-08-28) 회귀 테스트 — Azure OpenAI는
+        response_format={"type": "json_object"}를 쓸 때 messages 어딘가에 "json"이라는
+        단어(대소문자 무관)가 없으면 400 Bad Request로 거부한다(실제 staging에서 100% 실패로
+        재현됨). 이 테스트는 실 API를 안 쳐서 그 400 자체는 재현 못 하지만, 프롬프트가 순수
+        한국어로 다시 바뀌어 "json" 단어가 빠지는 회귀는 여기서 바로 잡는다."""
+        client = _client_returning(
+            {"item_name": None, "vendor_name": None, "amount": None, "paid_date": None}
+        )
+
+        await extract_receipt_fields(client, "chat-mini", _fake_image_bytes("JPEG"), "image/jpeg")
+
+        call_kwargs = client.chat.completions.create.call_args.kwargs
+        assert call_kwargs["response_format"] == {"type": "json_object"}
+        text_block = call_kwargs["messages"][0]["content"][0]
+        assert "json" in text_block["text"].lower()
+
 
 class TestAmountParsing:
     """STEP 1-B — 한국 영수증은 금액에 쉼표/원표시가 흔하다. 프롬프트가 숫자만 요구해도
