@@ -26,7 +26,15 @@ ReceiptExtractOut(amount: int | None)에 들어가면 pydantic ValidationError�
    그대로 유지된다 — 보정은 vision 호출 직전 사본에만 적용(기존 원본 보존 원칙 유지).
 3) 프롬프트가 "총액"만 지시해 한국 영수증 특유의 "공급가액/부가세 별도 표기", "받은금액/
    거스름돈", 여러 날짜(발행일/결제일/예약일) 병기 상황에서 총액이 아닌 다른 숫자·날짜를 뽑을
-   위험이 있었다 — 명시적 가이드 문구를 추가."""
+   위험이 있었다 — 명시적 가이드 문구를 추가.
+
+트러블슈팅 STEP 2(2026-08-28): #108(azure.identity.aio 크레덴셜 수정) 이후에도 여전히
+100% 실패하고 있었다 — 원인은 완전히 별개였다. Azure OpenAI가 `response_format={"type":
+"json_object"}`를 쓰려면 messages 어딘가에 "json"이라는 단어가 (대소문자 무관) 반드시
+있어야 하는데(400 Bad Request로 즉시 거부), `_EXTRACT_PROMPT`가 전부 한국어라 "json"이 단
+한 번도 등장하지 않았다. staging 실측(kubectl logs)으로 재확인: `openai.BadRequestError:
+... "'messages' must contain the word 'json' in some form..."`. "출력 스키마" 문구를
+"아래 JSON 스키마 그대로 응답하세요"로 바꿔 해결 — 다른 로직은 그대로."""
 
 import base64
 import io
@@ -66,7 +74,7 @@ _EXTRACT_PROMPT = """영수증 사진에서 아래 4개 필드를 뽑으세요. 
 - paid_date: 실제 결제(수납)일(YYYY-MM-DD). 발행일/예약일/방문일 등 다른 날짜가 함께 있으면
   결제일을 우선하고, 결제일을 구분할 수 없으면 null로 두세요.
 
-출력 스키마: {"item_name": "...", "vendor_name": "...", "amount": 123456,
+아래 JSON 스키마 그대로 응답하세요: {"item_name": "...", "vendor_name": "...", "amount": 123456,
 "paid_date": "2026-08-25"} — 4개 키 전부 포함하고, 모르는 값은 null로 넣으세요."""
 
 
