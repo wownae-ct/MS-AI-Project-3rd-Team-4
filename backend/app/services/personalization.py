@@ -25,7 +25,11 @@ from app.models import AiInvocation, ChecklistItem, TimelineItem, Wedding, Weddi
 from app.personalization.graph import build_graph
 from app.personalization.state import PersonalizationState
 from app.services.checklist import default_status_for_category
-from app.services.timeline import generate_timeline_items
+from app.services.timeline import (
+    compute_prep_scale_factor,
+    generate_timeline_items,
+    scale_dday_offset,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -196,18 +200,29 @@ def _checklist_fallback_rows(active_categories: set[str]) -> list[ChecklistItem]
 
 
 def _timeline_row_from_draft(
-    wedding_date: date, done_categories: set[str], today: date, display_order: int, item: dict
+    wedding_date: date,
+    done_categories: set[str],
+    today: date,
+    display_order: int,
+    item: dict,
+    scale_factor: float,
 ) -> TimelineItem:
     """generate 노드의 LLM 출력(SUCCESS 경로) 1건 → TimelineItem. status도 LLM 출력 스키마에
     없는 필드라 done_so_far 로직(기존 generate_timeline_items와 동일 규칙)으로 결정론적으로
-    채운다."""
-    offset = item.get("default_dday_offset_days") or 0
+    채운다. offset은 scale_factor(호출부가 compute_prep_scale_factor로 1회 계산해 넘김)로
+    실제 준비기간에 맞게 스케일된다(2026-08-28, generate_timeline_items의 카탈로그 경로와
+    동일 규칙 — app/services/timeline.py 모듈 docstring 참고). done_so_far DONE 판정은 스케일
+    전(raw) offset 기준 target_date로 한다 — generate_timeline_items 모듈 docstring의 이유와
+    동일(2026-08-28 사용자 결정)."""
+    raw_offset = item.get("default_dday_offset_days") or 0
+    offset = scale_dday_offset(raw_offset, scale_factor)
     category_code = item.get("category_code")
+    raw_target_date = wedding_date + timedelta(days=raw_offset)
     target_date = wedding_date + timedelta(days=offset)
     return TimelineItem(
         category_code=category_code,
         origin="LLM",
-        status=_timeline_status(category_code, done_categories, target_date, today),
+        status=_timeline_status(category_code, done_categories, raw_target_date, today),
         title=item["title"],
         target_date=target_date,
         default_dday_offset_days=offset,
@@ -328,9 +343,10 @@ async def run_personalization(
                     checklist_rows = _checklist_fallback_rows(active_categories)
             if "TIMELINE" in affected_domains:
                 if domain_statuses.get("TIMELINE") == "SUCCESS":
+                    scale_factor = compute_prep_scale_factor(today, wedding.wedding_date)
                     timeline_rows = [
                         _timeline_row_from_draft(
-                            wedding.wedding_date, done_categories, today, idx, item
+                            wedding.wedding_date, done_categories, today, idx, item, scale_factor
                         )
                         for idx, item in enumerate(result["timeline_draft"] or [], start=1)
                     ]
