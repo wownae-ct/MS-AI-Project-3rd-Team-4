@@ -49,7 +49,7 @@ from app.schemas.wedding import (
     WeddingUpdate,
 )
 from app.services.benchmark import get_latest_benchmark
-from app.services.payment import get_paid_amounts_by_category
+from app.services.payment import get_paid_amounts_by_category, get_scheduled_amounts_by_category
 from app.services.personalization import run_personalization
 from app.services.timeline import get_active_category_codes, recalculate_timeline_dates
 
@@ -350,7 +350,9 @@ async def update_wedding(
     return wedding
 
 
-def _wedding_category_out(row: WeddingCategory, paid_amount: int) -> WeddingCategoryOut:
+def _wedding_category_out(
+    row: WeddingCategory, paid_amount: int, scheduled_amount: int
+) -> WeddingCategoryOut:
     meta = CATEGORY_META_BY_CODE[row.category_code]
     return WeddingCategoryOut(
         category_code=row.category_code,
@@ -359,6 +361,7 @@ def _wedding_category_out(row: WeddingCategory, paid_amount: int) -> WeddingCate
         is_active=row.is_active,
         planned_budget=row.planned_budget,
         paid_amount=paid_amount,
+        scheduled_amount=scheduled_amount,
         remaining=row.planned_budget - paid_amount,
         selected_options=row.selected_options,
         display_order=row.display_order,
@@ -395,7 +398,15 @@ async def list_wedding_categories_out(
         .all()
     )
     paid_amounts = await get_paid_amounts_by_category(session, wedding_id)
-    return [_wedding_category_out(row, paid_amounts.get(row.category_code, 0)) for row in rows]
+    scheduled_amounts = await get_scheduled_amounts_by_category(session, wedding_id)
+    return [
+        _wedding_category_out(
+            row,
+            paid_amounts.get(row.category_code, 0),
+            scheduled_amounts.get(row.category_code, 0),
+        )
+        for row in rows
+    ]
 
 
 async def update_wedding_categories(

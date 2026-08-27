@@ -123,6 +123,7 @@ class WeddingCategoryOut(BaseModel):
     is_active: bool
     planned_budget: int
     paid_amount: int
+    scheduled_amount: int
     remaining: int
     selected_options: list[str] | None
     display_order: int
