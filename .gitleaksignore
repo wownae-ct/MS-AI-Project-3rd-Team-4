@@ -9,3 +9,8 @@
 # 아니라 그 웹페이지 소스에 원래부터 공개 삽입돼 있던 클라이언트 키다(카카오 JS SDK는
 # 도메인 제한으로 보호되는 공개 키가 원래 설계).
 data/raw/DS5_DUO/businesskorea_264825.html:generic-api-key:697
+
+# 오탐 — 로그인 폼 테스트 픽스처 비밀번호(서버 비밀번호 조합 규칙 검증용, 실제 계정 아님).
+# 커밋 해시를 안 붙인 건 이 파일이 backend→main/frontend→main 승격마다 새 병합 커밋으로
+# 재작성돼 해시 기반 항목이 매번 깨지기 때문 — 위 businesskorea 항목과 같은 패턴.
+frontend/src/pages/login/ui/LoginPage.test.tsx:korean-plaintext-credential:147
