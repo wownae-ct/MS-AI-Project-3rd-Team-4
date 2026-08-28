@@ -64,6 +64,8 @@ _CHECKLIST_RULES = """웨딩 프로필(활성 카테고리·우선순위·스타
   EXTRA_COST/PREP도 반드시 섞으세요, CONTRACT_TERM 단일 구성은 이 기준을 어긴 것입니다.
 - protected_items에 있는 항목은 다시 만들지 마세요(사용자가 이미 직접 수정함) — 중복 방지용
   참고만 하세요.
+- 같은 카테고리 안에서 title이 겹치는 항목을 두 개 이상 만들지 마세요. 여러 항목이 필요하면
+  각 title을 서로 다르게(구체적인 시기·대상·내용 등으로 구분) 쓰세요.
 - 활성 카테고리마다 최소 2개 이상 항목을 만드세요.
 - category_code는 활성 카테고리 안에서만 쓰세요.
 - 프로필의 selected_options는 카테고리 안에서도 사용자가 일부 옵션만 선택했다는 뜻입니다
@@ -84,6 +86,8 @@ _TIMELINE_RULES = """아래 표준 카탈로그(few-shot)를 참고해 이 커�
 - default_dday_offset_days는 본식 기준 며칠 전(음수)/후(양수)인지 정수로, -400~60 범위
   안에서만 쓰세요.
 - protected_items는 다시 만들지 마세요.
+- 같은 카테고리 안에서 title이 겹치는 항목을 두 개 이상 만들지 마세요. 여러 항목이 필요하면
+  각 title을 서로 다르게(구체적인 시기·대상·내용 등으로 구분) 쓰세요.
 - 프로필의 selected_options는 카테고리 안에서도 사용자가 일부 옵션만 선택했다는 뜻입니다
   (예: SDM에서 ["드레스","메이크업"]만 선택 = 포토그래퍼 관련 일정은 제외). selected_options에
   없는 옵션과 관련된 항목은 만들지 마세요. 어떤 카테고리가 selected_options에 아예 없으면
@@ -134,18 +138,29 @@ _TIMELINE_OUTPUT_SCHEMA = """타임라인 항목은 각각 이 필드만 채우�
 {"category_code": null 또는 "...", "title": "...", "default_dday_offset_days": 정수}"""
 
 
-def _build_checklist_few_shot() -> str:
+def _build_checklist_few_shot(active_categories: set[str] | None = None) -> str:
+    """active_categories가 None이면(활성 카테고리를 모르거나 필터링을 원치 않는 테스트 등)
+    필터링 없이 기존처럼 전체를 보여준다. 실제 웨딩 하나가 주어지면(빈 set 포함) 비활성
+    카테고리의 예시는 아예 안 보여준다 — VENUE/SDM도 예외 없이 이 규칙을 적용한다(2026-08-28
+    버그 수정 red-bug.md #9-1: 비활성 카테고리 few-shot이 그대로 노출돼 LLM이 규칙 텍스트
+    ("비활성 카테고리 항목은 만들지 마세요")와 모순되는 예시를 보고 그 카테고리 항목을 실제로
+    만들어버렸다 — 처음 재현된 사례는 MOCKUP인 HONEYMOON이었지만, VENUE/SDM도 온보딩에서
+    동일하게 꺼질 수 있는 카테고리라 같은 결함을 잠재적으로 안고 있었다)."""
     lines = [
         (
             "[체크리스트 few-shot — VENUE/SDM은 CONTRACT_TERM/EXTRA_COST/PREP 균형 잡힌 항목 "
             "전체 + 나머지 카테고리 대표 예시 "
-            f"{_MOCKUP_FEW_SHOT_SAMPLE_SIZE}개씩]"
+            f"{_MOCKUP_FEW_SHOT_SAMPLE_SIZE}개씩. 비활성 카테고리는 예시에서 제외됨]"
         )
     ]
     for item in CHECKLIST_FALLBACK_CATALOG:
-        if item.category_code in ("VENUE", "SDM"):
+        if item.category_code in ("VENUE", "SDM") and (
+            active_categories is None or item.category_code in active_categories
+        ):
             lines.append(f"- [{item.category_code}] ({item.item_type}) {item.title}")
     for category_code in _MOCKUP_CATEGORY_CODES:
+        if active_categories is not None and category_code not in active_categories:
+            continue
         representatives = [
             item for item in CHECKLIST_FALLBACK_CATALOG if item.category_code == category_code
         ][:_MOCKUP_FEW_SHOT_SAMPLE_SIZE]
@@ -157,15 +172,20 @@ def _build_checklist_few_shot() -> str:
     return "\n".join(lines)
 
 
-def _build_timeline_few_shot() -> str:
-    """VENUE/SDM/범용(category_code=None) 항목은 전체 그대로 보여준다 — 이 항목들이 전체
-    일정의 시간축 뼈대를 이루므로 줄이면 LLM이 타이밍 감각을 잃는다. 반면 MOCKUP 7개
-    카테고리는 카테고리당 _MOCKUP_FEW_SHOT_SAMPLE_SIZE개로 제한한다(2026-08-24 버그 수정:
-    원래 카탈로그 68항목 전체를 그대로 보여줘서, 서로 다른 프로필의 웨딩 두 건이 67개 중
-    66개가 완전히 동일한 타임라인을 받는 사례가 실계정 재현으로 확인됐다 — LLM이 "그대로
-    베낄 답"을 통째로 받으면 개인화할 유인이 사실상 없어지는 문제. `_TIMELINE_RULES`의
-    명시적 "베끼지 마세요" 지시와 함께 적용한다). 카탈로그 순서(연대순)는 그대로 유지해
-    시간 흐름 감각이 깨지지 않게 한다.
+def _build_timeline_few_shot(active_categories: set[str] | None = None) -> str:
+    """VENUE/SDM/범용(category_code=None) 항목은 활성 상태라면 전체 그대로 보여준다 — 이
+    항목들이 전체 일정의 시간축 뼈대를 이루므로 줄이면 LLM이 타이밍 감각을 잃는다(범용
+    항목은 특정 카테고리에 속하지 않으므로 애초에 활성/비활성 대상이 아니다 — 항상 보여줌).
+    반면 MOCKUP 7개 카테고리는 카테고리당 _MOCKUP_FEW_SHOT_SAMPLE_SIZE개로 제한한다
+    (2026-08-24 버그 수정: 원래 카탈로그 68항목 전체를 그대로 보여줘서, 서로 다른 프로필의
+    웨딩 두 건이 67개 중 66개가 완전히 동일한 타임라인을 받는 사례가 실계정 재현으로
+    확인됐다 — LLM이 "그대로 베낄 답"을 통째로 받으면 개인화할 유인이 사실상 없어지는 문제.
+    `_TIMELINE_RULES`의 명시적 "베끼지 마세요" 지시와 함께 적용한다). 카탈로그 순서(연대순)는
+    그대로 유지해 시간 흐름 감각이 깨지지 않게 한다.
+
+    active_categories가 None이면(필터링을 원치 않는 호출부·테스트) 기존처럼 전체를 보여준다.
+    실제 웨딩이 주어지면 VENUE/SDM/MOCKUP 전부 비활성 카테고리는 few-shot에서 제외한다
+    (2026-08-28 버그 수정 red-bug.md #9-1 — _build_checklist_few_shot과 동일한 이유).
 
     **출력을 사람이 읽는 불릿 텍스트가 아니라 실제 출력 스키마와 동일한 JSON 한 줄씩으로
     보여준다**(2026-08-24 버그 수정 3 — 이전 두 시도, "범용" 라벨 → "null" 라벨, 둘 다 같은
@@ -178,12 +198,19 @@ def _build_timeline_few_shot() -> str:
     — LLM이 "이 예시를 그대로 따라 쓰면" 자동으로 올바른 JSON null이 나온다."""
     header = (
         "[타임라인 few-shot — 실제 출력과 동일한 JSON 한 줄씩. VENUE/SDM/null 항목 전체 + "
-        f"나머지 카테고리 대표 예시 {_MOCKUP_FEW_SHOT_SAMPLE_SIZE}개씩. category_code가 "
-        "null인 항목은 예시처럼 따옴표 없는 JSON null 그대로 쓰세요.]"
+        f"나머지 카테고리 대표 예시 {_MOCKUP_FEW_SHOT_SAMPLE_SIZE}개씩(비활성 카테고리는 "
+        "예시에서 제외됨). category_code가 null인 항목은 예시처럼 따옴표 없는 JSON null "
+        "그대로 쓰세요.]"
     )
     lines = [header]
     mockup_shown_count: dict[str, int] = {}
     for item in TIMELINE_CATALOG:
+        if (
+            item.category_code is not None
+            and active_categories is not None
+            and item.category_code not in active_categories
+        ):
+            continue
         if item.category_code in _MOCKUP_CATEGORY_CODES:
             already_shown = mockup_shown_count.get(item.category_code, 0)
             if already_shown >= _MOCKUP_FEW_SHOT_SAMPLE_SIZE:
@@ -280,6 +307,8 @@ def build_generate_prompt(
     이 함수는 그걸 build_contract_citation_menu로 문자열화만 하고 검색 자체는 하지 않는다."""
     include_checklist = "CHECKLIST" in affected_domains
     include_timeline = "TIMELINE" in affected_domains
+    raw_active_categories = profile.get("active_categories")
+    active_categories = set(raw_active_categories) if raw_active_categories is not None else None
 
     # custom_request는 원본 profile dict 덤프에서 제외하고 별도 델리미터 블록으로만 노출한다
     # (_custom_request_note 참고) — 자유 텍스트가 구조화된 필드들과 경계 없이 섞이는 걸 피한다.
@@ -297,12 +326,12 @@ def build_generate_prompt(
             parts.insert(0, note)
 
     if include_checklist:
-        parts += [_CHECKLIST_RULES, _build_checklist_few_shot()]
+        parts += [_CHECKLIST_RULES, _build_checklist_few_shot(active_categories)]
         citation_menu = build_contract_citation_menu(contract_citations or [])
         if citation_menu:
             parts.append(citation_menu)
     if include_timeline:
-        parts += [_TIMELINE_RULES, _build_timeline_few_shot()]
+        parts += [_TIMELINE_RULES, _build_timeline_few_shot(active_categories)]
 
     if include_checklist and include_timeline:
         parts.append(_CHECKLIST_OUTPUT_SCHEMA)

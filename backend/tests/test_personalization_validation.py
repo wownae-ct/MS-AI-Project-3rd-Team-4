@@ -2,6 +2,7 @@
 13_personalization_router_agent_design.md §1-4."""
 
 from app.personalization.validation import (
+    deduplicate_titles,
     validate_checklist_items,
     validate_personalization_draft,
     validate_timeline_items,
@@ -125,6 +126,64 @@ class TestNoDuplicateTitles:
         errors = validate_checklist_items({"VENUE", "SDM"}, items)
 
         assert not errors
+
+
+class TestDeduplicateTitles:
+    """2026-08-28 결정(red-bug.md #9-2) — 제목 중복은 도메인 전체를 BLOCKED시키지 않고,
+    뒤에 나온 중복 항목만 드롭한다."""
+
+    def test_keeps_first_drops_later_duplicate(self):
+        first = {"category_code": "VENUE", "title": "예식장 투어 시작"}
+        duplicate = {"category_code": "VENUE", "title": "예식장 투어 시작"}
+        other = {"category_code": "VENUE", "title": "계약금 확인"}
+
+        kept, dropped = deduplicate_titles([first, duplicate, other])
+
+        assert kept == [first, other]
+        assert dropped == [duplicate]
+
+    def test_same_title_in_different_category_is_not_a_duplicate(self):
+        items = [
+            {"category_code": "VENUE", "title": "계약 확인"},
+            {"category_code": "SDM", "title": "계약 확인"},
+        ]
+
+        kept, dropped = deduplicate_titles(items)
+
+        assert kept == items
+        assert dropped == []
+
+    def test_no_duplicates_drops_nothing(self):
+        items = [{"category_code": "VENUE", "title": "A"}]
+
+        kept, dropped = deduplicate_titles(items)
+
+        assert kept == items
+        assert dropped == []
+
+    def test_item_colliding_with_protected_title_is_dropped(self):
+        # protected_titles(사용자가 이미 수정한 기존 행)와 겹치는 새 항목도 같은 이유로 드롭
+        # 대상이다 — "다시 만들지 마세요" 지시를 LLM이 못 지켰다고 나머지까지 버릴 이유는 없다.
+        item = {"category_code": "VENUE", "title": "계약 확인"}
+        protected_titles = {("VENUE", "계약 확인")}
+
+        kept, dropped = deduplicate_titles([item], protected_titles)
+
+        assert kept == []
+        assert dropped == [item]
+
+    def test_deduped_output_passes_no_duplicate_titles_rule(self):
+        # dedup 결과를 그대로 validate에 넘기면 규칙(4) 위반이 더 이상 안 걸려야 한다 —
+        # graph.py::validate_node가 실제로 이 순서(dedup → validate)로 호출한다.
+        items = [
+            {"category_code": "VENUE", "title": "A"},
+            {"category_code": "VENUE", "title": "A"},
+        ]
+
+        kept, _ = deduplicate_titles(items)
+        errors = validate_checklist_items({"VENUE"}, kept)
+
+        assert not any("제목 중복" in e for e in errors)
 
 
 class TestValidatePersonalizationDraft:

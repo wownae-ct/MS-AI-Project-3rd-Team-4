@@ -126,6 +126,76 @@ class TestValidateGenerateRetry:
         assert result["retry_count"] == 0
 
 
+_DUPLICATE_TITLE_DRAFT = {
+    "checklist_items": _SUCCESS_DRAFT["checklist_items"],
+    "timeline_items": [
+        {
+            "category_code": "VENUE",
+            "title": "예식장 투어 시작",
+            "default_dday_offset_days": -300,
+        },
+        {
+            "category_code": "VENUE",
+            "title": "예식장 투어 시작",
+            "default_dday_offset_days": -280,
+        },
+    ],
+}
+
+
+class TestDuplicateTitleTolerance:
+    """2026-08-28 결정(red-bug.md #9-2) — 실계정 재현: LLM이 같은 응답 안에서 VENUE
+    카테고리에 "예식장 투어 시작"을 두 번 만들어 도메인 전체가 BLOCKED → 카탈로그 폴백으로
+    떨어졌다. 이제는 뒤에 나온 중복만 드롭하고 재시도 없이 첫 시도에 SUCCESS로 통과해야 한다."""
+
+    @pytest.mark.asyncio
+    async def test_duplicate_title_is_dropped_not_blocked(self):
+        client = _client_with_responses(_DUPLICATE_TITLE_DRAFT)
+        with patch("app.personalization.graph.get_azure_openai_client", return_value=client):
+            graph = build_graph()
+            result = await graph.ainvoke(
+                _initial_state(), {"configurable": {"settings": _TEST_SETTINGS}}
+            )
+
+        # 중복이 있었지만 dedup이 validate 전에 실행되므로 재시도 없이 첫 시도에 SUCCESS다.
+        assert client.chat.completions.create.call_count == 1
+        assert result["validation_status"] == {"CHECKLIST": "SUCCESS", "TIMELINE": "SUCCESS"}
+        assert result["retry_count"] == 0
+        # 뒤에 나온 중복(offset=-280)만 드롭 — 먼저 나온 항목(offset=-300)은 그대로 남는다.
+        assert len(result["timeline_draft"]) == 1
+        assert result["timeline_draft"][0]["default_dday_offset_days"] == -300
+
+    @pytest.mark.asyncio
+    async def test_new_item_colliding_with_protected_title_still_blocks_on_coverage(self):
+        # 새로 만든 유일한 TIMELINE 항목이 protected_items(사용자가 이미 수정한 기존 행)와
+        # 제목이 겹쳐 드롭되면, 그 카테고리엔 결국 항목이 하나도 안 남는다 — 이건 dedup의
+        # 버그가 아니라 커버리지 규칙(활성 카테고리마다 1개 이상)이 정상적으로 잡아내는
+        # 별개의 실패다. 재시도까지 소진돼도 여전히 BLOCKED로 남아야 한다(카탈로그 폴백행).
+        state = _initial_state()
+        state["protected_items"] = {
+            "CHECKLIST": [],
+            "TIMELINE": [{"id": "x", "category_code": "VENUE", "title": "예식장 투어 시작"}],
+        }
+        draft = {
+            "checklist_items": _SUCCESS_DRAFT["checklist_items"],
+            "timeline_items": [
+                {
+                    "category_code": "VENUE",
+                    "title": "예식장 투어 시작",
+                    "default_dday_offset_days": -300,
+                }
+            ],
+        }
+        client = _client_with_responses(draft, draft)
+        with patch("app.personalization.graph.get_azure_openai_client", return_value=client):
+            graph = build_graph()
+            result = await graph.ainvoke(state, {"configurable": {"settings": _TEST_SETTINGS}})
+
+        assert client.chat.completions.create.call_count == 2
+        assert result["timeline_draft"] == []
+        assert result["validation_status"]["TIMELINE"] == "BLOCKED"
+
+
 class TestContractCitationGrounding:
     """generate_node의 DS3(표준계약서) RAG grounding — 13_personalization_router_agent_design.md
     §1-3을 확장. LLM은 source_ref_id(정수)만 고르고, 실제 source_tier/label/url은
