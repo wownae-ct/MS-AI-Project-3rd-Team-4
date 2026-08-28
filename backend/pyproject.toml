@@ -26,6 +26,10 @@ dependencies = [
     "tiktoken>=0.7",
     "pyyaml>=6.0",
     "openpyxl>=3.1",
+    # backend/scripts/seed_price_benchmarks.py의 2026년 TOTAL 월별 갱신용 — 정부 참가격 사이트가
+    # 그 파일들을 구버전 .xls(BIFF)로 배포해 openpyxl로는 못 열고 xlrd가 필요하다(모듈 docstring
+    # "2026년 TOTAL 월별 갱신" 참고).
+    "xlrd>=2.0",
     "argon2-cffi>=23.1",
     "email-validator>=2.2",
     # app/services/oauth.py(소셜 로그인 토큰 교환/유저정보 조회)가 런타임에 직접 호출한다 —
