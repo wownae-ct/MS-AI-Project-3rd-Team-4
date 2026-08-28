@@ -318,8 +318,14 @@ async def update_wedding(
         # executemany 스타일 벌크 UPDATE 한 번으로 교체 (id는 bindparam으로 분리해 SET 값과
         # 충돌 없이 WHERE 절에 바인딩).
         if updates:
+            # synchronize_session=None: 이 세션은 TimelineItem을 컬럼 단위 select()로만
+            # 읽었지 ORM 엔티티로 로드한 적이 없어(identity map에 없음) 세션 동기화가 필요
+            # 없다 — bindparam WHERE를 쓰는 executemany 벌크 UPDATE는 SQLAlchemy가 기본
+            # 동기화 전략을 못 골라 명시 없이는 InvalidRequestError로 죽는다.
             await session.execute(
-                update(TimelineItem).where(TimelineItem.id == bindparam("item_id")),
+                update(TimelineItem)
+                .where(TimelineItem.id == bindparam("item_id"))
+                .execution_options(synchronize_session=None),
                 [
                     {
                         "item_id": item_id,
