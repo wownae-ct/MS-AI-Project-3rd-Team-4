@@ -28,9 +28,9 @@ interface TimelineData {
 }
 
 // STEP 8 — "D-12개월부터"를 고정 문구로 박아뒀었는데, 실제 최상단 구간은 LLM이 생성한 카탈로그의
-// 최대 offset이나 완료 구간 재배치(그룹 전체가 DONE이면 아래로 내려감)에 따라 달라질 수 있어
-// 부제와 화면이 어긋났다. 실제로 화면 맨 위에 렌더되는 첫 그룹(groups[0])의 라벨에서 동적으로
-// 만든다 — 그래야 카탈로그가 바뀌거나 구간이 재배치돼도 항상 일치한다.
+// 최대 offset에 따라 달라질 수 있어 부제와 화면이 어긋났다. 실제로 화면 맨 위에 렌더되는 첫
+// 그룹(groups[0])의 라벨에서 동적으로 만든다 — 그래야 카탈로그가 바뀌어도 항상 일치한다.
+// 완료 체크로는 구간 순서가 바뀌지 않으므로(group-by-phase.ts) 이 문구도 체크에 반응하지 않는다.
 const GENERIC_TIMELINE_SUBTITLE = "비활성 카테고리는 제외됩니다";
 
 export function timelineSubtitle(groups: TimelinePhaseGroup[]): string {
@@ -85,10 +85,10 @@ export function TimelinePage() {
     };
   }, []);
 
-  // 완료 토글 announce — 체크박스는 네이티브라 체크 자체는 스크린리더가 읽지만, 그 직후
-  // group-by-phase.ts의 완료 구간 재배치(sortDoneLast + pending/done 그룹 분리)가 같은 렌더
-  // 사이클에 일어나 방금 만진 행이 화면에서 자리를 옮길 수 있다 — 최소한 "무엇이 어떻게
-  // 바뀌었는지"는 announce한다(접근성 감사 2026-08-26, WCAG 4.1.3).
+  // 완료 토글 announce — 원래는 체크 직후 행이 자리를 옮겨서(완료 항목 아래로 재배치) 필요했던
+  // 장치인데, 그 재배치는 없어졌다(2026-08-29, group-by-phase.ts). 그래도 남긴다: 체크박스 상태
+  // 말고 실제로 바뀌는 것(취소선·회색)은 순수 시각 정보이고, PATCH 실패로 체크가 되돌아가는
+  // 경로에서는 이 announce가 유일한 안내다(접근성 감사 2026-08-26, WCAG 4.1.3).
   const [announcement, setAnnouncement] = useState("");
 
   function handleItemChange(updated: TimelineItem) {
