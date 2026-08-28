@@ -46,11 +46,11 @@ spec:
       # 이름으로 설치된 걸 쓰겠다는 지정(이 클러스터엔 NGINX 하나뿐).
   tls: # HTTPS 설정 — cert-manager가 여기 적힌 host용 인증서를 발급해서 secretName에 저장한다.
     - hosts:
-        - merrymap-production.koreacentral.cloudapp.azure.com
+        - marrymap-production.koreacentral.cloudapp.azure.com
       secretName: backend-production-tls # 발급된 인증서(공개키+개인키)가 저장되는 K8s Secret
           # 이름 — cert-manager가 자동으로 만들고 채운다, 사람이 직접 만들 필요 없음.
   rules:
-    - host: "merrymap-production.koreacentral.cloudapp.azure.com" # 이 도메인으로 들어온
+    - host: "marrymap-production.koreacentral.cloudapp.azure.com" # 이 도메인으로 들어온
           # 요청만 아래 규칙에 매칭된다. 다른 Host 헤더로 오는 요청(예: 인그레스 컨트롤러 헬스
           # 체크가 쓰는 맨 IP 요청)은 이 규칙에 안 걸려서 ingress-nginx 기본 백엔드가
           # 처리한다(보통 404).

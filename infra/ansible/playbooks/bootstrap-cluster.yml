@@ -24,7 +24,7 @@
       argocd_namespace: argocd
       ingress_namespace: ingress-nginx
       cert_manager_namespace: cert-manager
-      production_dns_label: merrymap-production
+      production_dns_label: marrymap-production
       image_updater_sa_name: argocd-image-updater-controller
       github_repo_url: https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4.git
       repo_secret_name: repo-ms-ai-project-3rd-team-4
