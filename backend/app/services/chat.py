@@ -274,16 +274,15 @@ async def stream_chat_response(
             tags=list(query_profile.tags),
         ) as trace:
             if out_of_scope:
-                # 근거 없이 지어내는 게 아니라 아예 검색/생성을 안 하므로, 이미 정상 동작
-                # 중인 "검색 결과 0건"(app/rag/generation.py::NO_CONTEXT_ANSWER) 경로와 같은
-                # 모양(context=[], verdict=GENERAL)의 final_state를 그대로 재사용한다 — 새
-                # verdict 값을 추가하면 프론트 VerificationVerdict 타입/배지 문구까지 건드려야
-                # 해서 그 확장은 하지 않는다(docs/wedding/refactor/red-bug.md에 프론트 후속
-                # 작업으로 기록).
+                # 2026-08-29 — 처음엔 "검색 결과 0건"(app/rag/generation.py::NO_CONTEXT_ANSWER)
+                # 경로와 같은 모양(context=[], verdict=GENERAL)의 final_state로 GENERAL을
+                # 재사용했으나(red-bug.md #15 "프론트 후속 작업"), "근거가 없다"와 "질문 자체를
+                # 거절했다"는 서로 다른 상황이라 배지 문구가 부정확했다 — 전용 verdict
+                # "OUT_OF_SCOPE"를 신설(app/schemas/common.py의 Verdict Literal)해 구분한다.
                 final_state = {
                     **initial_state,
                     "answer": OUT_OF_SCOPE_ANSWER,
-                    "verdict": "GENERAL",
+                    "verdict": "OUT_OF_SCOPE",
                     "verification_reason": OUT_OF_SCOPE_REASON,
                 }
                 yield _sse("token", TokenEventData(delta=OUT_OF_SCOPE_ANSWER))

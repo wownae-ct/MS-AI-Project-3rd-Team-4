@@ -156,7 +156,7 @@ class TestChatSessionsSmoke:
         events = parse_sse_frames(response.text)
         by_event = {name: data for name, data in events if name is not None}
         assert "메리맵" in by_event["token"]["delta"]  # OUT_OF_SCOPE_ANSWER 문구 일부
-        assert by_event["verification"]["verdict"] == "GENERAL"
+        assert by_event["verification"]["verdict"] == "OUT_OF_SCOPE"
         assert by_event["citations"]["citations"] == []
         assert events[-1][0] == "done"
 
