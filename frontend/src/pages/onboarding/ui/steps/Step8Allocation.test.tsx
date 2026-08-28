@@ -104,51 +104,11 @@ describe("Step8Allocation — 배분 초과 안내", () => {
     expectOverBlock(false);
     expect(screen.queryByLabelText("스드메 예산 금액")).not.toBeInTheDocument();
   });
-
-  // 사용자 요청(2026-08-28): 문구가 나타나고 사라질 때도 부드럽게. 라이브 리전 안이라 낭독을
-  // 잃지 않아야 해서 `overflow-hidden`+높이 0 이 아니라 **display 토글**을 골랐다 — 내용이
-  // 접근성 트리에서 실제로 들고 나야 스크린리더가 읽는다. display 는 이산 속성이라 그냥은
-  // 전환되지 않으므로 `transition-discrete`(나갈 때)와 `starting:opacity-0`(들어올 때)이 둘 다
-  // 있어야 양방향이 부드럽다 — 하나만 지우면 한쪽 방향이 조용히 툭 끊긴다. 그 짝을 고정한다.
-  it("양방향 페이드의 짝이 유지된다 — display 토글 + 이산 전환 + 시작 스타일", () => {
-    const { rerender } = render(<Harness rows={[row({ plannedBudget: 12_000_000 })]} initialTotalBudget={10_000_000} />);
-    const block = () => screen.getByText(OVER_MESSAGE).parentElement;
-
-    expect(block()).toHaveClass("opacity-100", "transition-discrete", "starting:opacity-0");
-    expect(block()).toHaveClass("transition-[opacity,display]");
-
-    rerender(<Harness rows={[row({ plannedBudget: 8_000_000 })]} initialTotalBudget={10_000_000} />);
-
-    // 숨김 쪽에도 전환이 선언돼 있어야 사라지는 프레임이 돈다(선언이 없으면 즉시 사라진다).
-    expect(block()).toHaveClass("hidden", "opacity-0", "transition-discrete");
-    expect(block()).toHaveClass("transition-[opacity,display]");
-    // `flex` 는 숨김 쪽에 없어야 한다 — 둘 다 display 유틸리티라 어느 쪽이 이기는지가 클래스
-    // 나열 순서가 아니라 산출 CSS 순서로 정해진다.
-    expect(block()).not.toHaveClass("flex");
-  });
-
-  // 🚨 사용자 신고(2026-08-28): 초과 → 미초과로 바뀔 때 "버벅거리며 사라진다".
-  // 원인은 숨김 쪽에서 레이아웃 클래스까지 같이 뺐던 것 — `allow-discrete` 가 적용을 미뤄 주는
-  // 것은 `display` 하나뿐이라, 사라지는 200ms 동안 요소는 아직 flex 인 채로 방향이 row 로,
-  // gap 이 0 으로, 위 여백이 0 으로 즉시 튀었다(세 줄이 가로로 뭉치며 위로 점프). 두 상태가
-  // display·opacity 말고는 완전히 같아야 한다.
-  it("두 상태는 display 와 opacity 만 다르다 — 레이아웃이 달라지면 사라질 때 튄다", () => {
-    const { rerender } = render(<Harness rows={[row({ plannedBudget: 12_000_000 })]} initialTotalBudget={10_000_000} />);
-    const layoutOf = () => {
-      const classes = screen.getByText(OVER_MESSAGE).parentElement?.className.split(" ") ?? [];
-      // display(flex/hidden)와 opacity, 그리고 들어올 때만 쓰는 시작 스타일만 빼고 비교한다.
-      return classes.filter((c) => !["flex", "hidden", "opacity-100", "opacity-0", "starting:opacity-0"].includes(c)).toSorted();
-    };
-
-    const shown = layoutOf();
-    rerender(<Harness rows={[row({ plannedBudget: 8_000_000 })]} initialTotalBudget={10_000_000} />);
-
-    expect(layoutOf()).toEqual(shown);
-    // 대조군 — 비교에서 뺀 것들 말고 진짜 레이아웃 값이 들어 있는지(빈 배열끼리 같다면 무의미하다).
-    expect(shown).toEqual(expect.arrayContaining(["mt-4", "flex-col", "gap-1.5"]));
-  });
 });
 
+// 전환·`inert`·포커스 링 잘림 같은 **클래스 계약**은 2026-08-29에 shared/ui 로 올라갔다 —
+// `StatusCallout.test.tsx` · `DisclosurePanel.test.tsx` 가 그 불변식을 한 곳에서 지킨다.
+// 여기 남은 것은 이 화면이 그 부품을 **어떻게 배선했는가**뿐이다.
 describe("Step8Allocation — 총예산 인라인 수정", () => {
   // 접힘/펼침이 애니메이션을 타려면 패널이 계속 마운트돼 있어야 한다 — 그래서 "DOM 에 있는가"로는
   // 열림 여부를 판정할 수 없다. 접힌 동안 실제로 지켜야 하는 계약은 두 가지다: 트리거의
@@ -169,38 +129,6 @@ describe("Step8Allocation — 총예산 인라인 수정", () => {
     await userEvent.click(trigger);
     expect(trigger).toHaveAttribute("aria-expanded", "false");
     expect(inertWrapper()).not.toBeNull();
-  });
-
-  it("펼침 상태가 클래스로 드러난다 — 높이를 0fr↔1fr 로 전환해 부드럽게 접힌다", async () => {
-    // jsdom 은 전환을 실행하지 않으므로 "무엇을 전환하기로 했는가"까지만 고정한다. max-height
-    // 매직 넘버로 되돌아가면(콘텐츠가 넘치면 잘린다) 이 테스트가 잡는다.
-    render(<Harness rows={[row({ plannedBudget: 8_000_000 })]} initialTotalBudget={10_000_000} />);
-    const trigger = screen.getByRole("button", { name: "총예산 10,000,000원 수정" });
-    const panel = document.querySelector(`#${trigger.getAttribute("aria-controls") ?? ""}`);
-
-    expect(panel).toHaveClass("grid-rows-[0fr]", "transition-[grid-template-rows]");
-
-    await userEvent.click(trigger);
-
-    expect(panel).toHaveClass("grid-rows-[1fr]", "transition-[grid-template-rows]");
-  });
-
-  // 사용자 신고(2026-08-28): 입력창을 누르면 포커스 링의 좌측·하단이 카드 틀에 잘렸다.
-  // 원인은 애니메이션용 `overflow-hidden` — 높이만이 아니라 박스 밖 4px(styles.css 의
-  // `:focus-visible` 이 2px 선을 2px 띄워 그린다)까지 함께 잘라낸다. 클리퍼를 카드 패딩만큼
-  // 흘리고(`-mx-4`) 콘텐츠를 같은 값만큼
-  // 되돌리는(`mx-4`) 짝으로 고쳤다 — **둘 중 하나만 지우면** 잘림이 돌아오거나(둘 다 제거)
-  // 입력칸이 위쪽 문구와 어긋난다(되돌리기만 제거). jsdom 은 클리핑을 계산하지 않으므로
-  // 그 짝이 유지되는지만 고정한다.
-  it("포커스 링이 잘리지 않도록 클리퍼 흘림과 콘텐츠 되돌림이 짝을 이룬다", () => {
-    render(<Harness rows={[row({ plannedBudget: 8_000_000 })]} initialTotalBudget={10_000_000} />);
-    const trigger = screen.getByRole("button", { name: "총예산 10,000,000원 수정" });
-    const panel = document.querySelector(`#${trigger.getAttribute("aria-controls") ?? ""}`);
-    const content = screen.getByLabelText(BUDGET_LABEL).closest(".overflow-hidden")?.firstElementChild;
-
-    expect(panel).toHaveClass("-mx-4"); // 카드 p-4 만큼 바깥으로
-    expect(content).toHaveClass("mx-4"); // 같은 값만큼 되돌려 정렬 유지
-    expect(content).toHaveClass("pb-1.5"); // 하단은 음수 마진을 못 쓴다(접힘이 깨진다) — 안쪽 여유로
   });
 
   it("CTA를 누르면 입력이 열리고 포커스까지 옮겨간다", async () => {
