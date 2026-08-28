@@ -38,7 +38,7 @@ describe("CategoryAllocationRow — 보기 모드", () => {
     const row = category({ planned_budget: 12_000_000, paid_amount: 8_000_000 });
     render(<CategoryAllocationRow category={row} {...BASE_PROPS} />);
 
-    expect(screen.getByText("1200만원")).toBeInTheDocument();
+    expect(screen.getByText("1,200만원")).toBeInTheDocument();
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "67");
     expect(screen.queryByText(/초과 지불/u)).not.toBeInTheDocument();
   });
@@ -47,8 +47,9 @@ describe("CategoryAllocationRow — 보기 모드", () => {
     const row = category({ planned_budget: 10_000_000, paid_amount: 15_000_000 });
     render(<CategoryAllocationRow category={row} {...BASE_PROPS} />);
 
-    // 상단 금액은 여전히 배정액(1000만원)이다 — 이 경우는 버그 케이스가 아니다.
-    expect(screen.getByText("1000만원")).toBeInTheDocument();
+    // 상단 금액은 여전히 배정액(1,000만원)이다 — 이 경우는 버그 케이스가 아니다.
+    // 네 자리부터 콤마가 붙는다(2026-08-28) — 같은 화면의 입력칸 표기와 어긋나지 않게 한다.
+    expect(screen.getByText("1,000만원")).toBeInTheDocument();
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100");
     expect(screen.getByText("500만원 초과 지불")).toBeInTheDocument();
   });

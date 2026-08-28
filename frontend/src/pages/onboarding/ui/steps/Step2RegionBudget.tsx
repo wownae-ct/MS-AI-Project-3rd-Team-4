@@ -30,7 +30,8 @@
 // 어차피 같은 출처라 어긋나지 않는다.
 import type { TotalAverageBenchmark } from "@/entities/wedding";
 import { REGION_CODES, type RegionCode } from "@/shared/api";
-import { manwonInputToWonString, wonStringToManwonDisplay, wonToManwon } from "@/shared/lib/money";
+import { AMOUNT_STEP_MANWON, manwonToWonString, wonStringToManwon, wonToManwon } from "@/shared/lib/money";
+import { NumberInput } from "@/shared/ui";
 import { FIELD_LABEL, FIELD_NOTE_KEEP, INPUT, INPUT_DISABLED, SELECT } from "../onboarding-styles";
 
 // 2026-08-26 사용자 피드백: 5개(서울강남/서울외/경기/인천/부산)만 노출돼 있었다 — 지역 14개
@@ -69,6 +70,9 @@ export const REGION_LABELS: Record<Exclude<RegionCode, "NATIONWIDE" | "METRO" | 
 // 아니라는 신호). POST /weddings의 교차검증은 날짜·총예산 2건뿐이라 두 필드를 같이 보내도 422가
 // 나지 않는다. 문구·placeholder·payload가 따로 놀지 않도록 상수를 보간해 쓴다.
 export const GUEST_COUNT_UNSURE_DEFAULT = 200;
+
+// 하객 수 ↑↓·▲▼ 1회 증감폭. 금액 쪽(AMOUNT_STEP_*)과 달리 여기만 쓰이므로 이 파일에 둔다.
+const GUEST_COUNT_STEP = 10;
 
 const REGION_OPTIONS: { value: string; label: string }[] = REGION_CODES.filter(
   (code) => !FALLBACK_REGION_CODES.has(code),
@@ -115,7 +119,7 @@ export function Step2RegionBudget({
   // 미정일 때 비활성 입력칸에 보여줄 값. 입력칸은 만원 단위라 여기서 변환한다(§머리말).
   // 벤치마크가 아직 안 왔거나 조회에 실패했으면 빈 칸으로 둔다 — 0을 채우면 "0원으로 시작한다"는
   // 거짓말이 된다. 실패 사실은 OnboardingPage 의 benchmarkError 배너가 따로 알린다.
-  const benchmarkManwon = benchmark === null ? "" : String(wonToManwon(benchmark.median_price));
+  const benchmarkManwon = benchmark === null ? null : wonToManwon(benchmark.median_price);
 
   return (
     <div className="flex flex-col gap-5">
@@ -144,15 +148,15 @@ export function Step2RegionBudget({
           </button>
         </div>
         <div className="flex items-center gap-2">
-          <input
+          <NumberInput
+            wrapClassName="min-w-0 flex-1"
             className={totalBudgetUnsure ? INPUT_DISABLED : INPUT}
-            type="number"
-            inputMode="numeric"
+            step={AMOUNT_STEP_MANWON}
             min={0}
             aria-label="총 예산(만원)"
-            value={totalBudgetUnsure ? benchmarkManwon : wonStringToManwonDisplay(totalBudget)}
+            value={totalBudgetUnsure ? benchmarkManwon : wonStringToManwon(totalBudget)}
             disabled={totalBudgetUnsure}
-            onChange={(event) => onTotalBudgetChange(manwonInputToWonString(event.target.value))}
+            onValueChange={(next) => onTotalBudgetChange(manwonToWonString(next))}
           />
           <span className="flex-none text-sm font-bold text-ink-soft">만원</span>
         </div>
@@ -187,16 +191,18 @@ export function Step2RegionBudget({
         </div>
         {/* 총예산 쪽과 같은 비활성 표현을 쓴다 — 같은 화면의 두 "미정" 필드 중 하나만 흐려지면
             버그처럼 보인다. */}
-        <input
+        {/* 금액이 아니지만 같은 컴포넌트를 쓴다 — 하객 수도 음수·소수·지수가 들어갈 이유가 없고
+            (예전 type="number" 는 셋 다 통과시켰다), 1,200명처럼 네 자리가 되면 콤마가 오히려
+            자연스럽다. 스텝은 10명 — 하객 수를 1명씩 올리는 조작은 200명 근처에서 의미가 없다. */}
+        <NumberInput
           className={guestCountUnsure ? INPUT_DISABLED : INPUT}
-          type="number"
-          inputMode="numeric"
+          step={GUEST_COUNT_STEP}
           min={0}
           aria-label="예상 하객 수"
           placeholder={guestCountUnsure ? GUEST_COUNT_UNSURE_DEFAULT.toString() : undefined}
-          value={guestCountUnsure ? "" : guestCount}
+          value={guestCountUnsure || guestCount === "" ? null : Number(guestCount)}
           disabled={guestCountUnsure}
-          onChange={(event) => onGuestCountChange(event.target.value)}
+          onValueChange={(next) => onGuestCountChange(next === null ? "" : String(next))}
         />
         {/* 이 문구가 실제 저장값을 그대로 말한다 — 미정이면 OnboardingPage가 guest_count 에
             GUEST_COUNT_UNSURE_DEFAULT 를 실어 보낸다(§ 상수 주석). disabled 입력칸의

@@ -36,9 +36,9 @@ import { useState } from "react";
 import type { BudgetBenchmarkSummary } from "@/entities/dashboard";
 import { updateMyWedding, type BudgetSummary } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
-import { manwonToWon, wonToManwon } from "@/shared/lib/money";
+import { AMOUNT_STEP_MANWON, manwonToWon, wonToManwon } from "@/shared/lib/money";
 import { safeExternalUrl } from "@/shared/lib/safe-url";
-import { Badge, Card, Money } from "@/shared/ui";
+import { Badge, Card, Money, NumberInput } from "@/shared/ui";
 
 const INLINE_INPUT =
   "min-h-tap w-28 rounded-md border border-line bg-surface px-2.5 text-right text-base text-ink " +
@@ -75,31 +75,44 @@ export interface BudgetDonutProps {
 export function BudgetDonut({ summary, onTotalBudgetSaved, benchmark }: BudgetDonutProps) {
   const { total, paid, planned } = summary;
 
-  const [draft, setDraft] = useState<string | null>(null);
+  // 예전엔 `draft: string | null` 하나가 "편집 중인가"와 "입력값" 두 가지를 겸했다. 입력칸이
+  // `NumberInput` 으로 바뀌면서 값 쪽에도 null(빈 칸)이 필요해져 두 의미가 충돌한다 —
+  // 그래서 상태를 둘로 쪼갠다. "수정을 열었다"와 "칸을 비웠다"는 원래 다른 사실이다.
+  const [isEditing, setIsEditing] = useState(false);
+  const [draftManwon, setDraftManwon] = useState<number | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   function startEdit() {
-    setDraft(String(wonToManwon(total)));
+    setDraftManwon(wonToManwon(total));
+    setIsEditing(true);
     setSaveState("idle");
     setErrorMessage(null);
   }
 
   function cancelEdit() {
-    setDraft(null);
+    setIsEditing(false);
+    setDraftManwon(null);
     setSaveState("idle");
     setErrorMessage(null);
   }
 
   async function handleSaveTotal() {
-    if (draft === null) return;
-    const nextTotal = manwonToWon(Number(draft));
+    // 빈 칸으로 저장을 누르면 0원이 아니라 아무 일도 하지 않는다 — 예전 `Number("")` 는 0이라
+    // 총예산이 조용히 0이 될 수 있었다(입력이 문자열이던 시절의 사각지대).
+    if (draftManwon === null) {
+      setSaveState("error");
+      setErrorMessage("총예산을 입력해 주세요.");
+      return;
+    }
+    const nextTotal = manwonToWon(draftManwon);
     setSaveState("saving");
     setErrorMessage(null);
     try {
       await updateMyWedding({ total_budget: nextTotal });
       onTotalBudgetSaved(nextTotal);
-      setDraft(null);
+      setIsEditing(false);
+      setDraftManwon(null);
       setSaveState("idle");
     } catch (err) {
       setSaveState("error");
@@ -129,19 +142,13 @@ export function BudgetDonut({ summary, onTotalBudgetSaved, benchmark }: BudgetDo
 
   // 카드 제목 옆(titleAction)에 놓는 수정 트리거/폼 — 예전엔 아래 "총예산 …원 중" 행이 이 역할을
   // 함께 했지만, 그 행 자체가 시세 비교 문구로 바뀌면서 트리거만 제목 옆으로 옮겼다.
-  const editTrigger =
-    draft === null ? (
-      <button type="button" onClick={startEdit} className={GHOST_BUTTON}>
-        수정
-      </button>
-    ) : (
+  const editTrigger = isEditing ? (
       <span className="flex flex-wrap items-center gap-1.5">
-        <input
-          type="number"
-          inputMode="numeric"
+        <NumberInput
+          step={AMOUNT_STEP_MANWON}
           min={0}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          value={draftManwon}
+          onValueChange={setDraftManwon}
           className={INLINE_INPUT}
           aria-label="총예산(만원)"
         />
@@ -160,7 +167,11 @@ export function BudgetDonut({ summary, onTotalBudgetSaved, benchmark }: BudgetDo
           취소
         </button>
       </span>
-    );
+  ) : (
+    <button type="button" onClick={startEdit} className={GHOST_BUTTON}>
+      수정
+    </button>
+  );
 
   // source_url이 있어도 스킴 검증 없이 href에 그대로 꽂지 않는다(예전 BudgetBenchmarkCard.tsx와
   // 같은 원칙) — 값 자체는 백엔드에서 온 문자열이다.

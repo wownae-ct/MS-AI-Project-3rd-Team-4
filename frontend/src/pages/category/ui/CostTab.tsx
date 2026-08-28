@@ -17,7 +17,8 @@ import {
 } from "@/entities/payment";
 import type { CategoryConstant } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
-import { Badge, Card, Money } from "@/shared/ui";
+import { AMOUNT_STEP_WON } from "@/shared/lib/money";
+import { Badge, Card, Money, NumberInput } from "@/shared/ui";
 
 interface CostTabProps {
   categoryCode: string;
@@ -127,17 +128,21 @@ export function CostTab({ categoryCode, categoryMeta }: CostTabProps) {
   );
 }
 
+// 라벨↔입력 연결용 고정 id. 이 위젯은 화면에 하나뿐이라(카테고리별 시세 비교 카드) 충돌이 없다.
+const BENCHMARK_AMOUNT_ID = "benchmark-amount";
+
 function BenchmarkWidget({ categoryCode }: { categoryCode: string }) {
   const options = ITEM_CODE_OPTIONS[categoryCode] ?? FALLBACK_ITEM_CODE_OPTIONS;
   const [itemCode, setItemCode] = useState(options[0].value);
-  const [amountInput, setAmountInput] = useState("");
+  // `number | null` — 빈 칸의 표현이 `""` 에서 `null` 로 옮겨갔다(NumberInput 계약).
+  const [amountInput, setAmountInput] = useState<number | null>(null);
   const [result, setResult] = useState<BenchmarkComparison | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleCompare() {
-    const amount = Number(amountInput);
-    if (!Number.isFinite(amount) || amount <= 0) {
+    const amount = amountInput ?? 0;
+    if (amount <= 0) {
       setError("금액을 올바르게 입력해 주세요.");
       return;
     }
@@ -171,13 +176,18 @@ function BenchmarkWidget({ categoryCode }: { categoryCode: string }) {
             ))}
           </select>
         </label>
-        <label className="flex flex-col gap-1 text-xs text-ink-soft">
+        {/* htmlFor 로 잇는다 — NumberInput 은 래퍼 안에 입력을 그리므로 label 이 감싸도
+            린터가 연결을 알아보지 못하고, 무엇보다 라벨 클릭으로 포커스가 오는 동작을
+            브라우저마다 운에 맡기지 않는다. */}
+        <label htmlFor={BENCHMARK_AMOUNT_ID} className="flex flex-col gap-1 text-xs text-ink-soft">
           내 견적(원)
-          <input
-            type="number"
+          <NumberInput
+            id={BENCHMARK_AMOUNT_ID}
+            step={AMOUNT_STEP_WON}
             min={0}
+            aria-label="내 견적(원)"
             value={amountInput}
-            onChange={(e) => setAmountInput(e.target.value)}
+            onValueChange={setAmountInput}
             className="min-h-tap w-32 rounded-md border border-line bg-surface px-2 text-base text-ink"
           />
         </label>
