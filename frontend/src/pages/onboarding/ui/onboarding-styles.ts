@@ -43,6 +43,13 @@ export const INPUT =
 
 export const SELECT = INPUT;
 
+// 9단계(자유 서술) 전용 — INPUT은 min-h-tap(한 줄 높이) 고정이라 여러 줄 입력엔 안 맞는다.
+// resize-none — 카드 폭이 이미 max-w-[430px]로 고정된 화면이라 가로 리사이즈 핸들이 레이아웃을
+// 깰 수 있다(다른 온보딩 필드 어디에도 리사이즈 가능한 입력이 없다 — 일관성 유지).
+export const TEXTAREA =
+  "min-h-24 w-full resize-none rounded-md border border-line bg-surface px-3 py-2.5 text-base text-ink " +
+  "placeholder:text-ink-soft focus-visible:border-primary";
+
 // 기울임체 유틸리티는 이 저장소의 bare 후보 화이트리스트(ghost-candidates.test.mjs)에 없는
 // 새 토큰이라 뺐다 — 이 화면 하나 때문에 게이트를 넓히지 않는다. 위계는 이미 text-xs+text-ink-soft
 // 로 충분히 낮다(본문 대비 톤 다운).
