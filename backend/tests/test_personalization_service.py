@@ -79,6 +79,22 @@ class TestBuildProfile:
 
         assert profile["selected_options"] == {"SDM": ["드레스", "메이크업"]}
 
+    def test_custom_request_defaults_to_none_when_unset(self):
+        # 2026-08-28 신규 필드 — 기존 fixture(_make_wedding의 defaults)가 이 키를 안 넘겨도
+        # 조용히 None이어야 한다(기존 웨딩 회귀 없음 확인).
+        wedding = _make_wedding()
+
+        profile = _build_profile(wedding, {"VENUE"}, {})
+
+        assert profile["custom_request"] is None
+
+    def test_includes_custom_request_when_set(self):
+        wedding = _make_wedding(custom_request="채식 하객이 많아 식사 옵션이 걱정돼요")
+
+        profile = _build_profile(wedding, {"VENUE"}, {})
+
+        assert profile["custom_request"] == "채식 하객이 많아 식사 옵션이 걱정돼요"
+
 
 class TestTimelineStatus:
     def test_done_when_category_in_done_so_far_and_past(self):

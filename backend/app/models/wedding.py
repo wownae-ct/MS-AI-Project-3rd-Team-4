@@ -94,6 +94,10 @@ class Wedding(Base):
     venue_priority: Mapped[str | None] = mapped_column(Text)
     sdm_priority: Mapped[str | None] = mapped_column(Text)
     primary_goals: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
+    # 온보딩 커스텀 질문(자유 서술, 2026-08-28 신규) — schemas/wedding.py::CUSTOM_REQUEST_MAX_LENGTH
+    # (500자)로 애플리케이션 레벨에서만 상한을 두고, DB 컬럼 자체엔 길이 CHECK를 걸지 않는다
+    # (자유 텍스트라 enum 컬럼들과 달리 DB CHECK로 표현할 제약이 없음).
+    custom_request: Mapped[str | None] = mapped_column(Text)
     # done_so_far: 온보딩 요청의 "지금까지 진행한 것" 신호는 timeline_items 초기 상태에 1회성으로만
     # 반영되고 저장되지 않는다(03_API_spec.md #6) — 이 컬럼은 그것과 별개로, 화면에 보여줄 캐시
     # 용도로만 쓰이는 자리다(04_DB_schema.sql). timeline_items가 아직 없어(별도 태스크) 지금은

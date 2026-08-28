@@ -134,6 +134,7 @@ def _build_profile(
         "venue_priority": wedding.venue_priority,
         "sdm_priority": wedding.sdm_priority,
         "primary_goals": wedding.primary_goals,
+        "custom_request": wedding.custom_request,
         "selected_options": selected_options,
     }
 
