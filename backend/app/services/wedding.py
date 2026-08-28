@@ -29,7 +29,7 @@ from collections.abc import AsyncIterator
 from datetime import date
 
 from fastapi import HTTPException
-from sqlalchemy import bindparam, func, select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -315,20 +315,17 @@ async def update_wedding(
             [tuple(r) for r in rows],
         )
         # red-bug.md #13 — 항목 수(최대 95개)만큼 개별 UPDATE를 순차 await하던 N+1 패턴을
-        # executemany 스타일 벌크 UPDATE 한 번으로 교체 (id는 bindparam으로 분리해 SET 값과
-        # 충돌 없이 WHERE 절에 바인딩).
+        # SQLAlchemy 2.0 "ORM Bulk UPDATE by Primary Key" 한 번으로 교체. WHERE 절을 직접
+        # 쓰지 않는다 — 명시 WHERE(bindparam 등)를 쓰면 이 기능과 충돌해
+        # "No primary key value supplied" / "bulk synchronize ... not supported"로 죽는다
+        # (2026-08-29 CI가 두 형태 다 실제로 잡아냄). 파라미터 dict의 "id" 키가 PK 컬럼과
+        # 이름이 같아야 SQLAlchemy가 자동으로 PK 기준 WHERE를 만든다.
         if updates:
-            # synchronize_session=None: 이 세션은 TimelineItem을 컬럼 단위 select()로만
-            # 읽었지 ORM 엔티티로 로드한 적이 없어(identity map에 없음) 세션 동기화가 필요
-            # 없다 — bindparam WHERE를 쓰는 executemany 벌크 UPDATE는 SQLAlchemy가 기본
-            # 동기화 전략을 못 골라 명시 없이는 InvalidRequestError로 죽는다.
             await session.execute(
-                update(TimelineItem)
-                .where(TimelineItem.id == bindparam("item_id"))
-                .execution_options(synchronize_session=None),
+                update(TimelineItem),
                 [
                     {
-                        "item_id": item_id,
+                        "id": item_id,
                         "target_date": new_target_date,
                         "default_dday_offset_days": new_offset,
                     }
