@@ -1,0 +1,141 @@
+<!-- 출처: claude.ai/design 프로젝트 "HTML 기반 UI 초안 구성" 의 uploads/ 사본.
+     같은 프로젝트의 "메리맵 프로토타입.dc.html" 이 더 최신이다 — 하단 탭바 4개와 데스크톱(1160px) 레이아웃은
+     그쪽에만 있고 이 파일에는 없다. 화면 단위 시각 참조로만 쓸 것.
+     저장소에 넣으면서 임베드돼 있던 base64 woff2 2개를 걷어내고 캔버스 원본과 같은 Wanted Sans v1.0.3 CDN 로 바꿨다.
+     그 외 마크업·스타일은 한 글자도 손대지 않았다. -->
+<title>메리맵 리포트</title>
+<style>
+  @import url("https://cdn.jsdelivr.net/gh/wanteddev/wanted-sans@v1.0.3/packages/wanted-sans/fonts/webfonts/variable/complete/WantedSansVariable.min.css");
+
+
+  :root{
+    --color-primary:#8B3F63; --color-primary-soft:#F1DEE7;
+    --color-ink:#1D1B19; --color-ink-soft:#726B65;
+    --color-bg:#F7F6F4; --color-surface:#FFFFFF; --color-line:#E7E3DE;
+    --page-canvas:#EDEAE6; --radius-sm:8px; --radius-md:10px; --radius-pill:999px;
+  }
+  *{box-sizing:border-box;}
+  html,body{ background:var(--page-canvas); }
+  body{
+    margin:0; color:var(--color-ink);
+    font-family:'Wanted Sans Variable','Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+    line-height:1.5; -webkit-font-smoothing:antialiased;
+    display:flex; justify-content:center; padding:40px 16px 64px;
+  }
+  .canvas-note{ position:fixed; top:18px; left:50%; transform:translateX(-50%); font-size:.72rem; color:var(--color-ink-soft); text-align:center; }
+
+  .device{ width:390px; max-width:100%; background:var(--color-ink); border-radius:40px; padding:10px; margin-top:26px; }
+  .device-screen{ background:var(--color-bg); border-radius:32px; overflow:hidden; min-height:800px; display:flex; flex-direction:column; }
+  .screen-inner{ padding:20px 18px 32px; display:flex; flex-direction:column; gap:18px; }
+
+  .s5-title{ font-size:1.1rem; font-weight:700; }
+  .s5-sub{ font-size:.78rem; color:var(--color-ink-soft); margin:2px 0 0; }
+
+  .card{ background:var(--color-surface); border:1px solid var(--color-line); border-radius:16px; padding:16px; }
+  .card-title{ font-size:.88rem; font-weight:700; margin:0 0 12px; }
+
+  /* Budget stat row */
+  .stat-row{ display:flex; }
+  .stat{ flex:1; text-align:center; }
+  .stat + .stat{ border-left:1px solid var(--color-line); }
+  .stat-value{ font-size:.92rem; font-weight:700; font-variant-numeric:tabular-nums; display:block; }
+  .stat-label{ font-size:.66rem; color:var(--color-ink-soft); display:block; margin-top:3px; }
+
+  /* Category completion */
+  .comp-row{ display:flex; align-items:center; gap:10px; padding:8px 0; }
+  .comp-name{ width:80px; flex:none; font-size:.78rem; font-weight:700; }
+  .comp-bar-track{ flex:1; height:5px; border-radius:var(--radius-pill); background:var(--color-line); overflow:hidden; }
+  .comp-bar-fill{ height:100%; border-radius:var(--radius-pill); background:var(--color-primary); }
+  .comp-pct{ width:34px; flex:none; text-align:right; font-size:.74rem; color:var(--color-ink-soft); font-variant-numeric:tabular-nums; }
+
+  /* Upcoming payments (compact) */
+  .pay-compact{ display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--color-line); font-size:.78rem; }
+  .pay-compact:last-child{ border-bottom:none; padding-bottom:0; }
+  .pay-compact:first-child{ padding-top:0; }
+  .pay-compact-left{ color:var(--color-ink-soft); }
+  .pay-compact-left b{ color:var(--color-ink); font-weight:700; }
+  .pay-compact-right{ font-weight:700; font-variant-numeric:tabular-nums; }
+
+  /* Recommended checks — hero of this screen */
+  .reco-card{ background:var(--color-primary); color:#fff; border-radius:16px; padding:18px 16px; }
+  .reco-title{ font-size:.9rem; font-weight:700; margin:0 0 3px; }
+  .reco-sub{ font-size:.74rem; opacity:.85; margin:0 0 14px; }
+  .reco-list{ display:flex; flex-direction:column; gap:10px; }
+  .reco-row{ display:flex; align-items:center; gap:10px; background:rgba(255,255,255,.12); border-radius:12px; padding:10px 12px; }
+  .reco-cat{ font-size:.6rem; font-weight:700; background:rgba(255,255,255,.9); color:var(--color-primary); border-radius:var(--radius-pill); padding:2px 8px; flex:none; }
+  .reco-item{ font-size:.8rem; font-weight:700; flex:1; min-width:0; }
+  .reco-src{ font-size:.62rem; opacity:.75; flex:none; }
+</style>
+
+<p class="canvas-note">S5 · 리포트 — 데이터는 예시(합성)입니다</p>
+
+<div class="device">
+  <div class="device-screen">
+    <div class="screen-inner">
+      <div>
+        <p class="s5-title">리포트</p>
+        <p class="s5-sub">지금까지 준비 상황 요약이에요</p>
+      </div>
+
+      <div class="card">
+        <p class="card-title">예산</p>
+        <div class="stat-row">
+          <div class="stat"><span class="stat-value">45,000,000</span><span class="stat-label">총 예산</span></div>
+          <div class="stat"><span class="stat-value">3,800,000</span><span class="stat-label">집행</span></div>
+          <div class="stat"><span class="stat-value">1,000,000</span><span class="stat-label">잔여</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="card-title">카테고리별 진행률</p>
+        <div class="comp-row"><span class="comp-name">상견례</span><div class="comp-bar-track"><div class="comp-bar-fill" style="width:60%"></div></div><span class="comp-pct">60%</span></div>
+        <div class="comp-row"><span class="comp-name">예식장</span><div class="comp-bar-track"><div class="comp-bar-fill" style="width:40%"></div></div><span class="comp-pct">40%</span></div>
+        <div class="comp-row"><span class="comp-name">스드메</span><div class="comp-bar-track"><div class="comp-bar-fill" style="width:26%"></div></div><span class="comp-pct">26%</span></div>
+        <div class="comp-row"><span class="comp-name">예물·예단</span><div class="comp-bar-track"><div class="comp-bar-fill" style="width:20%"></div></div><span class="comp-pct">20%</span></div>
+        <div class="comp-row"><span class="comp-name">신혼여행</span><div class="comp-bar-track"><div class="comp-bar-fill" style="width:20%"></div></div><span class="comp-pct">20%</span></div>
+        <div class="comp-row"><span class="comp-name">혼수</span><div class="comp-bar-track"><div class="comp-bar-fill" style="width:0%"></div></div><span class="comp-pct">0%</span></div>
+        <div class="comp-row"><span class="comp-name">청첩장</span><div class="comp-bar-track"><div class="comp-bar-fill" style="width:0%"></div></div><span class="comp-pct">0%</span></div>
+      </div>
+
+      <div class="reco-card">
+        <p class="reco-title">다음에 확인하면 좋아요</p>
+        <p class="reco-sub">기한이 가까운 순으로 5개만 골랐어요</p>
+        <div class="reco-list">
+          <div class="reco-row">
+            <span class="reco-cat">스드메</span>
+            <span class="reco-item">스드메 업체 리스트업</span>
+            <span class="reco-src">CONSENSUS</span>
+          </div>
+          <div class="reco-row">
+            <span class="reco-cat">혼수</span>
+            <span class="reco-item">혼수 품목 리스트 작성</span>
+            <span class="reco-src">CONSENSUS</span>
+          </div>
+          <div class="reco-row">
+            <span class="reco-cat">예식장</span>
+            <span class="reco-item">최소 보증 인원 조항 확인</span>
+            <span class="reco-src">CONSENSUS</span>
+          </div>
+          <div class="reco-row">
+            <span class="reco-cat">예식장</span>
+            <span class="reco-item">좌석 배치 초안 제출</span>
+            <span class="reco-src">INDUSTRY</span>
+          </div>
+          <div class="reco-row">
+            <span class="reco-cat">청첩장·답례품</span>
+            <span class="reco-item">청첩장 디자인 시안 확정</span>
+            <span class="reco-src">INDUSTRY</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="card-title">다가오는 납부</p>
+        <div class="pay-compact"><span class="pay-compact-left"><b>D-12</b> · 예식장 중도금</span><span class="pay-compact-right">4,200,000원</span></div>
+        <div class="pay-compact"><span class="pay-compact-left"><b>D-20</b> · 스드메 촬영 잔금</span><span class="pay-compact-right">1,300,000원</span></div>
+        <div class="pay-compact"><span class="pay-compact-left"><b>D-27</b> · 청첩장 인쇄비</span><span class="pay-compact-right">320,000원</span></div>
+      </div>
+
+    </div>
+  </div>
+</div>
