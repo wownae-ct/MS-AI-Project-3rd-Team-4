@@ -1,0 +1,128 @@
+/* 디자인 토큰 — ADR 0003 (툴체인) · ADR 0006 (SSOT 배치).
+ *
+ * SSOT 는 이 파일이 아니라 docs/design/ 이다 — 값의 근거와 결정은 docs/design/decisions.md,
+ * 현행 규범 요약은 docs/design/README.md. 여기는 그 값을 Tailwind @theme 로 옮긴 구현체다.
+ * 톤·색·형태를 바꿀 땐 decisions.md 를 먼저 고치고 여기를 그 값과 동일하게 맞춘다.
+ * **값을 이 파일에서 발명하지 않는다.**
+ *
+ * hex 를 그대로 쓰는 이유 — 규범 문서가 hex 로 정의한다. oklch 로 옮기면 표기가 SSOT 와 달라져
+ * 대조가 어려워진다. 색이 8개(7색 + 호버 1)로 고정돼 있고 팔레트를 생성·조작하지 않으므로 변환의 이득이 없다.
+ * 그리고 빌드 게이트가 이 파일의 hex 를 읽어 화이트리스트로 쓴다 — 표기를 바꾸면 게이트 파서도 바꾼다.
+ *
+ * @theme 에 선언한 변수는 CSS 변수인 동시에 유틸리티 클래스를 만든다
+ * (--color-primary → bg-primary · text-primary · border-primary).
+ * 여기 없는 색은 **명명 유틸리티**가 없다(bg-red-500 류). 단 임의값 bg-[#hex] 는 테마를 거치지
+ * 않고 그대로 컴파일되므로 — Tailwind 에 이를 끄는 설정이 없다 — 「The One Accent Rule」의
+ * 실제 강제는 이 파일이 아니라 빌드 게이트(scripts/check-bundle-budget.mjs)가 한다. D8.
+ */
+
+@theme {
+  /* 기본 팔레트(22색 × 11단계)를 폐기한다.
+     이 줄이 없으면 bg-red-500 같은 팔레트 밖 색이 그냥 통과한다. ADR 0003 §결정 1.
+     이 줄이 사라지면 게이트의 폐기 유지 검사(REQUIRED_RETIREMENTS)가 빌드를 실패시킨다. */
+  --color-*: initial;
+
+  /* Primary — 베리 플럼.
+     규범: 배지 · 주요 액션(버튼/링크) · 강조 텍스트 · 진행률 바 채움색.
+     화면 전체 면적의 일부에만 등장한다 — **배경 워시로 쓰지 않는다.** (D2 가 면적 등급을 정한다) */
+  --color-primary: #8b3f63;
+  --color-primary-soft: #f1dee7; /* 배지 등 옅은 배경용 */
+  /* 호버 — D4. brightness 필터(요소 전체 밝기 조작, 방향도 반대)가 아니라 더 짙은 배경으로.
+     surface 대비 8.73:1 (WCAG 상대휘도 계산). 유일한 용처는 primary 버튼의 enabled:hover / enabled:active. */
+  --color-primary-hover: #77354f;
+
+  /* Neutral — 거의 무채색 */
+  --color-ink: #1d1b19; /* 본문 텍스트, 헤드라인 */
+  --color-ink-soft: #726b65; /* 보조 텍스트, 캡션, 비활성 라벨 */
+  --color-bg: #f7f6f4; /* 페이지 배경 */
+  --color-surface: #ffffff; /* 카드 등 표면 */
+  --color-line: #e7e3de; /* 카드 보더, 구분선, 진행률 바 트랙 */
+
+  /* semantic color(성공/경고/위험) 전면 도입은 여전히 닫혀 있다 — D6 (docs/design/decisions.md).
+     6화면 목업이 색 없이 전 상태를 표현했다. 상태는 원칙적으로 보더 · 배경 톤 · 텍스트 · 형태로.
+     지어내지 않는다.
+     아래 success 만 예외다 — D12 가 D6 을 "업체 사례 GOOD 배지" 딱 한 곳에 한해 좁게 뒤집었다
+     (2026-08-26, 사용자 지시). 다른 상태(경고·위험 등)에 색을 새로 지어내려면 D12 처럼 그
+     화면 하나를 지목한 별도 결정이 먼저 있어야 한다 — 이 토큰의 존재가 일반 허가는 아니다. */
+  --color-success: #166534; /* surface 대비 7.13 · bg 대비 6.60 · line 대비 5.58 (WCAG 상대휘도) */
+  --color-success-soft: #e1f4e8; /* 배지 배경 — 위에 success 6.22 */
+
+  /* 결제 유형(계약금/중도금/잔금/기타) 배지 색 — D13 (docs/design/decisions.md), 2026-08-27,
+     사용자 지시. D6/D12는 "상태(성공/경고/위험) 색"에 관한 결정이고 이건 카테고리 색이라 범위가
+     다르지만, "새 색은 이 문서 → theme.css 순서로"라는 D8의 절차는 그대로 따른다. 넷 다
+     surface/bg/line 전부에서 WCAG AA(4.5:1)를 여유 있게 넘는다(node로 상대휘도 직접 계산,
+     추정치 아님) — soft 배경 위 자기 색 글자도 전부 4.5:1 이상. */
+  --color-payment-deposit: #8a5a12; /* 계약금 — surface 5.91 · bg 5.47 · line 4.63 */
+  --color-payment-deposit-soft: #f5ebd9; /* 배지 배경 — 위에 deposit 5.00 */
+  --color-payment-interim: #2f5f8f; /* 중도금 — surface 6.66 · bg 6.16 · line 5.21 */
+  --color-payment-interim-soft: #dfe8f2; /* 배지 배경 — 위에 interim 5.38 */
+  --color-payment-balance: #54407e; /* 잔금 — surface 8.71 · bg 8.06 · line 6.82 */
+  --color-payment-balance-soft: #e6e1f2; /* 배지 배경 — 위에 balance 6.81 */
+  --color-payment-etc: #5f4f43; /* 기타 — surface 7.82 · bg 7.24 · line 6.12 */
+  --color-payment-etc-soft: #eee7df; /* 배지 배경 — 위에 etc 6.38 */
+
+  /* Typography — Wanted Sans Variable.
+     원 디자인 문서가 Pretendard 를 "브랜드 식별력이 떨어진다"는 이유로 명시 기각했다.
+     Apple SD Gothic Neo 는 iOS 전용이라 임베드 불가 — 폴백으로만 둔다.
+     Tailwind 기본 --font-sans 에는 한글 폴백이 없으므로 반드시 덮어쓴다. */
+  --font-sans: "Wanted Sans Variable", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+
+  /* 행간 — CJK 는 글자당 정보 밀도가 높아 라틴보다 넉넉해야 한다.
+     규범: Headline line-height 1.4 / Body line-height 1.6 (docs/design/README.md 「타이포」).
+     Tailwind 기본(text-sm 이 약 1.43)을 그대로 두면 한국어 본문이 답답해진다.
+     KRDS 도 "줄 간격은 최소 150% 이상"을 권고한다. */
+  --text-xs--line-height: 1.5;
+  --text-sm--line-height: 1.6;
+  --text-base--line-height: 1.6;
+  --text-lg--line-height: 1.5;
+  --text-xl--line-height: 1.4;
+  --text-2xl--line-height: 1.4;
+
+  /* 크기 스케일은 Tailwind 기본을 그대로 쓰되, **역할별 용처를 못 박는다.**
+   *
+   *   text-base(16px) + text-ink       주 본문 — 읽는 글
+   *   text-sm  (14px) + text-ink-soft  보조 문구 — 원 디자인 문서의 Body(~0.86rem)가 이 자리다
+   *   text-xs  (12px) + text-ink-soft  캡션·라벨 (짧은 것만)
+   *   입력 필드는 16px 미만으로 두지 않는다 (근거 등급은 docs/design/a11y.md §2)
+   *
+   * 원 디자인 문서는 Body 를 "설명 텍스트, 보조 문구"로 정의했고 **주 본문 크기는 정의하지 않았다.**
+   * 위 base(16px) 단계가 그 공백을 메운 것이며, KRDS 의 "본문 최소 16px" 권고와 일치한다
+   * (docs/design/a11y.md §2.1). */
+
+  /* Shape — 4단계로 **폐기 후 재정의**한다 (D1).
+     「덮어쓰기」와 「폐기」는 다르다 — sm·md 만 덮어쓰면 Tailwind 기본 --radius-* 8단계(xs~4xl)가 그대로 살아
+     rounded-2xl(16px)·rounded-4xl(32px)도 생성됐다(실측). 아래 initial 한 줄이 8단계를 전부 지운다.
+     ⚠️ rounded-full(calc(infinity*1px))과 rounded-none(0)은 staticValues 라 폐기와 무관하게 살아남는다
+     (compile() 실측 — 폐기 계약 테스트가 고정). none 은 토큰 밖 값이 아니고, full 은 빌드 게이트가 ∞px 로 잡는다.
+     원형은 rounded-pill 로.
+     이 저장소에서 rounded-md 는 10px 이다. 16px 은 카드 — 목업이 카드류에 일관되게 쓰는 값.
+     이 줄이 사라지면 게이트의 폐기 유지 검사(REQUIRED_RETIREMENTS)가 빌드를 실패시킨다. */
+  --radius-*: initial;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 16px; /* 카드 */
+  --radius-pill: 999px;
+
+  /* 최소 터치 타겟 44px — WCAG AAA 2.5.5 + Apple HIG 44pt + KRDS 터치 44px 의 수렴
+     (AA 최저선은 24px — docs/design/a11y.md §1).
+     --spacing 스케일 위에 이름을 붙여 의도를 남긴다 (min-h-tap · h-tap · w-tap). */
+  --spacing-tap: 2.75rem;
+
+  /* 그림자 — 네 계열을 **폐기**한다 (D10). 「The Flat-By-Default Rule」 (docs/design/README.md).
+     토큰을 「두지 않는」 것만으로는 Tailwind 기본 22개(shadow 8 · drop-shadow 6 · inset-shadow 3 ·
+     text-shadow 5)가 살아 있었다. 아래 4줄이면 네 계열 유틸리티가 전부 생성되지 않는다(compile() 실측).
+     ⚠️ ring-* 은 이 폐기가 못 막는다 — 별개 네임스페이스다. 그건 빌드 게이트가 커스텀 속성
+     (--tw-ring-shadow · --tw-ring-color …)까지 봐서 잡는다. 링은 outline-* 로 (D9).
+     표면 구분은 전부 1px 헤어라인 보더(--color-line)로만 한다.
+     이 줄들이 사라지면 게이트의 폐기 유지 검사가 빌드를 실패시킨다. */
+  --shadow-*: initial;
+  --drop-shadow-*: initial;
+  --inset-shadow-*: initial;
+  --text-shadow-*: initial;
+}
+
+/* spacing 은 Tailwind 기본(--spacing: 0.25rem)을 그대로 쓴다.
+   규범의 xs/sm/md/lg/xl(4/8/16/20/24px)이 전부 4px 그리드 위라 기본 배수로 정확히 표현된다
+   (xs=1 · sm=2 · md=4 · lg=5 · xl=6). 토큰을 이중으로 두면 값의 출처가 갈린다 —
+   이 저장소가 별칭·Node 버전에서 거부해 온 패턴이다.
+   ⚠️ 이 주석에 유틸리티명을 나열하지 않는다 — 스캐너가 주석도 읽어 유틸리티를 만든다. */
