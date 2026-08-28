@@ -5,7 +5,7 @@
 import type { DoneSoFarCategory, SdmPriority, TastePreference, VenuePriority } from "@/entities/wedding";
 import type { UnsurePrecision } from "./steps/Step1RoleDate";
 import type { UnsurePrecisionOption } from "@/shared/lib/wedding-date";
-import { PROGRESS_ITEMS, REGION_LABELS, SDM_CHIPS, TASTE_CARDS, VENUE_CHIPS } from "./steps";
+import { GUEST_COUNT_UNSURE_DEFAULT, PROGRESS_ITEMS, REGION_LABELS, SDM_CHIPS, TASTE_CARDS, VENUE_CHIPS } from "./steps";
 
 export interface ReviewLabelInputs {
   isDateExact: boolean;
@@ -68,10 +68,12 @@ export function buildReviewLabels(inputs: ReviewLabelInputs): ReviewLabels {
     ),
     regionLabel,
     budgetLabel,
-    // 총예산과 달리 guest_count_unsure=true 일 때 서버가 대신 계산해 채워주는 값이 없다 —
-    // "200명 기준으로 시작해요"는 실제로 저장되지 않는 값을 저장되는 것처럼 말해 어긋난다
-    // (레드팀 감사 라운드 2).
-    guestCountLabel: inputs.effectiveGuestCountUnsure ? "미정" : `${inputs.guestCount}명`,
+    // 미정이면 "미정"이 아니라 실제로 저장될 값(200명)을 그대로 보여준다 — 2단계 안내 문구와
+    // 제출 payload가 같은 `GUEST_COUNT_UNSURE_DEFAULT`에서 나오므로 이 화면만 다른 말을 하면
+    // 안 된다(2026-08-28). "(기본값)" 꼬리표는 사용자가 확정한 값이 아님을 남긴다.
+    guestCountLabel: inputs.effectiveGuestCountUnsure
+      ? `${GUEST_COUNT_UNSURE_DEFAULT}명 (기본값)`
+      : `${inputs.guestCount}명`,
     tasteLabel: TASTE_CARDS.find((card) => card.value === inputs.effectiveTastePreference)?.title ?? inputs.effectiveTastePreference,
     goalsLabel: inputs.effectiveGoals.join(", "),
     venuePriorityLabel:

@@ -34,6 +34,7 @@ import { Button, Card, Page } from "@/shared/ui";
 import { buildReviewLabels } from "./build-review-labels";
 import {
   GeneratingOverlay,
+  GUEST_COUNT_UNSURE_DEFAULT,
   STEP_HEADLINE,
   STEP_SUBTITLE,
   Step1RoleDate,
@@ -52,8 +53,10 @@ import {
 import { useOnboardingData } from "./use-onboarding-data";
 
 // 3단계(취향)·4단계(목표)를 "나중에 설정"으로 건너뛸 때 백엔드에 실제로 보낼 기본값
-// (2026-08-26 사용자 지시 — 지어낸 값이 아니라 대화로 정한 값). 예산/하객수(2단계)는 이런
-// 고정값이 아니라 `*_unsure` 플래그 경로를 쓴다 — 그 값은 아래 파생 상수 블록 참고.
+// (2026-08-26 사용자 지시 — 지어낸 값이 아니라 대화로 정한 값). 2단계의 두 필드는 서로 다르게
+// 처리된다: 총예산은 고정값 없이 `total_budget_unsure` 플래그만 보내고 서버가 벤치마크로 채우지만,
+// 하객수는 서버에 그런 경로가 없어 프론트가 `GUEST_COUNT_UNSURE_DEFAULT`(200명)를 실어 보낸다
+// (2026-08-28 사용자 지시 — Step2RegionBudget.tsx의 상수 주석에 배경). 플래그는 둘 다 보낸다.
 const TASTE_DEFAULT: TastePreference = "BALANCED";
 const GOALS_DEFAULT: string[] = ["예산 초과 없이 준비", "계약서 꼼꼼히 확인"];
 
@@ -113,7 +116,9 @@ export function OnboardingPage() {
   // 🚨 이전엔 총예산/하객수를 비운 채로 "다음"만 눌러도 total_budget:0·guest_count:0이 그대로
   // 나갔다(실제 버그, 2026-08-26 발견) — 0은 "미정"이 아니라 진짜 0원/0명으로 해석된다. 아래
   // `isBudgetDefaulted`/`isGuestCountDefaulted`가 이 버그를 "나중에 설정" 여부와 무관하게 항상
-  // 닫는다.
+  // 닫는다. 하객수는 여기서 걸린 경우(명시적 미정 토글이든, 비워둬서 defaulted든) 똑같이
+  // `GUEST_COUNT_UNSURE_DEFAULT`로 나간다 — 두 경로가 다른 값을 저장하면 9단계 확인 화면이
+  // 보여준 값과 실제 저장값이 갈린다.
   const isBudgetDefaulted = !totalBudgetUnsure && totalBudget === "";
   const effectiveTotalBudgetUnsure = totalBudgetUnsure || isBudgetDefaulted;
   const isGuestCountDefaulted = !guestCountUnsure && guestCount === "";
@@ -164,7 +169,7 @@ export function OnboardingPage() {
           total_budget: effectiveTotalBudgetUnsure ? undefined : parsedTotalBudget,
           total_budget_unsure: effectiveTotalBudgetUnsure,
           region_code: regionCode,
-          guest_count: effectiveGuestCountUnsure ? undefined : Number(guestCount),
+          guest_count: effectiveGuestCountUnsure ? GUEST_COUNT_UNSURE_DEFAULT : Number(guestCount),
           guest_count_unsure: effectiveGuestCountUnsure,
           taste_preference: effectiveTastePreference,
           venue_priority: venuePriority ?? undefined,

@@ -41,6 +41,12 @@ export const INPUT =
   "min-h-tap w-full rounded-md border border-line bg-surface px-3 text-base text-ink " +
   "placeholder:text-ink-soft focus-visible:border-primary";
 
+// 비활성 입력칸 — "미정" 토글을 켠 필드가 사라지지 않고 자리에 남을 때 쓴다(2026-08-28).
+// `disabled:opacity-50`·`disabled:cursor-not-allowed`는 이 저장소가 이미 버튼/입력에 쓰는 조합이라
+// (Button.tsx · ChatPanel.tsx) 새 토큰을 늘리지 않는다. 조건부로 조립하지 않고 완성된 문자열
+// 두 개 중 하나를 그대로 고르는 이 파일의 규범을 따른다.
+export const INPUT_DISABLED = `${INPUT} disabled:cursor-not-allowed disabled:opacity-50`;
+
 export const SELECT = INPUT;
 
 // 기울임체 유틸리티는 이 저장소의 bare 후보 화이트리스트(ghost-candidates.test.mjs)에 없는
@@ -50,3 +56,9 @@ export const SELECT = INPUT;
 // 파일 전체를 평문으로 훑으므로, 주석 속 단어 하나가 그대로 산출 CSS 후보가 된다(바로 이 파일이
 // 겪은 사고 — 최초 수정 커밋이 설명 주석에 그 단어를 그대로 썼다가 이 게이트에 다시 잡혔다).
 export const FIELD_NOTE = "text-xs text-ink-soft";
+
+// 어절 단위로만 줄을 끊는 안내 문구용(2026-08-28 사용자 지시). styles.css 가 제목·버튼·라벨에
+// 거는 `word-break: keep-all` + `overflow-wrap: anywhere` 짝과 같은 조합이다 — 그 규칙은 요소
+// 선택자 기반이라 <div> 안의 <p>인 이 문구들은 상속받지 못해서 유틸리티로 다시 건다.
+// 뒤쪽 유틸리티는 긴 금액 문자열이 좁은 화면에서 컨테이너를 밀어내는 경우를 받아낸다.
+export const FIELD_NOTE_KEEP = `${FIELD_NOTE} break-keep wrap-anywhere`;

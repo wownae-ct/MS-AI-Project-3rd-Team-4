@@ -13,25 +13,22 @@ const SECTION = "flex flex-col gap-1 border-b border-line py-3 last:border-b-0 l
 const LABEL = "text-xs font-bold text-ink-soft";
 const VALUE = "text-sm font-bold text-ink";
 const DEFAULTED_NOTE = "나중에 설정을 선택해서, 저희가 정한 기본값으로 시작해요.";
-const GUEST_COUNT_DEFAULTED_NOTE = "나중에 설정을 선택해서, 인원 수는 미정으로 저장돼요.";
 
 interface ReviewRowProps {
   label: string;
   value: string;
   isDefaulted?: boolean;
-  // 대부분의 필드는 "나중에 설정"이 실제 기본값을 채워 넣지만(취향/목표 등), 하객 수는 서버가
-  // NULL 로만 저장할 뿐 대신 채워주는 값이 없다 — 그 경우 공용 DEFAULTED_NOTE 문구("저희가
-  // 정한 기본값으로 시작해요")가 실제 동작과 어긋난다(레드팀 감사 라운드 2). 필요한 행만
-  // 이 prop 으로 문구를 바꿔치기한다.
-  defaultedNote?: string;
 }
 
-function ReviewRow({ label, value, isDefaulted, defaultedNote }: ReviewRowProps) {
+// 한때 하객 수만 문구를 바꿔치기하는 `defaultedNote` prop 이 있었다 — 서버가 guest_count 를
+// NULL 로만 저장해 "기본값으로 시작해요"가 거짓이었기 때문이다. 2026-08-28부터 하객 수도 실제
+// 기본값(200명)이 저장되므로 예외가 사라졌고, 그 prop 도 같이 걷어냈다(유일한 사용처였다).
+function ReviewRow({ label, value, isDefaulted }: ReviewRowProps) {
   return (
     <div className={SECTION}>
       <span className={LABEL}>{label}</span>
       <span className={VALUE}>{value}</span>
-      {isDefaulted === true && <p className={FIELD_NOTE}>{defaultedNote ?? DEFAULTED_NOTE}</p>}
+      {isDefaulted === true && <p className={FIELD_NOTE}>{DEFAULTED_NOTE}</p>}
     </div>
   );
 }
@@ -80,12 +77,7 @@ export function Step9Review({
       <ReviewRow label="결혼 예정일" value={weddingDateLabel} isDefaulted={isDateDefaulted} />
       <ReviewRow label="지역" value={regionLabel} />
       <ReviewRow label="총 예산" value={budgetLabel} isDefaulted={isBudgetDefaulted} />
-      <ReviewRow
-        label="예상 하객 수"
-        value={guestCountLabel}
-        isDefaulted={isGuestCountDefaulted}
-        defaultedNote={GUEST_COUNT_DEFAULTED_NOTE}
-      />
+      <ReviewRow label="예상 하객 수" value={guestCountLabel} isDefaulted={isGuestCountDefaulted} />
       <ReviewRow label="웨딩 취향" value={tasteLabel} isDefaulted={isTasteDefaulted} />
       <ReviewRow label="이번 준비 목표" value={goalsLabel} isDefaulted={isGoalsDefaulted} />
       <ReviewRow label="예식장 우선순위" value={venuePriorityLabel} />
