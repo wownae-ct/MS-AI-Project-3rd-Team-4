@@ -8,6 +8,7 @@ from openai import AsyncAzureOpenAI
 
 from app.core.auth import get_credential
 from app.core.config import Settings
+from app.core.tracing import resolve_azure_openai_class
 
 AAD_OPENAI_SCOPE = "https://cognitiveservices.azure.com/.default"
 EMBEDDING_BATCH_SIZE = 16
@@ -15,10 +16,18 @@ EMBEDDING_BATCH_SIZE = 16
 
 def get_azure_openai_client(settings: Settings) -> AsyncAzureOpenAI:
     token_provider = get_bearer_token_provider(get_credential(), AAD_OPENAI_SCOPE)
-    return AsyncAzureOpenAI(
+    # 트레이싱 활성화 시 langfuse.openai.AsyncAzureOpenAI(원본과 완전히 같은 클래스, 서브클래싱
+    # 아님 — 14_langfuse_tracing_design.md §2)로 바뀐다. 이 한 곳만 바뀌면 두 그래프+retrieval+
+    # indexing 전부 계측된다.
+    client_cls = resolve_azure_openai_class(settings)
+    return client_cls(
         azure_endpoint=settings.azure_openai_endpoint,
         azure_ad_token_provider=token_provider,
         api_version=settings.azure_openai_api_version,
+        # settings.azure_openai_timeout_seconds 참고(app/core/config.py) — 이 값이 없으면 SDK
+        # 기본 600초가 적용돼, 스트리밍 없는 단발 호출(챗 그래프의 verify/reformulate_query)이
+        # nginx ingress의 proxy-read-timeout(기본 60초)보다 훨씬 오래 열려있을 수 있었다.
+        timeout=settings.azure_openai_timeout_seconds,
     )
 
 

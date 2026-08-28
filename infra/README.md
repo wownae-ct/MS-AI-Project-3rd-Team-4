@@ -96,12 +96,19 @@ backend와 rag는 **같은 브랜치(backend/main), 같은 Docker 이미지**를
 
 ## ArgoCD (GitOps)
 
-`infra/k8s/argocd/`(설치) + `infra/k8s/apps/`(app-of-apps, 이 4개 Application 정의) + `infra/k8s/root-app.yaml`
-(app-of-apps 루트 — `infra/k8s/apps/`를 관리) 구조. root-app을 apps/ 폴더 밖에 두는 이유: root-app이 자기 자신이
-관리하는 폴더 안에 있으면 ArgoCD가 자기 자신을 대상으로 sync/prune하게 돼서(자기참조), `prune: true`인 상태에서
-누군가 폴더 구조를 바꾸면 root-app이 스스로를 지워버릴 수 있음(2026-08-13, 리뷰 중 발견해서 분리).
-기존 홈랩 프로젝트(`k3s-repo`)의 app-of-apps 패턴을 재사용하되, 시크릿 백엔드만 SealedSecrets → Key Vault CSI+Workload Identity로 교체했다.
-프론트는 ArgoCD 범위 밖(SWA로 별도 배포).
+`infra/k8s/argocd/`(설치) + `infra/k8s/apps/{staging,production}/`(app-of-apps, 이 6개 Application
+정의) + `infra/k8s/root-app-{staging,production}.yaml`(app-of-apps 루트 2개) 구조. root-app을
+apps/ 폴더 밖에 두는 이유: root-app이 자기 자신이 관리하는 폴더 안에 있으면 ArgoCD가 자기 자신을
+대상으로 sync/prune하게 돼서(자기참조), `prune: true`인 상태에서 누군가 폴더 구조를 바꾸면
+root-app이 스스로를 지워버릴 수 있음(2026-08-13, 리뷰 중 발견해서 분리). **2026-08-26 root-app
+분리**: 원래는 root-app 하나가 `main` 기준으로 `infra/k8s/apps/` 전체를 읽어서, staging용
+Application을 추가해도 main 승격 전까지는 못 봤다 — root-app을 staging(`backend` 브랜치 추적)/
+production(`main` 브랜치 추적)으로 나눠 staging Application 추가/변경이 main 승격 없이 즉시
+반영되게 했다. 기존 홈랩 프로젝트(`k3s-repo`)의 app-of-apps 패턴을 재사용하되, 시크릿 백엔드만
+SealedSecrets → Key Vault CSI+Workload Identity로 교체했다.
+프론트는 **2026-08-26부터 ArgoCD 범위 안**(`frontend-{staging,production}` Application,
+같은 AKS Ingress 호스트에 nginx 컨테이너로 same-origin 배포) — SWA는 폐기 아니고 PR
+프리뷰/로컬용으로 병행.
 
 **Image Updater**가 ACR 신규 태그를 폴링해 `backend-staging`/`backend-production` Application의 이미지를
 자동 갱신한다(git write-back 아니라 Application 파라미터 override). ACR 인증은 전용 Workload Identity
@@ -114,14 +121,16 @@ backend와 rag는 **같은 브랜치(backend/main), 같은 Docker 이미지**를
 2. `az bicep build --file infra/bicep/main.bicep` — 로컬 검증
 3. `az deployment group what-if ...` — 드라이런
 4. `az deployment group create ...` — 실배포 (또는 `infra-deploy.yml` workflow_dispatch)
-5. ArgoCD 설치 (`infra/k8s/argocd/README.md` 참고) → `kubectl apply -f infra/k8s/root-app.yaml`
+5. ArgoCD 설치 (`infra/k8s/argocd/README.md` 참고) → `kubectl apply -f infra/k8s/root-app-staging.yaml`
+   → `kubectl apply -f infra/k8s/root-app-production.yaml`
 6. Bicep 출력값(`backendIdentityClientId`, `keyVaultUri`, `storageAccountName` 등)으로 `infra/k8s/base/**/*.yaml`의 `<PLACEHOLDER>` 값 채워서 재커밋
 
 ## 알려진 트레이드오프 (시간/예산 제약)
 
 - **AKS 클러스터 1개 공유**: staging/production을 네임스페이스로만 분리 — 클러스터 격리 수준의 안전성은 아님(노드/네트워크는 공유).
 - **VNet 미사용**: Postgres/AKS 모두 퍼블릭 액세스 + 방화벽 허용목록. 시간 여유 시 Private Endpoint로 전환 권장.
-- **Ingress: NGINX 1벌로 확정** (`infra/k8s/ingress-nginx/README.md`). HAProxy도 로컬 사용 경험이 있어 후보였지만 생태계가 더 큰 NGINX로 결정 — 성능 이슈 생기면 HAProxy로 교체 후보. Azure 별도 유료 리소스 아님(AGIC였다면 Application Gateway가 필요했을 것). **도메인**: 실도메인 구매 대신 Azure LoadBalancer 자동생성 DNS 라벨(무료) — production은 `merrymap-production.koreacentral.cloudapp.azure.com`, staging은 같은 컨트롤러의 같은 공인 IP를 `nip.io`로 재사용(브라우저가 staging 백엔드를 직접 호출하는 경로가 없어서 별도 컨트롤러/도메인 불필요). **TLS**: cert-manager + Let's Encrypt 자동 발급(`infra/k8s/cert-manager/README.md`). production 호스트는 확정 완료, staging 호스트는 ingress-nginx 설치 후 실제 IP가 나와야 알 수 있어 `<STAGING_NIP_IO_HOST_TBD>` 자리표시자로 남아있음.
+- **Ingress: NGINX 1벌로 확정** (`infra/k8s/ingress-nginx/README.md`). HAProxy도 로컬 사용 경험이 있어 후보였지만 생태계가 더 큰 NGINX로 결정 — 성능 이슈 생기면 HAProxy로 교체 후보. Azure 별도 유료 리소스 아님(AGIC였다면 Application Gateway가 필요했을 것). **도메인**: 실도메인 구매 대신 Azure LoadBalancer 자동생성 DNS 라벨(무료) — production은 `merrymap-production.koreacentral.cloudapp.azure.com`, staging은 같은 컨트롤러의 같은 공인 IP를 `nip.io`로 재사용(브라우저가 staging 백엔드를 직접 호출하는 경로가 없어서 별도 컨트롤러/도메인 불필요). **TLS**: cert-manager + Let's Encrypt 자동 발급(`infra/k8s/cert-manager/README.md`). production 호스트는 확정 완료. staging 호스트도 이제 확정 완료(2026-08-24 ingress-nginx 설치 후 실제 IP `20.249.52.148` 확인, `k8s/overlays/backend-staging/ingress.yaml`에 `20-249-52-148.nip.io`로 반영, staging 라이브 배포로 실측 검증됨) — 이 문단이 한동안 `<STAGING_NIP_IO_HOST_TBD>` 자리표시자로 남아있었는데 실제로는 이미 채워져 있었던 문서 드리프트였다(2026-08-25 확인 및 정정).
+  - **staging/production URL·CORS·OAuth redirect 설정은 이미 양쪽 다 완전히 배선되어 있다** — `k8s/overlays/backend-{staging,production}/kustomization.yaml`이 각각 `OAUTH_BACKEND_BASE_URL`/`FRONTEND_BASE_URL`을 실제 값으로 패치하고 있고(플레이스홀더 아님), `backend/app/main.py`의 `SWA_ORIGIN_REGEX`는 두 네임스페이스가 공유하는 단일 SWA 오리진을 이미 커버한다. 즉 이 프로젝트의 "프로모션"은 설정을 주석 해제/교체하는 별도 단계가 아니라 **`backend` → `main` PR 머지 그 자체**다(`backend-production` ArgoCD Application이 `targetRevision: main`을 `automated{prune:true, selfHeal:true}`로 추적하므로 머지 즉시 배포됨). 2026-08-25 확인 시점 기준 `origin/main`은 `origin/backend`보다 **83개 커밋 뒤처져 있다**(PR #52 전후부터의 모든 작업 — CRAG 재시도, Langfuse 관측성, 개인화 회귀 수정 3건, 영수증 OCR, 개인화 재시도 엣지, 체크리스트 few-shot 편중 수정 등 — production에 전혀 반영 안 됨). production 파드 자체는 살아있고(`GET https://merrymap-production.koreacentral.cloudapp.azure.com/api/v1/health` 200 확인) 응답은 하지만 오래된 코드를 서빙 중 — 실제 프로모션 병목은 URL/CORS 설정이 아니라 이 브랜치 격차이며, `main`으로의 병합은 자동 배포 트리거라 별도 사용자 승인 후 진행해야 한다.
 - **Init Container 인증 플래그 미검증**: `az login --identity`가 AKS Workload Identity federation과 실제로 맞물리는지 실배포 시 확인 필요.
 - **Static Web Apps 배포는 OIDC 미지원**: `AZURE_STATIC_WEB_APPS_API_TOKEN`을 GitHub Secrets에 등록 필요(SWA 리소스 생성 후 `az staticwebapp secrets list`로 확인).
 
@@ -137,6 +146,9 @@ backend와 rag는 **같은 브랜치(backend/main), 같은 Docker 이미지**를
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | `az staticwebapp secrets list --name <prefix>-swa --resource-group <RG> --query properties.apiKey -o tsv` | SWA는 OIDC 미지원이라 이것만 예외적으로 장기 토큰 사용 |
 | `VITE_API_BASE` | 프론트 빌드 시 주입할 백엔드 API 주소(P3에서 확정한 production 호스트) | cert-manager 인증서 발급 확인 후 등록 |
 | `POSTGRES_ADMIN_PASSWORD` | `infra/.env`의 값 그대로 | **여기 README/문서에 실제 값 절대 적지 말 것** — 평문 커밋된 적 있음(2026-08-13). ⚠️ 아래 "히스토리 잔존" 참고 |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google Cloud Console에서 발급 | 소셜 로그인(`00_BASELINE.md` §0-2 Should). 2026-08-24 IaC화(`infra/docs/iac.md` §Key Vault 시크릿 자동화 참고) — 등록 안 하면 `dev.bicepparam`이 `CHANGE_ME_LOCAL_ONLY`로 폴백(파드는 뜨지만 로그인은 안 됨) |
+| `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | 네이버 개발자센터에서 발급 | 위와 동일 |
+| `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | Langfuse Cloud 프로젝트 설정에서 발급 | `14_langfuse_tracing_design.md`. **⚠️ 이미 라이브로 쓰이는 값** — GitHub Secrets 미등록 상태로 `infra-deploy.yml`을 `workflow_dispatch`(whatIf:false)로 실배포하면 `CHANGE_ME_LOCAL_ONLY`로 덮어써서 기존 정상 동작하던 트레이싱이 깨진다. **실배포 전 반드시 먼저 등록할 것** |
 
 > **⚠️ 이 문서의 이전 기술은 사실과 달랐다 (2026-08-19 정정)**
 >

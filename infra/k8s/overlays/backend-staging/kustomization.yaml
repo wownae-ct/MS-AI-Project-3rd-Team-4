@@ -6,3 +6,40 @@ resources:
   - namespace.yaml
   - ../../base/backend
   - ingress.yaml
+patches:
+  # 14_langfuse_tracing_design.md — base는 LANGFUSE_ENVIRONMENT를 안 두므로(staging/production이
+  # 공유하는 계층이라 하드코딩 불가) 여기서 추가한다. env 배열엔 아직 이 이름이 없으므로
+  # append이지 override가 아니다(중복 키 걱정 없음).
+  - target:
+      kind: Deployment
+      name: backend
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: LANGFUSE_ENVIRONMENT
+          value: staging
+  # 소셜 로그인(구글/네이버, 00_BASELINE.md §0-2 Should) — OAUTH_BACKEND_BASE_URL은 IdP
+  # 콘솔에 등록해둔 redirect_uri와 문자 그대로 일치해야 하는 값이라 이 배포 환경의 실제
+  # Ingress 도메인(03_API_spec.md §1 base URL, /api/v1 제외)으로 명시한다. 백엔드 호스트 자체는
+  # same-origin 전환 이후에도 그대로라 이 값은 안 바뀐다(IdP 콘솔 redirect_uri 등록도 유지).
+  #
+  # FRONTEND_BASE_URL은 backend/app/routers/auth.py의 OAuth 로그인 성공/실패 후 리다이렉트
+  # 목적지 — 2026-08-26 same-origin 전환(ingress.yaml의 `/api`·`/` 경로 분기 참고)으로 frontend가
+  # 이제 이 백엔드와 같은 호스트에서 서빙되므로, 예전 SWA 주소 대신 이 호스트를 가리켜야 한다.
+  # app/main.py의 CORS(SWA_ORIGIN_REGEX)는 PR 프리뷰(SWA)·로컬 개발용으로 별개로 계속 유지된다
+  # — same-origin 요청은 애초에 CORS 검사 대상이 아니라 이 값과 무관하다.
+  - target:
+      kind: Deployment
+      name: backend
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OAUTH_BACKEND_BASE_URL
+          value: https://20-249-52-148.nip.io
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: FRONTEND_BASE_URL
+          value: https://20-249-52-148.nip.io

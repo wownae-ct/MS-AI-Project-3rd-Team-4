@@ -6,3 +6,47 @@ resources:
   - namespace.yaml
   - ../../base/backend
   - ingress.yaml
+patches:
+  # 2026-08-26 사용자 지시 — production만 이중화(replica=2). base(backend/deployment.yaml)의
+  # "데모 규모라 의도적으로 1개만 유지"는 staging 기준 그대로 두고, 실사용 트래픽을 받는
+  # production만 배포/노드 재시작 중 다운타임을 줄이기 위해 여기서 덮어쓴다. 노드 여유(고정
+  # 2노드, 오토스케일러 없음, 실사용량 매우 낮음 — infra/docs/kubernetes.md 확인)로 리소스
+  # 문제 없음.
+  - target:
+      kind: Deployment
+      name: backend
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+  # 14_langfuse_tracing_design.md — backend-staging/kustomization.yaml과 대칭(값만 다름).
+  - target:
+      kind: Deployment
+      name: backend
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: LANGFUSE_ENVIRONMENT
+          value: production
+  # 소셜 로그인(구글/네이버, 00_BASELINE.md §0-2 Should) — OAUTH_BACKEND_BASE_URL은
+  # backend-staging/kustomization.yaml과 대칭(값만 다름), same-origin 전환 후에도 불변.
+  #
+  # FRONTEND_BASE_URL은 2026-08-26 same-origin 전환(ingress.yaml의 `/api`·`/` 경로 분기 참고)으로
+  # 예전 SWA 주소 대신 이 배포의 Ingress 호스트를 가리킨다 — backend-staging/kustomization.yaml과
+  # 동일한 이유(auth.py의 OAuth 리다이렉트 목적지). CORS(app/main.py의 SWA_ORIGIN_REGEX)는
+  # PR 프리뷰(SWA)·로컬 개발용으로 별개 유지, same-origin 요청과는 무관.
+  - target:
+      kind: Deployment
+      name: backend
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OAUTH_BACKEND_BASE_URL
+          value: https://merrymap-production.koreacentral.cloudapp.azure.com
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: FRONTEND_BASE_URL
+          value: https://merrymap-production.koreacentral.cloudapp.azure.com

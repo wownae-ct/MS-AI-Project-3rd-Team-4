@@ -1,3 +1,9 @@
+# CronJob이란?
+# 일반 Deployment는 "항상 떠 있는" 파드를 관리하지만, CronJob은 "정해진 시각에 파드를 딱
+# 한 번 실행하고 끝나면 종료"시키는 오브젝트 — 리눅스 cron과 같은 문법(schedule)으로 매일
+# 03:00 같은 반복 일정을 잡는다. 여기서는 매일 새벽에 RAG 코퍼스를 다시 읽어 임베딩·색인하는
+# 배치 작업을 돌리는 데 쓴다(사람이 매번 수동으로 안 돌려도 됨).
+#
 # 주기적 RAG 재인덱싱. DS2~DS6,DS8 코퍼스 문서(140청크, kustomization.yaml의 rag-corpus
 # ConfigMap)를 임베딩·pgvector upsert(backend/app/rag/indexing.py, 2026-08-21 실구현 완료).
 # DS1_PRICE·DS7_TIMELINE은 RAG 코퍼스 대상이 아니라 여기 안 옴(각각 price_benchmarks 테이블
@@ -25,6 +31,16 @@ spec:
               image: team4hcacr-drascbaqe8f2gcca.azurecr.io/backend:latest
               imagePullPolicy: Always
               command: ["python", "-m", "app.rag.indexing"]
+              resources: # 2026-08-26 추가 — backend Deployment와 같은 이유(BestEffort 방지).
+                  # 임베딩 배치(140청크) + pgvector upsert라 backend 웹서버보다 메모리 여유를
+                  # 조금 더 준다. 오토스케일러 없는 고정 2노드라 비용 영향 없음 — 하루 한 번,
+                  # 짧게 실행되는 배치라 상시 점유 부담도 없다.
+                  requests:
+                      cpu: 100m
+                      memory: 256Mi
+                  limits:
+                      cpu: 500m
+                      memory: 512Mi
               env:
                 - name: DATABASE_URL
                   valueFrom:
@@ -38,6 +54,39 @@ spec:
                     secretKeyRef:
                       name: backend-kv-secrets
                       key: AZURE_OPENAI_ENDPOINT
+                # 2026-08-26 추가 — backend/deployment.yaml에는 소셜 로그인(2026-08-24)/영수증
+                # OCR(2026-08-25) 추가 때 이 5개가 함께 들어갔지만 이 파일은 그때 같이 갱신되지
+                # 않았다. app/core/config.py::Settings가 이 필드들을 필수(기본값 없음)로 요구해서
+                # `python -m app.rag.indexing` 시작부터 pydantic ValidationError로 죽고
+                # 있었다(오늘 03:00 실행 실패 로그로 확인 — 마지막 성공은 2026-08-23). 이
+                # CronJob은 실제로 이 값들을 쓰지 않지만(RAG 인덱싱 로직은 OAuth/Blob과 무관)
+                # Settings() 인스턴스화 자체가 죽으면 아무 로직도 실행되지 않는다 — backend와
+                # 같은 backend-kv-secrets Secret을 그대로 재사용한다(별도 CSI/시크릿 배선 불필요).
+                - name: GOOGLE_CLIENT_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: backend-kv-secrets
+                      key: GOOGLE_CLIENT_ID
+                - name: GOOGLE_CLIENT_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: backend-kv-secrets
+                      key: GOOGLE_CLIENT_SECRET
+                - name: NAVER_CLIENT_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: backend-kv-secrets
+                      key: NAVER_CLIENT_ID
+                - name: NAVER_CLIENT_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: backend-kv-secrets
+                      key: NAVER_CLIENT_SECRET
+                - name: AZURE_STORAGE_BLOB_ENDPOINT
+                  valueFrom:
+                    secretKeyRef:
+                      name: backend-kv-secrets
+                      key: AZURE_STORAGE_BLOB_ENDPOINT
               volumeMounts:
                 - name: kv-secrets
                   mountPath: /mnt/secrets
