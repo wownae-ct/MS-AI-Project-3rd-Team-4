@@ -45,12 +45,23 @@ export interface TimelinePhaseGroup {
 }
 
 /**
- * 완료(DONE) 항목을 그룹 맨 아래로 — 앞으로 할 일이 항상 위에 먼저 보이게 한다(2026-08-26 사용자
- * 지시). `toSorted`는 안정 정렬이라 완료/미완료 각각의 내부 순서(원래 도착 순 = 대체로 날짜순)는
- * 그대로 유지된다 — 완료 여부만 재배치한다.
+ * 표시 순서는 `target_date` 오름차순 **하나뿐**이다 — status는 순서에 영향을 주지 않는다
+ * (2026-08-29 사용자 지시).
+ *
+ * 예전엔 여기서 완료(DONE) 항목을 구간 맨 아래로 내리고, 구간 전체가 DONE이면 그 구간 카드까지
+ * 아래로 보냈다(2026-08-26 지시). **그 결정은 철회됐다** — 이 화면엔 사용자가 고를 수 있는 정렬
+ * 컨트롤이 없어서, 체크 한 번에 목록이 재배치되면 순서가 왜 바뀌었는지 알 방법이 없다. 게다가
+ * 타임라인 체크는 대개 연속으로 일어나는데(밀린 항목 몰아서 정리) 방금 누른 행이 즉시 자리를
+ * 옮기고 다음 행이 그 자리로 당겨 올라와 오클릭이 났다. 완료 여부는 순서가 아니라 행의 모양
+ * (취소선 + 회색, `TimelineItemRow.tsx`)으로만 표현한다 — `ChecklistTab.tsx`와 같은 관례다.
+ *
+ * 서버도 이미 `target_date` 순으로 주지만(backend/app/services/timeline.py) 여기서 한 번 더
+ * 고정한다 — "순서는 날짜뿐"이 이 파일 안에서 자립적으로 성립해야 테스트로 지킬 수 있다.
+ * `target_date`는 전부 ISO `YYYY-MM-DD`라 사전식 비교가 곧 시간순이고, `toSorted`는 안정
+ * 정렬이라 같은 날짜끼리는 받은 순서를 유지한다.
  */
-function sortDoneLast(items: TimelineItem[]): TimelineItem[] {
-  return items.toSorted((a, b) => Number(a.status === "DONE") - Number(b.status === "DONE"));
+function sortByTargetDate(items: TimelineItem[]): TimelineItem[] {
+  return items.toSorted((a, b) => a.target_date.localeCompare(b.target_date));
 }
 
 /**
@@ -59,7 +70,9 @@ function sortDoneLast(items: TimelineItem[]): TimelineItem[] {
  */
 export function groupTimelineItemsByPhase(items: TimelineItem[], weddingDate: string | undefined): TimelinePhaseGroup[] {
   if (weddingDate === undefined) {
-    return items.length > 0 ? [{ label: "일정 미정", sortKey: 0, date: undefined, items: sortDoneLast(items) }] : [];
+    return items.length > 0
+      ? [{ label: "일정 미정", sortKey: 0, date: undefined, items: sortByTargetDate(items) }]
+      : [];
   }
 
   const groups = new Map<string, TimelinePhaseGroup>();
@@ -76,14 +89,10 @@ export function groupTimelineItemsByPhase(items: TimelineItem[], weddingDate: st
       groups.set(label, { label, sortKey: offsetDays, date: item.target_date, items: [item] });
     }
   }
+  // 구간도, 구간 안 항목도 오직 날짜로만 줄 세운다 — 구간 전체가 DONE이 돼도 그 카드는 제자리에
+  // 남는다(`sortByTargetDate` 머리말의 철회 근거 참고). `sortKey`는 그 구간에서 처음 만난 항목의
+  // offset인데, 서로 다른 라벨은 겹치지 않는 30일 버킷이라 어느 항목을 골라도 구간 순서는 같다.
   const sortedGroups = [...groups.values()].toSorted((a, b) => a.sortKey - b.sortKey);
-  for (const group of sortedGroups) group.items = sortDoneLast(group.items);
-
-  // 구간 자체도 완료 여부로 재배치한다(2026-08-26 사용자 지시) — 각 구간 안에서만 완료 항목을
-  // 아래로 내리는 것만으로는, 이미 다 끝난 구간이 여전히 날짜순 그대로 화면 위쪽을 차지해
-  // 매번 스크롤을 내려야 남은 할 일을 본다. 미완료 항목이 하나라도 있는 구간을 먼저(날짜순
-  // 그대로), 구간 전체가 DONE인 구간을 뒤에(역시 그들끼리는 날짜순 그대로) 이어 붙인다.
-  const pending = sortedGroups.filter((group) => group.items.some((item) => item.status !== "DONE"));
-  const done = sortedGroups.filter((group) => group.items.every((item) => item.status === "DONE"));
-  return [...pending, ...done];
+  for (const group of sortedGroups) group.items = sortByTargetDate(group.items);
+  return sortedGroups;
 }
