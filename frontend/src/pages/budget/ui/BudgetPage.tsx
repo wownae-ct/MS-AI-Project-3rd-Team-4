@@ -43,12 +43,18 @@
 // 순서다. 도넛과 카테고리별 목록을 한 덩어리로 렌더하던 `AllocationOverview.tsx`는 그 사이에
 // 다른 섹션이 끼게 되면서 성립하지 않아 없앴다 — 목록 쪽은 `CategoryAllocationList.tsx`로
 // 옮겼고, 도넛은 이 파일이 직접 그린다.
-import { useEffect, useState } from "react";
+//
+// **UX 개편 6차(2026-08-29, 사용자 지시) — 배분이 총예산을 넘으면 저장을 막는다.**
+// 온보딩 8단계가 2026-08-28에 받은 것과 같은 가드다. 예전엔 초과 상태로 "저장"을 누를 수 있었고,
+// `PUT /wedding-categories`가 400 BUDGET_EXCEEDED를 낸 뒤에야 서버 메시지로 알 수 있었다 —
+// 서버 왕복을 한 번 낭비하고, 고치려면 화면 맨 위 도넛까지 스크롤해 "수정"을 찾아야 했다.
+// 이제 저장 버튼 아래 안내가 이유와 함께 총예산을 올리는 길(CTA)을 준다.
+import { useEffect, useRef, useState } from "react";
 import { getDashboardSummary, type BudgetBenchmarkSummary } from "@/entities/dashboard";
 import { getUpcomingPayments, UpcomingPaymentsCard, type UpcomingPaymentEntry } from "@/entities/payment";
 import { deriveBudgetSummary, getCategories, getMyWedding, getWeddingCategories, putWeddingCategories, type WeddingCategory } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
-import { Page } from "@/shared/ui";
+import { Page, StatusCallout } from "@/shared/ui";
 import { BudgetDonut } from "./BudgetDonut";
 import { CategoryAllocationList } from "./CategoryAllocationList";
 import { CostManagementTab } from "./CostManagementTab";
@@ -72,6 +78,9 @@ interface BudgetData {
 }
 
 const PRIMARY_BUTTON = "min-h-tap rounded-md bg-primary px-4 text-sm font-bold text-surface disabled:opacity-50";
+// 링크가 아니라 화면 안 동작이라 <button> 이다. 밑줄은 "누를 수 있다"를 색 말고도 전달한다
+// (D6 — 상태색만으로 의미를 싣지 않는다). 온보딩 8단계의 같은 CTA와 같은 리터럴이다.
+const OVER_CTA = "min-h-tap w-fit text-left text-sm font-bold text-primary underline";
 
 // data가 아직 없는 동안(로딩/에러)에도 useCategoryBenchmarks 훅은 호출돼야 한다(Hooks 규칙 —
 // 조건부 호출 금지) — 매 렌더 새 배열 리터럴(`[]`)을 넘기면 그 훅의 useEffect deps가 매번
@@ -99,6 +108,21 @@ export function BudgetPage() {
   // 교차 패턴 04). 초기 로드 catch는 이미 ApiError.message를 쓰는 관례가 있었는데 저장 함수
   // 두 곳만 그 관례를 안 따르고 있었다.
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
+
+  // 총예산 수정 패널 열림 — BudgetDonut 내부가 아니라 여기 있다. 초과 안내의 CTA가 화면
+  // 아래에서 이 패널을 열어야 하기 때문이다(BudgetDonut.tsx 머리말).
+  const [isEditingTotal, setIsEditingTotal] = useState(false);
+  const donutRef = useRef<HTMLDivElement>(null);
+
+  // CTA는 화면 맨 아래에 있고 패널은 맨 위 카드에 있다 — 스크롤이 없으면 "아무 일도 안 일어난
+  // 것"처럼 보인다. 입력칸 포커스는 DisclosurePanel이 스스로 한다.
+  // `behavior: "smooth"`를 쓰지 않는 이유 — styles.css의 전역 prefers-reduced-motion 규칙은
+  // animation/transition duration만 덮어 `scroll-behavior`는 잡지 못한다. 기본값(즉시 이동)이
+  // 그 환경에서 안전하다.
+  function openTotalBudgetEditor() {
+    setIsEditingTotal(true);
+    donutRef.current?.scrollIntoView({ block: "start" });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -254,6 +278,17 @@ export function BudgetPage() {
   const rows = scenarioDraft ?? data.categories;
   const isEditingScenario = scenarioDraft !== null;
 
+  // 🚨 **서버와 같은 집합으로 센다.** `PUT /wedding-categories`의 BUDGET_EXCEEDED 검증은
+  // `is_active` 무관 **9개 전체 합**이다(01-endpoints.md:149). 반면 deriveBudgetSummary 의
+  // `unallocated`는 활성만 센다 — 그걸로 게이트를 만들면 "화면은 통과인데 서버가 400"이 난다.
+  // `rows`는 CategoryAllocationList 가 전부 렌더하는 그 배열, 즉 비활성 포함 전체다.
+  //
+  // 대안(비활성은 payload에 0으로 보내 서버를 우리 쪽에 맞추기)은 택하지 않았다 — 비활성
+  // 카테고리에 paid_amount 가 있으면(비용 관리의 카테고리 목록은 has_cost 로만 거른다) 0을
+  // 보내는 순간 BUDGET_BELOW_PAID 400 이 새로 생긴다. 판정 집합만 맞추는 쪽이 부작용이 없다.
+  const plannedTotal = rows.reduce((sum, category) => sum + category.planned_budget, 0);
+  const isOverAllocated = plannedTotal > data.totalBudget;
+
   return (
     <Page title="예산 재배분" subtitle="카테고리 사이로 예산을 옮겨 봅니다.">
       <div className="flex flex-col gap-5">
@@ -264,11 +299,16 @@ export function BudgetPage() {
             UX 개편 3차(2026-08-26)로 대시보드의 "예산 시세 비교" 카드도 여기 흡수됐다 —
             BudgetDonut이 자기 Card(제목 "총 예산 현황" + titleAction 수정 버튼)를 직접 그리므로
             여기서는 Card로 감싸지 않는다. */}
-        <BudgetDonut
-          summary={deriveBudgetSummary(rows, data.totalBudget)}
-          onTotalBudgetSaved={(nextTotal) => setData((prev) => (prev ? { ...prev, totalBudget: nextTotal } : prev))}
-          benchmark={budgetBenchmark}
-        />
+        {/* 감싸는 div 는 초과 안내 CTA 가 스크롤해 올 목적지다 — Card 는 ref 를 받지 않는다. */}
+        <div ref={donutRef}>
+          <BudgetDonut
+            summary={deriveBudgetSummary(rows, data.totalBudget)}
+            onTotalBudgetSaved={(nextTotal) => setData((prev) => (prev ? { ...prev, totalBudget: nextTotal } : prev))}
+            benchmark={budgetBenchmark}
+            isEditing={isEditingTotal}
+            onIsEditingChange={setIsEditingTotal}
+          />
+        </div>
 
         {upcomingPayments !== null && (
           <UpcomingPaymentsCard payments={upcomingPayments} windowDays={UPCOMING_PAYMENT_WINDOW_DAYS} />
@@ -291,38 +331,55 @@ export function BudgetPage() {
           onDraftChange={updateDraftBudget}
         />
 
-        {isEditingScenario ? (
-          <div className="flex items-center gap-3">
-            {/* 저장 진행 중엔 뒤로가기를 막는다 — 안 막으면 이미 시작된 저장 요청이 취소된 뒤에도
-                진행돼, 성공 시 취소했던 배분 결과가 그대로 되살아난다(레드팀 감사 HIGH). */}
-            <button
-              type="button"
-              onClick={cancelScenario}
-              disabled={saveState === "saving"}
-              className="text-sm font-bold text-ink-soft hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <span aria-hidden="true">‹</span> 뒤로
+        {/* gap 없는 래퍼 — StatusCallout 의 <output> 은 숨어도(안쪽만 display:none) 여전히 flex
+            아이템이라, 바깥 `gap-5` 의 형제로 두면 초과가 아닐 때도 20px 빈 줄이 남는다.
+            여백은 그 컴포넌트 자신의 mt-4 가 낸다. */}
+        <div className="flex flex-col">
+          {isEditingScenario ? (
+            <div className="flex items-center gap-3">
+              {/* 저장 진행 중엔 뒤로가기를 막는다 — 안 막으면 이미 시작된 저장 요청이 취소된 뒤에도
+                  진행돼, 성공 시 취소했던 배분 결과가 그대로 되살아난다(레드팀 감사 HIGH).
+                  초과 상태에서도 뒤로는 막지 않는다 — 초안을 버리는 것이라 안전하고, 배분을 더
+                  내릴 수 없는 경우(paid_amount 하한)의 유일한 탈출구다. */}
+              <button
+                type="button"
+                onClick={cancelScenario}
+                disabled={saveState === "saving"}
+                className="text-sm font-bold text-ink-soft hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span aria-hidden="true">‹</span> 뒤로
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveScenario()}
+                disabled={saveState === "saving" || isOverAllocated}
+                className={PRIMARY_BUTTON}
+              >
+                {saveState === "saving" ? "저장 중…" : "저장"}
+              </button>
+              {/* D6 — 상태색 없이 텍스트만으로 저장 결과를 전달한다. */}
+              {saveState === "error" && (
+                <span role="alert" className="text-sm text-primary">
+                  {saveErrorMessage}
+                </span>
+              )}
+            </div>
+          ) : (
+            <button type="button" onClick={startScenario} className={PRIMARY_BUTTON}>
+              예산 조정하기
             </button>
-            <button
-              type="button"
-              onClick={() => void handleSaveScenario()}
-              disabled={saveState === "saving"}
-              className={PRIMARY_BUTTON}
-            >
-              {saveState === "saving" ? "저장 중…" : "저장"}
+          )}
+
+          {/* 보기 모드에서도 띄운다(2026-08-29 사용자 결정) — 도넛의 "수정"으로 총예산만 낮추면
+              바로 초과 상태가 된다(PATCH /weddings/me 는 배분 합계를 검증하지 않는다). 그 경로로
+              들어온 사용자에게도 고치는 길을 준다. */}
+          <StatusCallout shown={isOverAllocated}>
+            <p className="text-sm font-bold text-primary">설정한 예산이 총예산을 초과했어요.</p>
+            <button type="button" className={OVER_CTA} onClick={openTotalBudgetEditor}>
+              총예산 금액을 조정할까요?
             </button>
-            {/* D6 — 상태색 없이 텍스트만으로 저장 결과를 전달한다. */}
-            {saveState === "error" && (
-              <span role="alert" className="text-sm text-primary">
-                {saveErrorMessage}
-              </span>
-            )}
-          </div>
-        ) : (
-          <button type="button" onClick={startScenario} className={PRIMARY_BUTTON}>
-            예산 조정하기
-          </button>
-        )}
+          </StatusCallout>
+        </div>
         {!isEditingScenario && saveState === "saved" && <output className="text-sm text-ink-soft">저장됐어요</output>}
       </div>
     </Page>
