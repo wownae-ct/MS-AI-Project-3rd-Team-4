@@ -29,7 +29,7 @@ from collections.abc import AsyncIterator
 from datetime import date
 
 from fastapi import HTTPException
-from sqlalchemy import func, select, update
+from sqlalchemy import bindparam, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,7 +38,7 @@ from app.core.config import Settings
 from app.core.db import get_session_factory
 from app.core.errors import api_error
 from app.core.sse import sse_comment, sse_event
-from app.core.timezone import today_kst
+from app.core.timezone import to_kst_date, today_kst
 from app.models import AiInvocation, TimelineItem, User, Wedding, WeddingCategory
 from app.schemas.sse import SseErrorEventData
 from app.schemas.wedding import (
@@ -304,18 +304,30 @@ async def update_wedding(
         # 스케일을 되돌리고 새 스케일을 적용한다(recalculate_timeline_dates 내부 판정,
         # app/services/timeline.py 모듈 docstring 참고). onboarding_date는 새 컬럼 없이
         # created_at을 그대로 대리 지표로 쓴다.
+        # red-bug.md #14 — wedding.created_at은 UTC-aware 시각이라 .date()를 바로 쓰면 KST
+        # 00:00~08:59 사이 생성된 웨딩은 실제보다 하루 이른 날짜로 취급된다(round5 감사가 이미
+        # 5개 파일에서 고친 "today_kst() 안 거친 .date()" 버그 클래스와 동일).
         updates = recalculate_timeline_dates(
             old_wedding_date,
             wedding.wedding_date,
-            wedding.created_at.date(),
+            to_kst_date(wedding.created_at),
             today_kst(),
             [tuple(r) for r in rows],
         )
-        for item_id, (new_target_date, new_offset) in updates.items():
+        # red-bug.md #13 — 항목 수(최대 95개)만큼 개별 UPDATE를 순차 await하던 N+1 패턴을
+        # executemany 스타일 벌크 UPDATE 한 번으로 교체 (id는 bindparam으로 분리해 SET 값과
+        # 충돌 없이 WHERE 절에 바인딩).
+        if updates:
             await session.execute(
-                update(TimelineItem)
-                .where(TimelineItem.id == item_id)
-                .values(target_date=new_target_date, default_dday_offset_days=new_offset)
+                update(TimelineItem).where(TimelineItem.id == bindparam("item_id")),
+                [
+                    {
+                        "item_id": item_id,
+                        "target_date": new_target_date,
+                        "default_dday_offset_days": new_offset,
+                    }
+                    for item_id, (new_target_date, new_offset) in updates.items()
+                ],
             )
         session.add(
             AiInvocation(
