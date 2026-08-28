@@ -1,9 +1,10 @@
 """timeline_items 생성/재계산/조회. 03_API_spec.md #6(온보딩 부작용), #8(wedding_date 변경
 부작용), #15-17.
 
-개인화 라우터 에이전트(13_personalization_router_agent_design.md) 자체는 이 세션 범위 밖이라,
-지금은 app/core/timeline_catalog.py의 55항목 결정론적 카탈로그가 타임라인 생성의 유일한
-경로다 — 나중에 LLM 개인화가 붙으면 이 모듈의 generate_timeline_items가 그 폴백 경로가 된다.
+개인화 라우터 에이전트(13_personalization_router_agent_design.md)가 붙은 지금은 이 모듈의
+generate_timeline_items가 validate BLOCKED/FAILED 시의 결정론적 폴백 경로다(origin=
+"CATALOG_FALLBACK", 2026-08-28 origin='LLM' mislabel 수정 — 예전엔 이 자리도 "LLM"으로
+찍혀 진짜 LLM 성공분과 구분이 안 됐다).
 
 **2026-08-28 준비기간 스케일링 추가** (docs/wedding/refactor/bug-todo.md "S4 타임라인탭..."
 항목, 5가지 결정 확정): 카탈로그/LLM 둘 다 원래 wedding_date만 기준으로 역산해 "오늘"(온보딩
@@ -95,7 +96,7 @@ def generate_timeline_items(
         rows.append(
             {
                 "category_code": item.category_code,
-                "origin": "LLM",
+                "origin": "CATALOG_FALLBACK",
                 "status": status,
                 "title": item.title,
                 "target_date": target_date,

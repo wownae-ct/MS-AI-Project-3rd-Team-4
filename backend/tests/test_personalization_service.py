@@ -173,9 +173,11 @@ class TestChecklistFallbackRows:
         rows = _checklist_fallback_rows(set())
         assert rows == []
 
-    def test_fallback_rows_have_llm_origin(self):
+    def test_fallback_rows_have_catalog_fallback_origin(self):
+        # 2026-08-28 origin='LLM' mislabel 수정 — 폴백 카탈로그 행은 이제 "CATALOG_FALLBACK"
+        # (진짜 LLM 성공분은 _checklist_row_from_draft가 "LLM"으로 찍음, 아래 클래스 참고).
         rows = _checklist_fallback_rows({"VENUE"})
-        assert all(r.origin == "LLM" for r in rows)
+        assert all(r.origin == "CATALOG_FALLBACK" for r in rows)
 
     def test_venue_contract_term_rows_are_official_rest_are_consensus(self):
         # VENUE의 CONTRACT_TERM(표준약관 조문 근거)만 OFFICIAL이고, 2026-08-26에 추가된
@@ -242,3 +244,11 @@ class TestTimelineFallbackRows:
         rows = _timeline_fallback_rows(date(2027, 5, 15), {"VENUE"}, None, date(2026, 8, 24))
         assert all(r.category_code in (None, "VENUE") for r in rows)
         assert not any(r.category_code == "SDM" for r in rows)
+
+    def test_rows_have_catalog_fallback_origin(self):
+        # 2026-08-28 신규 — 예전엔 이 클래스가 origin을 아예 검증하지 않았다(generate_
+        # timeline_items가 "LLM"을 찍고 있었는데도). origin='LLM' mislabel 수정 후 실제로
+        # "CATALOG_FALLBACK"이 나오는지 처음으로 확정한다.
+        rows = _timeline_fallback_rows(date(2027, 5, 15), {"VENUE"}, None, date(2026, 8, 24))
+        assert rows
+        assert all(r.origin == "CATALOG_FALLBACK" for r in rows)
