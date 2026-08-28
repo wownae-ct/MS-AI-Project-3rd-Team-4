@@ -68,9 +68,12 @@ class TestGenerateTimelineItems:
         assert venue_rows
         assert all(r["status"] == "TODO" for r in venue_rows)
 
-    def test_all_rows_have_llm_origin_and_no_date_override(self):
+    def test_all_rows_have_catalog_fallback_origin_and_no_date_override(self):
+        # 2026-08-28 origin='LLM' mislabel 수정 — 이 함수는 결정론적 카탈로그 폴백 경로라
+        # origin이 이제 "CATALOG_FALLBACK"이다(진짜 LLM 성공분은
+        # app/services/personalization.py::_timeline_row_from_draft가 "LLM"으로 찍음).
         rows = generate_timeline_items(date(2027, 5, 15), {"VENUE"}, None, date(2026, 8, 24))
-        assert all(row["origin"] == "LLM" for row in rows)
+        assert all(row["origin"] == "CATALOG_FALLBACK" for row in rows)
         assert all(row["date_overridden"] is False for row in rows)
 
 

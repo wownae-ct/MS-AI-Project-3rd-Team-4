@@ -26,7 +26,9 @@ from app.models.wedding import CategoryCodeEnum
 class ChecklistItem(Base):
     __tablename__ = "checklist_items"
     __table_args__ = (
-        CheckConstraint("origin IN ('LLM','USER')", name="ck_checklist_items_origin"),
+        CheckConstraint(
+            "origin IN ('LLM','USER','CATALOG_FALLBACK')", name="ck_checklist_items_origin"
+        ),
         CheckConstraint(
             "item_type IN ('CONTRACT_TERM','EXTRA_COST','PREP')",
             name="ck_checklist_items_item_type",

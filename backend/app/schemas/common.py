@@ -39,9 +39,15 @@ RegionCode = Literal[
 CategoryTier = Literal["FOCUS", "MOCKUP"]
 SourceTier = Literal["OFFICIAL", "NEWS", "INDUSTRY", "CONSENSUS"]
 ItemType = Literal["CONTRACT_TERM", "EXTRA_COST", "PREP"]
-Origin = Literal["LLM", "USER"]  # checklist_items/timeline_items 공통 — "LLM"은 실시간 LLM 호출
-# 결과뿐 아니라 결정론적 폴백(타임라인 55항목 카탈로그 등)을 포함해 "사용자가 직접 추가하지
-# 않은 모든 시스템 생성 콘텐츠"를 넓게 가리킨다(13_personalization_router_agent_design.md §2).
+Origin = Literal["LLM", "USER", "CATALOG_FALLBACK"]  # checklist_items/timeline_items 공통.
+# 2026-08-28까지는 "LLM"이 실시간 LLM 호출 성공분뿐 아니라 결정론적 폴백(validate BLOCKED 시
+# 카탈로그 대체분)까지 넓게 가리켰다(구 주석: "사용자가 직접 추가하지 않은 모든 시스템 생성
+# 콘텐츠") — 두 경우를 행 단위로 구분할 방법이 DB에 없다는 게 red-bug.md "origin='LLM'
+# mislabel" 항목으로 지적됨. "실제 항목 중 몇 %가 AI 산출물인가"(item 단위 개인화율) 지표를
+# 뽑기로 결정하면서 "CATALOG_FALLBACK"을 분리 — "LLM"은 이제 진짜 실시간 LLM 성공 결과에만
+# 쓴다(app/services/personalization.py::_checklist_row_from_draft/_timeline_row_from_draft).
+# "CATALOG_FALLBACK"은 결정론적 폴백(app/services/personalization.py::
+# _checklist_fallback_rows, app/services/timeline.py::generate_timeline_items)이 쓴다.
 # HOMEWARE(혼수)는 다른 8개 카테고리와 다른 4단계 상태값을 쓴다(04_DB_schema.sql CHECK) — 어떤
 # 값이 유효한지는 category_code에 달려 있으므로, 이 Literal은 둘의 합집합이고 실제 유효성
 # 검사는 app/services/checklist.py의 category별 허용 집합으로 한다(API 레이어에서 먼저 걸러
