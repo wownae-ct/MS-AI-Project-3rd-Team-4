@@ -1,0 +1,43 @@
+# ImageUpdater CR이란?
+# argocd-image-updater가 어떤 ArgoCD Application을, 어떤 규칙으로 감시할지 정의하는 커스텀
+# 리소스(CRD `imageupdaters.argocd-image-updater.argoproj.io`). 이 파일이 없으면 컨트롤러는
+# "감시할 대상이 없다"고 판단해 아무 일도 하지 않는다 — 실제로 이 파일이 생기기 전까지
+# 12일간(2026-08-13 설치 이후) 그런 상태였다(아래 "발견 경위" 참고).
+#
+# 발견 경위(2026-08-26): backend/frontend staging Deployment가 새 이미지가 ACR에 이미 올라와
+# 있는데도(digest 확인) 몇 시간째 갱신이 안 되는 걸 발견 — `kubectl logs
+# deploy/argocd-image-updater-controller`를 보니 시작 직후 "No ImageUpdater CRs to process" 한
+# 줄 찍고 그 뒤로 어떤 활동 로그도 없었다(`kubectl get imageupdaters -A` → 리소스 0개).
+#
+# 원인: 이 컨트롤러(quay.io/argoprojlabs/argocd-image-updater:v1.3.0, Deployment/ServiceAccount
+# 이름이 `argocd-image-updater-controller`로 재구성된 버전 — infra/docs/kubernetes.md §5-2)는
+# 예전 버전과 달리 **기본 동작이 CRD 기반**이다. 6개 Application에 이미 있던
+# `argocd-image-updater.argoproj.io/image-list`/`update-strategy`/`write-back-method`
+# annotation(각 Application yaml, `infra/k8s/apps/{staging,production}/*.yaml`)은 옛 버전
+# 방식 그대로 남아있었지만, 이 컨트롤러는 ImageUpdater CR이 명시적으로 이 annotation을
+# 참조하라고 지시하지 않는 한 Application을 아예 들여다보지 않는다 — 즉 이 자동 배포
+# 파이프라인은 설치 이후 한 번도 실제로 동작한 적이 없었다(docs의 "ArgoCD Image Updater가
+# 폴링해서 동기화한다"는 서술은 이 CR을 추가하기 전까지는 사실이 아니었다).
+#
+# 수정: `useAnnotations: true` — Application의 기존 annotation을 그대로 읽어 쓰게 한다.
+# CR 안에 images/updateStrategy를 다시 정의하지 않는 이유는 그러면 같은 정보를 두 곳(annotation
+# + 이 CR)에 중복 관리해야 하기 때문 — annotation이 이미 IaC(git)로 각 Application yaml에
+# 있으므로 여기서는 "그 annotation을 봐라"는 선택 하나만 추가한다.
+#
+# namePattern: "*" — staging/production 6개 Application 전부를 대상으로 하되, 실제로 동작하는
+# 건 image-updater annotation이 붙어있는 4개(backend-staging/production, frontend-staging/
+# production)뿐이다. rag-cronjob-*는 annotation이 없어(스케줄 실행마다 imagePullPolicy: Always로
+# 최신 이미지를 받으므로 롤아웃 트리거가 애초에 필요 없다) 이 CR이 있어도 영향 없다.
+#
+# 이 CR은 argocd 네임스페이스에 있어야 한다 — 컨트롤러 로그의 "Watching controller namespace
+# only, namespace=argocd"가 그 근거(현재 컨트롤러 설치 방식이 클러스터 전체가 아니라 자기
+# 네임스페이스만 감시하도록 돼 있다).
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+    name: annotation-based-apps
+    namespace: argocd
+spec:
+    applicationRefs:
+        - namePattern: "*"
+          useAnnotations: true

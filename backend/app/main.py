@@ -1,34 +1,98 @@
 """FastAPI 앱 엔트리포인트. Dockerfile의 CMD(`app.main:app`)가 이 모듈을 가리킨다.
 
-인증 없음(BASELINE v3.0 §0) — 프론트(Static Web Apps)와 백엔드(AKS Ingress)가 서로 다른 오리진이라
-크로스 오리진 CORS가 필요하다. 애초 계획이던 "SWA Linked Backend로 동일 오리진화, CORS 불필요"는
-2026-08-21 확인 결과 성립하지 않는다 — Linked Backend는 Azure Functions/App Service/Container Apps/
-API Management만 지원하고 AKS는 대상이 아니며, 이 프로젝트의 SWA는 애초에 Linked Backend를 지원하지
-않는 Free 티어다(Standard 이상 필요). 03_API_spec.md §1 갱신 완료, 상세 근거는
+v4.0(2026-08-24)부터 인증 있음(BASELINE §0 ① — v3.0의 "무인증 MVP" 스코프 컷이 번복됨).
+BFF + Opaque 세션 쿠키(wr_session, HttpOnly/Secure/SameSite=Lax) 방식이라 프론트가 매 요청에
+쿠키를 실어 보내야 하고, CORSMiddleware에 allow_credentials=True가 필수다(안 하면 브라우저가
+크로스 오리진 요청에 쿠키를 아예 안 붙임). 프론트(Static Web Apps)와 백엔드(AKS Ingress)가 서로
+다른 오리진이라 크로스 오리진 CORS 자체는 v3.0부터 필요했다 — 애초 계획이던 "SWA Linked
+Backend로 동일 오리진화, CORS 불필요"는 2026-08-21 확인 결과 성립하지 않는다: Linked Backend는
+Azure Functions/App Service/Container Apps/API Management만 지원하고 AKS는 대상이 아니며, 이
+프로젝트의 SWA는 애초에 Linked Backend를 지원하지 않는 Free 티어다(Standard 이상 필요).
+03_API_spec.md §1 갱신 완료, 상세 근거는
 docs/AI-Sessions/wiki/decisions/2026-08-21-cors-not-linked-backend.md 참고."""
+
+import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.routers import budget, category, chat, dashboard, health, vendor_case, wedding
+from app.core.config import get_settings
+from app.core.rate_limit import limiter
+from app.core.tracing import flush_tracing
+from app.routers import ai, auth, system, wedding
 
-LOCAL_DEV_ORIGIN = "http://localhost:5173"
+# 2026-08-26 레드팀 감사 4라운드(로깅/관측성) 항목 1 — app/ 전체에 logging 모듈이 한 번도 안
+# 쓰이고 있었다(예외를 삼키는 경계마다 print()조차 없음). 앱 생성 전, 딱 한 번 여기서 설정하고
+# 이후 각 모듈은 logging.getLogger(__name__)만 쓴다. App Insights 같은 새 관측 플랫폼은
+# CLAUDE.md YAGNI 금지목록 때문에 도입하지 않는다 — stdout(지금 인프라가 이미 받는 경로)로 충분.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logger = logging.getLogger(__name__)
+
+_PRIVATE_LAN_HOST = (
+    r"(?:localhost"
+    r"|10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+    r"|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"
+    r"|192\.168\.\d{1,3}\.\d{1,3})"
+)
+# 로컬 Vite 기본 포트(5173) 기준 — localhost 외에 사설망 대역(RFC1918)도 허용해서, 다른 기기
+# (휴대폰 등)나 LAN IP로 접속해 테스트할 때도 CORS가 막히지 않게 한다. 팀원마다 IP가 달라
+# 하드코딩 대신 대역 전체를 정규식으로 허용 — allow_credentials=True라 와일드카드 오리진(*)은
+# 못 쓰므로, 범위를 사설망으로만 좁혀 명시적 화이트리스트를 유지한다.
+LOCAL_DEV_ORIGIN_REGEX = rf"^http://{_PRIVATE_LAN_HOST}:5173$"
 # team4hc-swa(Free tier)의 defaultHostname. PR 프리뷰 환경은 "<defaultHostname>-<식별자>.7.azurestaticapps.net"
 # 형태로 뜨므로(Azure 문서 기준) 접미사까지 정규식으로 허용 — 값이 바뀌면(SWA 재생성 등) 여기도 갱신할 것.
 SWA_ORIGIN_REGEX = r"^https://polite-island-0bb189700(-[a-zA-Z0-9]+)?\.7\.azurestaticapps\.net$"
+ALLOWED_ORIGIN_REGEX = rf"(?:{LOCAL_DEV_ORIGIN_REGEX}|{SWA_ORIGIN_REGEX})"
 
-app = FastAPI(title="메리맵 API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    yield
+    # Langfuse는 배치로 모아 보내는 exporter라, 파드가 롤아웃 중 종료되면 마지막 trace가
+    # 유실될 수 있다 — 종료 직전 명시적으로 flush(14_langfuse_tracing_design.md §4).
+    flush_tracing(get_settings())
+
+
+app = FastAPI(title="메리맵 API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[LOCAL_DEV_ORIGIN],
-    allow_origin_regex=SWA_ORIGIN_REGEX,
+    allow_origin_regex=ALLOWED_ORIGIN_REGEX,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# app/core/rate_limit.py 참고 — CORS 다음(=CORS보다 안쪽)에 붙여야 rate limit이 걸려도 응답에
+# CORS 헤더가 정상적으로 실려서, 브라우저가 429를 진짜 429가 아니라 CORS 에러로 오인하지 않는다.
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    """03_API_spec.md §2 에러 포맷에 맞춘다 — slowapi 기본 핸들러는 {"error": "..."} 문자열
+    포맷이라 이 프로젝트의 {"error":{"code":...,"message":...}} 포맷과 다르다."""
+    # 2026-08-26 레드팀 감사 4라운드 항목 14 — 어떤 키(계정/IP)·경로가 rate limit에 걸렸는지
+    # 무로깅이면 브루트포스/크리덴셜 스터핑 탐지 목적 자체가 무력화된다.
+    logger.warning("Rate limit exceeded: %s %s (%s)", request.method, request.url.path, exc.detail)
+    response = JSONResponse(
+        status_code=429,
+        content={
+            "error": {
+                "code": "RATE_LIMIT_EXCEEDED",
+                "message": f"요청이 너무 많습니다. 잠시 후 다시 시도해주세요. ({exc.detail})",
+            }
+        },
+    )
+    return limiter._inject_headers(response, request.state.view_rate_limit)
 
 
 @app.exception_handler(StarletteHTTPException)
@@ -37,6 +101,12 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
     {"error":{"code":...,"message":...}} 포맷과 어긋나므로, app.core.errors.api_error가 만든
     detail을 그대로 바디로 내려준다. 그 형태가 아닌 HTTPException(예: 라우팅 자체 404)은
     INTERNAL_ERROR로 감싼다."""
+    # 2026-08-26 레드팀 감사 4라운드 LOW 항목 — 5xx HTTPException(예: 라우팅 자체 404가 아닌
+    # 실제 서버측 오류)은 클라이언트 응답만 만들고 서버 로그엔 안 남았다.
+    if exc.status_code >= 500:
+        logger.error(
+            "HTTP %s on %s %s: %s", exc.status_code, request.method, request.url.path, exc.detail
+        )
     if isinstance(exc.detail, dict) and "error" in exc.detail:
         return JSONResponse(status_code=exc.status_code, content=exc.detail)
     return JSONResponse(
@@ -57,10 +127,25 @@ async def validation_exception_handler(
     )
 
 
-app.include_router(health.router, prefix="/api/v1")
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """2026-08-26 레드팀 감사 4라운드 항목 2 — 위 3개 핸들러(RateLimitExceeded/HTTPException/
+    RequestValidationError) 밖의 예외는 잡는 곳이 없어 라우터/서비스 계층의 광범위 except가
+    아닌 곳에서 뭔가 터지면 Starlette 기본 500(평문, 이 프로젝트의 {"error":{...}} 포맷과
+    다름)으로 새 나갔다. 마지막 방어선으로 하나 추가하고, 이 경계를 타는 예외는 전부
+    스택트레이스와 함께 남긴다 — 여기까지 온다는 것 자체가 이미 어딘가의 로직 결함이므로."""
+    logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"error": {"code": "INTERNAL_ERROR", "message": "서버 오류가 발생했습니다."}},
+    )
+
+
+# 2026-08-26 라우터 폴더 리스트럭처링 — 예전엔 이 자리에 13개 include_router가 한 줄씩
+# 나열돼 있었다. app/routers/{system,wedding,ai}가 각자 그 안의 여러 라우터를 하나의
+# router로 묶어 노출하므로(각 __init__.py 참고), 실제 등록되는 경로(prefix="/api/v1"
+# 기준)는 이전과 동일하고 여기서 보이는 줄 수만 줄어든다.
+app.include_router(system.router, prefix="/api/v1")
+app.include_router(auth.router, prefix="/api/v1")
 app.include_router(wedding.router, prefix="/api/v1")
-app.include_router(category.router, prefix="/api/v1")
-app.include_router(budget.router, prefix="/api/v1")
-app.include_router(vendor_case.router, prefix="/api/v1")
-app.include_router(chat.router, prefix="/api/v1")
-app.include_router(dashboard.router, prefix="/api/v1")
+app.include_router(ai.router, prefix="/api/v1")

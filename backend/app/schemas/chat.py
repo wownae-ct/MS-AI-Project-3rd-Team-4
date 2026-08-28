@@ -3,18 +3,27 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from app.schemas.common import CategoryCode, ChatRole, SourceTier, Verdict
+from app.schemas.common import CategoryCode, ChatRating, ChatRole, ChatStage, SourceTier, Verdict
+from app.schemas.sse import SseErrorEventData
+
+# 2026-08-26 레드팀 감사 3라운드 MEDIUM #9 — 길이 제한이 전혀 없어 원문 그대로 임베딩 API에
+# 전달됐다(app/rag/retrieval.py::retrieve → embed_query). app/schemas/checklist.py의 title/body
+# 길이 제한과 같은 취지 — 임베딩/LLM 컨텍스트 낭비 및 과금 폭증을 API 경계에서 먼저 막는다.
+CHAT_MESSAGE_CONTENT_MAX_LENGTH = 2000
 
 
 class ChatSessionCreate(BaseModel):
-    category_code: CategoryCode
+    # 12_final_prototype_mockup.html 하단 탭바의 전역 "AI상담"(카테고리 무관)과 카테고리 상세
+    # 안의 "AI상담" 서브탭 둘 다 이 엔드포인트로 세션을 만든다 — None이면 전역 상담.
+    # ChatSession.category_code(app/models/chat.py)가 이미 nullable로 설계돼 있던 걸 반영.
+    category_code: CategoryCode | None = None
 
 
 class ChatSessionOut(BaseModel):
     id: UUID
-    category_code: CategoryCode
+    category_code: CategoryCode | None
     title: str | None
     created_at: datetime
 
@@ -38,6 +47,7 @@ class ChatMessageOut(BaseModel):
     content: str
     citations: list[CitationOut] | None = None
     verification: VerificationOut | None = None
+    user_rating: ChatRating | None = None
     created_at: datetime
 
 
@@ -46,7 +56,16 @@ class ChatMessageListOut(BaseModel):
 
 
 class ChatMessageCreate(BaseModel):
-    content: str
+    content: str = Field(min_length=1, max_length=CHAT_MESSAGE_CONTENT_MAX_LENGTH)
+
+
+class ChatMessageRatingCreate(BaseModel):
+    rating: ChatRating
+
+
+class ChatMessageRatingOut(BaseModel):
+    message_id: str
+    rating: ChatRating
 
 
 # --- #22 SSE 이벤트 데이터 페이로드 (05_RAG_design.md §7) ---
@@ -54,6 +73,24 @@ class ChatMessageCreate(BaseModel):
 
 class TokenEventData(BaseModel):
     delta: str
+
+
+class StageEventData(BaseModel):
+    """그래프(retrieve→generate→verify) 노드 진입 시점마다 오는 진행 단계 알림 — 최종 결과
+    (answer/context/verdict)엔 영향 없는 순수 UX용 이벤트라, 프론트가 이 이벤트를 무시해도
+    token/citations/verification/done은 그대로 온다."""
+
+    stage: ChatStage
+
+
+class RetryEventData(BaseModel):
+    """CRAG 조건부 재검색 루프(2026-08-24 결정, app/rag/graph.py) — verify가 WEAK/GENERAL
+    판정을 내려 재구성된 질의로 retrieve를 다시 돌 때 딱 한 번(최대 1회) 발생한다. 이 이벤트를
+    받으면 그 시점까지 스트리밍된 답변(token 누적분)은 버리고 새로 시작해야 한다 — 뒤이어 오는
+    token들은 새 답변의 처음부터다. 완전 additive라 무시해도 기존 token/citations/verification/
+    done 흐름은 깨지지 않는다(재시도 시 1차+2차 답변이 이어붙어 보이는 어색함만 생김)."""
+
+    reason: str
 
 
 class CitationsEventData(BaseModel):
@@ -68,3 +105,9 @@ class VerificationEventData(BaseModel):
 class DoneEventData(BaseModel):
     message_id: str
     latency_ms: int
+
+
+# 2026-08-28 — app/schemas/sse.py로 뽑아냄(app/services/wedding.py 온보딩 heartbeat
+# 스트리밍도 동일 모양이 필요해짐). 기존 import 지점(app/services/chat.py)이 안 깨지게 이름
+# 그대로 재수출한다.
+ErrorEventData = SseErrorEventData

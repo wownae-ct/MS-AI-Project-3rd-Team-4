@@ -13,7 +13,22 @@ kubectl rollout restart deployment argocd-server -n argocd
 
 # Image Updater (ACR 신규 태그 자동 반영)
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/manifests/install.yaml
+
+# Image Updater가 실제로 Application을 감시하게 만드는 CR — 이거 없으면 컨트롤러가 켜져
+# 있어도 "감시 대상 없음" 상태로 아무 일도 안 한다(2026-08-26 발견, 아래 참고).
+kubectl apply -f infra/k8s/argocd/argocd-image-updater-crs.yaml
 ```
+
+> ⚠️ **2026-08-26 발견 — Image Updater가 설치 이후 실제로는 한 번도 동작하지 않고 있었다.**
+> 업스트림이 kubebuilder/CRD 구조로 재구성되면서(§5-2, `quay.io/argoprojlabs/argocd-image-updater:v1.3.0`)
+> 컨트롤러 기본 동작이 바뀌었다 — Application의 `argocd-image-updater.argoproj.io/*` annotation을
+> 자동으로 스캔하던 옛 방식과 달리, 이제는 **`ImageUpdater` CR이 명시적으로 지정한 Application만**
+> 처리한다. CR을 만들지 않았던 12일 동안 컨트롤러 로그는 시작 직후 "No ImageUpdater CRs to process"
+> 한 줄만 남기고 그 뒤로 아무 활동이 없었다(`kubectl get imageupdaters -A` → 0개) — 즉 backend/
+> frontend가 새 이미지를 ACR에 push해도 staging/production 어느 쪽도 자동으로 갱신되지 않는 상태가
+> 계속 유지되고 있었다. `infra/k8s/argocd/argocd-image-updater-crs.yaml`(신규, `useAnnotations: true`
+> + `namePattern: "*"`)이 기존 6개 Application의 annotation을 그대로 읽게 만들어 고쳤다 — annotation
+> 자체는 안 건드렸다(중복 설정을 피하려고 "이 annotation을 봐라"는 선택 하나만 CR에 추가).
 
 ## 프라이빗 레포 접근 (필수 — 이 레포는 private)
 
@@ -74,9 +89,16 @@ token으로 직접 교환하는 스크립트가 필요하다(스크립트 원본
 ## 배포
 
 ```bash
-kubectl apply -f infra/k8s/root-app.yaml
+kubectl apply -f infra/k8s/root-app-staging.yaml
+kubectl apply -f infra/k8s/root-app-production.yaml
 ```
 
-이후 `infra/k8s/apps/*.yaml`에 Application을 추가하면 자동으로 동기화된다(app-of-apps). `root-app.yaml`이
-`infra/k8s/apps/` 밖에 있는 이유는 자기참조(root-app이 관리하는 폴더 안에 자기 자신이 있으면 `prune: true`일 때
-스스로를 지울 수 있음) 방지 — [../../README.md](../../README.md) 참고.
+이후 `infra/k8s/apps/staging/*.yaml`(root-app-staging, `backend` 브랜치 추적) 또는
+`infra/k8s/apps/production/*.yaml`(root-app-production, `main` 브랜치 추적)에 Application을 추가하면
+자동으로 동기화된다(app-of-apps). **2026-08-26 분리**: 예전엔 root-app 하나가 `main` 기준으로
+`infra/k8s/apps/` 전체를 읽어서, staging용 Application을 새로 추가해도 main 승격 전까지는 반영이
+안 되는 비대칭이 있었다 — root-app을 staging/production 둘로 나눠 staging은 `backend`를 직접
+추적하게 해서 해결했다. `root-app-{staging,production}.yaml`이 각자 관리하는
+`infra/k8s/apps/{staging,production}/` 밖에 있는 이유는 자기참조(root-app이 관리하는 폴더 안에
+자기 자신이 있으면 `prune: true`일 때 스스로를 지울 수 있음) 방지 —
+[../../README.md](../../README.md) 참고.

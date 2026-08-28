@@ -1,0 +1,806 @@
+"""엔드포인트 스모크 테스트 — 09_backend_implementation_plan.md §4/§6 DoD: 문서화된 엔드포인트
+각각 "정상 요청 시 200/201" 확인 + 인증이 필요한 엔드포인트는 "세션 쿠키 없이 401"을 함께
+확인한다. 03_API_spec.md의 v3.0 기준 30개에 v4.0 신규 #31(GET /benchmarks/total-average,
+00_BASELINE.md §2-5) + 스코프 밖 승격 #32(POST /personalization/regenerate,
+15_post_v4_scope_promotion.md §P2)가 더해져 지금은 32개.
+
+아직 32개 전부를 커버하지 않는다 — GET /categories(#11), chat_sessions(#27-29),
+feedback_reports(#30), dashboard/summary·reports/me(#25-26), benchmarks/total-average(#31),
+personalization/regenerate(#32)까지 완료. 나머지 엔드포인트는 해당 기능 구현 시 이어서
+추가한다. 소셜 로그인(구글/네이버, Should, 03_API_spec.md에 없는 번외 엔드포인트)의 리다이렉트
+배선도 TestOAuthSmoke로 커버.
+
+GET /categories는 03_API_spec.md §5 인증 필수 목록(`/weddings*` 등)에 없는 유일한 부류의
+엔드포인트라 401 케이스가 없다 — 세션 쿠키 없이도 항상 200이어야 하는 게 맞는 동작이다."""
+
+from datetime import date, timedelta
+from uuid import uuid4
+
+from conftest import parse_sse_frames
+
+from app.core.categories import CATEGORY_META
+from app.core.timezone import today_kst
+
+
+class TestCategoriesSmoke:
+    async def test_get_categories_returns_200_with_nine_items(self, client):
+        # 픽스처가 만드는 client는 쿠키를 전혀 들고 있지 않다 — 이 호출 자체가 이미
+        # "세션 쿠키 없이도 200"을 검증한다.
+        response = await client.get("/categories")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body["categories"]) == 9
+
+
+class TestChatSessionsSmoke:
+    """#27/#28/#29 — 실LLM 호출(#29 성공 플로우)은 비용/지연 때문에 자동 스모크에 넣지 않고
+    2026-08-24 chat_sessions v4.0 재구현 시점에 수동으로 1회 실행해 확인했다(회귀 시엔 다시
+    수동 확인). 여기서는 인증/소유권 배선(이번에 발견한 보안 구멍의 재발 방지)만 자동화한다."""
+
+    async def test_create_session_returns_201(self, wedding_client):
+        response = await wedding_client.post("/chat/sessions", json={"category_code": "VENUE"})
+
+        assert response.status_code == 201
+        body = response.json()
+        assert body["category_code"] == "VENUE"
+        assert body["title"] is None
+
+    async def test_create_global_session_without_category_returns_201(self, wedding_client):
+        # 12_final_prototype_mockup.html 하단 탭바의 카테고리 무관 전역 "AI상담" — category_code
+        # 생략(또는 null)이면 전역 세션으로 만들어져야 한다(2026-08-24 발견 갭 수정).
+        response = await wedding_client.post("/chat/sessions", json={})
+
+        assert response.status_code == 201
+        body = response.json()
+        assert body["category_code"] is None
+        assert body["title"] is None
+
+    async def test_create_session_without_cookie_returns_401(self, client):
+        response = await client.post("/chat/sessions", json={"category_code": "VENUE"})
+
+        assert response.status_code == 401
+
+    async def test_list_messages_on_fresh_session_returns_200_empty(self, wedding_client):
+        created = await wedding_client.post("/chat/sessions", json={"category_code": "VENUE"})
+        session_id = created.json()["id"]
+
+        response = await wedding_client.get(f"/chat/sessions/{session_id}/messages")
+
+        assert response.status_code == 200
+        assert response.json()["messages"] == []
+
+    async def test_list_messages_without_cookie_returns_401(self, client):
+        response = await client.get(f"/chat/sessions/{uuid4()}/messages")
+
+        assert response.status_code == 401
+
+    async def test_list_messages_on_other_users_session_returns_404(
+        self, wedding_client, make_wedding_client
+    ):
+        created = await wedding_client.post("/chat/sessions", json={"category_code": "VENUE"})
+        session_id = created.json()["id"]
+
+        other_client = await make_wedding_client()
+        response = await other_client.get(f"/chat/sessions/{session_id}/messages")
+
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "CHAT_SESSION_NOT_FOUND"
+
+    async def test_send_message_on_nonexistent_session_returns_404_before_streaming(
+        self, wedding_client
+    ):
+        response = await wedding_client.post(
+            f"/chat/sessions/{uuid4()}/messages", json={"content": "안녕하세요"}
+        )
+
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "CHAT_SESSION_NOT_FOUND"
+
+    async def test_send_message_without_cookie_returns_401(self, client):
+        response = await client.post(
+            f"/chat/sessions/{uuid4()}/messages", json={"content": "안녕하세요"}
+        )
+
+        assert response.status_code == 401
+
+    async def test_send_message_passes_owner_user_id_to_tracing_entrypoint(
+        self, wedding_client, monkeypatch
+    ):
+        """실LLM 스트리밍은 자동 스모크 대상이 아니므로(클래스 docstring) 서비스 진입점만
+        기록용으로 바꿔치기해 라우터→서비스 인자 배선을 검증한다 — DB/외부 API는 모킹하지
+        않는다(웨딩/세션/유저 id는 전부 실제 API로 만들고 읽는다). app/routers/ai/chat.py가
+        `from app.services.chat import stream_chat_response`로 심볼을 직접 import하므로
+        app.routers.ai.chat 네임스페이스를 패치해야 한다(2026-08-26 라우터 폴더
+        리스트럭처링으로 app/routers/chat.py → app/routers/ai/chat.py 이동)."""
+        recorded: list[tuple[tuple, dict]] = []
+
+        def _recording_stream(*args, **kwargs):
+            recorded.append((args, kwargs))
+
+            async def _empty_stream():
+                return
+                yield  # pragma: no cover
+
+            return _empty_stream()
+
+        monkeypatch.setattr("app.routers.ai.chat.stream_chat_response", _recording_stream)
+
+        me = await wedding_client.get("/auth/me")
+        created = await wedding_client.post("/chat/sessions", json={"category_code": "VENUE"})
+        session_id = created.json()["id"]
+
+        response = await wedding_client.post(
+            f"/chat/sessions/{session_id}/messages", json={"content": "안녕하세요"}
+        )
+
+        assert response.status_code == 200
+        assert len(recorded) == 1
+        _, kwargs = recorded[0]
+        assert str(kwargs["owner_user_id"]) == me.json()["id"]
+
+
+class TestChatMessageRatingSmoke:
+    """작업 3 — POST /chat/sessions/{id}/messages/{message_id}/feedback. 실LLM 스트리밍이
+    필요 없어 make_assistant_message 픽스처로 assistant 메시지 행을 직접 만들어 쓴다(#29와
+    동일하게 실LLM 경로는 자동 스모크 대상이 아님). trace_ref가 있는 케이스는 실제로 Langfuse
+    Score API를 호출한다(이 프로젝트 컨벤션: 가짜 점수를 스크립트로 밀어넣지 않고 실제 엔드포인트
+    호출로만 검증)."""
+
+    async def test_rate_own_assistant_message_returns_200(
+        self, wedding_client, make_assistant_message
+    ):
+        session_id, message_id = await make_assistant_message(
+            wedding_client, trace_ref=f"smoke-trace-{uuid4().hex}"
+        )
+
+        response = await wedding_client.post(
+            f"/chat/sessions/{session_id}/messages/{message_id}/feedback",
+            json={"rating": "GOOD"},
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"message_id": message_id, "rating": "GOOD"}
+
+    async def test_rating_is_overwritten_on_second_call(
+        self, wedding_client, make_assistant_message
+    ):
+        session_id, message_id = await make_assistant_message(
+            wedding_client, trace_ref=f"smoke-trace-{uuid4().hex}"
+        )
+
+        first = await wedding_client.post(
+            f"/chat/sessions/{session_id}/messages/{message_id}/feedback",
+            json={"rating": "GOOD"},
+        )
+        second = await wedding_client.post(
+            f"/chat/sessions/{session_id}/messages/{message_id}/feedback",
+            json={"rating": "BAD"},
+        )
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert second.json()["rating"] == "BAD"
+
+    async def test_rate_message_without_trace_ref_still_returns_200(
+        self, wedding_client, make_assistant_message
+    ):
+        session_id, message_id = await make_assistant_message(wedding_client, trace_ref=None)
+
+        response = await wedding_client.post(
+            f"/chat/sessions/{session_id}/messages/{message_id}/feedback",
+            json={"rating": "GOOD"},
+        )
+
+        assert response.status_code == 200
+
+    async def test_rate_user_role_message_returns_400(self, wedding_client, make_assistant_message):
+        session_id, message_id = await make_assistant_message(wedding_client, role="user")
+
+        response = await wedding_client.post(
+            f"/chat/sessions/{session_id}/messages/{message_id}/feedback",
+            json={"rating": "GOOD"},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "CHAT_MESSAGE_NOT_RATABLE"
+
+    async def test_rate_nonexistent_message_returns_404(
+        self, wedding_client, make_assistant_message
+    ):
+        session_id, _ = await make_assistant_message(wedding_client)
+
+        response = await wedding_client.post(
+            f"/chat/sessions/{session_id}/messages/{uuid4()}/feedback",
+            json={"rating": "GOOD"},
+        )
+
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "CHAT_MESSAGE_NOT_FOUND"
+
+    async def test_rate_message_from_another_session_of_same_wedding_returns_404(
+        self, wedding_client, make_assistant_message
+    ):
+        _, message_id = await make_assistant_message(wedding_client)
+        other_session_id, _ = await make_assistant_message(wedding_client)
+
+        response = await wedding_client.post(
+            f"/chat/sessions/{other_session_id}/messages/{message_id}/feedback",
+            json={"rating": "GOOD"},
+        )
+
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "CHAT_MESSAGE_NOT_FOUND"
+
+    async def test_rate_other_users_message_returns_404(
+        self, wedding_client, make_assistant_message, make_wedding_client
+    ):
+        session_id, message_id = await make_assistant_message(wedding_client)
+        other_client = await make_wedding_client()
+
+        response = await other_client.post(
+            f"/chat/sessions/{session_id}/messages/{message_id}/feedback",
+            json={"rating": "GOOD"},
+        )
+
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "CHAT_MESSAGE_NOT_FOUND"
+
+    async def test_rate_without_cookie_returns_401(self, client):
+        response = await client.post(
+            f"/chat/sessions/{uuid4()}/messages/{uuid4()}/feedback",
+            json={"rating": "GOOD"},
+        )
+
+        assert response.status_code == 401
+
+    async def test_invalid_rating_value_returns_422(self, wedding_client, make_assistant_message):
+        session_id, message_id = await make_assistant_message(wedding_client)
+
+        response = await wedding_client.post(
+            f"/chat/sessions/{session_id}/messages/{message_id}/feedback",
+            json={"rating": "MEH"},
+        )
+
+        assert response.status_code == 422
+
+    async def test_missing_rating_field_returns_422(self, wedding_client, make_assistant_message):
+        session_id, message_id = await make_assistant_message(wedding_client)
+
+        response = await wedding_client.post(
+            f"/chat/sessions/{session_id}/messages/{message_id}/feedback", json={}
+        )
+
+        assert response.status_code == 422
+
+    async def test_list_messages_includes_user_rating(self, wedding_client, make_assistant_message):
+        session_id, message_id = await make_assistant_message(wedding_client)
+        await wedding_client.post(
+            f"/chat/sessions/{session_id}/messages/{message_id}/feedback",
+            json={"rating": "GOOD"},
+        )
+
+        response = await wedding_client.get(f"/chat/sessions/{session_id}/messages")
+
+        rated = next(m for m in response.json()["messages"] if m["id"] == message_id)
+        assert rated["user_rating"] == "GOOD"
+
+
+class TestFeedbackReportsSmoke:
+    """#30 — POST /weddings가 온보딩 시 timeline_items 55개를 결정론적으로 생성하므로,
+    별도 셋업 없이 그중 하나를 target으로 써서 실 소유권 검증 경로를 그대로 탄다."""
+
+    async def test_create_report_on_own_timeline_item_returns_201(self, wedding_client):
+        items = (await wedding_client.get("/timeline-items")).json()["items"]
+        target_id = items[0]["id"]
+
+        response = await wedding_client.post(
+            "/feedback-reports",
+            json={
+                "target_type": "TIMELINE_ITEM",
+                "target_id": target_id,
+                "reason_category": "부정확함",
+                "comment": "날짜가 이상해요",
+            },
+        )
+
+        assert response.status_code == 201
+        body = response.json()
+        assert body["status"] == "OPEN"
+
+    async def test_create_report_without_cookie_returns_401(self, client):
+        response = await client.post(
+            "/feedback-reports",
+            json={
+                "target_type": "TIMELINE_ITEM",
+                "target_id": str(uuid4()),
+                "reason_category": "부정확함",
+            },
+        )
+
+        assert response.status_code == 401
+
+    async def test_create_report_on_nonexistent_target_returns_404(self, wedding_client):
+        response = await wedding_client.post(
+            "/feedback-reports",
+            json={
+                "target_type": "TIMELINE_ITEM",
+                "target_id": str(uuid4()),
+                "reason_category": "부정확함",
+            },
+        )
+
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "FEEDBACK_TARGET_NOT_FOUND"
+
+    async def test_create_report_on_other_users_target_returns_404(
+        self, wedding_client, make_wedding_client
+    ):
+        items = (await wedding_client.get("/timeline-items")).json()["items"]
+        target_id = items[0]["id"]
+
+        other_client = await make_wedding_client()
+        response = await other_client.post(
+            "/feedback-reports",
+            json={
+                "target_type": "TIMELINE_ITEM",
+                "target_id": target_id,
+                "reason_category": "부정확함",
+            },
+        )
+
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "FEEDBACK_TARGET_NOT_FOUND"
+
+    async def test_create_report_with_invalid_reason_category_returns_422(self, wedding_client):
+        items = (await wedding_client.get("/timeline-items")).json()["items"]
+        target_id = items[0]["id"]
+
+        response = await wedding_client.post(
+            "/feedback-reports",
+            json={
+                "target_type": "TIMELINE_ITEM",
+                "target_id": target_id,
+                "reason_category": "그냥싫음",
+            },
+        )
+
+        assert response.status_code == 422
+
+
+class TestWeddingCreationSmoke:
+    """#6 — 2026-08-27 재설계: categories가 POST /weddings의 필수 필드가 되면서(온보딩
+    개인화 LLM 호출을 웨딩당 1회로 줄이기 위해, docs/AI-Sessions/wiki/dev-tasks/
+    2026-08-27-onboarding-single-personalization-call-redesign.md 참고) 이 엔드포인트가
+    처음으로 직접 스모크 커버리지를 받는다 — 예전엔 wedding_client 픽스처를 통해 간접적으로만
+    exercise됐다."""
+
+    def _categories(self, overrides: dict[str, dict] | None = None) -> list[dict]:
+        overrides = overrides or {}
+        return [
+            {
+                "category_code": meta.code,
+                "is_active": True,
+                "planned_budget": 0,
+                "display_order": meta.display_order,
+                **overrides.get(meta.code, {}),
+            }
+            for meta in CATEGORY_META
+        ]
+
+    async def test_categories_persist_exact_values(self, signed_up_client):
+        categories = self._categories(
+            {
+                "HONEYMOON": {"is_active": False, "planned_budget": 0, "skip_reason": "생략"},
+                "VENUE": {"planned_budget": 20_000_000},
+            }
+        )
+        response = await signed_up_client.post(
+            "/weddings",
+            json={
+                "user_role": "BRIDE",
+                "wedding_date": "2027-05-01",
+                "wedding_date_precision": "EXACT",
+                "total_budget": 50_000_000,
+                "region_code": "SEOUL_GANGNAM",
+                "categories": categories,
+            },
+        )
+        # 2026-08-28 — POST /weddings는 SSE로 응답한다(app/services/wedding.py::
+        # stream_wedding_creation). HTTP 상태코드는 항상 200이고, 성패는 마지막 이벤트로
+        # 구분한다.
+        assert response.status_code == 200
+        events = parse_sse_frames(response.text)
+        assert events[-1][0] == "done"
+
+        listed = await signed_up_client.get("/wedding-categories")
+        assert listed.status_code == 200
+        by_code = {c["category_code"]: c for c in listed.json()["categories"]}
+        assert by_code["HONEYMOON"]["is_active"] is False
+        assert by_code["HONEYMOON"]["planned_budget"] == 0
+        assert by_code["VENUE"]["is_active"] is True
+        assert by_code["VENUE"]["planned_budget"] == 20_000_000
+
+    async def test_missing_one_category_returns_422(self, signed_up_client):
+        categories = [c for c in self._categories() if c["category_code"] != "ETC"]
+        response = await signed_up_client.post(
+            "/weddings",
+            json={
+                "user_role": "BRIDE",
+                "wedding_date": "2027-05-01",
+                "wedding_date_precision": "EXACT",
+                "total_budget": 50_000_000,
+                "region_code": "SEOUL_GANGNAM",
+                "categories": categories,
+            },
+        )
+        assert response.status_code == 422
+
+    async def test_categories_over_budget_returns_400_and_creates_no_wedding(
+        self, signed_up_client
+    ):
+        # 9 * 10,000,000 = 90,000,000 > total_budget(50,000,000).
+        categories = self._categories(
+            {meta.code: {"planned_budget": 10_000_000} for meta in CATEGORY_META}
+        )
+        response = await signed_up_client.post(
+            "/weddings",
+            json={
+                "user_role": "BRIDE",
+                "wedding_date": "2027-05-01",
+                "wedding_date_precision": "EXACT",
+                "total_budget": 50_000_000,
+                "region_code": "SEOUL_GANGNAM",
+                "categories": categories,
+            },
+        )
+        # 2026-08-28 — SSE 전환 이후 실패도 200 + event: error로 온다(위 test_categories_
+        # persist_exact_values 주석 참고).
+        assert response.status_code == 200
+        event_name, data = parse_sse_frames(response.text)[-1]
+        assert event_name == "error"
+        assert data["code"] == "BUDGET_EXCEEDED"
+
+        # 웨딩 자체가 롤백돼야 한다 — 재시도가 409(WEDDING_ALREADY_EXISTS)가 아니라 다시
+        # 처음부터 가능해야 정상이다.
+        me = await signed_up_client.get("/weddings/me")
+        assert me.status_code == 404
+        assert me.json()["error"]["code"] == "WEDDING_NOT_FOUND"
+
+    async def test_custom_request_persists_and_reaches_personalization(self, signed_up_client):
+        # 2026-08-28 신규 — 온보딩 커스텀 자유서술 질문이 실제로 저장되고 GET /weddings/me로
+        # 그대로 돌아오는지, 그리고 개인화 그래프(ONBOARDING_INITIAL)가 이 필드가 있어도 여전히
+        # 정상 완료(event: done)되는지 실DB+실LLM으로 확인한다.
+        response = await signed_up_client.post(
+            "/weddings",
+            json={
+                "user_role": "BRIDE",
+                "wedding_date": "2027-05-01",
+                "wedding_date_precision": "EXACT",
+                "total_budget": 50_000_000,
+                "region_code": "SEOUL_GANGNAM",
+                "categories": self._categories(),
+                "custom_request": "채식 하객이 많아 식사 옵션이 걱정돼요",
+            },
+        )
+        assert response.status_code == 200
+        events = parse_sse_frames(response.text)
+        assert events[-1][0] == "done"
+
+        me = await signed_up_client.get("/weddings/me")
+        assert me.status_code == 200
+        assert me.json()["custom_request"] == "채식 하객이 많아 식사 옵션이 걱정돼요"
+
+
+class TestBudgetBreakdownSmoke:
+    """docs/wedding/refactor/red-bug.md #7 수정 — GET /wedding-categories의 신규
+    scheduled_amount(카테고리별 PLANNED 합계)가 실제 payments 상태 전이를 정확히 반영하는지.
+    S5/S6가 이 필드로 "지불완료/지불예정/배정/미배정" 4분류를 계산한다(paid_amount/
+    scheduled_amount는 여기서, 배정·미배정은 planned_budget/total_budget으로 프론트가 순수
+    계산 — 새 엔드포인트 불필요)."""
+
+    async def test_scheduled_amount_reflects_planned_payments_only(self, signed_up_client):
+        categories = [
+            {
+                "category_code": meta.code,
+                "is_active": True,
+                "planned_budget": 10_000_000 if meta.code == "VENUE" else 0,
+                "display_order": meta.display_order,
+            }
+            for meta in CATEGORY_META
+        ]
+        create = await signed_up_client.post(
+            "/weddings",
+            json={
+                "user_role": "BRIDE",
+                "wedding_date": "2027-05-01",
+                "wedding_date_precision": "EXACT",
+                "total_budget": 50_000_000,
+                "region_code": "SEOUL_GANGNAM",
+                "categories": categories,
+            },
+        )
+        assert parse_sse_frames(create.text)[-1][0] == "done"
+
+        # PLANNED(기본 상태, paid_date 없음) — 지불 예정에 잡혀야 한다.
+        await signed_up_client.post(
+            "/payments",
+            json={
+                "category_code": "VENUE",
+                "item_name": "계약금",
+                "payment_type": "DEPOSIT",
+                "amount": 3_000_000,
+            },
+        )
+        # paid_date를 넣어 생성 시점에 PAID로 자동 유도 — 지불 완료에 잡혀야 한다.
+        await signed_up_client.post(
+            "/payments",
+            json={
+                "category_code": "VENUE",
+                "item_name": "중도금",
+                "payment_type": "INTERIM",
+                "amount": 2_000_000,
+                "paid_date": str(today_kst()),
+            },
+        )
+        # PLANNED로 만든 뒤 CANCELED로 전환 — 어느 쪽 합계에도 잡히면 안 된다.
+        canceled = await signed_up_client.post(
+            "/payments",
+            json={
+                "category_code": "VENUE",
+                "item_name": "환불된 옵션",
+                "payment_type": "ETC",
+                "amount": 1_000_000,
+            },
+        )
+        await signed_up_client.patch(
+            f"/payments/{canceled.json()['id']}", json={"status": "CANCELED"}
+        )
+
+        listed = await signed_up_client.get("/wedding-categories")
+        assert listed.status_code == 200
+        venue = next(c for c in listed.json()["categories"] if c["category_code"] == "VENUE")
+        assert venue["planned_budget"] == 10_000_000
+        assert venue["paid_amount"] == 2_000_000
+        assert venue["scheduled_amount"] == 3_000_000
+        # 다른 카테고리는 payments가 전혀 없으므로 0이어야 한다(딕셔너리 기본값 폴백 확인).
+        sdm = next(c for c in listed.json()["categories"] if c["category_code"] == "SDM")
+        assert sdm["paid_amount"] == 0
+        assert sdm["scheduled_amount"] == 0
+
+
+class TestDashboardSmoke:
+    """#25/#26 — 온보딩(POST /weddings)이 이미 checklist_items 24개(또는 폴백) + timeline_items
+    55개 + wedding_categories 9행(전부 is_active=True)을 만들어두므로 별도 셋업이 필요 없다."""
+
+    async def test_dashboard_summary_returns_200_with_all_categories_active(self, wedding_client):
+        response = await wedding_client.get("/dashboard/summary")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total_budget"] == 50_000_000
+        assert len(body["categories"]) == 9
+        assert all(c["is_active"] for c in body["categories"])
+
+    async def test_dashboard_summary_without_cookie_returns_401(self, client):
+        response = await client.get("/dashboard/summary")
+
+        assert response.status_code == 401
+
+    async def test_dashboard_summary_upcoming_items_have_expected_shape(self, wedding_client):
+        response = await wedding_client.get("/dashboard/summary")
+
+        items = response.json()["upcoming_items"]
+        assert 0 < len(items) <= 5
+        for item in items:
+            assert item["source"] in ("timeline", "checklist")
+            assert item["title"]
+
+    async def test_my_report_returns_200(self, wedding_client):
+        response = await wedding_client.get("/reports/me")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["budget_summary"]["total_budget"] == 50_000_000
+        assert len(body["next_recommended_checks"]) <= 5
+
+    async def test_my_report_progress_rate_is_timeline_based_and_independent_of_dashboard(
+        self, wedding_client
+    ):
+        """2026-08-28 — #26 category_completion[].progress_rate가 체크리스트가 아니라
+        타임라인 기준으로 바뀌었는지 확인(app/services/dashboard.py::
+        get_timeline_progress_by_category, #25는 여전히 체크리스트 기준). 타임라인 항목 하나만
+        DONE으로 바꾼 뒤, /reports/me의 해당 카테고리 progress_rate는 올라가지만
+        /dashboard/summary의 같은 카테고리 progress_rate(체크리스트 기준, 이 테스트가 손대지
+        않음)는 그대로 0.0이어야 한다 — 두 진행률 소스가 실제로 분리됐다는 걸 증명하는 유일한
+        방법."""
+        timeline_items = (await wedding_client.get("/timeline-items")).json()["items"]
+        target = next(item for item in timeline_items if item["category_code"] is not None)
+        category_code = target["category_code"]
+
+        before_dashboard = await wedding_client.get("/dashboard/summary")
+        before_category = next(
+            c for c in before_dashboard.json()["categories"] if c["category_code"] == category_code
+        )
+        assert before_category["progress_rate"] == 0.0
+
+        patch_response = await wedding_client.patch(
+            f"/timeline-items/{target['id']}", json={"status": "DONE"}
+        )
+        assert patch_response.status_code == 200
+
+        report = await wedding_client.get("/reports/me")
+        report_completion = next(
+            c for c in report.json()["category_completion"] if c["category_code"] == category_code
+        )
+        assert report_completion["progress_rate"] > 0.0
+
+        after_dashboard = await wedding_client.get("/dashboard/summary")
+        after_category = next(
+            c for c in after_dashboard.json()["categories"] if c["category_code"] == category_code
+        )
+        assert after_category["progress_rate"] == 0.0
+
+    async def test_my_report_without_cookie_returns_401(self, client):
+        response = await client.get("/reports/me")
+
+        assert response.status_code == 401
+
+
+class TestTimelinePrepScalingSmoke:
+    """2026-08-28 준비기간 스케일링(app/services/timeline.py::compute_prep_scale_factor) — 카탈로그
+    경로가 온보딩(wedding_client, wedding_date=2027-05-01, 표준 준비기간 365일보다 짧음)에서
+    실제로 적용되는지, PATCH /weddings/me의 wedding_date 변경 폭에 따른 재스케일/스케일고정
+    분기(recalculate_timeline_dates의 WEDDING_DATE_RESCALE_THRESHOLD_DAYS)가 실제로 동작하는지
+    확인한다."""
+
+    async def test_freshly_onboarded_timeline_has_no_items_before_today(self, wedding_client):
+        # wedding_client의 wedding_date(2027-05-01)는 표준 준비기간(365일)보다 짧아, 스케일링
+        # 없이는 카탈로그의 이른 항목들이 온보딩 즉시 이미 과거로 찍히는 게 원래 버그였다 —
+        # 스케일링 이후엔 어떤 항목도 target_date < today일 수 없다(수학적 불변식,
+        # app/services/timeline.py::generate_timeline_items 모듈 docstring 참고).
+        response = await wedding_client.get("/timeline-items")
+
+        items = response.json()["items"]
+        today = today_kst().isoformat()
+        assert items
+        assert all(item["target_date"] >= today for item in items)
+
+    async def test_wedding_date_patch_below_threshold_keeps_offset_locked(self, wedding_client):
+        before = (await wedding_client.get("/timeline-items")).json()["items"]
+        target = next(
+            i for i in before if i["status"] == "TODO" and i["default_dday_offset_days"] < 0
+        )
+
+        new_wedding_date = date(2027, 5, 1) + timedelta(days=30)  # 5개월(150일) 미만 변경
+        patch_response = await wedding_client.patch(
+            "/weddings/me", json={"wedding_date": new_wedding_date.isoformat()}
+        )
+        assert patch_response.status_code == 200
+
+        after = (await wedding_client.get("/timeline-items")).json()["items"]
+        after_item = next(i for i in after if i["id"] == target["id"])
+        assert after_item["default_dday_offset_days"] == target["default_dday_offset_days"]
+
+    async def test_wedding_date_patch_at_or_above_threshold_rescales_offset(self, wedding_client):
+        before = (await wedding_client.get("/timeline-items")).json()["items"]
+        target = next(
+            i for i in before if i["status"] == "TODO" and i["default_dday_offset_days"] < 0
+        )
+
+        new_wedding_date = date(2027, 5, 1) + timedelta(days=400)  # 5개월(150일) 이상 변경
+        patch_response = await wedding_client.patch(
+            "/weddings/me", json={"wedding_date": new_wedding_date.isoformat()}
+        )
+        assert patch_response.status_code == 200
+
+        after = (await wedding_client.get("/timeline-items")).json()["items"]
+        after_item = next(i for i in after if i["id"] == target["id"])
+        assert after_item["default_dday_offset_days"] != target["default_dday_offset_days"]
+
+
+class TestOAuthSmoke:
+    """소셜 로그인(구글/네이버, 00_BASELINE.md §0-2 Should) — 실 IdP 토큰교환/유저정보 조회는
+    실 크레덴셜이 있어야 해서(비용은 없지만 CI/로컬 dev 크레덴셜 미보유) 자동 스모크 대상이
+    아니다(app/services/oauth.py의 find_or_create_social_user 계정 연동 로직은
+    tests/test_oauth_service.py가 실DB로 직접 검증). 여기서는 IdP 호출 전 단계(로그인 리다이렉트
+    조립, 콜백의 state 검증)만 확인한다 — httpx AsyncClient는 기본이 follow_redirects=False라
+    307 응답 자체를 그대로 받을 수 있다."""
+
+    async def test_login_redirects_to_google_authorize_endpoint(self, client):
+        response = await client.get("/auth/google/login")
+
+        assert response.status_code == 307
+        assert response.headers["location"].startswith("https://accounts.google.com/")
+        assert "wr_oauth_state" in response.cookies
+
+    async def test_login_redirects_to_naver_authorize_endpoint(self, client):
+        response = await client.get("/auth/naver/login")
+
+        assert response.status_code == 307
+        assert response.headers["location"].startswith("https://nid.naver.com/")
+
+    async def test_login_unsupported_provider_returns_404(self, client):
+        response = await client.get("/auth/kakao/login")
+
+        assert response.status_code == 404
+
+    async def test_callback_without_state_cookie_redirects_to_login_with_error(self, client):
+        response = await client.get("/auth/google/callback", params={"code": "x", "state": "s"})
+
+        assert response.status_code < 400  # RedirectResponse, 에러가 아니라 안내 리다이렉트
+        assert response.headers["location"].startswith("http://localhost:5173/login")
+        assert "oauth_error=state_missing" in response.headers["location"]
+
+    async def test_callback_with_mismatched_state_redirects_with_error(self, client):
+        login_response = await client.get("/auth/google/login")
+        assert login_response.status_code == 307
+
+        callback_response = await client.get(
+            "/auth/google/callback", params={"code": "x", "state": "not-the-real-state"}
+        )
+
+        assert "oauth_error=state_mismatch" in callback_response.headers["location"]
+
+
+class TestBenchmarksSmoke:
+    """#31 GET /benchmarks/total-average — 00_BASELINE.md §2-5 예산 "미정" 슬라이더
+    플레이스홀더. 웨딩 생성 전(온보딩 중) 호출되는 엔드포인트라 wedding_client가 아니라
+    signed_up_client로 검증한다. #23 GET /benchmarks/compare는 이 세션 범위 밖(기존 미커버
+    엔드포인트, 이 파일 상단 docstring 참고)이라 여기서 같이 채우지 않는다.
+
+    200 케이스는 total_budget_benchmark 픽스처(conftest.py)로 데이터를 직접 만든다 — 처음엔
+    "ETL이 이미 채워뒀으니 실 시드에 기대면 된다"고 가정했다가 CI(마이그레이션만 적용된 빈
+    DB, ETL 시드 없음)에서 404로 떨어져 PR #41이 깨졌다(2026-08-24). 로컬 dev DB에만 있는
+    데이터에 기대는 스모크 테스트는 이 실패 패턴 자체가 재발 위험이라 직접 데이터를 준비하는
+    쪽으로 고쳤다.
+
+    404(TOTAL_BUDGET_UNAVAILABLE) 케이스는 여기 없다 — 로컬 dev DB는 이미 RegionCode Literal
+    17개 유효값 전부가 지역 폴백 체인(특정 지역→수도권/비수도권→전국)을 거쳐서라도 매치되도록
+    실 시드가 차 있어서, "유효한 region_code인데 매치되는 게 하나도 없는" 상태를 로컬/CI
+    양쪽에서 똑같이 재현할 방법이 없다."""
+
+    async def test_total_average_returns_200_for_valid_region(
+        self, signed_up_client, total_budget_benchmark
+    ):
+        response = await signed_up_client.get(
+            "/benchmarks/total-average", params={"region_code": "SEOUL_GANGNAM"}
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["region_code"] == "SEOUL_GANGNAM"
+        assert body["median_price"] == 45_000_000
+
+    async def test_total_average_without_cookie_returns_401(self, client):
+        response = await client.get(
+            "/benchmarks/total-average", params={"region_code": "SEOUL_GANGNAM"}
+        )
+
+        assert response.status_code == 401
+
+
+class TestPersonalizationRegenerateSmoke:
+    """#32 POST /personalization/regenerate — MANUAL_REGENERATE(15_post_v4_scope_promotion.md
+    §P2). generate 노드가 실LLM을 호출하므로 TestChatSessionsSmoke와 같은 원칙으로 SUCCESS/
+    BLOCKED 응답까지 가는 실행 경로는 자동 스모크에 넣지 않는다 — 2026-08-24 구현 시점에
+    수동으로 1회 실행해 checklist_items/timeline_items 교체와 ai_invocations 행 기록을
+    확인했다(회귀 시엔 다시 수동 확인). 여기서는 인증 배선과 요청 검증(도메인 비어있음/중복)만
+    자동화한다 — 둘 다 route/generate 노드에 도달하기 전에 걸러지므로 LLM 호출이 없다."""
+
+    async def test_regenerate_without_cookie_returns_401(self, client):
+        response = await client.post("/personalization/regenerate", json={"domains": ["CHECKLIST"]})
+
+        assert response.status_code == 401
+
+    async def test_regenerate_empty_domains_returns_422(self, wedding_client):
+        response = await wedding_client.post("/personalization/regenerate", json={"domains": []})
+
+        assert response.status_code == 422
+
+    async def test_regenerate_duplicate_domains_returns_422(self, wedding_client):
+        response = await wedding_client.post(
+            "/personalization/regenerate", json={"domains": ["CHECKLIST", "CHECKLIST"]}
+        )
+
+        assert response.status_code == 422

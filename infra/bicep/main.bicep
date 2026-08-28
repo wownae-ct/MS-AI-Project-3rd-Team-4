@@ -1,3 +1,12 @@
+// ============================================================================
+// Bicep이란? 이 파일은 뭘 하는가?
+// Bicep은 "코드로 Azure 인프라를 선언"하는 언어다 — 웹 콘솔에서 하나하나 클릭해 리소스를
+// 만드는 대신, 이 파일을 `az deployment group create`에 넘기면 여기 적힌 상태(AKS 클러스터
+// 하나, DB 하나, ...) 그대로 Azure에 만들어준다(이미 있으면 필요한 부분만 갱신 — 멱등적).
+// 이 파일(main.bicep)은 "총괄 지휘자"고, 실제 리소스 하나하나의 자세한 설정은
+// modules/*.bicep 파일에 각각 나눠져 있다(module 블록으로 여기서 불러 씀). 아래 1~8번
+// 순서는 실제 의존관계(예: AKS는 ACR 이름을 알아야 그 ACR에 접근 권한을 줄 수 있음) 순서다.
+// ============================================================================
 targetScope = 'resourceGroup'
 
 @description('배포 리전 (Static Web Apps는 modules/staticwebapp.bicep에서 별도 리전 사용)')
@@ -18,11 +27,44 @@ param postgresAdminLogin string = 'pgadmin'
 @description('Postgres 관리자 비밀번호. CI에서는 secrets.POSTGRES_ADMIN_PASSWORD로 주입')
 param postgresAdminPassword string
 
-@description('RAG 스키마가 들어갈 데이터베이스 이름. infra/.env의 DATABASE_NAME으로 채움')
-param postgresDatabaseName string = 'postgres'
+@description('RAG 스키마가 들어갈 데이터베이스 이름. 2026-08-26 발견 — infra-deploy.yml에 DATABASE_NAME env var가 안 걸려있어 실배포마다 이 기본값(postgres)으로 조용히 되돌아가던 버그(로그인 500, modules/postgres.bicep 머리말 참고) — 실제 마이그레이션 DB로 기본값 자체를 바꾼다.')
+param postgresDatabaseName string = 'team4db-wd'
 
 @description('kubectl AAD RBAC 클러스터 관리자로 등록할 AAD 오브젝트 ID들. 이메일이 아니라 GUID 필요 —\ndev.bicepparam에서 infra/.env의 CLUSTER_ADMIN_OBJECT_IDS(쉼표구분)로 채움')
 param clusterAdminPrincipalIds array = []
+
+// 소셜 로그인(구글/네이버, 00_BASELINE.md §0-2 Should) — Google/Naver 개발자 콘솔에서 발급받은
+// 값이라 openai-endpoint처럼 배포 시점에 Azure가 정해주는 값이 아니다. postgresAdminPassword와
+// 동일한 이유로 @secure() 필수 파라미터 + dev 전용 폴백 기본값을 둔다 — az deployment group
+// create 한 번으로 Key Vault까지 채워지는 게 목표(README에 수동 az keyvault secret set 단계를
+// 남기지 않는다, infra/docs/iac.md §Key Vault 시크릿 자동화와 동일 원칙).
+@secure()
+@description('구글 OAuth 클라이언트 ID. CI에서는 secrets.GOOGLE_CLIENT_ID로 주입')
+param googleClientId string
+
+@secure()
+@description('구글 OAuth 클라이언트 시크릿. CI에서는 secrets.GOOGLE_CLIENT_SECRET로 주입')
+param googleClientSecret string
+
+@secure()
+@description('네이버 OAuth 클라이언트 ID. CI에서는 secrets.NAVER_CLIENT_ID로 주입')
+param naverClientId string
+
+@secure()
+@description('네이버 OAuth 클라이언트 시크릿. CI에서는 secrets.NAVER_CLIENT_SECRET로 주입')
+param naverClientSecret string
+
+// Langfuse LLM 관측/트레이싱(14_langfuse_tracing_design.md) — Langfuse Cloud(외부 SaaS)에서
+// 발급받은 값이라 위 구글/네이버 OAuth 시크릿과 성격이 같다. 원래 az keyvault secret set으로
+// 수동 등록돼 있었는데(PR #42), 2026-08-24 팀 결정으로 이 IaC 패턴에 맞춰 전환 — 이미 KV에 있는
+// 값은 그대로 두고 Bicep이 같은 값으로 수렴하게만(what-if NoChange) 한다.
+@secure()
+@description('Langfuse Cloud 프로젝트 public key. CI에서는 secrets.LANGFUSE_PUBLIC_KEY로 주입')
+param langfusePublicKey string
+
+@secure()
+@description('Langfuse Cloud 프로젝트 secret key. CI에서는 secrets.LANGFUSE_SECRET_KEY로 주입')
+param langfuseSecretKey string
 
 var tags = {
   project: namePrefix
@@ -71,6 +113,12 @@ module keyvault 'modules/keyvault.bicep' = {
     namePrefix: namePrefix
     tags: tags
     backendIdentityPrincipalId: aks.outputs.backendIdentityPrincipalId
+    googleClientId: googleClientId
+    googleClientSecret: googleClientSecret
+    naverClientId: naverClientId
+    naverClientSecret: naverClientSecret
+    langfusePublicKey: langfusePublicKey
+    langfuseSecretKey: langfuseSecretKey
   }
 }
 
@@ -111,7 +159,8 @@ module staticwebapp 'modules/staticwebapp.bicep' = {
   }
 }
 
-// 8) 범용 Blob 저장소 — 답변 오디오 저장용으로 재사용 예정(컨테이너/RBAC는 미구현, storage.bicep TODO 참고)
+// 8) 범용 Blob 저장소 — 2026-08-25부로 영수증 OCR 자동채움(payments) 원본 이미지 저장용 실사용
+// 확정(receipts 컨테이너, Contributor RBAC, storage.bicep 참고)
 module storage 'modules/storage.bicep' = {
   name: 'storage'
   params: {
@@ -120,6 +169,7 @@ module storage 'modules/storage.bicep' = {
     tags: tags
     backendIdentityPrincipalId: aks.outputs.backendIdentityPrincipalId
     logAnalyticsWorkspaceId: monitor.outputs.logAnalyticsId
+    keyVaultName: keyvault.outputs.keyVaultName
   }
 }
 

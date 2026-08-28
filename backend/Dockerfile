@@ -49,4 +49,10 @@ WORKDIR /app
 
 USER appuser
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# --proxy-headers + --forwarded-allow-ips='*': NGINX Ingress(인클러스터, infra/README.md) 뒤에서
+# 돈다 — 이게 없으면 request.client.host가 Ingress 파드의 클러스터 내부 IP로 찍혀서
+# app/core/rate_limit.py의 IP 기반 rate limit이 사실상 "모든 외부 요청을 한 IP로" 묶어버린다.
+# '*'는 신뢰할 프록시의 IP를 몰라도(Ingress 파드 IP는 재배포마다 바뀜) 안전한 이유가, 클러스터
+# 밖에서 이 파드에 직접 TCP로 접속할 경로가 없기 때문(Service가 ClusterIP, 외부 진입점은
+# Ingress 하나뿐 — infra/k8s/base/backend/service.yaml).
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]
