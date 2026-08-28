@@ -6,7 +6,7 @@ from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.categories import CATEGORY_META
 from app.schemas.common import CategoryCode, CategoryTier
@@ -23,6 +23,40 @@ UserRole = Literal["BRIDE", "GROOM"]
 TastePreference = Literal["MINIMAL", "BUDGET", "GRAND", "BALANCED"]
 VenuePriority = Literal["FOOD", "LOCATION", "PARKING", "CAPACITY"]
 SdmPriority = Literal["DRESS", "PHOTO", "MAKEUP"]
+
+# frontend/src/pages/onboarding/ui/steps/Step4Goals.tsx의 GOAL_OPTIONS와 1:1로 맞춰야 한다 —
+# 프론트가 고정 5개 칩 UI로만 값을 만들어 보내는데도 백엔드 스키마엔 이 제약이 전혀 없었다
+# (`primary_goals: list[str]`, enum도 길이 제한도 없음). API를 직접 호출하면 임의 문자열이
+# 검증 없이 개인화 프롬프트(app/personalization/prompts.py::build_generate_prompt)에 그대로
+# 흘러들어가는 구멍이었다 — 2026-08-28 발견, 커스텀 질문 필드 추가 검토 중 같이 닫는다.
+PRIMARY_GOAL_OPTIONS: tuple[str, ...] = (
+    "예산 초과 없이 준비",
+    "계약서 꼼꼼히 확인",
+    "남들 안 하는 실수 피하기",
+    "빠르게 최소한만 준비",
+    "하객 응대 잘하기",
+)
+_PRIMARY_GOAL_OPTIONS_SET = frozenset(PRIMARY_GOAL_OPTIONS)
+
+# 온보딩 커스텀 질문(자유 서술) 길이 상한 — 챗 메시지(CHAT_MESSAGE_CONTENT_MAX_LENGTH=2000,
+# app/schemas/chat.py)보다 짧게 잡는다: 이건 여러 턴 대화가 아니라 온보딩 질문 하나에 대한
+# 한 번의 답변이라 그만큼 길 이유가 없다.
+CUSTOM_REQUEST_MAX_LENGTH = 500
+
+
+def _validate_primary_goals(value: list[str] | None) -> list[str] | None:
+    if value is None:
+        return None
+    if len(value) > len(PRIMARY_GOAL_OPTIONS):
+        raise ValueError(
+            f"primary_goals는 최대 {len(PRIMARY_GOAL_OPTIONS)}개까지만 선택할 수 있습니다."
+        )
+    if len(set(value)) != len(value):
+        raise ValueError("primary_goals에 중복된 값이 있습니다.")
+    invalid = [v for v in value if v not in _PRIMARY_GOAL_OPTIONS_SET]
+    if invalid:
+        raise ValueError(f"primary_goals에 허용되지 않은 값이 있습니다: {invalid}")
+    return value
 
 
 # WeddingCreate.categories와 WeddingCategoriesUpdate.categories(#10)가 공유하는 행 shape이라
@@ -53,6 +87,10 @@ class WeddingCreate(BaseModel):
     venue_priority: VenuePriority | None = None
     sdm_priority: SdmPriority | None = None
     primary_goals: list[str] = Field(default_factory=list)
+    # 온보딩 커스텀 질문(자유 서술, 2026-08-28 신규) — 개인화 그래프의 generate 프롬프트에
+    # 참고용 취향 설명으로만 들어간다(app/personalization/prompts.py::_custom_request_note).
+    # 선택 항목이라 기본값 None이면 기존 온보딩 흐름과 완전히 동일하게 동작한다.
+    custom_request: str | None = Field(default=None, max_length=CUSTOM_REQUEST_MAX_LENGTH)
     # timeline_items 초기 상태 1회성 반영에만 쓰이고 저장은 안 된다(03_API_spec.md #6) —
     # timeline_items가 아직 없어(별도 태스크) 지금은 받기만 하고 처리하지 않는다.
     # TODO(timeline-task): done_so_far에 담긴 카테고리의 target_date<오늘 항목을 DONE으로.
@@ -63,6 +101,11 @@ class WeddingCreate(BaseModel):
     # 두 번 겹쳤다. docs/AI-Sessions/wiki/dev-tasks/
     # 2026-08-27-onboarding-single-personalization-call-redesign.md 참고).
     categories: list[WeddingCategoryUpdateItem]
+
+    @field_validator("primary_goals")
+    @classmethod
+    def _validate_primary_goals_create(cls, value: list[str]) -> list[str]:
+        return _validate_primary_goals(value) or []
 
     @model_validator(mode="after")
     def _wedding_date_required_when_exact(self) -> "WeddingCreate":
@@ -95,6 +138,12 @@ class WeddingUpdate(BaseModel):
     venue_priority: VenuePriority | None = None
     sdm_priority: SdmPriority | None = None
     primary_goals: list[str] | None = None
+    custom_request: str | None = Field(default=None, max_length=CUSTOM_REQUEST_MAX_LENGTH)
+
+    @field_validator("primary_goals")
+    @classmethod
+    def _validate_primary_goals_update(cls, value: list[str] | None) -> list[str] | None:
+        return _validate_primary_goals(value)
 
 
 class WeddingOut(BaseModel):
@@ -111,6 +160,7 @@ class WeddingOut(BaseModel):
     venue_priority: VenuePriority | None
     sdm_priority: SdmPriority | None
     primary_goals: list[str] | None
+    custom_request: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}

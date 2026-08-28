@@ -146,6 +146,7 @@ async def create_wedding(
         venue_priority=payload.venue_priority,
         sdm_priority=payload.sdm_priority,
         primary_goals=payload.primary_goals or None,
+        custom_request=payload.custom_request,
     )
     session.add(wedding)
     try:

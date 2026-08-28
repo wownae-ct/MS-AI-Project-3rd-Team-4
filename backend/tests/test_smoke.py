@@ -467,6 +467,30 @@ class TestWeddingCreationSmoke:
         assert me.status_code == 404
         assert me.json()["error"]["code"] == "WEDDING_NOT_FOUND"
 
+    async def test_custom_request_persists_and_reaches_personalization(self, signed_up_client):
+        # 2026-08-28 신규 — 온보딩 커스텀 자유서술 질문이 실제로 저장되고 GET /weddings/me로
+        # 그대로 돌아오는지, 그리고 개인화 그래프(ONBOARDING_INITIAL)가 이 필드가 있어도 여전히
+        # 정상 완료(event: done)되는지 실DB+실LLM으로 확인한다.
+        response = await signed_up_client.post(
+            "/weddings",
+            json={
+                "user_role": "BRIDE",
+                "wedding_date": "2027-05-01",
+                "wedding_date_precision": "EXACT",
+                "total_budget": 50_000_000,
+                "region_code": "SEOUL_GANGNAM",
+                "categories": self._categories(),
+                "custom_request": "채식 하객이 많아 식사 옵션이 걱정돼요",
+            },
+        )
+        assert response.status_code == 200
+        events = parse_sse_frames(response.text)
+        assert events[-1][0] == "done"
+
+        me = await signed_up_client.get("/weddings/me")
+        assert me.status_code == 200
+        assert me.json()["custom_request"] == "채식 하객이 많아 식사 옵션이 걱정돼요"
+
 
 class TestBudgetBreakdownSmoke:
     """docs/wedding/refactor/red-bug.md #7 수정 — GET /wedding-categories의 신규
