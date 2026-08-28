@@ -11,7 +11,7 @@
 //     요소 전체(자식 포함)의 밝기를 조작하는 것이라 "배경의 옅은 변화" 규범과도 어긋났다.
 //   · 모든 hover 는 `enabled:` 뒤에 둔다 — disabled 상태에서 hover 가 살아 있던 문제를 3변이 전부 같은 방식으로 막는다.
 //     `disabled:hover:…` 로 되돌리는 상쇄 방식은 변이 정렬 순서에 의존해 취약하다.
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, ReactNode, Ref } from "react";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost";
 
@@ -55,6 +55,12 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
    * D14 L1 문구 규칙 — `<동사 명사형> + 중…`, 주어 없음. 예: `저장 중…` `로그인 중…`
    */
   pendingLabel?: ReactNode;
+  /**
+   * React 19 부터 함수 컴포넌트도 `ref` 를 **일반 prop 으로** 받는다 — forwardRef 가 필요 없다.
+   * 타입에만 열어 주면 아래 `...rest` 스프레드가 그대로 `<button>` 으로 전달한다.
+   * 용처: 다이얼로그가 초기 포커스를 특정 버튼에 두는 경우(`ConfirmDialog`).
+   */
+  ref?: Ref<HTMLButtonElement>;
   children: ReactNode;
 }
 

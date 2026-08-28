@@ -9,6 +9,27 @@ if (typeof Element !== "undefined" && !Element.prototype.scrollTo) {
   Element.prototype.scrollTo = () => {};
 }
 
+// jsdom은 HTMLDialogElement와 `dialog:not([open]){display:none}` 기본 스타일까지는 구현하지만
+// showModal()/close()는 없다(2026-08-29 실측, jsdom 30) — ConfirmDialog.tsx가 모달 동작 전체를
+// 브라우저에 맡기고 있어서, 이게 없으면 확인 다이얼로그를 쓰는 테스트가 TypeError로 죽는다.
+// **여기서 흉내 내는 것은 UA 동작의 최소한(열림 상태 토글 + close 이벤트)뿐이다** — 포커스
+// 트랩·배경 inert·top layer 는 흉내 내지 않는다. 그건 브라우저 몫이고, 흉내 낸 것을 테스트하면
+// 테스트가 브라우저가 아니라 이 스텁을 검증하게 된다.
+function showModalStub(this: HTMLDialogElement) {
+  this.open = true;
+}
+
+function closeStub(this: HTMLDialogElement) {
+  if (!this.open) return;
+  this.open = false;
+  this.dispatchEvent(new Event("close"));
+}
+
+if (typeof HTMLDialogElement !== "undefined" && !HTMLDialogElement.prototype.showModal) {
+  HTMLDialogElement.prototype.showModal = showModalStub;
+  HTMLDialogElement.prototype.close = closeStub;
+}
+
 // 같은 이유로 scrollIntoView 도 없다 — Step8Allocation.tsx가 총예산 인라인 수정 패널을 펼칠 때
 // 요약 카드를 화면 위로 올리는 데 쓴다(2026-08-28). 없으면 effect가 TypeError로 터져 8단계를
 // 렌더하는 테스트가 통째로 깨진다. 실제 스크롤 동작은 검증 대상이 아니라 no-op으로만 채운다.
