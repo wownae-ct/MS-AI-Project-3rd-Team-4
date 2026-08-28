@@ -16,7 +16,7 @@ import { getTimelineItems, type TimelineItem } from "@/entities/timeline";
 import { getCategories, getMyWedding } from "@/entities/wedding";
 import { RegenerateButton } from "@/entities/personalization";
 import { ApiError } from "@/shared/api";
-import { Card, Page } from "@/shared/ui";
+import { Card, Loading, Page, SkeletonRows } from "@/shared/ui";
 import { AddTimelineItemRow } from "./AddTimelineItemRow";
 import { groupTimelineItemsByPhase, type TimelinePhaseGroup } from "./group-by-phase";
 import { TimelineItemRow } from "./TimelineItemRow";
@@ -113,7 +113,11 @@ export function TimelinePage() {
   if (data === null) {
     return (
       <Page title="타임라인" subtitle={GENERIC_TIMELINE_SUBTITLE}>
-        <p className="text-sm text-ink-soft">불러오는 중…</p>
+        {/* D14 L2 — 구간 카드 하나 분량의 자리를 먼저 잡는다(실제로는 구간 수만큼 온다). */}
+        <Card>
+          <SkeletonRows count={4} />
+        </Card>
+        <Loading />
       </Page>
     );
   }

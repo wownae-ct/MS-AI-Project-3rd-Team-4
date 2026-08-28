@@ -42,7 +42,7 @@ import { getDashboardSummary, type BudgetBenchmarkSummary } from "@/entities/das
 import { getUpcomingPayments, UpcomingPaymentsCard, type UpcomingPaymentEntry } from "@/entities/payment";
 import { getCategories, getMyWedding, getWeddingCategories, putWeddingCategories, type WeddingCategory } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
-import { Page } from "@/shared/ui";
+import { Card, Loading, Page, SkeletonRows } from "@/shared/ui";
 import { AllocationOverview } from "./AllocationOverview";
 import { CostManagementTab } from "./CostManagementTab";
 import { useCategoryBenchmarks } from "./use-category-benchmarks";
@@ -75,6 +75,7 @@ export function BudgetPage() {
   const [data, setData] = useState<BudgetData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [upcomingPayments, setUpcomingPayments] = useState<UpcomingPaymentEntry[] | null>(null);
+  const [upcomingPaymentsFailed, setUpcomingPaymentsFailed] = useState(false);
   // 총예산 vs 지역 시세 — 대시보드의 "예산 시세 비교" 카드가 여기로 옮겨오면서(UX 개편 3차,
   // 2026-08-26, 사용자 지시) 이 페이지도 GET /dashboard/summary를 직접 조회해야 한다. 이 필드
   // 전용으로 별도 백엔드 엔드포인트를 새로 만들지 않고 기존 대시보드 응답을 재사용한다 —
@@ -128,6 +129,9 @@ export function BudgetPage() {
       })
       .catch(() => {
         // 다가오는 결제는 보조 위젯이다 — 실패해도 예산 재배분 본문은 그대로 보여준다.
+        // 실패를 별도 상태로 남기는 이유: null 하나로는 "아직"과 "영영"이 구분되지 않아,
+        // 로딩 자리표시가 영원히 남는다(대시보드의 같은 카드와 동일한 처리).
+        if (!cancelled) setUpcomingPaymentsFailed(true);
       });
     return () => {
       cancelled = true;
@@ -237,7 +241,11 @@ export function BudgetPage() {
   if (data === null) {
     return (
       <Page title="예산 재배분" subtitle="카테고리 사이로 예산을 옮겨 봅니다.">
-        <p className="text-sm text-ink-soft">불러오는 중…</p>
+        {/* D14 L2 */}
+        <Card>
+          <SkeletonRows count={5} />
+        </Card>
+        <Loading />
       </Page>
     );
   }
@@ -250,9 +258,16 @@ export function BudgetPage() {
   return (
     <Page title="예산 재배분" subtitle="카테고리 사이로 예산을 옮겨 봅니다.">
       <div className="flex flex-col gap-5">
-        {upcomingPayments !== null && (
-          <UpcomingPaymentsCard payments={upcomingPayments} windowDays={UPCOMING_PAYMENT_WINDOW_DAYS} />
-        )}
+        {/* 로딩 중엔 자리를 잡아 두고(카드가 뒤늦게 끼어들며 아래를 밀어내지 않게), 실패하면
+            자리를 회수한다 — 영구 자리표시가 남지 않게 하는 쪽이 중요하다(D14 SE2). */}
+        {upcomingPayments === null
+          ? !upcomingPaymentsFailed && (
+              <Card title="다가오는 납부">
+                <SkeletonRows count={2} />
+                <Loading srOnly />
+              </Card>
+            )
+          : <UpcomingPaymentsCard payments={upcomingPayments} windowDays={UPCOMING_PAYMENT_WINDOW_DAYS} />}
 
         <CostManagementTab
           categoryLabelByCode={data.categoryLabelByCode}

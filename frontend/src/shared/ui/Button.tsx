@@ -39,23 +39,51 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   /** 가로를 꽉 채운다. 모바일 주요 행동 버튼의 기본 형태. */
   block?: boolean;
+  /**
+   * 이 버튼이 시작한 작업이 진행 중이다 — D14 L1 계층.
+   *
+   * **지연 없이 즉시 반영한다.** 사용자가 방금 누른 컨트롤이라 즉각 확인이 필요하고,
+   * 무엇보다 그 사이 두 번 눌리는 것을 막아야 한다(앰비언트 로딩인 `Loading` 이 200ms
+   * 지연을 두는 것과 정반대 이유다 — D14 P2).
+   *
+   * 비활성화까지 함께 처리한다. `disabled` 를 따로 넘길 필요가 없다.
+   */
+  pending?: boolean;
+  /**
+   * 진행 중에 보여줄 라벨. 생략하면 `children` 을 그대로 둔다.
+   *
+   * D14 L1 문구 규칙 — `<동사 명사형> + 중…`, 주어 없음. 예: `저장 중…` `로그인 중…`
+   */
+  pendingLabel?: ReactNode;
   children: ReactNode;
 }
 
 export function Button({
   variant = "primary",
   block = false,
+  pending = false,
+  pendingLabel,
   children,
   className,
   type,
+  disabled,
   ...rest
 }: ButtonProps) {
   const classes = [BASE, VARIANT[variant], SHAPE[variant], block ? "w-full" : "", className]
     .filter(Boolean)
     .join(" ");
   return (
-    <button type={type ?? "button"} className={classes} {...rest}>
-      {children}
+    <button
+      type={type ?? "button"}
+      className={classes}
+      // 호출부가 넘긴 disabled 를 덮어쓰지 않고 OR 로 합친다 — "진행 중"과 "원래 못 누름"은
+      // 서로 다른 이유이고, 둘 중 하나만 참이어도 막혀야 한다.
+      disabled={disabled === true || pending}
+      // 진행 중임을 보조기기에도 알린다. 라벨 교체만으로는 시각 사용자에게만 전달된다.
+      aria-busy={pending || undefined}
+      {...rest}
+    >
+      {pending && pendingLabel !== undefined ? pendingLabel : children}
     </button>
   );
 }

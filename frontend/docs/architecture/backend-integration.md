@@ -446,7 +446,7 @@ UA 스니핑을 쓰지 않는 이유 셋:
 
 ---
 
-### 4.5 로딩·에러 화면 — 계약은 정하고 시각은 미정으로 남긴다
+### 4.5 로딩·에러 화면 — 로딩은 결정됐다(D14), 에러는 계약만 정해져 있다
 
 `staleTime`의 **기본값은 0**이다(공식: *"The default staleTime is 0, causing background reloads on every route match."*). 그리고 라우터는 **`defaultPendingComponent`가 없으면 펜딩 타이머를 시작조차 하지 않고 Suspense 경계도 만들지 않는다**(ADR 0005가 기록해 둔 사실).
 
@@ -455,10 +455,16 @@ UA 스니핑을 쓰지 않는 이유 셋:
 | 정한 것 | 미정 |
 |---|---|
 | 라우트마다 `staleTime`을 **명시한다** — 기본값 0에 기대지 않는다 | 각 라우트의 구체값(데이터 성격별) |
-| `defaultPendingComponent` · `defaultErrorComponent`를 **둔다** | 그 시각 디자인 |
+| `defaultPendingComponent` · `defaultErrorComponent`를 **둔다** | — (아래 참조) |
 | 로더는 `abortController.signal`을 전송 계층에 넘긴다(§1.2 #4-a) | — |
 
-🚨 **시각 디자인을 여기서 지어내지 않는다.** 로딩·에러 상태의 근거가 `design/layout.md`에 **0건**이고, 값을 발명하는 것은 이 저장소가 금지한 행위다. **디자인 오너 결정이 선행되어야 한다** — 그전까지는 접근성만 지키는 최소 형태(`role="status"` / `role="alert"` + 텍스트)로 둔다.
+> **2026-08-28 갱신 — 로딩의 시각 디자인은 더 이상 미정이 아니다.**
+>
+> 이 절은 원래 *"🚨 시각 디자인을 여기서 지어내지 않는다. … 디자인 오너 결정이 선행되어야 한다"* 로 닫혀 있었다. 그 결정이 나왔다 — [design/decisions.md D14](../design/decisions.md#d14-로딩-상태의-시각과-문구-체계를-정한다).
+>
+> `defaultPendingComponent` 는 `shared/ui/RoutePending.tsx` 로 **이미 등록돼 있다**(`app/router/router.tsx`). 등록 자체가 스위치였다 — 펜딩 컴포넌트가 없으면 라우터가 펜딩 세션을 아예 만들지 않아서, 위에 적힌 그 기계가 통째로 잠들어 있었다. 지금은 `defaultPendingMs: 1000` · `defaultPendingMinMs: 500` 이 동작하므로 **1초 안에 끝나는 전환에는 아무것도 뜨지 않는다.**
+>
+> **아직 미정인 것**: `defaultErrorComponent` 의 시각(에러 상태는 layout.md §9 에 계속 열려 있다) · 라우트별 `staleTime` 구체값. 에러는 그전까지 현행 최소 형태(`role="alert"` + 텍스트)를 유지한다.
 
 ---
 

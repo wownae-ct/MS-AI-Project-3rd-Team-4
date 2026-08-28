@@ -18,7 +18,7 @@ import {
 import type { CategoryConstant } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
 import { AMOUNT_STEP_WON } from "@/shared/lib/money";
-import { Badge, Card, Money, NumberInput } from "@/shared/ui";
+import { Badge, Card, Loading, Money, NumberInput, SkeletonRows } from "@/shared/ui";
 
 interface CostTabProps {
   categoryCode: string;
@@ -110,7 +110,11 @@ export function CostTab({ categoryCode, categoryMeta }: CostTabProps) {
           </p>
         )}
         {payments === null ? (
-          <p className="text-sm text-ink-soft">불러오는 중…</p>
+          // D14 L2 — 카드 안 목록이라 문구는 보조기기에만 낸다(형태가 이미 대기를 보여준다).
+          <>
+            <SkeletonRows count={3} />
+            <Loading srOnly />
+          </>
         ) : payments.length === 0 ? (
           <p className="text-sm text-ink-soft">등록된 납부 내역이 없습니다.</p>
         ) : (
@@ -195,9 +199,13 @@ function BenchmarkWidget({ categoryCode }: { categoryCode: string }) {
           type="button"
           onClick={() => void handleCompare()}
           disabled={loading}
+          aria-busy={loading || undefined}
           className="min-h-tap rounded-md border border-transparent bg-primary px-4 text-sm font-bold text-surface enabled:hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
-          비교
+          {/* D14 L1 — 비활성만으로는 "눌린 건가"를 알 수 없다. 라벨로 진행을 말한다.
+              공용 Button 으로 바꾸지 않은 것은 이 버튼이 자체 클래스를 갖고 있어서다 —
+              변환은 별건으로 남긴다(D14 Phase 3). */}
+          {loading ? "비교 중…" : "비교"}
         </button>
       </div>
 

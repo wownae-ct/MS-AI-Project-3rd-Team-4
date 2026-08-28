@@ -10,7 +10,7 @@
 // 암시하면 안 된다. Base UI Dialog는 포커스 트랩·ESC 닫기 등 "사용자가 닫을 수 있는 대화상자"
 // 의미를 가정하는데 여기엔 안 맞아 쓰지 않았다 — 그냥 `fixed` 오버레이 + `role="status"`다.
 // `aria-live="polite"`로 둬서 스크린리더가 뜨는 시점에 문구를 읽게 한다.
-import { Card } from "@/shared/ui";
+import { Card, PulseDots } from "@/shared/ui";
 
 export function GeneratingOverlay() {
   return (
@@ -36,11 +36,9 @@ export function GeneratingOverlay() {
         부모(뷰포트) 폭에서 정의된 크기를 받게 하면 콘텐츠 의존 없이 폭이 정해진다.
       */}
       <Card className="flex w-full max-w-xs flex-col items-center gap-3 text-center">
-        <div className="flex items-center gap-1.5">
-          <span className="size-2 animate-pulse rounded-pill bg-primary [animation-delay:-0.3s]" />
-          <span className="size-2 animate-pulse rounded-pill bg-primary [animation-delay:-0.15s]" />
-          <span className="size-2 animate-pulse rounded-pill bg-primary" />
-        </div>
+        {/* 점 3개 마크업의 정의는 shared/ui/PulseDots.tsx 하나뿐이다 — 예전엔 이 파일과
+            entities/chat/ui/TypingIndicator.tsx 에 거의 같은 내용이 중복돼 있었다(D14). */}
+        <PulseDots />
         <p className="text-sm font-bold text-ink">입력하신 정보를 바탕으로 맞춤 콘텐츠를 만들고 있어요</p>
         <p className="text-xs text-ink-soft">체크리스트와 타임라인을 준비하는 중이에요. 잠시만 기다려 주세요.</p>
       </Card>

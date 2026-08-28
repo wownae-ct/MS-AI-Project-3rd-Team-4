@@ -83,8 +83,12 @@ describe("경로 → 화면 (layout.md §2 라우트 표)", () => {
 
   it("카테고리 상세는 경로 파라미터를 받는다 — URL은 소문자, categoryCode는 대문자로 되돌린다", async () => {
     // `$id` 를 `:id` 로 적으면 리터럴 경로가 되어 조용히 매칭되지 않는다 — 그 회귀를 여기서 잡는다.
-    // 카테고리 상수 조회(`GET /categories`)를 이 테스트는 목으로 두지 않으므로 실패하고,
-    // `CategoryPage`는 그 경우 제목을 원본 `categoryCode`로 폴백한다(CategoryPage.tsx) — 그
+    // 카테고리 상수 조회(`GET /categories`)는 이 파일 상단에서 **빈 목록으로 성공** 목킹돼 있어
+    // "조회는 끝났는데 그 코드가 목록에 없다"가 되고, `CategoryPage`는 그 경우 제목을 원본
+    // `categoryCode`로 폴백한다(CategoryPage.tsx) — 그
+    // (⚠️ 이 주석은 예전에 "목으로 두지 않으므로 실패하고"라고 적혀 있었다. 목이 추가된 뒤에도
+    //  고쳐지지 않아 낡은 설명이었다 — 2026-08-28 정정. 폴백 조건이 "실패"가 아니라 "조회 종료"인
+    //  것이 중요하다: 실패로만 폴백하면 이 테스트는 목이 성공하므로 영영 폴백되지 않는다.)
     // 폴백값이 곧 `$id`가 실제로 라우트에 전달됐다는 증거다. 2026-08-26부터 router.tsx가 그
     // 값을 `.toUpperCase()`로 되돌리므로(CategoryRow.tsx가 링크를 소문자로 만드는 것과 대칭),
     // 폴백 제목도 대문자로 뜬다 — 그 변환이 실제로 일어난다는 증거이기도 하다.
@@ -109,6 +113,20 @@ describe("경로 → 화면 (layout.md §2 라우트 표)", () => {
     renderAt("/");
     await expectScreen("대시보드");
     expect(screen.getByRole("main")).toBeInTheDocument();
+  });
+});
+
+// 이 파일의 다른 테스트들은 `routeTree` 를 메모리 히스토리로 다시 조립한다 — 그 경로로는
+// `createRouter` **옵션**이 검증되지 않는다. 아래 하나만 실제 export 된 라우터를 본다.
+describe("라우터 옵션 계약", () => {
+  // 대기 표시가 없어 "탭을 눌러도 화면이 멈춰 있다"가 오래 방치돼 있었다(D14). 그 원인이
+  // 시각 디자인 부재였고, 코드상으로는 **이 옵션 한 줄이 비어 있던 것**이다 —
+  // 펜딩 컴포넌트가 없으면 라우터가 펜딩 세션을 아예 만들지 않아 지연·최소표시 기계가 통째로
+  // 잠든다(router-core/load-client.js). 그래서 "등록돼 있다" 자체가 계약이다.
+  it("defaultPendingComponent 가 등록돼 있다 — 이게 없으면 펜딩 기계가 통째로 꺼진다", async () => {
+    const { router } = await import("./router");
+
+    expect(router.options.defaultPendingComponent).toBeDefined();
   });
 });
 

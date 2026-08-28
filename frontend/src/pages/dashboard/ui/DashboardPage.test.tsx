@@ -130,7 +130,7 @@ beforeEach(() => {
 
 async function renderDashboard() {
   const view = render(<DashboardPage />);
-  // 실 fetch(mock)를 기다려야 한다 — 첫 렌더는 "불러오는 중…"이다. 도넛이 없어진 뒤로는
+  // 실 fetch(mock)를 기다려야 한다 — 첫 렌더는 자리표시(스켈레톤 + "불러오는 중…")다. 도넛이 없어진 뒤로는
   // "다가오는 할 일"이 항상 첫 카드다(시세비교 조회가 늦게 끝나도 이 카드는 즉시 뜬다).
   await screen.findByRole("heading", { level: 2, name: "다가오는 할 일" });
   return view;

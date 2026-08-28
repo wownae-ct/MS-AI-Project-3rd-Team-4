@@ -30,7 +30,7 @@ import {
 } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
 import { computeDefaultUnsurePrecision, computeUnsurePrecisionOptions } from "@/shared/lib/wedding-date";
-import { Button, Card, Page } from "@/shared/ui";
+import { Button, Card, Loading, Page, SkeletonRows } from "@/shared/ui";
 import { buildReviewLabels } from "./build-review-labels";
 import {
   GeneratingOverlay,
@@ -328,7 +328,11 @@ export function OnboardingPage() {
         )}
         {(step === 7 || step === 8) &&
           (isLoadingCategories ? (
-            <p className="text-sm text-ink-soft">불러오는 중…</p>
+            // D14 L2 — 카테고리 토글/배분 목록 자리. 줄 수를 늘리지 않으려고 조각으로만 둔다.
+            <>
+              <SkeletonRows count={5} />
+              <Loading srOnly />
+            </>
           ) : categoriesError === null ? (
             step === 7 ? (
               <Step7CategoryToggle rows={allocationRows} onRowsChange={setAllocationRows} />

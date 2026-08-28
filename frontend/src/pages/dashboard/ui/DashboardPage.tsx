@@ -17,8 +17,9 @@
 //      문제로 "진행률"을 추가했다) — `CategoryRow.tsx` 머리말 참고.
 //
 // **실API 연동 이후 생긴 것들**
-//   · 로딩/에러 상태: 실 fetch 는 실패할 수 있어 최소 텍스트만 추가했다("불러오는 중…",
-//     `role="alert"` — 로그인/온보딩 화면이 이미 쓰는 관례 그대로).
+//   · 로딩/에러 상태: 에러는 `role="alert"`(로그인/온보딩 화면이 이미 쓰는 관례 그대로).
+//     로딩은 처음엔 최소 텍스트 한 줄이었지만 지금은 자리표시 + 문구다 — 디자인 근거가 없어
+//     미뤄 뒀던 것이 D14 로 정해졌다(docs/design/decisions.md).
 //   · "다가오는 납부" → "다가오는 할 일": `PaymentRow.tsx` 머리말 참고 — API 응답에 금액이 없다.
 //   · 카테고리 → S3 상세 진입: `CategoryRow.tsx`가 행 전체를 `/category/$id` 링크로 감싼다.
 //
@@ -38,7 +39,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getDashboardSummary, type DashboardSummary } from "@/entities/dashboard";
 import { ApiError } from "@/shared/api";
-import { Card, Page } from "@/shared/ui";
+import { Card, Loading, Page, SkeletonRows } from "@/shared/ui";
 import { adaptHeadline } from "./adapt-summary";
 import { CategoryChecklistSection } from "./CategoryChecklistSection";
 import { PaymentRow } from "./PaymentRow";
@@ -113,7 +114,13 @@ export function DashboardPage() {
   if (summary === null) {
     return (
       <Page title="대시보드" width="max-w-none">
-        <p className="text-sm text-ink-soft">불러오는 중…</p>
+        {/* D14 L2 — 자리표시가 카드 부피를 먼저 잡아 데이터 도착 시 레이아웃이 밀리지 않는다.
+            문구를 함께 남기는 이유: 「동작 줄이기」 환경에서는 자리표시의 움직임이 멈춰
+            (styles.css 전역 규칙) 정지한 블록이 빈 화면으로 읽힌다 — 그때 남는 단서가 문구다. */}
+        <Card title="다가오는 할 일">
+          <SkeletonRows count={3} />
+        </Card>
+        <Loading />
       </Page>
     );
   }

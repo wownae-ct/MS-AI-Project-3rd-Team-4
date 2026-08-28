@@ -12,6 +12,7 @@ import { ColorSection, TypographySection } from "./sections/FoundationSection";
 import {
   BadgeSection,
   ButtonSection,
+  LoadingSection,
   MoneySection,
   ProgressSection,
   TabsSection,
@@ -31,6 +32,9 @@ export function StyleGuidePage() {
       <ButtonSection />
       <BadgeSection />
       <ProgressSection />
+      {/* 진행률 바로 아래 둔다 — 둘의 경계(값이 있는 진행 vs 조회 대기)가 가장 헷갈리는 자리라
+          나란히 보여야 구분이 선다(D14). */}
+      <LoadingSection />
       <TabsSection />
       <SurfaceSection />
       <FocusSection />

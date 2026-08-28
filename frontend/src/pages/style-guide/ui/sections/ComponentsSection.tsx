@@ -1,5 +1,16 @@
 // 프리미티브 카탈로그 — 상태별로 나열해 눈으로 확인한다.
-import { Badge, Button, Card, IconCheck, IconChevronDown, Money, Progress, Tabs } from "@/shared/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  IconCheck,
+  IconChevronDown,
+  Loading,
+  Money,
+  Progress,
+  SkeletonRows,
+  Tabs,
+} from "@/shared/ui";
 import { OpenDecision, Rule, Section } from "../doc-parts";
 
 export function MoneySection() {
@@ -88,6 +99,53 @@ export function ProgressSection() {
           값을 주지 않으면 불확정 상태가 됩니다. 값을 <span className="font-bold">단정하지 않는</span> 부분
           막대로 그립니다 — 0%도 100%도 아닙니다. 스크린리더에는{" "}
           <code className="font-bold">aria-valuenow</code> 를 생략해 같은 사실을 전합니다.
+        </p>
+        <p className="text-sm text-ink-soft">
+          ⚠️ 불확정 막대를 <span className="font-bold">데이터 로딩에 쓰지 않습니다</span>. 진행률 역할은
+          &ldquo;측정 가능한 진행&rdquo;을 약속하는데 조회 대기는 그렇지 않고, 동작 줄이기 환경에서는 움직임이
+          멈춰 부분 막대가 &ldquo;40% 진행됨&rdquo;으로 오독됩니다. 조회 대기는 아래 로딩 섹션을 씁니다.
+        </p>
+      </Card>
+    </Section>
+  );
+}
+
+export function LoadingSection() {
+  return (
+    <Section title="로딩" hint="시각은 하나로 통일하고, 대기 길이에 따라 문구만 올립니다.">
+      <Card className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2">
+          <p className="text-sm font-bold text-ink">화면·카드가 데이터를 기다릴 때</p>
+          <SkeletonRows count={3} />
+          <Loading delayMs={0} />
+          <p className="text-sm text-ink-soft">
+            자리표시는 <span className="font-bold">즉시</span> 그립니다 — 임무가 &ldquo;기다림 알리기&rdquo;가
+            아니라 콘텐츠가 들어올 상자를 미리 차지해 레이아웃이 밀리지 않게 하는 것이기 때문입니다. 반면 문구는
+            200ms가 지나야 뜹니다. 빠른 응답에서 떴다 사라지면 진행 표시가 아니라 결함으로 읽힙니다.
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <p className="text-sm font-bold text-ink">사용자가 방금 누른 버튼</p>
+          <div className="flex flex-wrap gap-2">
+            <Button pending pendingLabel="저장 중…">
+              저장
+            </Button>
+            <Button variant="secondary" pending pendingLabel="로그아웃 중…">
+              로그아웃
+            </Button>
+          </div>
+          <p className="text-sm text-ink-soft">
+            이쪽은 <span className="font-bold">지연이 없습니다</span>. 즉각 반응이 곧 확인이고, 무엇보다 그
+            사이 두 번 눌리는 것을 막아야 합니다. 비활성과 라벨 교체를 한 prop으로 묶어 둘 중 하나를 잊을 수
+            없게 했습니다.
+          </p>
+        </div>
+
+        <p className="text-sm text-ink-soft">
+          문구 규칙 — 짧은 대기는 <span className="font-bold">&lsquo;저장 중…&rsquo;</span> 처럼 명사형으로,
+          LLM이 걸린 긴 대기(온보딩 제출 · AI 상담)는 무엇을 왜 기다리는지 해요체 문장으로 설명합니다. 말줄임은
+          점 세 개가 아니라 말줄임표 한 글자를 씁니다.
         </p>
       </Card>
     </Section>
