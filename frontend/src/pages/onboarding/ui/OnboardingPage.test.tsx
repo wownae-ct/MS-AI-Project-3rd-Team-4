@@ -144,3 +144,33 @@ describe("온보딩 제출 — createWedding 단일 호출", () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 });
+
+// 2026-08-28 추가 — 9단계(자유 서술, custom_request) 신규 스텝의 제출 계약만 고정한다. 스텝
+// 자체의 렌더링/글자수 카운터는 Step9CustomRequest.tsx 소관(다른 Step 컴포넌트들과 같은 관례 —
+// 이 파일은 개별 스텝 UI가 아니라 handleSubmit의 최종 payload만 검증한다).
+describe("9단계(자유 서술) — custom_request 제출 계약", () => {
+  it("나중에 설정으로 건너뛰면(기존 동작) custom_request를 아예 보내지 않는다", async () => {
+    createWeddingFn.mockResolvedValue({ id: "w1" });
+
+    await jumpToReviewAndSubmit();
+
+    const payload = createWeddingFn.mock.calls[0][0] as { custom_request?: string };
+    expect(payload.custom_request).toBeUndefined();
+  });
+
+  it("입력한 값은 앞뒤 공백이 trim되어 custom_request로 실린다", async () => {
+    createWeddingFn.mockResolvedValue({ id: "w1" });
+    render(<OnboardingPage />);
+
+    for (let i = 0; i < 8; i += 1) {
+      await userEvent.click(await screen.findByRole("button", { name: "다음" }));
+    }
+    await userEvent.type(await screen.findByRole("textbox"), "  반려동물과 함께하는 결혼식을 준비하고 있어요.  ");
+    await userEvent.click(await screen.findByRole("button", { name: "다음" }));
+    await userEvent.click(await screen.findByRole("button", { name: "시작하기" }));
+
+    expect(createWeddingFn).toHaveBeenCalledTimes(1);
+    const payload = createWeddingFn.mock.calls[0][0] as { custom_request?: string };
+    expect(payload.custom_request).toBe("반려동물과 함께하는 결혼식을 준비하고 있어요.");
+  });
+});

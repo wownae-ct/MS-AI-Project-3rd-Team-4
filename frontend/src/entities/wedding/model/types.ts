@@ -89,6 +89,10 @@ export interface WeddingCreateInput {
   sdm_priority?: SdmPriority;
   primary_goals?: string[];
   done_so_far?: DoneSoFarCategory[];
+  /** 2026-08-28 추가 — 9단계(자유 서술) 온보딩 질문, 선택 입력(최대 500자). 개인화 LLM
+      프롬프트에 참고용으로만 들어간다(backend app/schemas/wedding.py::CUSTOM_REQUEST_MAX_LENGTH와
+      값을 맞춰 관리 — 코드 생성 없이 양쪽에서 각자 상수로 관리하는 기존 관례를 그대로 따른다). */
+  custom_request?: string | null;
   /** 2026-08-27 재설계 — 온보딩 개인화 LLM 생성을 웨딩당 한 번만 태우기 위해 카테고리
       활성/예산 배분을 생성 시점에 함께 보낸다(이전엔 생성 직후 PUT /wedding-categories를
       또 호출해 활성 카테고리가 바뀔 때마다 개인화가 두 번 트리거됐다 — 실측 Langfuse

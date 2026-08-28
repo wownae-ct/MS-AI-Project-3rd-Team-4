@@ -1,7 +1,7 @@
-// 9단계(신규, 2026-08-26 사용자 지시): 최종 확인 — 실제로 고른 값과, "나중에 설정"으로 남겨둬
-// 기본값이 적용될 값을 한 화면에 모아 보여준다. 모든 단계의 "나중에 설정" 버튼이 다음 단계가
-// 아니라 이 단계로 바로 이동한다(멀리 점프) — 몇 단계를 건너뛰었든 마지막엔 항상 여기서 전체를
-// 확인하고 시작하게 한다.
+// 10단계(2026-08-26 사용자 지시로 신규 도입, 2026-08-28 9단계 자유 서술 추가로 9→10 재편):
+// 최종 확인 — 실제로 고른 값과, "나중에 설정"으로 남겨둬 기본값이 적용될 값을 한 화면에 모아
+// 보여준다. 모든 단계의 "나중에 설정" 버튼이 다음 단계가 아니라 이 단계로 바로 이동한다(멀리
+// 점프) — 몇 단계를 건너뛰었든 마지막엔 항상 여기서 전체를 확인하고 시작하게 한다.
 //
 // 이 컴포넌트는 상태도, 라벨 변환 로직도 갖지 않는다 — OnboardingPage가 원본 상태에서 파생한
 // "실제 제출될 값"의 라벨을 그대로 내려주기만 한다. 라벨 계산을 여기서 다시 하면 이 화면이
@@ -36,7 +36,7 @@ function ReviewRow({ label, value, isDefaulted, defaultedNote }: ReviewRowProps)
   );
 }
 
-export interface Step9ReviewProps {
+export interface Step10ReviewProps {
   weddingDateLabel: string;
   isDateDefaulted: boolean;
   regionLabel: string;
@@ -54,9 +54,10 @@ export interface Step9ReviewProps {
   activeCategoryCount: number;
   totalCategoryCount: number;
   allocatedBudgetLabel: string;
+  customRequestLabel: string;
 }
 
-export function Step9Review({
+export function Step10Review({
   weddingDateLabel,
   isDateDefaulted,
   regionLabel,
@@ -74,7 +75,8 @@ export function Step9Review({
   activeCategoryCount,
   totalCategoryCount,
   allocatedBudgetLabel,
-}: Step9ReviewProps) {
+  customRequestLabel,
+}: Step10ReviewProps) {
   return (
     <div className="flex flex-col">
       <ReviewRow label="결혼 예정일" value={weddingDateLabel} isDefaulted={isDateDefaulted} />
@@ -93,6 +95,10 @@ export function Step9Review({
       <ReviewRow label="지금까지 진행 상황" value={progressLabel} />
       <ReviewRow label="사용할 카테고리" value={`${activeCategoryCount.toString()}개 / 총 ${totalCategoryCount.toString()}개`} />
       <ReviewRow label="예산 배분" value={allocatedBudgetLabel} />
+      {/* 다른 스킵 가능 필드(취향/목표)와 달리 이 필드엔 "저희가 정한 기본값"이 없다 — 비우면
+          그냥 null로 저장된다(하객 수와 같은 부류). isDefaulted 대신 라벨 자체("작성 안 함")로
+          충분히 전달돼 별도 안내 문구가 필요 없다. */}
+      <ReviewRow label="추가로 남긴 말" value={customRequestLabel} />
     </div>
   );
 }
