@@ -1,0 +1,187 @@
+// ============================================================================
+// Bicep이란? 이 파일은 뭘 하는가?
+// Bicep은 "코드로 Azure 인프라를 선언"하는 언어다 — 웹 콘솔에서 하나하나 클릭해 리소스를
+// 만드는 대신, 이 파일을 `az deployment group create`에 넘기면 여기 적힌 상태(AKS 클러스터
+// 하나, DB 하나, ...) 그대로 Azure에 만들어준다(이미 있으면 필요한 부분만 갱신 — 멱등적).
+// 이 파일(main.bicep)은 "총괄 지휘자"고, 실제 리소스 하나하나의 자세한 설정은
+// modules/*.bicep 파일에 각각 나눠져 있다(module 블록으로 여기서 불러 씀). 아래 1~8번
+// 순서는 실제 의존관계(예: AKS는 ACR 이름을 알아야 그 ACR에 접근 권한을 줄 수 있음) 순서다.
+// ============================================================================
+targetScope = 'resourceGroup'
+
+@description('배포 리전 (Static Web Apps는 modules/staticwebapp.bicep에서 별도 리전 사용)')
+param location string = resourceGroup().location
+
+@minLength(3)
+@maxLength(12)
+@description('리소스 이름 프리픽스(팀/프로젝트 식별용, 영문 소문자+숫자만). 3~12자 제한은 가장 타이트한 하위 리소스인 Key Vault 이름 규칙(뒤에 -kv 붙는 형태로 24자 제한)에서 역산한 여유값. 기본값 없음(의도적) — infra/bicep/params/dev.bicepparam이 infra/.env의 NAME_PREFIX를 강제로 읽게 돼 있고, scripts/deploy-infra.sh가 실행 시 대화형으로 물어봐서 항상 채움')
+param namePrefix string
+
+@description('환경 태그(dev/staging 등). infra/.env의 DEPLOY_ENVIRONMENT로 채움')
+param environment string = 'dev'
+
+@description('Postgres 관리자 로그인 아이디')
+param postgresAdminLogin string = 'pgadmin'
+
+@secure()
+@description('Postgres 관리자 비밀번호. CI에서는 secrets.POSTGRES_ADMIN_PASSWORD로 주입')
+param postgresAdminPassword string
+
+@description('RAG 스키마가 들어갈 데이터베이스 이름. 2026-08-26 발견 — infra-deploy.yml에 DATABASE_NAME env var가 안 걸려있어 실배포마다 이 기본값(postgres)으로 조용히 되돌아가던 버그(로그인 500, modules/postgres.bicep 머리말 참고) — 실제 마이그레이션 DB로 기본값 자체를 바꾼다.')
+param postgresDatabaseName string = 'team4db-wd'
+
+@description('kubectl AAD RBAC 클러스터 관리자로 등록할 AAD 오브젝트 ID들. 이메일이 아니라 GUID 필요 —\ndev.bicepparam에서 infra/.env의 CLUSTER_ADMIN_OBJECT_IDS(쉼표구분)로 채움')
+param clusterAdminPrincipalIds array = []
+
+// 소셜 로그인(구글/네이버, 00_BASELINE.md §0-2 Should) — Google/Naver 개발자 콘솔에서 발급받은
+// 값이라 openai-endpoint처럼 배포 시점에 Azure가 정해주는 값이 아니다. postgresAdminPassword와
+// 동일한 이유로 @secure() 필수 파라미터 + dev 전용 폴백 기본값을 둔다 — az deployment group
+// create 한 번으로 Key Vault까지 채워지는 게 목표(README에 수동 az keyvault secret set 단계를
+// 남기지 않는다, infra/docs/iac.md §Key Vault 시크릿 자동화와 동일 원칙).
+@secure()
+@description('구글 OAuth 클라이언트 ID. CI에서는 secrets.GOOGLE_CLIENT_ID로 주입')
+param googleClientId string
+
+@secure()
+@description('구글 OAuth 클라이언트 시크릿. CI에서는 secrets.GOOGLE_CLIENT_SECRET로 주입')
+param googleClientSecret string
+
+@secure()
+@description('네이버 OAuth 클라이언트 ID. CI에서는 secrets.NAVER_CLIENT_ID로 주입')
+param naverClientId string
+
+@secure()
+@description('네이버 OAuth 클라이언트 시크릿. CI에서는 secrets.NAVER_CLIENT_SECRET로 주입')
+param naverClientSecret string
+
+// Langfuse LLM 관측/트레이싱(14_langfuse_tracing_design.md) — Langfuse Cloud(외부 SaaS)에서
+// 발급받은 값이라 위 구글/네이버 OAuth 시크릿과 성격이 같다. 원래 az keyvault secret set으로
+// 수동 등록돼 있었는데(PR #42), 2026-08-24 팀 결정으로 이 IaC 패턴에 맞춰 전환 — 이미 KV에 있는
+// 값은 그대로 두고 Bicep이 같은 값으로 수렴하게만(what-if NoChange) 한다.
+@secure()
+@description('Langfuse Cloud 프로젝트 public key. CI에서는 secrets.LANGFUSE_PUBLIC_KEY로 주입')
+param langfusePublicKey string
+
+@secure()
+@description('Langfuse Cloud 프로젝트 secret key. CI에서는 secrets.LANGFUSE_SECRET_KEY로 주입')
+param langfuseSecretKey string
+
+var tags = {
+  project: namePrefix
+  environment: environment
+}
+
+// 1) 관측성 먼저 — AKS Container Insights가 이 워크스페이스 ID를 필요로 함
+module monitor 'modules/monitor.bicep' = {
+  name: 'monitor'
+  params: {
+    location: location
+    namePrefix: namePrefix
+    tags: tags
+  }
+}
+
+// 2) 이미지 레지스트리 — AKS가 여기에 AcrPull 권한을 부여받음
+module acr 'modules/acr.bicep' = {
+  name: 'acr'
+  params: {
+    location: location
+    namePrefix: namePrefix
+    tags: tags
+    logAnalyticsWorkspaceId: monitor.outputs.logAnalyticsId
+  }
+}
+
+// 3) AKS — Workload Identity(OIDC) + Container Insights + ACR pull 권한 + backend용 User-Assigned Identity
+module aks 'modules/aks.bicep' = {
+  name: 'aks'
+  params: {
+    location: location
+    namePrefix: namePrefix
+    tags: tags
+    acrName: acr.outputs.acrName
+    logAnalyticsWorkspaceId: monitor.outputs.logAnalyticsId
+    clusterAdminPrincipalIds: clusterAdminPrincipalIds
+  }
+}
+
+// 4) 시크릿 저장소 — backend 워크로드 identity에 "Key Vault Secrets User"만 부여(최소 권한, 모듈 내부에서 처리)
+module keyvault 'modules/keyvault.bicep' = {
+  name: 'keyvault'
+  params: {
+    location: location
+    namePrefix: namePrefix
+    tags: tags
+    backendIdentityPrincipalId: aks.outputs.backendIdentityPrincipalId
+    googleClientId: googleClientId
+    googleClientSecret: googleClientSecret
+    naverClientId: naverClientId
+    naverClientSecret: naverClientSecret
+    langfusePublicKey: langfusePublicKey
+    langfuseSecretKey: langfuseSecretKey
+  }
+}
+
+// 5) DB — PostgreSQL Flexible Server + pgvector (RAG 벡터 검색)
+module postgres 'modules/postgres.bicep' = {
+  name: 'postgres'
+  params: {
+    location: location
+    namePrefix: namePrefix
+    tags: tags
+    administratorLogin: postgresAdminLogin
+    administratorLoginPassword: postgresAdminPassword
+    backendIdentityPrincipalId: aks.outputs.backendIdentityPrincipalId
+    keyVaultName: keyvault.outputs.keyVaultName
+    databaseName: postgresDatabaseName
+  }
+}
+
+// 6) LLM — coach/safety/planner가 호출하는 chat 모델 + retriever가 쓰는 embedding 모델
+module openai 'modules/openai.bicep' = {
+  name: 'openai'
+  params: {
+    location: location
+    namePrefix: namePrefix
+    tags: tags
+    logAnalyticsWorkspaceId: monitor.outputs.logAnalyticsId
+    backendIdentityPrincipalId: aks.outputs.backendIdentityPrincipalId
+    keyVaultName: keyvault.outputs.keyVaultName
+  }
+}
+
+// 7) 프론트엔드 정적 호스팅 (배포 자체는 frontend-ci.yml GitHub Action이 담당)
+module staticwebapp 'modules/staticwebapp.bicep' = {
+  name: 'staticwebapp'
+  params: {
+    namePrefix: namePrefix
+    tags: tags
+  }
+}
+
+// 8) 범용 Blob 저장소 — 2026-08-25부로 영수증 OCR 자동채움(payments) 원본 이미지 저장용 실사용
+// 확정(receipts 컨테이너, Contributor RBAC, storage.bicep 참고)
+module storage 'modules/storage.bicep' = {
+  name: 'storage'
+  params: {
+    location: location
+    namePrefix: namePrefix
+    tags: tags
+    backendIdentityPrincipalId: aks.outputs.backendIdentityPrincipalId
+    logAnalyticsWorkspaceId: monitor.outputs.logAnalyticsId
+    keyVaultName: keyvault.outputs.keyVaultName
+  }
+}
+
+output aksName string = aks.outputs.aksName
+output oidcIssuerUrl string = aks.outputs.oidcIssuerUrl
+output backendIdentityClientId string = aks.outputs.backendIdentityClientId
+output imageUpdaterIdentityClientId string = aks.outputs.imageUpdaterIdentityClientId
+output acrLoginServer string = acr.outputs.acrLoginServer
+output keyVaultUri string = keyvault.outputs.keyVaultUri
+output postgresFqdn string = postgres.outputs.postgresFqdn
+output openAiEndpoint string = openai.outputs.openAiEndpoint
+output staticWebAppDefaultHostname string = staticwebapp.outputs.defaultHostname
+output appInsightsConnectionString string = monitor.outputs.appInsightsConnectionString
+output storageAccountName string = storage.outputs.storageAccountName
+output blobEndpoint string = storage.outputs.blobEndpoint
