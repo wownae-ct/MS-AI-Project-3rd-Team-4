@@ -110,10 +110,10 @@ if [[ -n "$py_files" ]]; then
   else
     rel_py_files=$(echo "$py_files" | sed 's|^backend/||')
     echo "ruff: 스테이징된 Python 파일 $(echo "$py_files" | wc -l)개 검사 중..."
-    if ! (cd backend && echo "$rel_py_files" | xargs uv run --extra dev ruff check); then
+    if ! (cd backend && echo "$rel_py_files" | xargs uv run --extra dev ruff check --force-exclude); then
       fail "ruff check 실패 — 위 오류를 고치거나 'uv run --extra dev ruff check --fix'로 자동 수정 후 다시 커밋하세요."
     fi
-    if ! (cd backend && echo "$rel_py_files" | xargs uv run --extra dev ruff format --check); then
+    if ! (cd backend && echo "$rel_py_files" | xargs uv run --extra dev ruff format --check --force-exclude); then
       fail "ruff format 검사 실패 — 'uv run --extra dev ruff format'으로 포맷을 맞춘 뒤 다시 커밋하세요."
     fi
     ok "ruff check + format 통과"

@@ -1,0 +1,24 @@
+{
+  "__WHY_HERE__": "Vite 는 public/ 을 dist/ 루트로 그대로 복사한다. SWA 공식 문서 — 'if there's a build step, you must ensure the build step outputs the file to the root of the output_location' (learn.microsoft.com/azure/static-web-apps/configuration#file-location). 빌드 산출물 게이트(scripts/check-bundle-budget.mjs → lib/deploy-config.mjs)가 dist/staticwebapp.config.json 의 존재와 핵심 키를 검사한다.",
+
+  "__CSP_NOTE__": "실제로 쓰는 것만 남긴다 — 축소가 곧 보안 개선이다. 2026-08-26 갱신(T9): 전송 계층이 들어와 apiFetch/SSE 가 VITE_API_BASE 오리진으로 fetch 한다 — connect-src 에 배포된 백엔드 오리진(https://20-249-52-148.nip.io, staging)을 추가했다. 이 값은 GitHub 시크릿 VITE_API_BASE 와 반드시 같아야 한다 — 어긋나면 배포본에서 모든 API 호출이 이 CSP 에 막힌다(로컬에서는 안 보인다, integration-status.md §5-② 참고). style-src 'unsafe-inline' 은 Base UI Progress 의 인라인 style 속성(width) 때문에 필요하다. font-src 는 self-host 라 default-src 로 충분하다. 이 정책을 <meta http-equiv> 로 dist 에 주입해 브라우저에서 위반 0건을 확인했다(frame-ancestors 는 meta 에서 무시되므로 그 항목만 미검증).",
+
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": ["/assets/*"]
+  },
+
+  "routes": [
+    {
+      "route": "/assets/*",
+      "headers": {
+        "Cache-Control": "public, max-age=31536000, immutable"
+      }
+    }
+  ],
+
+  "globalHeaders": {
+    "Cache-Control": "no-cache",
+    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://20-249-52-148.nip.io; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; object-src 'none'"
+  }
+}

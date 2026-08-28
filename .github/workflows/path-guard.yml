@@ -18,6 +18,10 @@ jobs:
       - name: Check changed paths match branch ownership
         run: |
           set -euo pipefail
+          # 한글 등 non-ASCII 파일명은 기본 core.quotePath(=true) 때문에 git diff 출력에서
+          # "경로"처럼 큰따옴표+8진수 이스케이프로 감싸져 아래 grep -E '^...' 매칭이 실패한다
+          # (2026-08-19 frontend/old/docs/plan/*.md에서 실제로 발생해서 발견).
+          git config core.quotePath false
           BASE="${{ github.base_ref }}"
           # core.quotePath=false: 한글 등 non-ASCII 파일명을 git이 "\352\265\254..." 8진수 이스케이프로
           # 감싸서 출력하면 아래 정규식이 맨 앞 큰따옴표 때문에 매칭을 못 해서 오탐이 난다.
