@@ -20,7 +20,7 @@
 // **UX 개편 2차(2026-08-26, 사용자 지시)** — 이 화면에서 3개 컴포넌트가 빠졌다:
 //   · 결혼식 날짜 수정(`WeddingDateCard`) → 대시보드 헤드라인으로 이동
 //     (`pages/dashboard/ui/WeddingHeadline.tsx`).
-//   · 총예산 수정("남은예산" 카드, `TotalBudgetCard`) → `AllocationOverview`의 "총 예산 현황"
+//   · 총예산 수정("남은예산" 카드, `TotalBudgetCard`) → 아래 "총 예산 현황"
 //     카드 안 `BudgetDonut.tsx`로 흡수. "총 예산 현황"에 도넛·범례·총예산 수정이 이미 다 모여
 //     있는데 남은예산만 별개 카드로 둘 이유가 없다는 판단.
 // 대신 "카테고리별 예산 현황" 행에 대시보드와 같은 시세비교 줄이 새로 붙는다(`useCategoryBenchmarks`,
@@ -37,13 +37,20 @@
 // 예산 미배정인데 지출이 생긴 카테고리(예: 혼수)의 막대·금액이 0으로만 보이던 버그도
 // 함께 고쳤다(`CategoryAllocationRow.tsx`) — 사용자 신고. "집행"이라는 말도 전부
 // "지불"로 바꿨다.
+//
+// **UX 개편 5차(2026-08-29, 사용자 지시)** — 화면 순서를 「총 예산 현황(도넛) → 다가오는 결제 →
+// 비용 관리 → 카테고리별 예산 현황」으로 바꿨다. 전체 요약을 맨 위에 두고 상세로 내려가는
+// 순서다. 도넛과 카테고리별 목록을 한 덩어리로 렌더하던 `AllocationOverview.tsx`는 그 사이에
+// 다른 섹션이 끼게 되면서 성립하지 않아 없앴다 — 목록 쪽은 `CategoryAllocationList.tsx`로
+// 옮겼고, 도넛은 이 파일이 직접 그린다.
 import { useEffect, useState } from "react";
 import { getDashboardSummary, type BudgetBenchmarkSummary } from "@/entities/dashboard";
 import { getUpcomingPayments, UpcomingPaymentsCard, type UpcomingPaymentEntry } from "@/entities/payment";
-import { getCategories, getMyWedding, getWeddingCategories, putWeddingCategories, type WeddingCategory } from "@/entities/wedding";
+import { deriveBudgetSummary, getCategories, getMyWedding, getWeddingCategories, putWeddingCategories, type WeddingCategory } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
-import { Card, Loading, Page, SkeletonRows } from "@/shared/ui";
-import { AllocationOverview } from "./AllocationOverview";
+import { Page } from "@/shared/ui";
+import { BudgetDonut } from "./BudgetDonut";
+import { CategoryAllocationList } from "./CategoryAllocationList";
 import { CostManagementTab } from "./CostManagementTab";
 import { useCategoryBenchmarks } from "./use-category-benchmarks";
 
@@ -75,7 +82,6 @@ export function BudgetPage() {
   const [data, setData] = useState<BudgetData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [upcomingPayments, setUpcomingPayments] = useState<UpcomingPaymentEntry[] | null>(null);
-  const [upcomingPaymentsFailed, setUpcomingPaymentsFailed] = useState(false);
   // 총예산 vs 지역 시세 — 대시보드의 "예산 시세 비교" 카드가 여기로 옮겨오면서(UX 개편 3차,
   // 2026-08-26, 사용자 지시) 이 페이지도 GET /dashboard/summary를 직접 조회해야 한다. 이 필드
   // 전용으로 별도 백엔드 엔드포인트를 새로 만들지 않고 기존 대시보드 응답을 재사용한다 —
@@ -129,9 +135,6 @@ export function BudgetPage() {
       })
       .catch(() => {
         // 다가오는 결제는 보조 위젯이다 — 실패해도 예산 재배분 본문은 그대로 보여준다.
-        // 실패를 별도 상태로 남기는 이유: null 하나로는 "아직"과 "영영"이 구분되지 않아,
-        // 로딩 자리표시가 영원히 남는다(대시보드의 같은 카드와 동일한 처리).
-        if (!cancelled) setUpcomingPaymentsFailed(true);
       });
     return () => {
       cancelled = true;
@@ -241,11 +244,7 @@ export function BudgetPage() {
   if (data === null) {
     return (
       <Page title="예산 재배분" subtitle="카테고리 사이로 예산을 옮겨 봅니다.">
-        {/* D14 L2 */}
-        <Card>
-          <SkeletonRows count={5} />
-        </Card>
-        <Loading />
+        <p className="text-sm text-ink-soft">불러오는 중…</p>
       </Page>
     );
   }
@@ -258,16 +257,22 @@ export function BudgetPage() {
   return (
     <Page title="예산 재배분" subtitle="카테고리 사이로 예산을 옮겨 봅니다.">
       <div className="flex flex-col gap-5">
-        {/* 로딩 중엔 자리를 잡아 두고(카드가 뒤늦게 끼어들며 아래를 밀어내지 않게), 실패하면
-            자리를 회수한다 — 영구 자리표시가 남지 않게 하는 쪽이 중요하다(D14 SE2). */}
-        {upcomingPayments === null
-          ? !upcomingPaymentsFailed && (
-              <Card title="다가오는 납부">
-                <SkeletonRows count={2} />
-                <Loading srOnly />
-              </Card>
-            )
-          : <UpcomingPaymentsCard payments={upcomingPayments} windowDays={UPCOMING_PAYMENT_WINDOW_DAYS} />}
+        {/* 대시보드에 있던 도넛을 이 화면으로 옮겼다(UX 개편 2차, 2026-08-26) — deriveBudgetSummary가
+            draft-aware한 rows를 받으므로, 시나리오 편집 중 슬라이더를 움직이면 도넛도 같이
+            움직인다(entities/wedding/model/derive-budget-summary.ts 머리말 — 예전 대시보드
+            도넛의 "미배정이 거의 항상 안 그려지던" 버그도 여기서 함께 고쳐졌다).
+            UX 개편 3차(2026-08-26)로 대시보드의 "예산 시세 비교" 카드도 여기 흡수됐다 —
+            BudgetDonut이 자기 Card(제목 "총 예산 현황" + titleAction 수정 버튼)를 직접 그리므로
+            여기서는 Card로 감싸지 않는다. */}
+        <BudgetDonut
+          summary={deriveBudgetSummary(rows, data.totalBudget)}
+          onTotalBudgetSaved={(nextTotal) => setData((prev) => (prev ? { ...prev, totalBudget: nextTotal } : prev))}
+          benchmark={budgetBenchmark}
+        />
+
+        {upcomingPayments !== null && (
+          <UpcomingPaymentsCard payments={upcomingPayments} windowDays={UPCOMING_PAYMENT_WINDOW_DAYS} />
+        )}
 
         <CostManagementTab
           categoryLabelByCode={data.categoryLabelByCode}
@@ -275,17 +280,15 @@ export function BudgetPage() {
           onPaymentsChanged={refetchCategories}
         />
 
-        <AllocationOverview
+        <CategoryAllocationList
           rows={rows}
           originalCategories={data.categories}
           totalBudget={data.totalBudget}
           hasCostByCode={data.hasCostByCode}
           hasBenchmarkByCode={hasBenchmarkByCode}
           benchmarkByCode={benchmarkByCode}
-          budgetBenchmark={budgetBenchmark}
           isEditingScenario={isEditingScenario}
           onDraftChange={updateDraftBudget}
-          onTotalBudgetSaved={(nextTotal) => setData((prev) => (prev ? { ...prev, totalBudget: nextTotal } : prev))}
         />
 
         {isEditingScenario ? (

@@ -30,7 +30,7 @@ vi.mock("@/entities/session", async (orig) => ({
 //
 // **다만 "/budget 에서 정확히 하나다"가 실제로 깨졌던 원인은 이 네트워크 호출 자체가 아니었다**
 // (교정: 처음엔 DNS 실패가 findBy* 기본 타임아웃을 넘긴 거라고 추정했으나, 아래 mock을 전부
-// 넣은 뒤에도 여전히 간헐적으로 실패해 재조사함) — `/budget`은 `AllocationOverview`·
+// 넣은 뒤에도 여전히 간헐적으로 실패해 재조사함) — `/budget`은 `CategoryAllocationList`·
 // `CostManagementTab`·`BudgetDonut`까지 딸린 무거운 lazy 청크라, 이 환경에서 import+렌더가
 // 다른 라우트보다 오래 걸려 `findByRole`의 기본 대기시간(`@testing-library/dom` 1000ms)을
 // 살짝 넘기는 경우가 있었다(타임아웃을 1100~1500ms로만 올려도 결정적으로 통과함을 확인 —
