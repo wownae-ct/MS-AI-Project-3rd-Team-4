@@ -11,7 +11,7 @@
 // 예전엔 카테고리 배분 합계가 총예산을 넘어도 아무것도 막지 않았다. "N원 초과" 텍스트 한 줄만
 // 바뀌고 "다음"은 그대로 통과했고, 그 값이 `POST /weddings` 의 `planned_budget` 으로 나가
 // 서버가 400 BUDGET_EXCEEDED 를 냈다(`sum(planned_budget) > total_budget`). 사용자는 온보딩을
-// 끝까지 채우고 "시작하기"를 눌러야 그 사실을 알았고, 9단계 확인 화면은 "5,000만원 / 4,000만원"
+// 끝까지 채우고 "시작하기"를 눌러야 그 사실을 알았고, 10단계 확인 화면은 "5,000만원 / 4,000만원"
 // 으로 나란히 찍을 뿐 "초과"라는 말조차 하지 않았다.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
@@ -173,6 +173,8 @@ describe("온보딩 8단계 — 배분이 총예산을 넘을 때", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "총예산 금액을 조정할까요?" }));
     await retype(BUDGET_LABEL, "5000");
+    // 8 → 9(자유 서술) → 10(확인). "시작하기"는 마지막 단계에만 있다(2026-08-28 재편).
+    await userEvent.click(nextButton());
     await userEvent.click(nextButton());
     await userEvent.click(await screen.findByRole("button", { name: "시작하기" }));
 
@@ -181,7 +183,7 @@ describe("온보딩 8단계 — 배분이 총예산을 넘을 때", () => {
     expect(payload.total_budget_unsure).toBe(false);
   });
 
-  it("초과 상태에서 '나중에 설정'을 누르면 배분만 0으로 지우고, 9단계가 그 사실을 알린다", async () => {
+  it("초과 상태에서 '나중에 설정'을 누르면 배분만 0으로 지우고, 10단계가 그 사실을 알린다", async () => {
     createWeddingFn.mockResolvedValue({ id: "w1" });
     await goToStep2();
     await userEvent.type(screen.getByLabelText(BUDGET_LABEL), "1000");
@@ -190,7 +192,7 @@ describe("온보딩 8단계 — 배분이 총예산을 넘을 때", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "나중에 설정" }));
 
-    // 조용히 지우면 "0원 배분"이 버그로 읽힌다 — 9단계가 이유를 말한다.
+    // 조용히 지우면 "0원 배분"이 버그로 읽힌다 — 10단계가 이유를 말한다.
     expect(screen.getByText(RESET_NOTE)).toBeInTheDocument();
     expect(screen.getByText("0원 / 10,000,000원")).toBeInTheDocument();
 
@@ -203,7 +205,7 @@ describe("온보딩 8단계 — 배분이 총예산을 넘을 때", () => {
     ]);
   });
 
-  it("배분을 다시 만지면 9단계의 '비웠어요' 안내가 사라진다 — 더는 사실이 아니다", async () => {
+  it("배분을 다시 만지면 10단계의 '비웠어요' 안내가 사라진다 — 더는 사실이 아니다", async () => {
     await goToStep2();
     await userEvent.type(screen.getByLabelText(BUDGET_LABEL), "1000");
     await advanceToStep8();
@@ -211,9 +213,13 @@ describe("온보딩 8단계 — 배분이 총예산을 넘을 때", () => {
     await userEvent.click(screen.getByRole("button", { name: "나중에 설정" }));
     expect(screen.getByText(RESET_NOTE)).toBeInTheDocument();
 
-    // 화살표 span 은 aria-hidden 이라 접근명은 "이전" 뿐이다.
+    // 화살표 span 은 aria-hidden 이라 접근명은 "이전" 뿐이다. "나중에 설정"의 목적지는 10단계라
+    // 8단계로 돌아가려면 두 번 눌러야 한다 — 사이에 9단계(자유 서술)가 있다(2026-08-28 재편).
+    await userEvent.click(screen.getByRole("button", { name: "이전" }));
     await userEvent.click(screen.getByRole("button", { name: "이전" }));
     await retype(AMOUNT_LABEL, "800");
+    // 8 → 9(자유 서술) → 10(확인). 확인 화면에서만 안내 문구와 배분 라벨을 볼 수 있다.
+    await userEvent.click(nextButton());
     await userEvent.click(nextButton());
 
     expect(screen.queryByText(RESET_NOTE)).not.toBeInTheDocument();

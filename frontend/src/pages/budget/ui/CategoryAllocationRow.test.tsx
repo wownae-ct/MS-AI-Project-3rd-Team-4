@@ -14,6 +14,7 @@ function category(overrides: Partial<WeddingCategory>): WeddingCategory {
     is_active: true,
     planned_budget: 0,
     paid_amount: 0,
+    scheduled_amount: 0,
     remaining: 0,
     selected_options: null,
     display_order: 1,

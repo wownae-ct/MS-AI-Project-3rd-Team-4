@@ -10,11 +10,17 @@
 //
 // **영수증 사진 OCR 자동채움(2026-08-26 사용자 지시)** — `getReceiptExtract()`(#34
 // POST /payments/receipt-extract)로 사진을 올리면 항목명/업체명/금액/결제일을 채워준다.
-// `capture="environment"` 는 모바일에서 파일 선택 대신 후면 카메라를 바로 연다(지원 브라우저
-// 한정 — 데스크톱은 그냥 파일 선택창으로 열린다). DB 반영은 없는 추출 전용 호출이라, 결과는
-// 그대로 폼에 채워질 뿐 사용자가 확인/수정한 뒤 "추가"를 눌러야 실제로 저장된다(백엔드 결정
-// 문서와 동일 원칙). OCR이 못 읽은 필드(null)는 기존 입력값을 지우지 않는다 — 사용자가 이미
-// 손으로 채워둔 값을 빈 결과로 덮어쓰면 오히려 손해다.
+// DB 반영은 없는 추출 전용 호출이라, 결과는 그대로 폼에 채워질 뿐 사용자가 확인/수정한 뒤
+// "추가"를 눌러야 실제로 저장된다(백엔드 결정 문서와 동일 원칙). OCR이 못 읽은 필드(null)는
+// 기존 입력값을 지우지 않는다 — 사용자가 이미 손으로 채워둔 값을 빈 결과로 덮어쓰면 오히려
+// 손해다.
+//
+// **갤러리 첨부 지원(2026-08-28 버그 수정)** — 이전엔 `capture="environment"`가 붙어있어
+// Android Chrome 등 다수의 모바일 브라우저에서 갤러리/파일 선택 옵션 자체가 사라지고 후면
+// 카메라만 강제로 열렸다. 이미 찍어둔 밝고 초점 맞은 사진을 재사용할 수 없어 매번 급하게
+// 새로 찍어야 했고, 이는 OCR 인식률 저하와도 연결되는 문제였다(docs/wedding/refactor/
+// bug-todo.md). `capture` 속성을 제거해 브라우저 기본 파일 선택 UI(카메라/갤러리 둘 다 선택
+// 가능)를 쓰도록 되돌린다.
 import { useRef, useState } from "react";
 import { ApiError } from "@/shared/api";
 import { AMOUNT_STEP_WON } from "@/shared/lib/money";
@@ -181,7 +187,6 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
         ref={fileInputRef}
         type="file"
         accept={ALLOWED_RECEIPT_TYPES.join(",")}
-        capture="environment"
         className="sr-only"
         onChange={(event) => void handleReceiptChange(event)}
       />

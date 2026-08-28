@@ -1,0 +1,24 @@
+# app-of-apps 루트 — production 전용 (2026-08-26, root-app 분리). root-app-staging.yaml과 대칭
+# (targetRevision: main, path: infra/k8s/apps/production) — main 브랜치는 PR 필수+리뷰 승인이
+# 곧 "프로덕션 승인"이라는 기존 정책과 일관되게, production Application 추가/변경은 여전히
+# main 승격을 거쳐야 반영된다.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-app-production
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4.git
+    targetRevision: main
+    path: infra/k8s/apps/production
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

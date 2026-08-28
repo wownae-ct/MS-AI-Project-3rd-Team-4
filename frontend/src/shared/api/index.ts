@@ -3,6 +3,7 @@ export { checkApiBase, isLocalOnlyApiBase } from "./api-base";
 export {
   apiFetch,
   apiFetchMultipart,
+  classifyFetchFailure,
   notifyUnauthorized,
   onUnauthorized,
   PERSONALIZATION_TIMEOUT_MS,

@@ -54,6 +54,7 @@ const WEDDING_CATEGORIES: WeddingCategoriesResponse = {
       is_active: true,
       planned_budget: 0,
       paid_amount: 0,
+      scheduled_amount: 0,
       remaining: 0,
       selected_options: null,
       display_order: 1,
@@ -67,6 +68,7 @@ const WEDDING_CATEGORIES: WeddingCategoriesResponse = {
       is_active: true,
       planned_budget: 12_000_000,
       paid_amount: 3_000_000,
+      scheduled_amount: 1_000_000,
       remaining: 9_000_000,
       selected_options: null,
       display_order: 2,
@@ -116,9 +118,9 @@ describe("카테고리별 진행률", () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  // S2 와 뜻이 다르다는 것을 고정한다 — 여기 기준은 체크리스트 진행률이라 예산이 없는(0원)
-  // 상견례도 바를 갖는다.
-  it("예산이 없는 카테고리도 바를 갖는다 — 여기 기준은 체크리스트다", async () => {
+  // S2 와 뜻이 다르다는 것을 고정한다 — 여기 기준은 타임라인 진행률(2026-08-28부터, 이전엔
+  // 체크리스트였다)이라 예산이 없는(0원) 상견례도 바를 갖는다.
+  it("예산이 없는 카테고리도 바를 갖는다 — 여기 기준은 타임라인이다", async () => {
     await renderReport();
 
     expect(screen.getByText("상견례")).toBeInTheDocument();

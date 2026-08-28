@@ -2,7 +2,9 @@
 // status 유효값은 카테고리에 따라 갈린다(HOMEWARE 만 다른 상태기계) — API 스펙 §2-B, 화면이 분기한다.
 
 export type ChecklistItemType = "CONTRACT_TERM" | "EXTRA_COST" | "PREP";
-export type ChecklistItemOrigin = "LLM" | "USER";
+// "CATALOG_FALLBACK"은 2026-08-28 신규 — 개인화 validate가 BLOCKED일 때의 결정론적
+// 카탈로그 대체 항목(진짜 LLM 실시간 생성이 아님, backend origin='LLM' mislabel 수정).
+export type ChecklistItemOrigin = "LLM" | "USER" | "CATALOG_FALLBACK";
 export type SourceTier = "OFFICIAL" | "CONSENSUS" | "INDUSTRY";
 export type ChecklistPriority = "high" | "mid" | "low";
 

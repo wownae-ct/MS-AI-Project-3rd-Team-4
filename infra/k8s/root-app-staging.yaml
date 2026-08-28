@@ -1,0 +1,26 @@
+# app-of-apps 루트 — staging 전용 (2026-08-26, root-app 분리).
+# 예전엔 root-app 하나가 targetRevision: HEAD(main)로 infra/k8s/apps/ 전체를 읽어서, staging용
+# Application을 새로 추가해도 main 승격 전까지는 이 root-app 자체가 그 파일을 못 봤다 —
+# 개별 staging Application(backend-staging 등)은 backend 브랜치를 추적하는데, 그 Application을
+# "발견"하는 건 main에 달려 있는 비대칭이 있었다. 이 파일은 backend 브랜치를 직접 추적해서
+# staging Application 추가/변경이 main 승격 없이 즉시 반영되게 한다.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-app-staging
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4.git
+    targetRevision: backend
+    path: infra/k8s/apps/staging
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

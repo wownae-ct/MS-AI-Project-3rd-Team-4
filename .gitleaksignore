@@ -1,0 +1,16 @@
+# 알려진 과거 유출 — 새 유출 탐지는 유지하면서, 이미 파악된 히스토리 건으로 CI가
+# 상시 빨간불이 되는 것만 막는다. "무시해도 되는 이유"가 아니라 "이미 알고 대응 중"이라는
+# 표시다: 값은 파일에서 제거됐고(595a12f) 히스토리에만 남아 있으며, 무력화 절차는
+# infra/시크릿-회전.md 참고. 회전이 완료되면 이 항목은 더 이상 위험이 아니다.
+7f285e0c0ff7afe4a6d1bb6be8ab0c73aeebaca9:infra/구현-요약.md:korean-plaintext-credential:89
+
+# 오탐 — RAG 코퍼스 원본 아카이브(data/raw/, 손대지 않는 원문 보존 원칙)에 들어있는 제3자
+# 뉴스 사이트(Businesskorea)의 카카오 공유 위젯 JS SDK 키. 이 키는 MerryMap 시크릿이
+# 아니라 그 웹페이지 소스에 원래부터 공개 삽입돼 있던 클라이언트 키다(카카오 JS SDK는
+# 도메인 제한으로 보호되는 공개 키가 원래 설계).
+data/raw/DS5_DUO/businesskorea_264825.html:generic-api-key:697
+
+# 오탐 — 로그인 폼 테스트 픽스처 비밀번호(서버 비밀번호 조합 규칙 검증용, 실제 계정 아님).
+# 커밋 해시를 안 붙인 건 이 파일이 backend→main/frontend→main 승격마다 새 병합 커밋으로
+# 재작성돼 해시 기반 항목이 매번 깨지기 때문 — 위 businesskorea 항목과 같은 패턴.
+frontend/src/pages/login/ui/LoginPage.test.tsx:korean-plaintext-credential:147

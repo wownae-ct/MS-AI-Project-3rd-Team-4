@@ -1,0 +1,70 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "메리맵 백엔드 (FastAPI + SQLAlchemy 2.0 async + RAG 상담)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "asyncpg>=0.29",
+    "sqlalchemy[asyncio]>=2.0",
+    "alembic>=1.13",
+    "pgvector>=0.3",
+    "pydantic>=2.8",
+    "pydantic-settings>=2.4",
+    "azure-identity>=1.17",
+    "azure-keyvault-secrets>=4.8",
+    # 영수증 OCR 자동채움(2026-08-25 결정, payments)의 multipart 업로드(UploadFile) —
+    # Starlette가 폼/파일 파싱에 python-multipart를 요구한다(누락 시 런타임 500, import
+    # 시점엔 안 걸림). Blob 업로드 자체는 새 SDK/전송계층 의존성 없이 기존 httpx로 REST API를
+    # 직접 호출한다(app/core/storage.py 모듈 docstring 참고) — azure-storage-blob/aiohttp
+    # 불필요.
+    "python-multipart>=0.0.9",
+    "openai>=1.40",
+    "langgraph>=0.2",
+    "langchain-core>=1.0",
+    "tiktoken>=0.7",
+    "pyyaml>=6.0",
+    "openpyxl>=3.1",
+    "argon2-cffi>=23.1",
+    "email-validator>=2.2",
+    # app/services/oauth.py(소셜 로그인 토큰 교환/유저정보 조회)가 런타임에 직접 호출한다 —
+    # 기존엔 dev extras(테스트 클라이언트 용도)에만 있었는데, 프로덕션 코드가 쓰게 되면서 승격.
+    "httpx>=0.27",
+    "langfuse>=4.0",
+    "slowapi>=0.1.10",
+    # 영수증 OCR(app/services/receipt_ocr.py)이 vision 호출 전에 HEIC/HEIF를 JPEG로 변환하는 데
+    # 쓴다 — iPhone 기본 사진 형식(HEIC)을 Azure OpenAI vision이 지원하지 않아 추가(트러블슈팅
+    # STEP 1-A). pillow-heif가 Pillow를 끌어오지만, PIL.Image를 변환 코드에서 직접 쓰므로 명시.
+    "pillow>=10.4",
+    "pillow-heif>=0.18",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.6",
+]
+
+[tool.ruff]
+line-length = 100
+extend-exclude = ["old"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+# app/core/db.py의 엔진/세션팩토리는 프로세스 전역 싱글턴(실제 서버와 동일 설계) — 테스트마다
+# 새 이벤트 루프(기본값)를 쓰면 asyncpg 커넥션이 다른 루프에서 재사용되며 깨진다
+# ("cannot perform operation: another operation is in progress", 2026-08-24 chat 스모크
+# 테스트 작성 중 재현). 세션 전체가 하나의 루프를 쓰게 맞춘다 — fixture와 test item 둘 다
+# 설정해야 한다(pytest-asyncio는 이 둘을 별도 옵션으로 관리).
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+norecursedirs = ["old"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

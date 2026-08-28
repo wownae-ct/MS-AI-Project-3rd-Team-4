@@ -16,8 +16,8 @@
 // 예전엔 배분 합계가 총예산을 넘어도 아무것도 막지 않았다 — "N원 초과"라는 텍스트 한 줄만
 // 바뀌고 "다음"은 그대로 통과했다. 그 값이 그대로 `POST /weddings` 의 `planned_budget` 으로
 // 나가 서버가 **400 BUDGET_EXCEEDED** 를 냈고(`sum(planned_budget) > total_budget`,
-// backend services/wedding.py:300), 사용자는 온보딩 9단계를 전부 채우고 "시작하기"를 눌러야
-// 비로소 그 사실을 알았다. 게다가 9단계 확인 화면은 "5,000만원 / 4,000만원"으로 나란히 찍을 뿐
+// backend services/wedding.py:300), 사용자는 온보딩을 끝까지 채우고 "시작하기"를 눌러야
+// 비로소 그 사실을 알았다. 게다가 10단계 확인 화면은 "5,000만원 / 4,000만원"으로 나란히 찍을 뿐
 // "초과"라는 말조차 하지 않아, 배너를 보고도 어디를 고쳐야 하는지 알 수 없었다.
 //
 // 이제 세 가지가 이 화면 안에서 끝난다:
@@ -140,7 +140,7 @@ export interface Step8Props {
   totalBudgetEstimate: number;
   /**
    * 활성 카테고리 배분 합계(원). **여기서 다시 더하지 않는다** — "다음" 게이트(OnboardingPage)와
-   * 9단계 확인 라벨(build-review-labels)이 이미 이 값을 쓴다. 같은 합을 세 곳에서 따로 구하면
+   * 10단계 확인 라벨(build-review-labels)이 이미 이 값을 쓴다. 같은 합을 세 곳에서 따로 구하면
    * 하나만 고쳤을 때 조용히 어긋난다.
    */
   allocatedBudget: number;
@@ -322,8 +322,8 @@ export function Step8Allocation({
               총예산 금액을 조정할까요?
             </button>
             {/* 지워진다는 사실을 **누르기 전에** 알린다. "나중에 설정"은 이 상태에서 배분 금액을
-                전부 0으로 되돌리고 9단계로 간다(OnboardingPage.handleSkipToReview) — 조용히
-                지우면 9단계에서 "0원 배분"을 보고 버그로 읽는다. */}
+                전부 0으로 되돌리고 10단계로 간다(OnboardingPage.handleSkipToReview) — 조용히
+                지우면 10단계에서 "0원 배분"을 보고 버그로 읽는다. */}
             <p className={FIELD_NOTE}>‘나중에 설정’을 누르면 배분한 금액이 모두 지워져요.</p>
           </div>
         </output>

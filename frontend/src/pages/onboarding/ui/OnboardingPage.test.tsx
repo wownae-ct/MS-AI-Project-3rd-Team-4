@@ -1,5 +1,5 @@
 // handleSubmit 의 createWedding 단일 호출 회복력만 고정한다. 나머지 단계별 입력/검증은 각 Step
-// 컴포넌트 소관 — 여기선 "나중에 설정"으로 9단계(확인)까지 바로 건너뛴 뒤 "시작하기"만 누른다.
+// 컴포넌트 소관 — 여기선 "나중에 설정"으로 10단계(확인)까지 바로 건너뛴 뒤 "시작하기"만 누른다.
 //
 // 2026-08-27 재설계 배경: 원래는 createWedding(9개 카테고리 전부 활성으로 생성+개인화)→
 // putWeddingCategories(실제 온/오프로 다시 개인화 트리거)의 2콜 구조였다 — 온보딩마다 개인화 LLM
@@ -272,6 +272,40 @@ describe("온보딩 2단계 — 총 예산 미정", () => {
     const payload = createWeddingFn.mock.calls[0][0] as { total_budget: unknown; total_budget_unsure: unknown };
     expect(payload.total_budget).toBeUndefined();
     expect(payload.total_budget_unsure).toBe(true);
+  });
+});
+
+// 2026-08-28 추가 — 9단계(자유 서술, custom_request) 신규 스텝의 제출 계약만 고정한다. 스텝
+// 자체의 렌더링/글자수 카운터는 Step9CustomRequest.tsx 소관(다른 Step 컴포넌트들과 같은 관례 —
+// 이 파일은 개별 스텝 UI가 아니라 handleSubmit의 최종 payload만 검증한다).
+describe("9단계(자유 서술) — custom_request 제출 계약", () => {
+  it("나중에 설정으로 건너뛰면(기존 동작) custom_request를 아예 보내지 않는다", async () => {
+    createWeddingFn.mockResolvedValue({ id: "w1" });
+
+    await jumpToReviewAndSubmit();
+
+    const payload = createWeddingFn.mock.calls[0][0] as { custom_request?: string };
+    expect(payload.custom_request).toBeUndefined();
+  });
+
+  it("입력한 값은 앞뒤 공백이 trim되어 custom_request로 실린다", async () => {
+    createWeddingFn.mockResolvedValue({ id: "w1" });
+    render(<OnboardingPage />);
+
+    for (let i = 0; i < 8; i += 1) {
+      // 각 클릭이 다음 스텝 렌더링/검증을 트리거해야 다음 "다음" 버튼을 찾을 수 있다 — 순서가
+      // 있는 UI 상호작용이라 Promise.all로 병렬화할 수 없다(entities/wedding/api/wedding.ts의
+      // 스트림 read() 루프와 같은 이유).
+      // eslint-disable-next-line no-await-in-loop
+      await userEvent.click(await screen.findByRole("button", { name: "다음" }));
+    }
+    await userEvent.type(await screen.findByRole("textbox"), "  반려동물과 함께하는 결혼식을 준비하고 있어요.  ");
+    await userEvent.click(await screen.findByRole("button", { name: "다음" }));
+    await userEvent.click(await screen.findByRole("button", { name: "시작하기" }));
+
+    expect(createWeddingFn).toHaveBeenCalledTimes(1);
+    const payload = createWeddingFn.mock.calls[0][0] as { custom_request?: string };
+    expect(payload.custom_request).toBe("반려동물과 함께하는 결혼식을 준비하고 있어요.");
   });
 });
 
