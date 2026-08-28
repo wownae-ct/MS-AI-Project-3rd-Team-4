@@ -182,7 +182,7 @@ def _checklist_fallback_rows(active_categories: set[str]) -> list[ChecklistItem]
     return [
         ChecklistItem(
             category_code=item.category_code,
-            origin="LLM",
+            origin="CATALOG_FALLBACK",
             status=default_status_for_category(item.category_code),
             item_type=item.item_type,
             option_group=None,
@@ -237,7 +237,8 @@ def _timeline_fallback_rows(
 ) -> list[TimelineItem]:
     """BLOCKED/FAILED 폴백 — 기존 app/services/timeline.py::generate_timeline_items를 그대로
     재사용한다. 이 함수는 원래도 active_categories 파라미터로 필터링하는 기존 함수라 체크리스트
-    폴백과 달리 새로 손댈 필요가 없다(각 dict에 origin="LLM"도 이미 들어있음)."""
+    폴백과 달리 새로 손댈 필요가 없다(각 dict에 origin="CATALOG_FALLBACK"도 이미 들어있음,
+    2026-08-28 origin='LLM' mislabel 수정 — 예전엔 이 자리도 "LLM"이었음)."""
     return [
         TimelineItem(**row)
         for row in generate_timeline_items(wedding_date, active_categories, done_so_far, today)

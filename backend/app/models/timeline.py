@@ -33,7 +33,9 @@ from app.models.wedding import CategoryCodeEnum
 class TimelineItem(Base):
     __tablename__ = "timeline_items"
     __table_args__ = (
-        CheckConstraint("origin IN ('LLM','USER')", name="ck_timeline_items_origin"),
+        CheckConstraint(
+            "origin IN ('LLM','USER','CATALOG_FALLBACK')", name="ck_timeline_items_origin"
+        ),
         CheckConstraint("status IN ('TODO','DONE')", name="ck_timeline_items_status"),
     )
 
