@@ -229,7 +229,15 @@ export function LoginPage() {
             </p>
           )}
 
-          <Button type="submit" block disabled={busy}>
+          {/* 앱에서 두 번째로 긴 대기다 — 성공 경로가 login → invalidateSession → getMe 로
+              왕복을 두 번 돈다. 그런데 예전엔 비활성만 되고 라벨이 그대로라 "눌리긴 한 건가"를
+              알 수 없었다. D14 L1 — 비활성과 라벨 교체를 한 prop 으로 묶는다. */}
+          <Button
+            type="submit"
+            block
+            pending={busy}
+            pendingLabel={mode === "signup" ? "회원가입 중…" : "로그인 중…"}
+          >
             {mode === "signup" ? "회원가입" : "로그인"}
           </Button>
         </form>

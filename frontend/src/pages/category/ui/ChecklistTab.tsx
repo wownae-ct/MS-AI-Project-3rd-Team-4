@@ -16,7 +16,7 @@ import { RegenerateButton } from "@/entities/personalization";
 import { getVendorCases, type VendorCasesResponse } from "@/entities/vendor-case";
 import type { CategoryConstant } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
-import { Card } from "@/shared/ui";
+import { Card, Loading, SkeletonRows } from "@/shared/ui";
 import { AddChecklistItemRow } from "./AddChecklistItemRow";
 import { ChecklistItemRow } from "./ChecklistItemRow";
 import { VendorCaseSection } from "./VendorCaseSection";
@@ -44,6 +44,9 @@ const PAGE_BUTTON =
 export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) {
   const [items, setItems] = useState<ChecklistItem[] | null>(null);
   const [vendorCases, setVendorCases] = useState<VendorCasesResponse | null>(null);
+  // null 하나로는 "아직 안 왔다"와 "영영 안 온다"가 구분되지 않는다 — 로딩 자리를 잡기 시작한
+  // 이상 실패를 따로 알아야 그 자리를 회수할 수 있다(D14 SE2).
+  const [vendorCasesFailed, setVendorCasesFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [contractOnly, setContractOnly] = useState(false);
   const [contractPage, setContractPage] = useState(0);
@@ -91,6 +94,7 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
       })
       .catch(() => {
         // 업체사례는 보조 콘텐츠다 — 실패해도 체크리스트 본문은 그대로 보여준다.
+        if (!cancelled) setVendorCasesFailed(true);
       });
     return () => {
       cancelled = true;
@@ -122,7 +126,13 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
   }
 
   if (items === null) {
-    return <p className="text-sm text-ink-soft">불러오는 중…</p>;
+    // D14 L2 — 카드 안 목록이라 문구는 보조기기에만 낸다(형태가 이미 대기를 보여준다).
+    return (
+      <Card>
+        <SkeletonRows count={5} />
+        <Loading srOnly />
+      </Card>
+    );
   }
 
   const visibleItems = contractOnly ? items.filter((i) => i.item_type === "CONTRACT_TERM") : items;
@@ -137,7 +147,17 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
       )}
 
       {categoryMeta?.has_vendor_cases ? (
-        vendorCases && <VendorCaseSection response={vendorCases} />
+        // 로딩 중엔 자리를 잡고, 실패하면 회수한다 — 영구 자리표시를 남기지 않는다(D14 SE2).
+        vendorCases ? (
+          <VendorCaseSection response={vendorCases} />
+        ) : (
+          !vendorCasesFailed && (
+            <Card title="업체 사례">
+              <SkeletonRows count={2} />
+              <Loading srOnly />
+            </Card>
+          )
+        )
       ) : (
         <Card>
           <p className="text-sm text-ink-soft">업체 사례는 이 카테고리에서 아직 준비 중입니다.</p>

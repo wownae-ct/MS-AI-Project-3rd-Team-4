@@ -21,7 +21,7 @@
 import { useEffect, useState } from "react";
 import { AddPaymentRow, PaymentListRow, getPayments, type Payment } from "@/entities/payment";
 import { ApiError } from "@/shared/api";
-import { Card } from "@/shared/ui";
+import { Card, Loading, SkeletonRows } from "@/shared/ui";
 
 export interface CostManagementTabProps {
   categoryLabelByCode: ReadonlyMap<string, string>;
@@ -121,7 +121,11 @@ export function CostManagementTab({ categoryLabelByCode, categoryOptions, onPaym
         </p>
       )}
       {payments === null ? (
-        <p className="text-sm text-ink-soft">불러오는 중…</p>
+        // D14 L2 — 카드 안 목록이라 문구는 보조기기에만 낸다.
+        <>
+          <SkeletonRows count={4} />
+          <Loading srOnly />
+        </>
       ) : filteredPayments.length === 0 ? (
         <p className="text-sm text-ink-soft">
           {categoryFilter === ALL_CATEGORIES ? "등록된 납부 내역이 없습니다." : "이 카테고리엔 등록된 납부 내역이 없습니다."}

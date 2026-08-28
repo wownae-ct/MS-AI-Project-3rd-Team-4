@@ -18,7 +18,8 @@
 //   5. 카테고리명은 데이터의 전체 이름을 쓴다 — 목업은 이 화면에서만 줄여 적었다.
 //
 // **실API 연동 이후 새로 생긴 것들**
-//   · 로딩/에러 상태: §5 대시보드가 이미 세운 관례 그대로 — "불러오는 중…", `role="alert"`.
+//   · 로딩/에러 상태: §5 대시보드가 이미 세운 관례 그대로 — 로딩은 자리표시 + 문구(D14),
+//     에러는 `role="alert"`.
 //   · `GET /wedding-categories`를 `GET /reports/me`와 함께 불러온다 — 카테고리 진행률 응답에
 //     이름이 없어서다(adapt-report.ts 참고). 두 호출이 병렬(Promise.all)이라 어느 한쪽이
 //     실패하면 화면 전체를 에러로 취급한다(부분 렌더는 이 화면 어디에도 선례가 없다).
@@ -28,7 +29,7 @@ import { useEffect, useState } from "react";
 import { getMyReport, type MyReport } from "@/entities/dashboard";
 import { getWeddingCategories, type WeddingCategory } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
-import { Card, Page } from "@/shared/ui";
+import { Card, Loading, Page, SkeletonRows } from "@/shared/ui";
 import { adaptBudgetSummary, adaptCategoryCompletions } from "./adapt-report";
 import { BudgetStats } from "./BudgetStats";
 import { completionPercent, CompletionRow } from "./CompletionRow";
@@ -75,7 +76,11 @@ export function ReportPage() {
   if (data === null) {
     return (
       <Page title="리포트" subtitle="지금까지 준비 상황 요약이에요" width="max-w-none">
-        <p className="text-sm text-ink-soft">불러오는 중…</p>
+        {/* D14 L2 */}
+        <Card>
+          <SkeletonRows count={4} />
+        </Card>
+        <Loading />
       </Page>
     );
   }

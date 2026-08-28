@@ -7,6 +7,8 @@
 //
 // ChatPanel.tsx의 300줄 제한(eslint max-lines)을 넘겨서 분리했다 — 이 컴포넌트는 label
 // 문자열 하나만 받는 순수 프레젠테이션이라 ChatPanel의 state에 의존하지 않는다.
+import { PulseDots } from "@/shared/ui";
+
 export function TypingIndicator({ label }: { label: string }) {
   // `<output>`이 아니라 `<div>`다 — `<output>`은 암묵 role="status"(암묵 aria-live="polite")를
   // 가져서, 이 컴포넌트를 감싸는 ChatPanel.tsx의 `role="log" aria-live="polite"` 컨테이너와
@@ -15,10 +17,10 @@ export function TypingIndicator({ label }: { label: string }) {
   // 추가·갱신을 그대로 잡아내므로, 여기서 별도 live 의미를 또 낼 필요가 없다.
   return (
     <div className="flex items-center gap-2">
-      <div className="flex items-center gap-1 rounded-lg border border-line bg-bg px-3 py-2.5">
-        <span className="size-1.5 animate-pulse rounded-pill bg-ink-soft [animation-delay:-0.3s]" />
-        <span className="size-1.5 animate-pulse rounded-pill bg-ink-soft [animation-delay:-0.15s]" />
-        <span className="size-1.5 animate-pulse rounded-pill bg-ink-soft" />
+      {/* 점 3개 마크업의 정의는 shared/ui/PulseDots.tsx 하나뿐이다(D14). 말풍선 안에 종속된
+          자리라 화면 단위 대기보다 작고 옅은 변이를 쓴다. */}
+      <div className="rounded-lg border border-line bg-bg px-3 py-2.5">
+        <PulseDots variant="nested" />
       </div>
       <span className="text-xs text-ink-soft">{label}</span>
     </div>
