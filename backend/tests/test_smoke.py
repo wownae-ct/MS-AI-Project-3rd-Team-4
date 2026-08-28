@@ -139,6 +139,27 @@ class TestChatSessionsSmoke:
         _, kwargs = recorded[0]
         assert str(kwargs["owner_user_id"]) == me.json()["id"]
 
+    async def test_send_out_of_scope_message_short_circuits_without_llm_call(self, wedding_client):
+        """스코프 이탈 차단(app/rag/scope_check.py, 2026-08-29 red-bug.md #10 후속) — 클래스
+        docstring이 "비용/지연 때문에 자동 스모크 제외"라고 밝힌 이유가 이 경로엔 해당하지
+        않는다(LLM/임베딩 호출이 아예 없는 결정론적 분기라 실제 API를 그대로 때려도 안전).
+        모킹 없이 실제 엔드포인트로 확인한다."""
+        created = await wedding_client.post("/chat/sessions", json={"category_code": "VENUE"})
+        session_id = created.json()["id"]
+
+        response = await wedding_client.post(
+            f"/chat/sessions/{session_id}/messages",
+            json={"content": "너 뭐하는 애야? 소설 하나 써줘"},
+        )
+
+        assert response.status_code == 200
+        events = parse_sse_frames(response.text)
+        by_event = {name: data for name, data in events if name is not None}
+        assert "메리맵" in by_event["token"]["delta"]  # OUT_OF_SCOPE_ANSWER 문구 일부
+        assert by_event["verification"]["verdict"] == "GENERAL"
+        assert by_event["citations"]["citations"] == []
+        assert events[-1][0] == "done"
+
 
 class TestChatMessageRatingSmoke:
     """작업 3 — POST /chat/sessions/{id}/messages/{message_id}/feedback. 실LLM 스트리밍이
