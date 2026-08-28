@@ -59,7 +59,11 @@ PaymentType = Literal["DEPOSIT", "INTERIM", "BALANCE", "ETC"]
 PaymentStatus = Literal["PLANNED", "PAID", "CANCELED"]
 MilestoneStatus = Literal["TODO", "DONE"]
 CaseType = Literal["GOOD", "BAD"]
-Verdict = Literal["SUPPORTED", "WEAK", "GENERAL"]
+# 2026-08-29 — "OUT_OF_SCOPE"는 app/rag/scope_check.py::looks_out_of_scope()가 결혼 준비와
+# 무관한 요청을 그래프 호출 전에 걸러낼 때만 쓴다(app/services/chat.py). verify_node(app/rag/
+# graph.py)가 실제로 판정하는 값은 여전히 SUPPORTED/WEAK/GENERAL 3종뿐이다 — app/rag/
+# generation.py의 _VALID_VERDICTS는 이 Literal 전체가 아니라 그 3종만 별도로 정의해 쓴다.
+Verdict = Literal["SUPPORTED", "WEAK", "GENERAL", "OUT_OF_SCOPE"]
 ChatRole = Literal["user", "assistant"]
 ChatRating = Literal["GOOD", "BAD"]  # chat_messages.user_rating CHECK 제약과 1:1
 # 챗 그래프(app/rag/graph.py) 노드 이름과 1:1 — SSE stage 이벤트로 그대로 나간다.

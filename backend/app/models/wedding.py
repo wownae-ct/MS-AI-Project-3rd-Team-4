@@ -2,7 +2,15 @@
 
 Importer: app/models/__init__.py. v3.0 대비: Wedding에 owner_user_id(로그인 사용자 1:1) 추가,
 WeddingCategory.category_id FK가 category_code ENUM 컬럼으로 바뀌어 categories 테이블 자체가
-없어졌다(카테고리 목록은 이제 app/core/categories.py의 백엔드 상수)."""
+없어졌다(카테고리 목록은 이제 app/core/categories.py의 백엔드 상수).
+
+red-bug.md #14 — DDL은 전부 TIMESTAMPTZ인데 weddings.created_at/updated_at과
+wedding_categories.updated_at만 DateTime(timezone=True)를 명시 안 해 SQLAlchemy가 TIMESTAMP
+WITHOUT TIME ZONE으로 캐스팅하던 버그를 2026-08-29 수정 — user.py/checklist.py/timeline.py/
+ai_invocation.py가 2026-08-24에 먼저 고친 것과 동일한 패턴(모델 선언만의 문제라 마이그레이션
+불필요, DB 컬럼 자체는 이미 TIMESTAMPTZ). onupdate=func.now()는 이 프로젝트의 다른 어떤
+모델에도 없는 관행이라(models/ 디렉토리 전체 grep 0건) 여기서도 추가하지 않는다 — 지금은
+WeddingOut이 updated_at을 응답에 노출하지 않아 죽은 값이라 영향 없음."""
 
 import uuid
 from datetime import datetime
@@ -13,6 +21,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Date,
+    DateTime,
     ForeignKey,
     SmallInteger,
     Text,
@@ -103,8 +112,8 @@ class Wedding(Base):
     # 용도로만 쓰이는 자리다(04_DB_schema.sql). timeline_items가 아직 없어(별도 태스크) 지금은
     # 아무도 쓰지 않는다 — TODO(timeline-task): timeline_items 생성 시 이 컬럼 갱신 로직 추가.
     done_so_far: Mapped[dict | None] = mapped_column(JSONB)
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class WeddingCategory(Base):
@@ -134,4 +143,4 @@ class WeddingCategory(Base):
     selected_options: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
     skip_reason: Mapped[str | None] = mapped_column(Text)
     display_order: Mapped[int] = mapped_column(SmallInteger, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

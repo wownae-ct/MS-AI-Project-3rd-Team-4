@@ -38,7 +38,7 @@ from app.core.config import Settings
 from app.core.db import get_session_factory
 from app.core.errors import api_error
 from app.core.sse import sse_comment, sse_event
-from app.core.timezone import today_kst
+from app.core.timezone import to_kst_date, today_kst
 from app.models import AiInvocation, TimelineItem, User, Wedding, WeddingCategory
 from app.schemas.sse import SseErrorEventData
 from app.schemas.wedding import (
@@ -304,18 +304,33 @@ async def update_wedding(
         # 스케일을 되돌리고 새 스케일을 적용한다(recalculate_timeline_dates 내부 판정,
         # app/services/timeline.py 모듈 docstring 참고). onboarding_date는 새 컬럼 없이
         # created_at을 그대로 대리 지표로 쓴다.
+        # red-bug.md #14 — wedding.created_at은 UTC-aware 시각이라 .date()를 바로 쓰면 KST
+        # 00:00~08:59 사이 생성된 웨딩은 실제보다 하루 이른 날짜로 취급된다(round5 감사가 이미
+        # 5개 파일에서 고친 "today_kst() 안 거친 .date()" 버그 클래스와 동일).
         updates = recalculate_timeline_dates(
             old_wedding_date,
             wedding.wedding_date,
-            wedding.created_at.date(),
+            to_kst_date(wedding.created_at),
             today_kst(),
             [tuple(r) for r in rows],
         )
-        for item_id, (new_target_date, new_offset) in updates.items():
+        # red-bug.md #13 — 항목 수(최대 95개)만큼 개별 UPDATE를 순차 await하던 N+1 패턴을
+        # SQLAlchemy 2.0 "ORM Bulk UPDATE by Primary Key" 한 번으로 교체. WHERE 절을 직접
+        # 쓰지 않는다 — 명시 WHERE(bindparam 등)를 쓰면 이 기능과 충돌해
+        # "No primary key value supplied" / "bulk synchronize ... not supported"로 죽는다
+        # (2026-08-29 CI가 두 형태 다 실제로 잡아냄). 파라미터 dict의 "id" 키가 PK 컬럼과
+        # 이름이 같아야 SQLAlchemy가 자동으로 PK 기준 WHERE를 만든다.
+        if updates:
             await session.execute(
-                update(TimelineItem)
-                .where(TimelineItem.id == item_id)
-                .values(target_date=new_target_date, default_dday_offset_days=new_offset)
+                update(TimelineItem),
+                [
+                    {
+                        "id": item_id,
+                        "target_date": new_target_date,
+                        "default_dday_offset_days": new_offset,
+                    }
+                    for item_id, (new_target_date, new_offset) in updates.items()
+                ],
             )
         session.add(
             AiInvocation(
