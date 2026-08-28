@@ -1,6 +1,10 @@
 # 인프라 (Azure, AKS 기반)
 
-백엔드는 AKS(Kubernetes)에 ArgoCD(GitOps)로 배포하고, 프론트엔드는 Static Web Apps에 정적 호스팅한다.
+백엔드와 프론트엔드 모두 AKS(Kubernetes)에 ArgoCD(GitOps)로 배포한다(2026-08-26부터 — 그 전엔
+프론트가 Static Web Apps 단독이었다. SWA는 폐기가 아니라 PR 프리뷰/로컬 크로스오리진 검증용으로
+병행 운영 중). 백엔드 `/api`, 프론트엔드 `/`가 같은 AKS Ingress 호스트 아래 same-origin으로
+서빙된다 — Safari(ITP)/Brave(Shields)의 서드파티 쿠키 차단으로 로그인이 안 되던 문제를 근본적으로
+없앤 조치다.
 IaC는 Bicep, 시크릿은 Key Vault + AKS Workload Identity(OIDC)로 코드/매니페스트에 값이 노출되지 않게 한다.
 **AKS는 1개 클러스터**이고 그 안에서 `staging`/`production` 네임스페이스로 환경을 나눈다(예산 제약상 클러스터 2개는 안 씀).
 
@@ -16,21 +20,25 @@ flowchart LR
         BCI["backend-ci: ruff/pytest → ACR build&push (OIDC)"]
         FCI["frontend-ci: build → SWA 배포"]
     end
-    subgraph GitOps["ArgoCD (AKS 내부)"]
+    subgraph GitOps["ArgoCD (AKS 내부, 6개 Application)"]
         ARGO_BS["backend-staging<br/>(backend 브랜치)"]
         ARGO_BP["backend-production<br/>(main 브랜치)"]
+        ARGO_FS["frontend-staging<br/>(frontend 브랜치)"]
+        ARGO_FP["frontend-production<br/>(main 브랜치)"]
         ARGO_RS["rag-cronjob-staging"]
         ARGO_RP["rag-cronjob-production"]
-        IU["Image Updater<br/>ACR 신규 태그 폴링"]
+        IU["ImageUpdater CR<br/>ACR 신규 태그 폴링"]
     end
     subgraph AKS["AKS (1개 클러스터)"]
         ING["ingress-nginx (1벌)<br/>+ cert-manager(Let's Encrypt)"]
         subgraph NS_S["ns: staging"]
             GW_S["backend Deployment"]
+            FE_S["frontend Deployment(nginx)"]
             CJ_S["rag-reindex CronJob"]
         end
         subgraph NS_P["ns: production"]
-            GW_P["backend Deployment"]
+            GW_P["backend Deployment (replicas:2)"]
+            FE_P["frontend Deployment (replicas:2)"]
             CJ_P["rag-reindex CronJob"]
         end
     end
@@ -47,20 +55,24 @@ flowchart LR
     SWA["Static Web Apps"]
     LAW["Log Analytics"]
 
-    USERS -- "merrymap-production...cloudapp.azure.com (HTTPS)" --> ING
-    USERS -- "nip.io (HTTPS, 내부 점검용)" --> ING
-    ING -- host 기반 라우팅 --> GW_S & GW_P
+    USERS -- "merrymap-production...cloudapp.azure.com (HTTPS)<br/>/api → backend, / → frontend" --> ING
+    USERS -- "nip.io (HTTPS, staging)" --> ING
+    ING -- host+path 기반 라우팅 --> GW_S & GW_P & FE_S & FE_P
     BCI -- OIDC --> ACR
-    IU -- ACR 폴링(Workload Identity) --> ACR
-    IU -- 이미지 태그 갱신 --> ARGO_BS & ARGO_BP
+    FCI2["frontend-docker-ci(-staging)"] -- OIDC --> ACR
+    IU -- ACR 폴링(전용 Workload Identity) --> ACR
+    IU -- 이미지 태그 갱신 --> ARGO_BS & ARGO_BP & ARGO_FS & ARGO_FP
     ARGO_BS -- sync --> NS_S
+    ARGO_FS -- sync --> NS_S
     ARGO_RS -- sync --> NS_S
     ARGO_BP -- sync --> NS_P
+    ARGO_FP -- sync --> NS_P
     ARGO_RP -- sync --> NS_P
-    FCI -- OIDC 불가, 배포토큰 --> SWA
+    FCI -- OIDC 불가, 배포토큰(PR 프리뷰/로컬용) --> SWA
     GW_S & GW_P & CJ_S & CJ_P -- Workload Identity --> KV
     GW_S & GW_P --> AOAI
     GW_S & GW_P --> PG
+    GW_S & GW_P -- 영수증 사진 업로드 --> BLOB
     CJ_S & CJ_P -- pgvector upsert --> PG
     AKS --> LAW
 ```
@@ -69,26 +81,30 @@ flowchart LR
 
 | 리소스 | 역할 |
 |---|---|
-| **AKS** | backend Deployment + rag-reindex CronJob 런타임. **System/User 노드풀 분리**(`system`: `Standard_B2s` 고정 1대 + `CriticalAddonsOnly` taint로 kube-system 전용, `user`: `Standard_D2s_v5` 오토스케일 1~6로 앱 워크로드 전용) + Workload Identity(OIDC) + Container Insights. `staging`/`production` 네임스페이스로 환경 분리. **kubectl 접근은 Azure AD RBAC**(`clusterAdminPrincipalIds`로 admin 등록, 로컬 계정 비활성화는 안 함 — 구독 Owner/Contributor 비상 접근 유지) |
-| **Container Registry** | 백엔드 이미지(backend Deployment와 rag-reindex CronJob이 같은 이미지 공유). kubelet identity에 AcrPull, ArgoCD Image Updater는 전용 Workload Identity로 AcrPull(정적 토큰 없음) |
-| **Key Vault** | 시크릿 저장(Azure OpenAI 키, DB 연결정보 등). RBAC 인증, 앱은 Workload Identity로 직접 조회 |
-| **PostgreSQL Flexible Server** | 세션/판정/트레이스 + pgvector(RAG). `azure.extensions=VECTOR` 활성화. MVP는 public+방화벽(VNet 미사용). AAD 인증을 비밀번호 인증과 병행(backend Managed Identity가 AAD 관리자로 등록) |
-| **Blob Storage** | 범용 저장소. 이전엔 ml 레포의 ONNX 모델 아티팩트용이었으나(TCN 제거로 사용 종료), 답변 오디오 저장 용도로 재사용 예정 — 컨테이너/RBAC는 미구현(`infra/bicep/modules/storage.bicep` TODO 참고) |
-| **Azure OpenAI** | `chat`(gpt-5.4) + `chat-mini`(gpt-5.4-mini, coach/safety/planner) + `embedding`(text-embedding-3-small, retriever/rag 인덱싱) 배포 분리. **API 키 완전 비활성화**(`disableLocalAuth: true`) — backend Managed Identity에 "Cognitive Services OpenAI User" RBAC만 부여 |
-| **Static Web Apps** | 프론트엔드 정적 호스팅 (Free) |
-| **Log Analytics + App Insights** | AKS Container Insights + 앱 관측성 |
+| **AKS** | backend/frontend Deployment + rag-reindex CronJob 런타임. **System/User 노드풀 분리**(`system`: `Standard_B2s` 고정 1대 + `CriticalAddonsOnly` taint로 kube-system 전용, `user`: `Standard_D2s_v5` 오토스케일 1~6로 앱 워크로드 전용) + Workload Identity(OIDC) + Container Insights. `staging`/`production` 네임스페이스로 환경 분리. 세 워크로드 모두 `resources.requests/limits` 지정(backend 100m/200Mi~500m/400Mi, frontend nginx 20m/32Mi~100m/64Mi, rag-index 100m/256Mi~500m/512Mi — 실측 `kubectl top pod` 기반), `backend-production`/`frontend-production`은 `replicas: 2`(staging은 데모 규모라 의도적으로 1개 유지). **kubectl 접근은 Azure AD RBAC**(`clusterAdminPrincipalIds`로 admin 등록, 로컬 계정 비활성화는 안 함 — 구독 Owner/Contributor 비상 접근 유지) |
+| **Container Registry** | backend·frontend·rag-reindex 이미지(backend Deployment와 rag-reindex CronJob은 같은 이미지 공유, frontend는 별도 이미지 — `VITE_API_BASE`가 빌드 타임에 baked-in이라 staging/production 태그가 분리됨). kubelet identity에 AcrPull, ArgoCD Image Updater는 전용 Workload Identity로 AcrPull(정적 토큰 없음). 주간 purge task가 backend/frontend 저장소 모두 대상 |
+| **Key Vault** | 시크릿 저장(Azure OpenAI 키, DB 연결정보, 소셜 로그인/Langfuse/Blob endpoint 등). RBAC 인증, 앱은 Workload Identity로 직접 조회. 외부 SaaS 시크릿(사람이 발급받는 값)도 Bicep이 `Microsoft.KeyVault/vaults/secrets`로 직접 작성하는 게 이 프로젝트의 표준 패턴 |
+| **PostgreSQL Flexible Server** | 세션/판정/트레이스 + pgvector(RAG, **HNSW 인덱스** — 2026-08-26 ivfflat에서 전환). `azure.extensions=VECTOR` 활성화. MVP는 public+방화벽(VNet 미사용). AAD 인증을 비밀번호 인증과 병행(backend Managed Identity가 AAD 관리자로 등록). 실제 DB 이름은 `team4db-wd`(`postgresDatabaseName` 파라미터 기본값 — 한때 `postgres` 기본 DB로 잘못 연결돼 로그인 500 장애를 낸 적 있음, 아래 "알려진 트레이드오프" 참고) |
+| **Blob Storage** | `receipts` 컨테이너 — 결제 영수증 사진 업로드(OCR 자동입력 기능, `backend/app/core/storage.py`가 httpx로 Blob REST API 직접 호출, `azure-storage-blob`/`aiohttp` 미사용). Managed Identity로 인증(`AZURE_STORAGE_BLOB_ENDPOINT` 시크릿) |
+| **Azure OpenAI** | `chat`(gpt-5.4) + `chat-mini`(gpt-5.4-mini, 영수증 OCR vision 포함) + `embedding`(text-embedding-3-small, RAG 인덱싱/검색) 배포 분리. **API 키 완전 비활성화**(`disableLocalAuth: true`) — backend Managed Identity에 "Cognitive Services OpenAI User" RBAC만 부여. 타임아웃은 `Settings.azure_openai_timeout_seconds`(기본 45초)로 명시 지정 |
+| **Static Web Apps** | 프론트엔드 PR 프리뷰 + 로컬 크로스오리진 개발/테스트용 정적 호스팅(Free) — production 트래픽은 AKS가 서빙 |
+| **Log Analytics + App Insights** | AKS Container Insights. 앱 관측성은 App Insights가 아니라 Langfuse(아래 참고) + 표준 stdout 로깅(`logging.basicConfig` + 전역 예외 핸들러) — 이 프로젝트 YAGNI 목록상 App Insights는 배제 |
 
-## 배포 단위 (4개 ArgoCD Application)
+## 배포 단위 (6개 ArgoCD Application)
 
 | Application | 브랜치 | 네임스페이스 | K8s 리소스 |
 |---|---|---|---|
 | `backend-staging` | `backend` | `staging` | Deployment(상시 서빙) |
-| `backend-production` | `main` | `production` | Deployment(상시 서빙) |
+| `backend-production` | `main` | `production` | Deployment(상시 서빙, replicas:2) |
+| `frontend-staging` | `frontend` | `staging` | Deployment(nginx, 상시 서빙) |
+| `frontend-production` | `main` | `production` | Deployment(nginx, 상시 서빙, replicas:2) |
 | `rag-cronjob-staging` | `backend` | `staging` | CronJob(주기적 재인덱싱, 매일 03:00) |
 | `rag-cronjob-production` | `main` | `production` | CronJob |
 
 backend와 rag는 **같은 브랜치(backend/main), 같은 Docker 이미지**를 쓰지만(코드가 `backend/app/rag/`에 같이 있음, pgvector라 DB 커넥션도 공유)
 배포 단위(ArgoCD Application)만 나눠서, RAG 재인덱싱을 상시 서빙 Deployment 재시작 없이 독립적으로 sync/pause할 수 있게 했다.
+frontend는 별도 브랜치·별도 이미지(2026-08-26부터 ArgoCD 범위)로, backend와 같은 Ingress 호스트 아래
+same-origin(`/`)으로 서빙된다.
 
 > **브리프코치 피벗(2026-08-19) 이후**: 여기 있던 "ML 모델 버전 관리" 절(ml 레포 multi-source +
 > Reloader)을 제거했다 — 커스텀 모델(TCN)이 없어졌다. 전체 흐름은
@@ -110,10 +126,24 @@ SealedSecrets → Key Vault CSI+Workload Identity로 교체했다.
 같은 AKS Ingress 호스트에 nginx 컨테이너로 same-origin 배포) — SWA는 폐기 아니고 PR
 프리뷰/로컬용으로 병행.
 
-**Image Updater**가 ACR 신규 태그를 폴링해 `backend-staging`/`backend-production` Application의 이미지를
-자동 갱신한다(git write-back 아니라 Application 파라미터 override). ACR 인증은 전용 Workload Identity
-(`imageUpdaterIdentity`, backend Identity와 분리) — static docker-registry secret 없음. 상세는
-[k8s/argocd/README.md](k8s/argocd/README.md) 참고.
+**Image Updater**가 ACR 신규 태그를 폴링해 `backend-{staging,production}`/`frontend-{staging,production}`
+Application의 이미지를 자동 갱신한다(git write-back 아니라 Application 파라미터 override). ACR 인증은
+전용 Workload Identity(`imageUpdaterIdentity`, backend Identity와 분리) — static docker-registry
+secret 없음. 상세는 [k8s/argocd/README.md](k8s/argocd/README.md) 참고.
+
+> **⚠️ 설치 후 한동안 완전히 작동하지 않았다 (2026-08-26 발견·수정)**
+>
+> 설치된 `argocd-image-updater:v1.3.0`은 CRD 기반 재설계 버전이라, Application의
+> `argocd-image-updater.argoproj.io/*` 어노테이션만으로는 아무것도 안 하고 **`ImageUpdater` 커스텀
+> 리소스가 별도로 있어야** 그 어노테이션을 실제로 읽는다 — `ImageUpdater` CR이 하나도 없었으므로
+> "CI가 이미지 push → Image Updater가 감지 → 자동 배포" 파이프라인 전체가 설치 이후 한 번도 작동한 적
+> 없었다. `infra/k8s/argocd/argocd-image-updater-crs.yaml`(`namePattern: "*"` + `useAnnotations: true`)을
+> 추가해 해결. 이 CR을 적용하자 바로 두 번째 독립된 버그가 드러났다: ACR 인증이 `401
+> Unauthorized`로 실패 — `aks.bicep`의 `imageUpdaterFederatedCredential`이 참조하는
+> `imageUpdaterServiceAccountName` 기본값이 업스트림의 2026-08-14 컨트롤러 이름 변경
+> (`argocd-image-updater` → `argocd-image-updater-controller`) 이후 갱신되지 않아 federated
+> credential의 subject가 존재하지 않는 서비스어카운트를 가리키고 있었다. Bicep 기본값과 라이브
+> federated credential 둘 다 수정 완료.
 
 ## 배포 순서
 
@@ -130,7 +160,10 @@ SealedSecrets → Key Vault CSI+Workload Identity로 교체했다.
 - **AKS 클러스터 1개 공유**: staging/production을 네임스페이스로만 분리 — 클러스터 격리 수준의 안전성은 아님(노드/네트워크는 공유).
 - **VNet 미사용**: Postgres/AKS 모두 퍼블릭 액세스 + 방화벽 허용목록. 시간 여유 시 Private Endpoint로 전환 권장.
 - **Ingress: NGINX 1벌로 확정** (`infra/k8s/ingress-nginx/README.md`). HAProxy도 로컬 사용 경험이 있어 후보였지만 생태계가 더 큰 NGINX로 결정 — 성능 이슈 생기면 HAProxy로 교체 후보. Azure 별도 유료 리소스 아님(AGIC였다면 Application Gateway가 필요했을 것). **도메인**: 실도메인 구매 대신 Azure LoadBalancer 자동생성 DNS 라벨(무료) — production은 `merrymap-production.koreacentral.cloudapp.azure.com`, staging은 같은 컨트롤러의 같은 공인 IP를 `nip.io`로 재사용(브라우저가 staging 백엔드를 직접 호출하는 경로가 없어서 별도 컨트롤러/도메인 불필요). **TLS**: cert-manager + Let's Encrypt 자동 발급(`infra/k8s/cert-manager/README.md`). production 호스트는 확정 완료. staging 호스트도 이제 확정 완료(2026-08-24 ingress-nginx 설치 후 실제 IP `20.249.52.148` 확인, `k8s/overlays/backend-staging/ingress.yaml`에 `20-249-52-148.nip.io`로 반영, staging 라이브 배포로 실측 검증됨) — 이 문단이 한동안 `<STAGING_NIP_IO_HOST_TBD>` 자리표시자로 남아있었는데 실제로는 이미 채워져 있었던 문서 드리프트였다(2026-08-25 확인 및 정정).
-  - **staging/production URL·CORS·OAuth redirect 설정은 이미 양쪽 다 완전히 배선되어 있다** — `k8s/overlays/backend-{staging,production}/kustomization.yaml`이 각각 `OAUTH_BACKEND_BASE_URL`/`FRONTEND_BASE_URL`을 실제 값으로 패치하고 있고(플레이스홀더 아님), `backend/app/main.py`의 `SWA_ORIGIN_REGEX`는 두 네임스페이스가 공유하는 단일 SWA 오리진을 이미 커버한다. 즉 이 프로젝트의 "프로모션"은 설정을 주석 해제/교체하는 별도 단계가 아니라 **`backend` → `main` PR 머지 그 자체**다(`backend-production` ArgoCD Application이 `targetRevision: main`을 `automated{prune:true, selfHeal:true}`로 추적하므로 머지 즉시 배포됨). 2026-08-25 확인 시점 기준 `origin/main`은 `origin/backend`보다 **83개 커밋 뒤처져 있다**(PR #52 전후부터의 모든 작업 — CRAG 재시도, Langfuse 관측성, 개인화 회귀 수정 3건, 영수증 OCR, 개인화 재시도 엣지, 체크리스트 few-shot 편중 수정 등 — production에 전혀 반영 안 됨). production 파드 자체는 살아있고(`GET https://merrymap-production.koreacentral.cloudapp.azure.com/api/v1/health` 200 확인) 응답은 하지만 오래된 코드를 서빙 중 — 실제 프로모션 병목은 URL/CORS 설정이 아니라 이 브랜치 격차이며, `main`으로의 병합은 자동 배포 트리거라 별도 사용자 승인 후 진행해야 한다.
+  - **staging/production URL·CORS·OAuth redirect 설정은 이미 양쪽 다 완전히 배선되어 있다** — `k8s/overlays/backend-{staging,production}/kustomization.yaml`이 각각 `OAUTH_BACKEND_BASE_URL`/`FRONTEND_BASE_URL`을 실제 값으로 패치하고 있다(플레이스홀더 아님). 이 프로젝트의 "프로모션"은 설정을 주석 해제/교체하는 별도 단계가 아니라 **`backend`/`frontend` → `main` PR 머지 그 자체**다(`backend-production`/`frontend-production` ArgoCD Application이 `targetRevision: main`을 `automated{prune:true, selfHeal:true}`로 추적하므로 머지 즉시 배포됨). **(2026-08-28 갱신)** 한때 `main`이 `backend`보다 83커밋 뒤처져 있던 시기가 있었으나, 이후 반복적으로 `backend`→`main`/`frontend`→`main` 프로모션 PR이 올라가며 지금은 정기적으로 동기화되고 있다 — 다만 프로모션은 여전히 자동이 아니라 PR 머지가 트리거이므로, 두 브랜치 사이 격차가 다시 벌어질 수 있다는 점 자체는 구조적으로 남아있다.
+  - **Postgres DB 이름 기본값 실수가 실제 로그인 장애로 이어진 적 있다 (2026-08-26)**: `postgresDatabaseName` 파라미터가 세 곳(main.bicep/postgres.bicep 기본값 + `infra-deploy.yml`)에서 서버 기본 DB인 `postgres`로 폴백하도록 돼 있어, 실배포마다 `pg-connstr` Key Vault 시크릿이 마이그레이션 안 된 `postgres` DB를 가리키도록 조용히 되돌려졌다 — `POST /auth/login`이 `relation "users" does not exist` 500을 냈다. 세 곳 기본값을 실제 DB 이름(`team4db-wd`)으로 고정해서 해결. **환경변수 배선 없이 기본값만 바꾸는 방식은 다음 배포에서 같은 문제를 반복할 수 있으니, 인프라 배포 전엔 `DATABASE_NAME`이 실제로 넘어가는지 확인할 것.**
+  - **chat SSE가 60초 프록시 타임아웃에 종종 끊겼다 (2026-08-26)**: ingress-nginx의 기본 `proxy-read/send-timeout`(60초)과 Azure OpenAI 클라이언트의 기본 타임아웃(SDK 기본 600초)이 어긋나 있어, `verify_answer`/`reformulate_query`처럼 스트리밍하지 않는 호출이 느려지면 SSE 바이트가 하나도 안 나가는 채로 프록시가 먼저 연결을 끊었다. `backend-{staging,production}/ingress.yaml`의 타임아웃을 120초로 올리고, `Settings.azure_openai_timeout_seconds`(45초)를 명시 지정하고, 15초마다 SSE 하트비트 주석(`: heartbeat\n\n`)을 내보내는 3중 조치로 해결.
+  - **영수증 업로드가 413으로 막힌 적 있다**: ingress-nginx 기본 `proxy-body-size`가 사진 업로드 크기보다 작아서 발생 — annotation 추가로 해결.
 - **Init Container 인증 플래그 미검증**: `az login --identity`가 AKS Workload Identity federation과 실제로 맞물리는지 실배포 시 확인 필요.
 - **Static Web Apps 배포는 OIDC 미지원**: `AZURE_STATIC_WEB_APPS_API_TOKEN`을 GitHub Secrets에 등록 필요(SWA 리소스 생성 후 `az staticwebapp secrets list`로 확인).
 
@@ -149,6 +182,8 @@ SealedSecrets → Key Vault CSI+Workload Identity로 교체했다.
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google Cloud Console에서 발급 | 소셜 로그인(`00_BASELINE.md` §0-2 Should). 2026-08-24 IaC화(`infra/docs/iac.md` §Key Vault 시크릿 자동화 참고) — 등록 안 하면 `dev.bicepparam`이 `CHANGE_ME_LOCAL_ONLY`로 폴백(파드는 뜨지만 로그인은 안 됨) |
 | `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | 네이버 개발자센터에서 발급 | 위와 동일 |
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | Langfuse Cloud 프로젝트 설정에서 발급 | `14_langfuse_tracing_design.md`. **⚠️ 이미 라이브로 쓰이는 값** — GitHub Secrets 미등록 상태로 `infra-deploy.yml`을 `workflow_dispatch`(whatIf:false)로 실배포하면 `CHANGE_ME_LOCAL_ONLY`로 덮어써서 기존 정상 동작하던 트레이싱이 깨진다. **실배포 전 반드시 먼저 등록할 것** |
+| `AZURE_STORAGE_BLOB_ENDPOINT` | `az storage account show -n <이름> --query primaryEndpoints.blob -o tsv` | 영수증 OCR 업로드(`receipts` 컨테이너)용. Bicep IaC는 코드상 존재하지만 실배포가 누락돼 신규 backend 파드가 `ContainerCreating`에서 멈춘 적 있음 — 인프라 변경 후엔 반드시 실제 `workflow_dispatch`(whatIf:false)로 배포까지 확인할 것 |
+| (카카오/애플 OAuth 4종) | — | PR #48(backend)/#49(infra Key Vault IaC)에 코드는 준비돼 있으나 **의도적으로 머지 보류 중** — 머지 전까지는 등록 불필요, 머지 시 #49(Key Vault)가 #48(backend)보다 먼저 배포돼야 함(순서 어기면 필수 `Settings` 필드 누락으로 파드가 부팅 시 크래시) |
 
 > **⚠️ 이 문서의 이전 기술은 사실과 달랐다 (2026-08-19 정정)**
 >
