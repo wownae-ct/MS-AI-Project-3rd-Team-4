@@ -208,7 +208,9 @@ export function PaymentListRow({ payment: p, categoryLabel, onChanged }: Payment
   if (mode === "editing") {
     return (
       <li className="flex flex-col gap-2 border-b border-line pb-3 last:border-0 last:pb-0">
-        <div className="flex items-center gap-2">
+        {/* flex-wrap — 배지 2개가 이제 안 눌리므로(D16) 좁은 폭에서는 뒤따르는 텍스트가 다음
+            줄로 내려가야 한다. 없으면 그 텍스트가 세로로 접힌다. */}
+        <div className="flex flex-wrap items-center gap-2">
           <Badge className={PAYMENT_TYPE_BADGE_CLASS[p.payment_type]}>{PAYMENT_TYPE_LABEL[p.payment_type] ?? p.payment_type}</Badge>
           {categoryLabel !== undefined && <Badge>{categoryLabel}</Badge>}
           <span className="text-xs font-bold text-primary">수정 중</span>
@@ -285,10 +287,12 @@ export function PaymentListRow({ payment: p, categoryLabel, onChanged }: Payment
   return (
     <li className="flex items-center justify-between gap-3 border-b border-line pb-3 last:border-0 last:pb-0">
       <div className="flex min-w-0 flex-col gap-0.5">
-        <div className="flex items-center gap-2">
+        {/* flex-wrap + min-w-0 — 배지 2개가 이제 안 눌리므로(D16) 좁은 폭에서는 항목명이 다음
+            줄로 내려가 거기서 전폭을 쓰고 잘린다. 종전엔 같은 줄에서 0px 까지 밀려 사라졌다. */}
+        <div className="flex flex-wrap items-center gap-2">
           <Badge className={PAYMENT_TYPE_BADGE_CLASS[p.payment_type]}>{PAYMENT_TYPE_LABEL[p.payment_type] ?? p.payment_type}</Badge>
           {categoryLabel !== undefined && <Badge>{categoryLabel}</Badge>}
-          <p className="truncate text-sm font-bold text-ink">{p.item_name}</p>
+          <p className="min-w-0 truncate text-sm font-bold text-ink">{p.item_name}</p>
         </div>
         <p className="text-xs text-ink-soft">
           {p.vendor_name ?? "업체명 미상"} ·{" "}

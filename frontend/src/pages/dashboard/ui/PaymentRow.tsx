@@ -32,7 +32,9 @@ export function PaymentRow({ item, categoryLabel }: PaymentRowProps) {
 
   return (
     <div className="flex items-center gap-3 border-b border-line py-3 first:pt-0 last:border-b-0 last:pb-0">
-      <Badge className="shrink-0 tabular-nums">{badgeText}</Badge>
+      {/* shrink-0 은 이제 Badge 의 기준 클래스에 있다(D16) — 여기서만 손으로 붙여 두던 것을
+          규칙으로 옮겼고, 그 손패치가 나머지 8곳에 전파되지 않은 것이 옮긴 이유였다. */}
+      <Badge className="tabular-nums">{badgeText}</Badge>
 
       <div className="min-w-0 flex-1">
         <p className="text-sm font-bold text-ink">{item.title}</p>

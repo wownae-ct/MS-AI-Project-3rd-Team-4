@@ -52,24 +52,30 @@ beforeEach(() => {
   getChecklistItemsMock.mockReset();
 });
 
-describe("체크리스트 근거 배지", () => {
-  it("source_tier가 있으면 티어 한글 라벨 + source_label로 배지를 보여준다", async () => {
+// **[2026-08-29 갱신 — D16]** 근거가 배지 나열에서 SourceList(접힘 요약 + 세로 목록)로 옮겨가며
+// 조회 경로가 바뀌었다: 잘린 배지 텍스트("공식 · 제목…")가 아니라 요약 문구("공식 근거 1개")로
+// 토글을 찾고, 펼치면 출처명 전문이 링크로 나온다. 여기서는 **탭이 실제 응답으로 그 줄을 그리는가**
+// 만 본다 — 행 단위 배치는 ChecklistItemRow.test.tsx, 목록 동작은 shared/ui/SourceList.test.tsx.
+describe("체크리스트 근거", () => {
+  it("source_tier가 있으면 티어 한글 라벨로 요약을 보여준다", async () => {
     getChecklistItemsMock.mockResolvedValue({
       items: [makeItem({ source_tier: "OFFICIAL", source_label: "공정위 예식장이용 표준약관(제10030호)" })],
     });
     render(<ChecklistTab categoryCode="VENUE" categoryMeta={CATEGORY_META} />);
 
-    expect(await screen.findByText("공식 · 공정위 예식장이용 표준약관(제10030호)")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "공식 근거 1개" })).toBeInTheDocument();
+    // ENUM 원문이 새어 나오지 않는다.
+    expect(screen.queryByText(/OFFICIAL/u)).not.toBeInTheDocument();
   });
 
-  it("source_tier가 null인 LLM 생성 항목은 배지를 아예 생략한다", async () => {
+  it("source_tier가 null인 LLM 생성 항목은 근거 줄을 아예 생략한다", async () => {
     getChecklistItemsMock.mockResolvedValue({
       items: [makeItem({ source_tier: null, source_label: "" })],
     });
     render(<ChecklistTab categoryCode="VENUE" categoryMeta={CATEGORY_META} />);
 
     expect(await screen.findByText("위약금·환불 규정 확인")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /근거 자세히 보기/u })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /근거/u })).not.toBeInTheDocument();
   });
 
   it("사용자가 직접 추가한 항목은 source_tier와 무관하게 '내가 추가' 배지만 보여준다", async () => {
@@ -81,7 +87,7 @@ describe("체크리스트 근거 배지", () => {
     expect(await screen.findByText("내가 추가")).toBeInTheDocument();
   });
 
-  it("근거 배지를 누르면 원문 링크가 있는 상세 내용이 펼쳐진다", async () => {
+  it("근거 요약을 누르면 출처명 전문이 원문 링크로 펼쳐진다", async () => {
     const user = userEvent.setup();
     getChecklistItemsMock.mockResolvedValue({
       items: [
@@ -94,15 +100,14 @@ describe("체크리스트 근거 배지", () => {
     });
     render(<ChecklistTab categoryCode="VENUE" categoryMeta={CATEGORY_META} />);
 
-    const trigger = await screen.findByRole("button", {
-      name: "근거 자세히 보기: 공식 · 공정위 예식장이용 표준약관(제10030호)",
-    });
+    const trigger = await screen.findByRole("button", { name: "공식 근거 1개" });
     expect(trigger).toHaveAttribute("aria-expanded", "false");
 
     await user.click(trigger);
 
     expect(trigger).toHaveAttribute("aria-expanded", "true");
-    const link = screen.getByRole("link", { name: "원문 보기" });
+    // 제목 자체가 링크다 — 종전의 "원문 보기" 2단계가 1단계로 줄었다.
+    const link = screen.getByRole("link", { name: "공정위 예식장이용 표준약관(제10030호)" });
     expect(link).toHaveAttribute("href", "https://www.ftc.go.kr/standard-terms/10030");
   });
 
@@ -113,9 +118,10 @@ describe("체크리스트 근거 배지", () => {
     });
     render(<ChecklistTab categoryCode="VENUE" categoryMeta={CATEGORY_META} />);
 
-    await user.click(await screen.findByRole("button", { name: "근거 자세히 보기: 합의 · 소비자 상담 사례" }));
+    await user.click(await screen.findByRole("button", { name: "합의 근거 1개" }));
 
+    expect(screen.getByText("소비자 상담 사례")).toBeInTheDocument();
     expect(screen.getByText("팀에서 직접 정리한 자료라 원문 링크는 없어요.")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "원문 보기" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 });

@@ -89,7 +89,8 @@
 
 | 컴포넌트 | 값 | 구현 |
 |---|---|---|
-| `badge-focus` | 배경 `primary-soft` · 글자 `primary` · 모서리 `rounded-pill` · 12px 700 | `Badge` — 변이 없음(규범이 정의한 배지가 하나뿐) |
+| `badge-focus` | 배경 `primary-soft` · 글자 `primary` · 모서리 `rounded-pill` · 12px 700 · **`whitespace-nowrap` + `shrink-0`** | `Badge` — 변이 없음(규범이 정의한 배지가 하나뿐). **잘리지 않는 짧은 라벨 전용** — 길이가 가변인 것은 배지에 담지 않는다([D16](decisions.md#d16-배지의-책임을-잘리지-않는-짧은-라벨로-좁힌다)) |
+| 출처 목록 | 접힘 요약 한 줄(`min-h-tap` + 화살표) + 펼침 세로 목록 · 제목 `line-clamp-2` | `SourceList` — 채팅 인용 · 체크리스트 근거 · 업체사례 관련 사례의 공용 그릇([D16](decisions.md#d16-배지의-책임을-잘리지-않는-짧은-라벨로-좁힌다)) |
 | `button-ghost` | 배경 투명 · 글자 `primary` · 모서리 `rounded-sm` · padding 5px 11px | `Button variant="ghost"` — 세로 5px 는 `min-h-tap`(44px)이 대신한다 |
 | `button` primary / secondary | primary 면 + surface 글자 / surface 면 + line 보더 + ink 글자 · `rounded-md` | `Button` — 호버 **적용 완료**([D4](decisions.md#d4-호버-색을-77354f로-확정한다)): `enabled:hover:bg-primary-hover`. `enabled:` 를 붙여 비활성 상태에서 호버가 살아나지 않게 한다 |
 | 진행률 | 트랙 `line` · 채움 `primary` · `rounded-pill` · 높이 8px | `Progress` — 불확정 표현은 [D11](decisions.md#d11-불확정-진행률의-시각-표현) |

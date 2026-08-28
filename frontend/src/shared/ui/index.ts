@@ -23,6 +23,9 @@ export { Progress, type ProgressProps } from "./Progress";
 export { PulseDots, type PulseDotsProps, type PulseDotsVariant } from "./PulseDots";
 export { RoutePending } from "./RoutePending";
 export { SkeletonRows, type SkeletonRowsProps } from "./Skeleton";
+// 근거·출처 목록 (D16) — 채팅 인용 · 체크리스트 근거 · 업체사례 관련 사례가 같은 그릇을 쓴다.
+// entities 끼리는 서로를 import 할 수 없으므로 공유 지점은 여기뿐이다(safe-url·source-tier 와 같은 이유).
+export { SourceList, type SourceListItem, type SourceListProps } from "./SourceList";
 export { StatusCallout, type StatusCalloutProps } from "./StatusCallout";
 export { Tabs, type TabsRootProps } from "./Tabs";
 export {

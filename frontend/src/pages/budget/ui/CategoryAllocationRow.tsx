@@ -89,7 +89,9 @@ export function CategoryAllocationRow({
         )}
         {hasBenchmark &&
           (benchmark ? (
-            <p className="flex items-center gap-1.5 text-xs text-ink-soft">
+            // flex-wrap — 배지가 이제 안 눌리므로(D16) 좁은 폭에서는 배지가 다음 줄로 내려가야
+            // 한다. BudgetDonut 의 같은 줄은 이미 켜져 있었다(CategoryRow 와 같은 보정).
+            <p className="flex flex-wrap items-center gap-1.5 text-xs text-ink-soft">
               시세 대비 {benchmark.percentile_label} · 중앙값 <Money value={benchmark.median_price} className="text-xs" />
               <Badge>{benchmark.ratio_to_median.toFixed(2)}배</Badge>
             </p>
