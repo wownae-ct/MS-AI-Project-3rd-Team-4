@@ -29,7 +29,11 @@ from app.personalization.prompts import (
     build_route_prompt,
 )
 from app.personalization.state import PersonalizationState
-from app.personalization.validation import validate_personalization_draft
+from app.personalization.validation import (
+    deduplicate_titles,
+    protected_titles_for_domain,
+    validate_personalization_draft,
+)
 from app.rag.retrieval import RetrievedChunk, retrieve
 
 logger = logging.getLogger(__name__)
@@ -186,18 +190,51 @@ def _normalize_timeline_category_code(item: dict) -> dict:
     return item
 
 
+def _dedup_domain_draft(
+    domain_label: str, draft: list[dict] | None, protected_items: dict
+) -> list[dict] | None:
+    """2026-08-28 결정(red-bug.md #9-2) — validate가 "제목 중복"을 잡아 도메인 전체를
+    BLOCKED시키기 전에, 뒤에 나온 중복 항목만 먼저 드롭해 나머지는 그대로 살린다. draft가
+    None이면(이 도메인이 affected_domains에 없어 generate가 아예 안 만든 경우) 그대로 None을
+    돌려준다 — validate_personalization_draft도 이 경우를 동일하게 처리한다."""
+    if draft is None:
+        return None
+    protected_titles = protected_titles_for_domain(protected_items, domain_label)
+    kept, dropped = deduplicate_titles(draft, protected_titles)
+    if dropped:
+        # 2026-08-26 레드팀 감사 4라운드 항목 23의 교훈과 동일 — 자동 교정이 발동할 때마다
+        # 로그를 남겨야 재발 빈도를 조기에 파악할 수 있다(null-string category_code 버그가
+        # 무로깅으로 3번 재발했던 전례).
+        logger.warning(
+            "Deduplicated %d %s item(s) with repeated (category_code, title): %r",
+            len(dropped),
+            domain_label,
+            [(item.get("category_code"), item.get("title")) for item in dropped],
+        )
+    return kept
+
+
 # ③ validate: 순수 코드, LLM 호출 없음(§1-4) — app/personalization/validation.py의 4규칙을
 # 도메인별 독립 적용한다. validation_status/validation_errors는 도메인별 딕셔너리다
 # (2026-08-24 버그 수정 — 이전엔 단일 status라 한쪽 도메인만 실패해도 둘 다 BLOCKED
 # 폴백됐다. app/services/personalization.py가 이 딕셔너리를 도메인별로 독립 적용한다).
+#
+# 2026-08-28 결정(red-bug.md #9-2) — 실제 규칙 검증 전에 _dedup_domain_draft로 제목 중복부터
+# 먼저 걸러낸다(원래 validate는 순수 검증만 했다는 §1-4 설계 원칙에서 "일부 자동 교정"으로
+# 성격이 바뀌는 의도된 변경). 걸러진 checklist_draft/timeline_draft를 그대로 반환해 state에
+# 반영하므로, app/services/personalization.py가 이후 result["checklist_draft"]/
+# ["timeline_draft"]를 읽을 때 이미 정제된 목록을 받는다.
 async def validate_node(state: PersonalizationState, config: RunnableConfig) -> dict:
     active_categories = set(state["profile"].get("active_categories", []))
+    protected_items = state["protected_items"]
+    checklist_draft = _dedup_domain_draft("CHECKLIST", state["checklist_draft"], protected_items)
+    timeline_draft = _dedup_domain_draft("TIMELINE", state["timeline_draft"], protected_items)
     domain_errors = validate_personalization_draft(
         active_categories,
         state["affected_domains"],
-        state["checklist_draft"],
-        state["timeline_draft"],
-        state["protected_items"],
+        checklist_draft,
+        timeline_draft,
+        protected_items,
     )
     validation_status = {
         domain: "BLOCKED" if errors else "SUCCESS" for domain, errors in domain_errors.items()
@@ -208,6 +245,8 @@ async def validate_node(state: PersonalizationState, config: RunnableConfig) -> 
     if any(status == "BLOCKED" for status in validation_status.values()):
         retry_count += 1
     return {
+        "checklist_draft": checklist_draft,
+        "timeline_draft": timeline_draft,
         "validation_status": validation_status,
         "validation_errors": domain_errors,
         "retry_count": retry_count,
