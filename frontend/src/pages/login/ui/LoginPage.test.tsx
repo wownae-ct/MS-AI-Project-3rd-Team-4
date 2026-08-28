@@ -161,8 +161,8 @@ describe("가입 → 로그인 인계", () => {
 
     const banner = await screen.findByRole("status");
     expect(banner).toHaveTextContent(/회원가입이 완료되었습니다/u);
-    // 닉네임으로 부른다 — 누구의 계정이 만들어졌는지가 드러나야 확인이 된다.
-    expect(banner).toHaveTextContent(/홍길동/u);
+    // 배너는 닉네임으로 부르지 않는다(2026-08-28, 사용자가 직접 고침) — 무슨 일이 일어났고
+    // 다음에 뭘 해야 하는지만 말한다. 예전엔 "누구의 계정이 만들어졌는지"를 닉네임으로 확인시켰다.
     // 실패와 같은 자리·같은 강도로 낭독되면 안 된다.
     expect(screen.queryByRole("alert")).toBeNull();
     // 비운 비밀번호 칸이 다음 할 일이다.
