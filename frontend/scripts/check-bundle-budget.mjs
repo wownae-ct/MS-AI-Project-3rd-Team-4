@@ -176,7 +176,21 @@ const BUDGETS = [
   // 3계열(paid/planned/remaining)에서 4계열(paid/scheduled/allocated/unallocated)로 늘었다 —
   // `entities/wedding`은 위 항목들과 같은 이유로 초기 청크에서 이미 도달 가능한 모듈이라 이
   // 지표에 바로 반영된다. 여유를 19B로 좁게 유지한다.
-  { key: "jsChunkGzip", limit: 97_880, measured: 97_861, label: "최대 단일 JS 청크 (gzip)" },
+  // ── 2026-08-28 frontend→main 최초 병합, production 이미지 첫 실빌드로 97,880 → 97,916 ──────
+  // 97,861 → 97,896(증가 35B) — 소스 코드 변경이 아니라 **빌드 환경 차이**다. 이 한도는 지금까지
+  // `frontend-ci.yml`(PR 게이트, `secrets.VITE_API_BASE` 사용)로만 실측돼 왔는데, `frontend-
+  // docker-ci.yml`(production 전용, `main` push 트리거)은 별도의 production `VITE_API_BASE`
+  // build-arg를 쓴다(둘이 다른 시크릿 — infra/same-origin 마이그레이션 문서 참고). 이 문자열은
+  // `shared/api/client.ts`를 거쳐 초기 청크에 리터럴로 박히므로, PR 게이트 값과 실제 production
+  // 도메인 문자열의 길이 차이가 그대로 이 지표에 반영된다. 오늘 PR #117로 `frontend`→`main`이
+  // 최초로 병합되면서 `frontend-docker-ci.yml`이 이 저장소 역사상 처음 실행됐고, 그래서 이
+  // 격차가 지금껏 한 번도 드러난 적이 없었다. 실측값은 CI 실패 로그의 실제 production 빌드
+  // 수치(97,896B)를 그대로 신뢰한다 — 로컬 재현은 더미 VITE_API_BASE 문자열 길이가 달라 정확히
+  // 일치하지 않는다. 여유를 20B로 좁게 유지한다. **후속 검토 필요**: 이 클래스의 격차(PR 게이트
+  // 값 vs 실제 production 값)는 두 시크릿의 문자열 길이가 벌어질 때마다 재발할 수 있다 — PR
+  // 게이트가 production build-arg로 직접 실측하도록 바꾸는 근본 수정은 이번 범위 밖(사용자가
+  // "우선 갱신만" 요청, red-bug.md에 후속 항목으로 남김).
+  { key: "jsChunkGzip", limit: 97_916, measured: 97_896, label: "최대 단일 JS 청크 (gzip)" },
   { key: "cssGzip", limit: 6_000, measured: 4_237, label: "CSS (gzip, @font-face 제외)" },
   // 폰트는 unicode-range 로 분할돼 전량 전송되지 않으므로 이 값은 전송량이 아니라 **배포 크기** 가드다.
   // 잡으려는 사고: variable/split(2.3 MB) 대신 static/split(8.8 MB)이나 static/complete(4.7 MB)를
