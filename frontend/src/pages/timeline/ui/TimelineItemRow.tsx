@@ -70,8 +70,10 @@ export function TimelineItemRow({ item, categoryLabel, onStatusChange }: Timelin
           {categoryLabel === null ? "" : `${categoryLabel} · `}
           {item.target_date}
         </p>
-        {/* 신고(F13)는 AI가 생성한 항목에만 의미가 있다 — 사용자가 직접 추가한 항목은 신고 대상이 아니다. */}
-        {item.origin === "LLM" && (
+        {/* 신고(F13)는 사용자가 직접 추가하지 않은 항목에만 의미가 있다 — LLM 생성분뿐 아니라
+            카탈로그 폴백(origin=CATALOG_FALLBACK)도 시스템 콘텐츠라 신고 대상(2026-08-28,
+            origin='LLM' mislabel 수정). ChecklistItemRow.tsx와 동일 결정. */}
+        {item.origin !== "USER" && (
           <div className="mt-1">
             <ReportButton targetType="TIMELINE_ITEM" targetId={item.id} />
           </div>
