@@ -1,0 +1,374 @@
+<!-- 출처: claude.ai/design 프로젝트 "HTML 기반 UI 초안 구성" 의 uploads/ 사본.
+     같은 프로젝트의 "메리맵 프로토타입.dc.html" 이 더 최신이다 — 하단 탭바 4개와 데스크톱(1160px) 레이아웃은
+     그쪽에만 있고 이 파일에는 없다. 화면 단위 시각 참조로만 쓸 것.
+     저장소에 넣으면서 임베드돼 있던 base64 woff2 2개를 걷어내고 캔버스 원본과 같은 Wanted Sans v1.0.3 CDN 로 바꿨다.
+     그 외 마크업·스타일은 한 글자도 손대지 않았다. -->
+<title>메리맵 카테고리 상세</title>
+<style>
+  @import url("https://cdn.jsdelivr.net/gh/wanteddev/wanted-sans@v1.0.3/packages/wanted-sans/fonts/webfonts/variable/complete/WantedSansVariable.min.css");
+
+
+  :root{
+    --color-primary:#8B3F63;
+    --color-primary-soft:#F1DEE7;
+    --color-ink:#1D1B19;
+    --color-ink-soft:#726B65;
+    --color-bg:#F7F6F4;
+    --color-surface:#FFFFFF;
+    --color-line:#E7E3DE;
+    --page-canvas:#EDEAE6;
+    --radius-sm:8px;
+    --radius-md:10px;
+    --radius-pill:999px;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{ background:var(--page-canvas); }
+  body{
+    margin:0; color:var(--color-ink);
+    font-family:'Wanted Sans Variable','Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+    line-height:1.5; -webkit-font-smoothing:antialiased;
+    display:flex; justify-content:center; padding:40px 16px 64px;
+  }
+  a{ color:inherit; }
+  button{ font-family:inherit; }
+
+  .canvas-note{
+    position:fixed; top:18px; left:50%; transform:translateX(-50%);
+    font-size:.72rem; color:var(--color-ink-soft); text-align:center;
+  }
+
+  .device{ width:390px; max-width:100%; background:var(--color-ink); border-radius:40px; padding:10px; margin-top:26px; }
+  .device-screen{ background:var(--color-bg); border-radius:32px; overflow:hidden; min-height:800px; display:flex; flex-direction:column; }
+  .screen-inner{ padding:18px 18px 32px; display:flex; flex-direction:column; gap:16px; }
+
+  /* Header */
+  .s3-header{ display:flex; align-items:center; gap:9px; }
+  .back-btn{
+    width:28px; height:28px; border-radius:50%; border:1px solid var(--color-line);
+    background:var(--color-surface); display:flex; align-items:center; justify-content:center;
+    font-size:.8rem; color:var(--color-ink-soft); flex:none;
+  }
+  .s3-title{ font-size:1.05rem; font-weight:700; flex:1; }
+  .s3-badge{
+    font-size:.62rem; font-weight:700; letter-spacing:.03em; color:var(--color-primary);
+    background:var(--color-primary-soft); border-radius:var(--radius-pill); padding:3px 9px;
+  }
+
+  /* Tabs (radio-driven, no JS) */
+  .tabs{ display:flex; background:var(--color-surface); border:1px solid var(--color-line); border-radius:var(--radius-pill); padding:3px; gap:2px; }
+  .tabs input{ position:absolute; opacity:0; pointer-events:none; }
+  .tabs label{
+    flex:1; text-align:center; font-size:.8rem; font-weight:700; color:var(--color-ink-soft);
+    padding:8px 4px; border-radius:var(--radius-pill); cursor:pointer;
+  }
+  #tab-checklist:checked ~ .tabs label[for="tab-checklist"],
+  #tab-cost:checked ~ .tabs label[for="tab-cost"],
+  #tab-chat:checked ~ .tabs label[for="tab-chat"]{
+    background:var(--color-primary); color:#fff;
+  }
+
+  .panel{ display:none; flex-direction:column; gap:16px; }
+  #tab-checklist:checked ~ .panels #panel-checklist{ display:flex; }
+  #tab-cost:checked ~ .panels #panel-cost{ display:flex; }
+  #tab-chat:checked ~ .panels #panel-chat{ display:flex; }
+
+  .card{ background:var(--color-surface); border:1px solid var(--color-line); border-radius:16px; padding:16px; }
+  .card-title{ font-size:.88rem; font-weight:700; margin:0 0 12px; }
+
+  /* Vendor case cards */
+  .vendor-cases{ display:flex; flex-direction:column; gap:10px; }
+  .vcard{ border:1px solid var(--color-line); border-radius:12px; padding:13px 14px; }
+  .vcard-top{ display:flex; align-items:center; gap:7px; margin-bottom:6px; }
+  .vcard-tag{ font-size:.66rem; font-weight:700; padding:2px 8px; border-radius:var(--radius-pill); }
+  .vcard-tag.good{ background:var(--color-primary-soft); color:var(--color-primary); }
+  .vcard-tag.bad{ background:var(--color-bg); color:var(--color-ink-soft); border:1px solid var(--color-line); }
+  .vcard-source{ font-size:.64rem; color:var(--color-ink-soft); margin-left:auto; }
+  .vcard-situation{ font-size:.8rem; margin:0 0 4px; }
+  .vcard-lesson{ font-size:.76rem; color:var(--color-ink-soft); margin:0; }
+  .disclaimer{ font-size:.68rem; color:var(--color-ink-soft); line-height:1.5; margin:2px 2px 0; }
+
+  /* Filter toggle */
+  .filter-row{ display:flex; align-items:center; justify-content:space-between; }
+  .filter-label{ font-size:.82rem; font-weight:700; }
+  .switch{ width:38px; height:22px; border-radius:var(--radius-pill); background:var(--color-line); position:relative; flex:none; }
+  .switch::after{ content:""; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:var(--color-surface); }
+
+  /* Checklist groups */
+  .group-title{ font-size:.72rem; font-weight:700; letter-spacing:.04em; color:var(--color-ink-soft); text-transform:uppercase; margin:14px 0 8px; }
+  .group-title:first-child{ margin-top:0; }
+  .item-row{ display:flex; align-items:flex-start; gap:10px; padding:10px 0; border-top:1px solid var(--color-line); }
+  .group-title + .item-row{ border-top:none; padding-top:0; }
+  .item-main{ flex:1; min-width:0; }
+  .item-title-row{ display:flex; align-items:center; gap:7px; flex-wrap:wrap; margin-bottom:3px; }
+  .item-title{ font-size:.84rem; font-weight:700; }
+  .item-title.done{ color:var(--color-ink-soft); text-decoration:line-through; }
+  .src-chip{ font-size:.6rem; color:var(--color-ink-soft); border:1px solid var(--color-line); border-radius:var(--radius-pill); padding:1px 7px; }
+  .item-body{ font-size:.76rem; color:var(--color-ink-soft); margin:0; }
+  .status-chip{ flex:none; font-size:.64rem; font-weight:700; border-radius:var(--radius-pill); padding:3px 9px; white-space:nowrap; }
+  .status-chip.status-done{ background:var(--color-primary-soft); color:var(--color-primary); }
+  .status-chip.status-doing{ background:var(--color-bg); color:var(--color-primary); border:1px solid var(--color-primary); }
+  .status-chip.status-todo{ background:var(--color-bg); color:var(--color-ink-soft); border:1px solid var(--color-line); }
+  .status-chip.status-skip{ color:var(--color-ink-soft); font-style:italic; }
+  .more-hint{ font-size:.74rem; color:var(--color-ink-soft); text-align:center; padding-top:8px; }
+
+  /* Benchmark widget */
+  .bench-amounts{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:10px; }
+  .bench-yours{ font-size:1.15rem; font-weight:700; font-variant-numeric:tabular-nums; }
+  .bench-label{ font-size:.7rem; color:var(--color-ink-soft); }
+  .bench-pill{ font-size:.68rem; font-weight:700; color:var(--color-primary); background:var(--color-primary-soft); border-radius:var(--radius-pill); padding:3px 9px; }
+  .bench-range{ position:relative; height:6px; border-radius:var(--radius-pill); background:var(--color-line); margin:6px 0 8px; }
+  .bench-range-fill{ position:absolute; top:0; left:18%; right:38%; height:100%; border-radius:var(--radius-pill); background:var(--color-ink-soft); opacity:.35; }
+  .bench-range-mark{ position:absolute; top:-3px; width:2px; height:12px; background:var(--color-ink-soft); }
+  .bench-range-you{ position:absolute; top:-5px; width:3px; height:16px; background:var(--color-primary); border-radius:2px; }
+  .bench-minmax{ display:flex; justify-content:space-between; font-size:.66rem; color:var(--color-ink-soft); font-variant-numeric:tabular-nums; }
+  .bench-foot{ font-size:.66rem; color:var(--color-ink-soft); margin:10px 0 0; padding-top:10px; border-top:1px solid var(--color-line); }
+
+  /* Payment list */
+  .pay-row{ display:flex; align-items:center; gap:10px; padding:11px 0; border-bottom:1px solid var(--color-line); }
+  .pay-row:last-child{ border-bottom:none; padding-bottom:0; }
+  .pay-row:first-child{ padding-top:0; }
+  .pay-type{ font-size:.62rem; font-weight:700; color:var(--color-ink-soft); border:1px solid var(--color-line); border-radius:var(--radius-pill); padding:2px 8px; flex:none; }
+  .pay-info{ flex:1; min-width:0; }
+  .pay-name{ font-size:.84rem; font-weight:700; margin:0 0 2px; }
+  .pay-meta{ font-size:.7rem; color:var(--color-ink-soft); margin:0; }
+  .pay-right{ text-align:right; flex:none; }
+  .pay-amt{ font-size:.82rem; font-weight:700; font-variant-numeric:tabular-nums; }
+  .pay-status{ font-size:.64rem; margin-top:2px; }
+  .pay-status.paid{ color:var(--color-primary); font-weight:700; }
+  .pay-status.planned{ color:var(--color-ink-soft); }
+  .add-btn{ margin-top:12px; width:100%; padding:10px; border-radius:var(--radius-sm); border:1px dashed var(--color-line); background:none; color:var(--color-ink-soft); font-size:.8rem; font-weight:700; cursor:pointer; }
+
+  /* Chat */
+  .chat-thread{ display:flex; flex-direction:column; gap:14px; }
+  .msg-user{ align-self:flex-end; max-width:80%; background:var(--color-primary); color:#fff; border-radius:14px 14px 3px 14px; padding:9px 13px; font-size:.82rem; }
+  .msg-ai{ align-self:flex-start; max-width:88%; display:flex; flex-direction:column; gap:7px; }
+  .msg-ai-bubble{ background:var(--color-surface); border:1px solid var(--color-line); border-radius:14px 14px 14px 3px; padding:11px 13px; font-size:.82rem; }
+  .msg-ai-bubble.general{ color:var(--color-ink-soft); }
+  .citations{ display:flex; gap:6px; flex-wrap:wrap; }
+  .citation-chip{ font-size:.62rem; color:var(--color-ink-soft); border:1px solid var(--color-line); border-radius:var(--radius-pill); padding:2px 8px; }
+  .verdict{ font-size:.66rem; font-weight:700; }
+  .verdict.supported{ color:var(--color-primary); }
+  .verdict.general{ color:var(--color-ink-soft); font-weight:400; }
+  .chat-input-row{ display:flex; gap:8px; align-items:center; background:var(--color-surface); border:1px solid var(--color-line); border-radius:var(--radius-pill); padding:6px 6px 6px 14px; }
+  .chat-input-ph{ flex:1; font-size:.8rem; color:var(--color-ink-soft); }
+  .chat-send{ width:30px; height:30px; border-radius:50%; background:var(--color-primary); color:#fff; border:none; font-size:.85rem; flex:none; }
+</style>
+
+<p class="canvas-note">S3 · 카테고리 상세(예식장, FOCUS) — 데이터는 예시(합성)입니다</p>
+
+<div class="device">
+  <div class="device-screen">
+    <input type="radio" name="s3tab" id="tab-checklist" checked style="display:none">
+    <input type="radio" name="s3tab" id="tab-cost" style="display:none">
+    <input type="radio" name="s3tab" id="tab-chat" style="display:none">
+
+    <div class="screen-inner">
+      <div class="s3-header">
+        <span class="back-btn">‹</span>
+        <span class="s3-title">예식장</span>
+        <span class="s3-badge">FOCUS</span>
+      </div>
+
+      <div class="tabs">
+        <label for="tab-checklist">체크리스트</label>
+        <label for="tab-cost">비용</label>
+        <label for="tab-chat">AI상담</label>
+      </div>
+
+      <div class="panels">
+
+        <!-- 체크리스트 -->
+        <div class="panel" id="panel-checklist">
+          <div class="card">
+            <p class="card-title">업체 사례</p>
+            <div class="vendor-cases">
+              <div class="vcard">
+                <div class="vcard-top">
+                  <span class="vcard-tag good">GOOD</span>
+                  <span class="vcard-source">CONSENSUS</span>
+                </div>
+                <p class="vcard-situation">계약서에 인원 변동 조항을 미리 명시해 위약금 분쟁을 피한 사례</p>
+                <p class="vcard-lesson">→ 최소 보증 인원과 변경 시 정산 방식을 계약서에 문구로 남겨두면 나중에 다툴 일이 줄어요.</p>
+              </div>
+              <div class="vcard">
+                <div class="vcard-top">
+                  <span class="vcard-tag bad">주의</span>
+                  <span class="vcard-source">CONSENSUS</span>
+                </div>
+                <p class="vcard-situation">구두 약속만 믿고 계약해 최소 보증 인원 초과 비용을 뒤늦게 청구받은 사례</p>
+                <p class="vcard-lesson">→ 담당자의 구두 설명은 계약서 특약사항에 함께 적어달라고 요청하세요.</p>
+              </div>
+            </div>
+            <p class="disclaimer">아래 사례는 여러 실제 사례를 재구성한 예시이며 특정 업체를 지칭하지 않습니다.</p>
+          </div>
+
+          <div class="filter-row">
+            <span class="filter-label">계약 조항만 보기</span>
+            <span class="switch"></span>
+          </div>
+
+          <div class="card">
+            <p class="group-title">계약 조항</p>
+            <div class="item-row">
+              <div class="item-main">
+                <div class="item-title-row">
+                  <span class="item-title done">위약금·환불 규정 확인</span>
+                  <span class="src-chip">OFFICIAL</span>
+                </div>
+                <p class="item-body">공정위 표준약관 기준 환불 규정과 일치하는지 대조</p>
+              </div>
+              <span class="status-chip status-done">완료</span>
+            </div>
+            <div class="item-row">
+              <div class="item-main">
+                <div class="item-title-row">
+                  <span class="item-title">최소 보증 인원 조항</span>
+                  <span class="src-chip">CONSENSUS</span>
+                </div>
+                <p class="item-body">인원 미달 시 정산 방식이 문구로 명시돼 있는지 확인</p>
+              </div>
+              <span class="status-chip status-doing">진행중</span>
+            </div>
+            <div class="item-row">
+              <div class="item-main">
+                <div class="item-title-row">
+                  <span class="item-title">우천 시 대체 장소 조항</span>
+                  <span class="src-chip">INDUSTRY</span>
+                </div>
+                <p class="item-body">야외 예식일 경우 우천 대책이 계약서에 있는지 확인</p>
+              </div>
+              <span class="status-chip status-todo">예정</span>
+            </div>
+
+            <p class="group-title">추가 비용</p>
+            <div class="item-row">
+              <div class="item-main">
+                <div class="item-title-row">
+                  <span class="item-title">폐백실 별도 이용료</span>
+                  <span class="src-chip">CONSENSUS</span>
+                </div>
+                <p class="item-body">기본 포함인지, 별도 청구되는지 확인</p>
+              </div>
+              <span class="status-chip status-todo">예정</span>
+            </div>
+            <div class="item-row">
+              <div class="item-main">
+                <div class="item-title-row">
+                  <span class="item-title">주차 요금 하객 부담 여부</span>
+                  <span class="src-chip">CONSENSUS</span>
+                </div>
+                <p class="item-body">하객 주차 무료 대수 및 초과 요금 확인</p>
+              </div>
+              <span class="status-chip status-skip">건너뜀</span>
+            </div>
+
+            <p class="group-title">준비 사항</p>
+            <div class="item-row">
+              <div class="item-main">
+                <div class="item-title-row">
+                  <span class="item-title">좌석 배치도 제출 기한</span>
+                  <span class="src-chip">INDUSTRY</span>
+                </div>
+                <p class="item-body">본식 며칠 전까지 제출해야 하는지 확인</p>
+              </div>
+              <span class="status-chip status-todo">예정</span>
+            </div>
+
+            <p class="more-hint">+ 18개 더 보기</p>
+          </div>
+        </div>
+
+        <!-- 비용 -->
+        <div class="panel" id="panel-cost">
+          <div class="card">
+            <p class="card-title">대관료 비교</p>
+            <div class="bench-amounts">
+              <div>
+                <p class="bench-label">내 견적</p>
+                <p class="bench-yours">12,000,000원</p>
+              </div>
+              <span class="bench-pill">평균보다 약간 높음</span>
+            </div>
+            <div class="bench-range">
+              <div class="bench-range-fill"></div>
+              <div class="bench-range-mark" style="left:50%"></div>
+              <div class="bench-range-you" style="left:56%"></div>
+            </div>
+            <div class="bench-minmax">
+              <span>최소 7,000,000</span>
+              <span>중앙값 10,500,000</span>
+              <span>최대 16,000,000</span>
+            </div>
+            <p class="bench-foot">2026년 6월 조사 · 표본 128건 · 한국소비자원 예식장 이용실태조사</p>
+          </div>
+
+          <div class="card">
+            <p class="card-title">납부 내역</p>
+            <div class="pay-row">
+              <span class="pay-type">계약금</span>
+              <div class="pay-info">
+                <p class="pay-name">그레이스웨딩홀</p>
+                <p class="pay-meta">2026-08-05 지급</p>
+              </div>
+              <div class="pay-right">
+                <p class="pay-amt">3,000,000원</p>
+                <p class="pay-status paid">지급완료</p>
+              </div>
+            </div>
+            <div class="pay-row">
+              <span class="pay-type">중도금</span>
+              <div class="pay-info">
+                <p class="pay-name">그레이스웨딩홀</p>
+                <p class="pay-meta">2026-09-01 예정</p>
+              </div>
+              <div class="pay-right">
+                <p class="pay-amt">4,200,000원</p>
+                <p class="pay-status planned">예정</p>
+              </div>
+            </div>
+            <div class="pay-row">
+              <span class="pay-type">잔금</span>
+              <div class="pay-info">
+                <p class="pay-name">그레이스웨딩홀</p>
+                <p class="pay-meta">2027-02-20 예정</p>
+              </div>
+              <div class="pay-right">
+                <p class="pay-amt">4,800,000원</p>
+                <p class="pay-status planned">예정</p>
+              </div>
+            </div>
+            <button class="add-btn" type="button">+ 납부 항목 추가</button>
+          </div>
+        </div>
+
+        <!-- AI상담 -->
+        <div class="panel" id="panel-chat">
+          <div class="chat-thread">
+            <div class="msg-user">예식장 계약할 때 위약금 조항 꼭 확인해야 하나요?</div>
+            <div class="msg-ai">
+              <div class="msg-ai-bubble">네. 공정위 표준약관 기준으로 계약 해지 시점별 위약금 비율이 정해져 있어요. 계약서에 이 비율과 다른 조항이 있다면 특약사항으로 별도 명시돼 있는지 확인하는 게 좋아요.</div>
+              <div class="citations">
+                <span class="citation-chip">OFFICIAL · 공정위 예식장 표준약관</span>
+                <span class="citation-chip">CONSENSUS · 소비자 상담 사례</span>
+              </div>
+              <span class="verdict supported">✓ 근거 확인됨</span>
+            </div>
+
+            <div class="msg-user">여기 그레이스웨딩홀 어때요? 계약해도 될까요?</div>
+            <div class="msg-ai">
+              <div class="msg-ai-bubble general">특정 업체에 대한 평가나 추천은 제공하지 않아요. 대신 체크리스트 탭에서 계약 전에 확인하면 좋은 조항들을 볼 수 있어요.</div>
+              <span class="verdict general">일반 정보 · 근거 없음</span>
+            </div>
+          </div>
+
+          <div class="chat-input-row">
+            <span class="chat-input-ph">궁금한 걸 물어보세요</span>
+            <button class="chat-send" type="button">↑</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>

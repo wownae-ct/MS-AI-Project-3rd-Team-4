@@ -1,0 +1,382 @@
+<!-- 출처: claude.ai/design 프로젝트 "HTML 기반 UI 초안 구성" 의 uploads/ 사본.
+     같은 프로젝트의 "메리맵 프로토타입.dc.html" 이 더 최신이다 — 하단 탭바 4개와 데스크톱(1160px) 레이아웃은
+     그쪽에만 있고 이 파일에는 없다. 화면 단위 시각 참조로만 쓸 것.
+     저장소에 넣으면서 임베드돼 있던 base64 woff2 2개를 걷어내고 캔버스 원본과 같은 Wanted Sans v1.0.3 CDN 로 바꿨다.
+     그 외 마크업·스타일은 한 글자도 손대지 않았다. -->
+<title>메리맵 온보딩</title>
+<style>
+  @import url("https://cdn.jsdelivr.net/gh/wanteddev/wanted-sans@v1.0.3/packages/wanted-sans/fonts/webfonts/variable/complete/WantedSansVariable.min.css");
+
+
+  :root{
+    --color-primary:#8B3F63;
+    --color-primary-soft:#F1DEE7;
+    --color-ink:#1D1B19;
+    --color-ink-soft:#726B65;
+    --color-bg:#F7F6F4;
+    --color-surface:#FFFFFF;
+    --color-line:#E7E3DE;
+    --page-canvas:#EDEAE6;
+    --radius-sm:8px;
+    --radius-md:10px;
+    --radius-pill:999px;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{ background:var(--page-canvas); }
+  body{
+    margin:0; color:var(--color-ink);
+    font-family:'Wanted Sans Variable','Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+    line-height:1.5; -webkit-font-smoothing:antialiased;
+    display:flex; justify-content:center; padding:40px 16px 64px;
+  }
+  a{ color:inherit; }
+  button, input, select, label{ font-family:inherit; }
+
+  .canvas-note{
+    position:fixed; top:18px; left:50%; transform:translateX(-50%);
+    font-size:.72rem; color:var(--color-ink-soft); text-align:center;
+  }
+
+  .device{ width:390px; max-width:100%; background:var(--color-ink); border-radius:40px; padding:10px; margin-top:26px; }
+  .device-screen{ background:var(--color-bg); border-radius:32px; overflow:hidden; min-height:820px; display:flex; flex-direction:column; }
+  .screen-inner{ padding:24px 20px 28px; display:flex; flex-direction:column; gap:20px; flex:1; }
+
+  #step1,#step2,#step3,#step4,#step5,#step6{ position:absolute; opacity:0; pointer-events:none; }
+
+  /* Stepper */
+  .stepper{ display:flex; align-items:center; gap:5px; }
+  .stepper .dot{ height:4px; flex:1; border-radius:var(--radius-pill); background:var(--color-line); }
+  #step1:checked ~ .screen-inner .stepper .dot:nth-child(-n+1),
+  #step2:checked ~ .screen-inner .stepper .dot:nth-child(-n+2),
+  #step3:checked ~ .screen-inner .stepper .dot:nth-child(-n+3),
+  #step4:checked ~ .screen-inner .stepper .dot:nth-child(-n+4),
+  #step5:checked ~ .screen-inner .stepper .dot:nth-child(-n+5),
+  #step6:checked ~ .screen-inner .stepper .dot:nth-child(-n+6){ background:var(--color-primary); }
+
+  .step-panel{ display:none; flex-direction:column; gap:20px; flex:1; }
+  #step1:checked ~ .screen-inner #panel-step1{ display:flex; }
+  #step2:checked ~ .screen-inner #panel-step2{ display:flex; }
+  #step3:checked ~ .screen-inner #panel-step3{ display:flex; }
+  #step4:checked ~ .screen-inner #panel-step4{ display:flex; }
+  #step5:checked ~ .screen-inner #panel-step5{ display:flex; }
+  #step6:checked ~ .screen-inner #panel-step6{ display:flex; }
+
+  .step-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+  .step-head h1{ font-size:1.12rem; font-weight:700; margin:0 0 5px; line-height:1.4; }
+  .step-head p{ font-size:.8rem; color:var(--color-ink-soft); margin:0; }
+  .skip-link{ flex:none; font-size:.74rem; font-weight:700; color:var(--color-ink-soft); text-decoration:none; padding-top:2px; }
+
+  .field{ position:relative; display:flex; flex-direction:column; gap:6px; }
+  .field-label-row{ display:flex; align-items:center; justify-content:space-between; }
+  .field label{ font-size:.78rem; font-weight:700; color:var(--color-ink-soft); }
+  .field input, .field select{
+    border:1px solid var(--color-line); background:var(--color-surface); border-radius:var(--radius-sm);
+    padding:11px 12px; font-size:.9rem; color:var(--color-ink); width:100%;
+  }
+  .field input:focus, .field select:focus{ outline:2px solid var(--color-primary); outline-offset:1px; }
+  .field-note{ font-size:.72rem; color:var(--color-ink-soft); font-style:italic; margin:2px 0 0; }
+  .field-note b{ color:var(--color-primary); font-style:normal; font-weight:700; }
+
+  .btn-primary{
+    display:block; text-align:center; background:var(--color-primary); color:#fff; border:none;
+    border-radius:var(--radius-sm); padding:13px; font-size:.9rem; font-weight:700; cursor:pointer;
+    text-decoration:none;
+  }
+  .btn-ghost{
+    display:inline-flex; align-items:center; gap:4px; background:none; border:none; color:var(--color-ink-soft);
+    font-size:.82rem; font-weight:700; cursor:pointer; padding:0; text-decoration:none; width:fit-content;
+  }
+
+  .spacer{ flex:1; }
+
+  /* Hidden native inputs driving CSS-only toggles */
+  .hidden-check{ position:absolute; opacity:0; width:0; height:0; pointer-events:none; }
+
+  /* Date-mode segmented toggle (정확한 날짜 vs 미정) */
+  .mode-toggle-track{ display:flex; background:var(--color-surface); border:1px solid var(--color-line); border-radius:var(--radius-pill); padding:3px; gap:2px; }
+  .mode-toggle-track label{ flex:1; text-align:center; font-size:.78rem; font-weight:700; color:var(--color-ink-soft); padding:8px 4px; border-radius:var(--radius-pill); cursor:pointer; }
+  #date-exact:checked ~ .mode-toggle-track label[for="date-exact"],
+  #date-unsure:checked ~ .mode-toggle-track label[for="date-unsure"]{ background:var(--color-primary); color:#fff; }
+  .date-panel{ display:none; margin-top:8px; }
+  #date-exact:checked ~ .date-exact-panel{ display:block; }
+  #date-unsure:checked ~ .date-unsure-panel{ display:block; }
+
+  /* Small inline checkbox toggle (미정이에요) */
+  .mini-toggle-label{ font-size:.72rem; font-weight:700; color:var(--color-ink-soft); cursor:pointer; display:inline-flex; align-items:center; gap:5px; }
+  .mini-toggle-label::before{ content:""; width:14px; height:14px; border-radius:4px; border:1px solid var(--color-line); background:var(--color-surface); display:inline-block; flex:none; }
+  #guest-unsure:checked ~ .field-label-row .mini-toggle-label::before{ background:var(--color-primary); border-color:var(--color-primary); }
+  .guest-input-unsure{ display:none; }
+  .guest-note{ display:none; }
+  #guest-unsure:checked ~ .guest-input-known{ display:none; }
+  #guest-unsure:checked ~ .guest-input-unsure{ display:block; }
+  #guest-unsure:checked ~ .guest-note{ display:block; }
+
+  /* Choice cards (role / romance scale) */
+  .choice-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .choice-card{
+    border:1px solid var(--color-line); background:var(--color-surface); border-radius:var(--radius-md);
+    padding:14px 12px; text-align:left; cursor:pointer;
+  }
+  .choice-card .cc-title{ font-size:.86rem; font-weight:700; display:block; margin-bottom:2px; }
+  .choice-card .cc-sub{ font-size:.68rem; color:var(--color-ink-soft); display:block; }
+  .choice-card.selected{ border-color:var(--color-primary); background:var(--color-primary-soft); }
+  .choice-card.selected .cc-title{ color:var(--color-primary); }
+
+  /* Chips (date-range / priority) */
+  .chip-group{ display:flex; flex-wrap:wrap; gap:8px; }
+  .chip{
+    border:1px solid var(--color-line); background:var(--color-surface); border-radius:var(--radius-pill);
+    padding:8px 14px; font-size:.8rem; font-weight:700; color:var(--color-ink-soft); cursor:pointer;
+  }
+  .chip.selected{ border-color:var(--color-primary); background:var(--color-primary); color:#fff; }
+
+  .subsection{ display:flex; flex-direction:column; gap:8px; }
+  .subsection-title{ font-size:.8rem; font-weight:700; }
+
+  /* Checklist (progress so far) */
+  .check-row{ display:flex; align-items:center; gap:10px; padding:11px 0; border-bottom:1px solid var(--color-line); }
+  .check-row:last-child{ border-bottom:none; padding-bottom:0; }
+  .check-row:first-child{ padding-top:0; }
+  .check-box{
+    flex:none; width:19px; height:19px; border-radius:5px; border:1px solid var(--color-line);
+    background:var(--color-surface); display:flex; align-items:center; justify-content:center; font-size:.62rem; color:#fff;
+  }
+  .check-box.checked{ background:var(--color-primary); border-color:var(--color-primary); }
+  .check-label{ font-size:.84rem; font-weight:700; }
+
+  /* Step 6: category allocation rows */
+  .alloc-summary{ background:var(--color-surface); border:1px solid var(--color-line); border-radius:14px; padding:14px 16px; }
+  .alloc-summary-top{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px; }
+  .alloc-amount{ font-size:1rem; font-weight:700; font-variant-numeric:tabular-nums; }
+  .alloc-total{ font-size:.72rem; color:var(--color-ink-soft); }
+  .alloc-bar-track{ height:6px; border-radius:var(--radius-pill); background:var(--color-line); overflow:hidden; margin-bottom:6px; }
+  .alloc-bar-fill{ height:100%; border-radius:var(--radius-pill); background:var(--color-primary); }
+  .alloc-remain{ font-size:.7rem; color:var(--color-ink-soft); }
+
+  .alloc-list{ display:flex; flex-direction:column; }
+  .alloc-row{ display:flex; align-items:center; gap:10px; padding:12px 0; border-bottom:1px solid var(--color-line); }
+  .alloc-row:last-child{ border-bottom:none; padding-bottom:0; }
+  .alloc-row:first-child{ padding-top:0; }
+  .alloc-toggle{ width:36px; height:21px; border-radius:var(--radius-pill); flex:none; position:relative; background:var(--color-primary); }
+  .alloc-toggle::after{ content:""; position:absolute; top:2px; right:2px; width:17px; height:17px; border-radius:50%; background:#fff; }
+  .alloc-name{ flex:1; font-size:.86rem; font-weight:700; }
+  .alloc-input-wrap{ flex:none; }
+  .alloc-input{
+    width:112px; text-align:right; border:1px solid var(--color-line); background:var(--color-surface);
+    border-radius:var(--radius-sm); padding:7px 9px; font-size:.8rem; font-variant-numeric:tabular-nums; color:var(--color-ink);
+  }
+  .alloc-no-cost{ font-size:.74rem; color:var(--color-ink-soft); flex:none; }
+</style>
+
+<p class="canvas-note">S1 · 온보딩(6단계 확장) — 데이터는 예시(합성)입니다</p>
+
+<div class="device">
+  <div class="device-screen">
+    <input type="radio" name="s1step" id="step1" checked>
+    <input type="radio" name="s1step" id="step2">
+    <input type="radio" name="s1step" id="step3">
+    <input type="radio" name="s1step" id="step4">
+    <input type="radio" name="s1step" id="step5">
+    <input type="radio" name="s1step" id="step6">
+
+    <div class="screen-inner">
+      <div class="stepper">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      </div>
+
+      <!-- 1: 역할 + 결혼예정일 -->
+      <div class="step-panel" id="panel-step1">
+        <div class="step-head">
+          <div>
+            <h1>당신에 대해 알려주세요</h1>
+            <p>맞춤 체크리스트와 타임라인을 만드는 데 써요.</p>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>역할</label>
+          <div class="choice-grid">
+            <div class="choice-card selected"><span class="cc-title">예비신부</span></div>
+            <div class="choice-card"><span class="cc-title">예비신랑</span></div>
+          </div>
+        </div>
+
+        <div class="field">
+          <input type="radio" name="datemode" id="date-exact" class="hidden-check">
+          <input type="radio" name="datemode" id="date-unsure" class="hidden-check" checked>
+          <label>결혼 예정일</label>
+          <div class="mode-toggle-track">
+            <label for="date-exact">정확한 날짜</label>
+            <label for="date-unsure">아직 미정</label>
+          </div>
+          <div class="date-panel date-exact-panel">
+            <input type="date" value="2027-03-06">
+          </div>
+          <div class="date-panel date-unsure-panel">
+            <div class="chip-group">
+              <span class="chip">올해 하반기</span>
+              <span class="chip selected">내년 상반기</span>
+              <span class="chip">내년 하반기</span>
+              <span class="chip">계획 없음</span>
+            </div>
+            <p class="field-note">정확한 날짜가 정해지면 위에서 언제든 바꿀 수 있어요.</p>
+          </div>
+        </div>
+
+        <div class="spacer"></div>
+        <label for="step2" class="btn-primary">다음</label>
+      </div>
+
+      <!-- 2: 지역 & 예산 & 하객 -->
+      <div class="step-panel" id="panel-step2">
+        <div class="step-head">
+          <div>
+            <h1>예산과 규모를 알려주세요</h1>
+            <p>나중에 언제든 바꿀 수 있어요.</p>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>지역</label>
+          <select>
+            <option>서울</option><option>경기</option><option>인천</option><option>부산</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>총 예산</label>
+          <input type="text" value="45,000,000원">
+          <p class="field-note">참고 · 서울 지역 <b>예식장+스드메</b> 참가격 평균 합산 18,000,000원 (한국소비자원 참가격 데이터 기준)</p>
+        </div>
+
+        <div class="field">
+          <input type="checkbox" id="guest-unsure" class="hidden-check">
+          <div class="field-label-row">
+            <label>예상 하객 수</label>
+            <label for="guest-unsure" class="mini-toggle-label">미정이에요</label>
+          </div>
+          <input class="guest-input-known" type="text" value="250명">
+          <input class="guest-input-unsure" type="text" value="200명" disabled>
+          <p class="field-note guest-note">평균 보증인원 기준인 200명으로 시작해요.</p>
+        </div>
+
+        <div class="spacer"></div>
+        <label for="step1" class="btn-ghost">← 이전</label>
+        <label for="step3" class="btn-primary">다음</label>
+      </div>
+
+      <!-- 3: 웨딩 취향 -->
+      <div class="step-panel" id="panel-step3">
+        <div class="step-head">
+          <div>
+            <h1>어떤 결혼식을 꿈꾸세요?</h1>
+            <p>체크리스트 추천 우선순위에 참고할게요.</p>
+          </div>
+          <label for="step6" class="skip-link">나중에 설정</label>
+        </div>
+
+        <div class="choice-grid">
+          <div class="choice-card"><span class="cc-title">미니멀</span><span class="cc-sub">군더더기 없이 심플하게</span></div>
+          <div class="choice-card"><span class="cc-title">가성비</span><span class="cc-sub">합리적인 비용 안에서</span></div>
+          <div class="choice-card"><span class="cc-title">화려함</span><span class="cc-sub">한 번뿐이니 아낌없이</span></div>
+          <div class="choice-card selected"><span class="cc-title">균형 잡힘</span><span class="cc-sub">가성비와 로망 사이 어딘가</span></div>
+        </div>
+
+        <div class="spacer"></div>
+        <label for="step2" class="btn-ghost">← 이전</label>
+        <label for="step4" class="btn-primary">다음</label>
+      </div>
+
+      <!-- 4: 가장 중요한 것 -->
+      <div class="step-panel" id="panel-step4">
+        <div class="step-head">
+          <div>
+            <h1>가장 중요하게 생각하는 건요?</h1>
+            <p>카테고리별로 하나씩 골라주세요.</p>
+          </div>
+          <label for="step6" class="skip-link">나중에 설정</label>
+        </div>
+
+        <div class="subsection">
+          <p class="subsection-title">스드메</p>
+          <div class="chip-group">
+            <span class="chip selected">추가금 있어도 예쁜 드레스</span>
+            <span class="chip">추억으로 남는 사진</span>
+            <span class="chip">그날은 내가 공주(메이크업)</span>
+          </div>
+        </div>
+
+        <div class="subsection">
+          <p class="subsection-title">예식장</p>
+          <div class="chip-group">
+            <span class="chip">맛있는 식사</span>
+            <span class="chip selected">편한 위치</span>
+            <span class="chip">넉넉한 주차</span>
+            <span class="chip">많은 하객 수용</span>
+          </div>
+        </div>
+
+        <div class="spacer"></div>
+        <label for="step3" class="btn-ghost">← 이전</label>
+        <label for="step5" class="btn-primary">다음</label>
+      </div>
+
+      <!-- 5: 지금까지 준비 상황 -->
+      <div class="step-panel" id="panel-step5">
+        <div class="step-head">
+          <div>
+            <h1>지금까지 진행한 게 있나요?</h1>
+            <p>체크한 항목은 타임라인에 완료로 미리 표시해드려요.</p>
+          </div>
+        </div>
+
+        <div>
+          <div class="check-row"><span class="check-box checked">✓</span><span class="check-label">상견례 완료</span></div>
+          <div class="check-row"><span class="check-box"></span><span class="check-label">예식장 예약 완료</span></div>
+          <div class="check-row"><span class="check-box"></span><span class="check-label">스드메 계약 완료</span></div>
+          <div class="check-row"><span class="check-box"></span><span class="check-label">아직 아무것도 안 했어요</span></div>
+        </div>
+
+        <div class="spacer"></div>
+        <label for="step4" class="btn-ghost">← 이전</label>
+        <label for="step6" class="btn-primary">다음</label>
+      </div>
+
+      <!-- 6: 카테고리별 예산 배분 -->
+      <div class="step-panel" id="panel-step6">
+        <div class="step-head">
+          <div>
+            <h1>카테고리별 예산을 나눠볼까요?</h1>
+            <p>총 예산 안에서 자유롭게 배분하세요.</p>
+          </div>
+        </div>
+
+        <div class="alloc-summary">
+          <div class="alloc-summary-top">
+            <span class="alloc-amount">44,000,000원 배분됨</span>
+            <span class="alloc-total">/ 45,000,000원</span>
+          </div>
+          <div class="alloc-bar-track"><div class="alloc-bar-fill" style="width:98%"></div></div>
+          <p class="alloc-remain">1,000,000원 남음</p>
+        </div>
+
+        <div class="alloc-list">
+          <div class="alloc-row"><span class="alloc-toggle"></span><span class="alloc-name">상견례</span><span class="alloc-no-cost">비용 없음</span></div>
+          <div class="alloc-row"><span class="alloc-toggle"></span><span class="alloc-name">예식장</span><div class="alloc-input-wrap"><input class="alloc-input" type="text" value="12,000,000원"></div></div>
+          <div class="alloc-row"><span class="alloc-toggle"></span><span class="alloc-name">스드메</span><div class="alloc-input-wrap"><input class="alloc-input" type="text" value="8,000,000원"></div></div>
+          <div class="alloc-row"><span class="alloc-toggle"></span><span class="alloc-name">예물·예단</span><div class="alloc-input-wrap"><input class="alloc-input" type="text" value="6,000,000원"></div></div>
+          <div class="alloc-row"><span class="alloc-toggle"></span><span class="alloc-name">혼수</span><div class="alloc-input-wrap"><input class="alloc-input" type="text" value="10,000,000원"></div></div>
+          <div class="alloc-row"><span class="alloc-toggle"></span><span class="alloc-name">청첩장·답례품</span><div class="alloc-input-wrap"><input class="alloc-input" type="text" value="1,500,000원"></div></div>
+          <div class="alloc-row"><span class="alloc-toggle"></span><span class="alloc-name">신혼여행</span><div class="alloc-input-wrap"><input class="alloc-input" type="text" value="6,500,000원"></div></div>
+        </div>
+
+        <div class="spacer"></div>
+        <label for="step5" class="btn-ghost">← 이전</label>
+        <button class="btn-primary" type="button">시작하기</button>
+      </div>
+
+    </div>
+  </div>
+</div>
