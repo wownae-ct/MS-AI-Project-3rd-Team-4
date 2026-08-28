@@ -16,15 +16,30 @@
 // `<nav>` 가 2개이므로 **각각 고유 `aria-label`** 이 필수다(ARIA APG). `role="tablist"` 는 쓰지 않는다 —
 // 탭 위젯은 같은 페이지 안 패널 전환용이고 이건 URL 이 바뀌는 라우트 내비게이션이다.
 //
+// ## 브랜드 — layout.md §4 가 예약해 둔 슬롯을 채웠다 (2026-08-28)
+//
+// §4 의 사이드바 순서는 「**브랜드** → 주 내비 → 구분선 → 보조 링크 → 하단 블록」이고, 그중 브랜드는
+// *"제품명 표기는 디자인 오너 대기"* 로 오래 비어 있었다. 로고가 도착해 그 대기가 닫혔다(decisions.md D15).
+// 모바일에도 같은 이유로 하나 더 둔다 — 상단 바 우측에 설정(⚙️) 하나뿐이라 **좌측이 통째로 비어
+// 있었다.** 브랜드가 그 자리를 쓰므로 밀려나는 요소가 없고, 바 높이는 `MobileSettingsLink` 의
+// `min-h-tap`(44px)이 계속 결정한다 — 24px 심볼은 그 안에 들어간다(= `CONTENT_TOP_INSET` 과
+// `Page.tsx` 의 `12rem` 계산이 그대로다).
+//
+// 🚨 **브랜드를 `<Link to="/">` 로 만들지 않는다.** 로고 클릭 → 홈이 웹 관례이긴 하지만, TanStack 의
+// `Link` 는 활성일 때 `aria-current="page"` 를 붙이고 그건 props 로 못 덮는다(아래 `MobileSettingsLink`
+// 주석에 실측 근거). 대시보드에서 홈 항목과 함께 **2개**가 되어 AppShell.test.tsx 의 *"정확히 하나"*
+// 계약이 깨진다. 바로 아래에 홈 탭이 있으므로 비인터랙티브로 둬도 사용자가 잃는 경로가 없다.
+// `<nav>` **밖**에 두는 것도 같은 종류의 이유다 — 랜드마크 2개·주 메뉴 5개 계약을 건드리지 않는다.
+//
 // ## 아직 만들지 않은 것 — 지어내지 않는다
 //
-// layout.md §4 의 사이드바 **브랜드**·**하단 블록**, 데스크톱 **상단바**(제목·D-Day·주요 액션)는
-// 여기 없다. 하단 블록은 layout.md §4 가 "구현 전 결정 필요"로 열어 둔 항목이고(아바타가 계정 UI 로
-// 읽히는데 로그인 개념이 확인되지 않았다), 제품명 표기는 CLAUDE.md §6-G 가 디자인 오너 대기다.
+// layout.md §4 의 사이드바 **하단 블록**, 데스크톱 **상단바**(제목·D-Day·주요 액션)는 여기 없다.
+// 하단 블록은 layout.md §4 가 "구현 전 결정 필요"로 열어 둔 항목이다(아바타가 계정 UI 로 읽히는데
+// 로그인 개념이 확인되지 않았다).
 // 상단바로 제목을 옮기는 것(`showPageTitle = mobile`)은 화면 내용이 들어올 때 `Page` 와 함께 다룬다.
 // 쓸 곳이 확정되지 않은 것을 미리 만들지 않는다(ADR 0004).
 import { Link, Outlet } from "@tanstack/react-router";
-import { IconCalendar, IconChart, IconChat, IconHome, IconInfo, IconSettings, IconWallet } from "@/shared/ui";
+import { Brand, IconCalendar, IconChart, IconChat, IconHome, IconInfo, IconSettings, IconWallet } from "@/shared/ui";
 import { NavItem, type NavItemProps } from "./NavItem";
 
 /**
@@ -111,11 +126,12 @@ export function AppShell() {
     <div className="mx-auto flex w-full max-w-[1160px] flex-col md:flex-row">
       <div
         className={
-          "fixed inset-x-0 top-0 z-20 flex justify-end border-b border-line bg-surface px-4 " +
+          "fixed inset-x-0 top-0 z-20 flex items-center justify-between border-b border-line bg-surface px-4 " +
           TOP_BAR_SAFE_AREA +
           " md:hidden"
         }
       >
+        <Brand size={22} />
         <MobileSettingsLink />
       </div>
 
@@ -123,9 +139,16 @@ export function AppShell() {
         className={
           "fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface pt-1 " +
           TAB_BAR_SAFE_AREA +
-          " md:static md:w-[232px] md:shrink-0 md:self-stretch md:border-t-0 md:border-r md:pt-6"
+          " md:static md:w-[232px] md:shrink-0 md:self-stretch md:border-t-0 md:border-r md:pt-0"
         }
       >
+        {/* 사이드바 전용 — 모바일에서는 위 상단 바가 같은 역할을 한다. 컨테이너의 `md:pt-6` 를
+            이 블록의 `md:pt-6` 가 대신하므로(위에서 `md:pt-0` 로 바꿨다) 내비 위 여백이 이중이 되지 않는다. */}
+        {/* 워드마크 26px → 폭 125px. 사이드바 안쪽 폭은 232 − 24(md:px-3) = 208px 라 여유가 있다. */}
+        <div className="hidden md:mb-4 md:flex md:items-center md:px-3 md:pt-6">
+          <Brand size={26} />
+        </div>
+
         <nav aria-label="주 메뉴">
           <ul className="flex md:flex-col md:gap-1 md:px-3">
             {PRIMARY_NAV.map((item) => (

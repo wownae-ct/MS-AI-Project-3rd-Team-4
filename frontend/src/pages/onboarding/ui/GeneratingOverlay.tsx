@@ -10,7 +10,7 @@
 // 암시하면 안 된다. Base UI Dialog는 포커스 트랩·ESC 닫기 등 "사용자가 닫을 수 있는 대화상자"
 // 의미를 가정하는데 여기엔 안 맞아 쓰지 않았다 — 그냥 `fixed` 오버레이 + `role="status"`다.
 // `aria-live="polite"`로 둬서 스크린리더가 뜨는 시점에 문구를 읽게 한다.
-import { Card, PulseDots } from "@/shared/ui";
+import { Brand, Card, PulseDots } from "@/shared/ui";
 
 export function GeneratingOverlay() {
   return (
@@ -36,6 +36,13 @@ export function GeneratingOverlay() {
         부모(뷰포트) 폭에서 정의된 크기를 받게 하면 콘텐츠 의존 없이 폭이 정해진다.
       */}
       <Card className="flex w-full max-w-xs flex-col items-center gap-3 text-center">
+        {/* 이 대기는 실측 p95 가 45.9초다(shared/api/client.ts 의 타임아웃 상향 근거 — Langfuse
+            "MerryMap" 대시보드). 45초 무음은 "멈춘 건가"로 읽히는 구간이라, 브랜드를 세워 "이 앱이
+            일하는 중"이라는 신호를 준다. **정적 이미지라 D14 의 「모션은 점 3개 하나뿐」과
+            prefers-reduced-motion 처리에 아무 영향이 없다** — 여기서 새로 움직이는 것은 없다.
+            **여기만 심볼 변이다** — 카드가 `max-w-xs`(320px) 세로 구성이라 4.803:1 워드마크는 들어가지
+            않고, 워드마크를 넣더라도 바로 아래 두 문장이 이미 상황을 말하고 있어 제품명이 겹친다. D15. */}
+        <Brand size={56} variant="symbol" />
         {/* 점 3개 마크업의 정의는 shared/ui/PulseDots.tsx 하나뿐이다 — 예전엔 이 파일과
             entities/chat/ui/TypingIndicator.tsx 에 거의 같은 내용이 중복돼 있었다(D14). */}
         <PulseDots />
