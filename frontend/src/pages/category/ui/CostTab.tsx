@@ -217,8 +217,10 @@ function BenchmarkWidget({ categoryCode }: { categoryCode: string }) {
 
       {result && (
         <div className="mt-3 flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-ink-soft">
+          {/* gap-2 · min-w-0 — 종전엔 간격조차 없어 좁은 폭에서 문구와 배지가 맞붙었고, 배지가
+              눌려 캡슐 모양이 뭉개졌다(D16). 배지가 안 눌리는 만큼 압력은 왼쪽 문구가 받는다. */}
+          <div className="flex items-center justify-between gap-2">
+            <p className="min-w-0 text-sm text-ink-soft">
               중앙값 <Money value={result.median_price} /> · {result.percentile_label}
             </p>
             <Badge>{result.ratio_to_median.toFixed(2)}배</Badge>

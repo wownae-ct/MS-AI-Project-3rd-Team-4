@@ -58,7 +58,10 @@ export function CategoryRow({ category, hasBenchmark, benchmark }: CategoryRowPr
 
       {hasBenchmark &&
         (benchmark ? (
-          <p className="mt-1 flex items-center gap-1.5 text-xs text-ink-soft">
+          // flex-wrap — 배지가 이제 안 눌리므로(D16) 좁은 폭에서는 배지가 다음 줄로 내려가야
+          // 한다. 없으면 앞의 문구가 세로로 접히면서 줄 높이만 늘어난다(BudgetDonut 은 이미 켜져
+          // 있었다 — 같은 줄 구성인데 여기와 CategoryAllocationRow 만 빠져 있었다).
+          <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-ink-soft">
             시세 대비 {benchmark.percentile_label} · 중앙값 <Money value={benchmark.median_price} className="text-xs" />
             <Badge>{benchmark.ratio_to_median.toFixed(2)}배</Badge>
           </p>

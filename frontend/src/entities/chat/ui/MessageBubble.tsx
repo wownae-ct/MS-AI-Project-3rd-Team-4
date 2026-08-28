@@ -1,11 +1,22 @@
 // ChatPanel.tsx에서 분리(2026-08-24, eslint max-lines 300줄 제한) — 좋아요/싫어요 평가 버튼
 // 추가로 ChatPanel.tsx가 300줄을 넘겨서, 재사용 가능한 프레젠테이션 조각인 이 컴포넌트를
 // 별도 파일로 뺐다. entities/chat/ui/ 소속 유지(ChatPanel과 같은 슬라이스).
-import { useState, type ReactNode } from "react";
-import { Badge } from "@/shared/ui";
-import { safeExternalUrl } from "@/shared/lib/safe-url";
-import { SOURCE_TIER_LABEL } from "@/shared/lib/source-tier";
+import type { ReactNode } from "react";
+import { Badge, SourceList } from "@/shared/ui";
 import type { ChatMessage, MessageRating } from "../model";
+
+// verdict 3종은 backend/app/schemas/common.py:56 원본 그대로("WEAK"가 실제 값 — 이전엔
+// "UNSUPPORTED"로 잘못 알고 있었다, entities/chat/model.ts 머리말 참조). 문구는 목업 그대로다
+// (s3-category-detail.html:355,361) — "출처"가 아니라 "근거", 체크마크 포함.
+//
+// Record<string, string> 인 이유 — 타입에 없는 값이 와도 화면이 비지 않게 폴백을 남긴다
+// (SOURCE_TIER_LABEL 과 같은 원칙). 종전에는 3항 연산자의 마지막 분기가 그 역할을 했다.
+const VERDICT_LABEL: Record<string, string> = {
+  SUPPORTED: "✓ 근거 확인됨",
+  WEAK: "근거 불충분",
+  GENERAL: "일반 정보 · 근거 없음",
+};
+const VERDICT_FALLBACK = "일반 정보 · 근거 없음";
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -20,17 +31,6 @@ interface MessageBubbleProps {
 
 export function MessageBubble({ message, onRate, renderReportAction }: MessageBubbleProps) {
   const isUser = message.role === "user";
-  // 인용 배지는 여러 개가 동시에 펼쳐질 수 있다 — chunk_id는 세션 내에서 안정적인 서버 발급 id라
-  // key로도, 펼침 상태 추적에도 그대로 쓴다.
-  const [expandedCitations, setExpandedCitations] = useState<Set<number>>(new Set());
-  function toggleCitation(chunkId: number) {
-    setExpandedCitations((prev) => {
-      const next = new Set(prev);
-      if (next.has(chunkId)) next.delete(chunkId);
-      else next.add(chunkId);
-      return next;
-    });
-  }
   return (
     <div className={`flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
       <div
@@ -53,72 +53,24 @@ export function MessageBubble({ message, onRate, renderReportAction }: MessageBu
           항상 표시한다(HANDOFF.md §4 S3). verification 이 아직 안 왔으면(스트리밍 중) 아무것도
           내지 않는다 — 이 시점엔 "근거 없음" 조차 확정된 사실이 아니다. */}
       {!isUser && message.verification && (
-        // max-w-[85%]로 말풍선과 같은 폭 제한을 주고 flex-wrap을 켠다 — 출처가 여러 개거나
-        // 제목이 길면 한 줄로 욱여넣던 예전 레이아웃이 카드 폭을 뚫고 나가 깨져 보였다
-        // (사용자 리포트 2026-08-26 "화면이 깨져보여 · 박스가 커"). rounded-pill 배지는 원래
-        // 한 줄짜리 짧은 라벨 전용이라 title이 줄바꿈되면 모양 자체가 일그러진다 — 그래서 개별
-        // 배지도 truncate로 한 줄을 강제한다.
-        <div className="flex max-w-[85%] flex-col gap-1.5">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <Badge>
-              {/* 문구는 목업 그대로다(s3-category-detail.html:355,361) — "출처"가 아니라 "근거", 체크마크 포함.
-                  verdict 3종은 backend/app/schemas/common.py:56 원본 그대로("WEAK"가 실제 값 — 이전엔
-                  "UNSUPPORTED"로 잘못 알고 있었다, entities/chat/model.ts 머리말 참조). */}
-              {message.verification.verdict === "SUPPORTED"
-                ? "✓ 근거 확인됨"
-                : message.verification.verdict === "WEAK"
-                  ? "근거 불충분"
-                  : "일반 정보 · 근거 없음"}
-            </Badge>
-            {message.citations?.map((c) => {
-              // source_tier는 백엔드 ENUM 원문(OFFICIAL/CONSENSUS/INDUSTRY)이라 그대로 보여주면
-              // 사용자가 못 알아본다(사용자 리포트 2026-08-26) — SOURCE_TIER_LABEL로 옮기되, 모르는
-              // 값이 와도 지어내지 않고 원문을 그대로 보여준다(PaymentRow.tsx와 같은 원칙).
-              const tierLabel = SOURCE_TIER_LABEL[c.source_tier] ?? c.source_tier;
-              const isExpanded = expandedCitations.has(c.chunk_id);
-              return (
-                <button
-                  key={c.chunk_id}
-                  type="button"
-                  aria-expanded={isExpanded}
-                  aria-label={`근거 자세히 보기: ${tierLabel} · ${c.title}`}
-                  onClick={() => toggleCitation(c.chunk_id)}
-                  className="min-h-tap max-w-[220px] rounded-pill border-none bg-transparent p-0 text-left enabled:hover:opacity-80"
-                >
-                  <Badge className="w-full truncate bg-bg text-ink-soft" title={`${tierLabel} · ${c.title}`}>
-                    {/* 목업 형식(s3-category-detail.html:352-353): "{티어} · {제목}" — 티어만 보여주면
-                        어떤 근거인지 사람이 알 수 없다. 전체 제목은 title 속성(hover 툴팁)뿐 아니라
-                        클릭 시 아래 펼침 영역에도 남긴다 — 터치 기기는 hover가 없어 잘린 텍스트만으론
-                        무슨 근거인지 못 알아본다(사용자 요청 2026-08-26). */}
-                    {tierLabel} · {c.title}
-                  </Badge>
-                </button>
-              );
-            })}
-          </div>
-          {message.citations
-            ?.filter((c) => expandedCitations.has(c.chunk_id))
-            .map((c) => {
-              const tierLabel = SOURCE_TIER_LABEL[c.source_tier] ?? c.source_tier;
-              const safeUrl = c.source_url ? safeExternalUrl(c.source_url) : undefined;
-              return (
-                <div key={c.chunk_id} className="rounded-md border border-line bg-bg px-3 py-2 text-xs text-ink-soft">
-                  <p className="font-bold text-ink">
-                    {tierLabel} · {c.title}
-                  </p>
-                  {safeUrl ? (
-                    <a href={safeUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-primary underline">
-                      원문 보기
-                    </a>
-                  ) : (
-                    // source_url이 null인 경우(entities/chat/model.ts 머리말) — 팀 자체 저작 콘텐츠라
-                    // 원문 링크가 없는 게 정상이다. 링크 없이 조용히 비우면 "왜 안 눌려?" 로 보이니
-                    // 이유를 문구로 남긴다.
-                    <p className="mt-1">팀에서 직접 정리한 자료라 원문 링크는 없어요.</p>
-                  )}
-                </div>
-              );
-            })}
+        // 말풍선과 같은 폭 제한(85%)을 준다.
+        //
+        // **[2026-08-29 개편 — D16]** 종전엔 검증 배지와 인용 배지 N개가 같은 flex 줄에
+        // flex-wrap 으로 놓였다. 인용은 답변당 최대 5개라(RAG_CONTEXT_TOP_K=5) 데스크톱에서
+        // max-w-[220px] 알약이 가로로 3~4개 늘어섰고(사용자 리포트 2026-08-29 "배지가 가로로 쭉
+        // 나열된다"), 제목은 220px 안에서 항상 잘렸다("배지 내용이 잘린다"). 두 증상의 원인이
+        // 하나였다 — 길이·개수가 가변인 것을 짧은 라벨용 그릇에 담은 것. 이제 검증 결과만 배지로
+        // 남기고(짧고 고정된 어휘) 인용은 SourceList 가 세로 목록으로 받는다.
+        <div className="max-w-[85%]">
+          <SourceList
+            leading={<Badge>{VERDICT_LABEL[message.verification.verdict] ?? VERDICT_FALLBACK}</Badge>}
+            items={(message.citations ?? []).map((c) => ({
+              key: c.chunk_id,
+              tier: c.source_tier,
+              title: c.title,
+              url: c.source_url,
+            }))}
+          />
         </div>
       )}
       {/* 좋아요/싫어요 평가 — AI 답변에만(백엔드 규칙과 동일하게 verification이 있는 메시지만

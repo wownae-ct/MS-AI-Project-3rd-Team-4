@@ -74,15 +74,34 @@ export function ButtonSection() {
 
 export function BadgeSection() {
   return (
-    <Section title="배지" hint="pill · primary-soft · primary.">
-      <Card className="flex flex-wrap items-center gap-3">
-        <Badge>강조</Badge>
-        <Badge>항목 A</Badge>
-        <Badge>항목 B</Badge>
+    <Section title="배지" hint="pill · primary-soft · primary. 짧은 라벨 전용 — 절대 잘리지 않습니다.">
+      <Card className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <Badge>강조</Badge>
+          <Badge>항목 A</Badge>
+          <Badge>항목 B</Badge>
+        </div>
+        {/* 눌림 회귀를 눈으로 확인하는 자리 — 아주 좁은 열 안에 긴 한국어 문장과 배지를 나란히
+            놓는다. Badge 의 nowrap/shrink-0 이 빠지면 배지가 「주/의/할/사/례」로 세로로 접혀
+            여기서 바로 드러난다(D16). 짝인 min-w-0 truncate 도 함께 보여준다. */}
+        <div className="w-40 rounded-md border border-line p-2">
+          <div className="flex items-center gap-2">
+            <Badge>주의할 사례</Badge>
+            <p className="min-w-0 truncate text-sm font-bold text-ink">아주 긴 한국어 제목이 옆에 놓인 경우</p>
+          </div>
+        </div>
       </Card>
+      <Rule>
+        배지는 <span className="font-bold">눌리지 않습니다</span>(<code className="font-bold">whitespace-nowrap</code>{" "}
+        + <code className="font-bold">shrink-0</code>). 한국어는 글자마다 줄바꿈 기회가 있어 이것이 없으면 배지가 한
+        글자 폭까지 눌려 캡슐 모양이 뭉개집니다. 대신 <span className="font-bold">압력은 옆 텍스트가 받습니다</span>{" "}
+        — 배지와 나란히 놓는 본문에는 <code className="font-bold">min-w-0</code> 과 줄바꿈/말줄임을 함께 줍니다.
+      </Rule>
       <OpenDecision>
         디자인 문서가 정의한 배지 스타일은 <span className="font-bold">이 하나뿐</span>입니다. 다른 톤의 배지가
-        필요해지면 디자인 문서를 먼저 갱신해야 합니다 — 여기서 지어내지 않았습니다.
+        필요해지면 디자인 문서를 먼저 갱신해야 합니다 — 여기서 지어내지 않았습니다. 그리고{" "}
+        <span className="font-bold">길이 상한이 없는 문자열은 배지에 담지 않습니다</span> — 출처 제목처럼 서버가
+        길이를 정하는 것은 <code className="font-bold">SourceList</code> 로 갑니다.
       </OpenDecision>
     </Section>
   );
