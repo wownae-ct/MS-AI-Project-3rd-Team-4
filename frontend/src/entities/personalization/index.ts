@@ -4,4 +4,4 @@ export type {
   PersonalizationRegenerateStatus,
 } from "./model";
 export { regeneratePersonalization } from "./api/personalization";
-export { RegenerateButton } from "./ui/RegenerateButton";
+export { RegenerateButton, type RegenerateImpact } from "./ui/RegenerateButton";

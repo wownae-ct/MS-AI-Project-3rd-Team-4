@@ -177,6 +177,9 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
           />
           계약 조항만 보기
         </label>
+        {/* impact(유지/초기화 개수)를 넘기지 않는다 — 이 탭은 카테고리 하나의 항목만 들고 있는데
+            재생성은 웨딩의 모든 카테고리를 대상으로 하므로, 여기서 센 수는 실제보다 작다.
+            대신 확인 다이얼로그가 "모든 카테고리가 함께 바뀐다"를 문구로 알린다. */}
         <RegenerateButton domain="CHECKLIST" label="AI 체크리스트 다시 생성" onRegenerated={refetchItems} />
       </div>
 

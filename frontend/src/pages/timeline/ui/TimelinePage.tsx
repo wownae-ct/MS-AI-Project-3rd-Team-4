@@ -14,7 +14,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getTimelineItems, type TimelineItem } from "@/entities/timeline";
 import { getCategories, getMyWedding } from "@/entities/wedding";
-import { RegenerateButton } from "@/entities/personalization";
+import { RegenerateButton, type RegenerateImpact } from "@/entities/personalization";
 import { ApiError } from "@/shared/api";
 import { Card, Loading, Page, SkeletonRows } from "@/shared/ui";
 import { AddTimelineItemRow } from "./AddTimelineItemRow";
@@ -44,6 +44,21 @@ export function timelineSubtitle(groups: TimelinePhaseGroup[]): string {
 export function resolveCategoryLabel(categoryCode: string | null, categoryLabelByCode: Map<string, string>): string | null {
   if (categoryCode === null) return null;
   return categoryLabelByCode.get(categoryCode) ?? categoryCode;
+}
+
+/** 재생성 확인 다이얼로그에 보여줄 개수.
+ *
+ * 서버의 실제 보존 기준은 "사용자가 손댄 적 있는 행"(PATCH 를 한 번이라도 받은 행)이고, 그 값은
+ * 응답에 없다. 화면이 아는 것 중 그 기준과 1:1로 대응하는 것은 **완료 체크(status=DONE)** 와
+ * **날짜 직접 변경(date_overridden)** 둘뿐이라 이 둘로 센다.
+ *
+ * 어긋나는 경우가 하나 있다 — 완료를 체크했다가 **해제**한 항목은 서버에선 보존되는데 여기선
+ * 초기화 쪽으로 세어진다. 방향은 이쪽이 맞다: 실제보다 **덜 남는다고** 말하는 오차라, 사용자가
+ * 예상보다 많이 잃는 일은 생기지 않는다. 정확한 수를 보여 주려면 응답에 보존 여부 플래그가
+ * 필요하다(백엔드 변경 사안이라 지금은 하지 않는다). */
+export function timelineRegenerateImpact(items: TimelineItem[]): RegenerateImpact {
+  const keptCount = items.filter((item) => item.status === "DONE" || item.date_overridden).length;
+  return { keptCount, resetCount: items.length - keptCount };
 }
 
 export function TimelinePage() {
@@ -129,7 +144,14 @@ export function TimelinePage() {
       <output className="sr-only">{announcement}</output>
       <div className="flex flex-col gap-5">
         <div className="flex justify-end">
-          <RegenerateButton domain="TIMELINE" label="AI 타임라인 다시 생성" onRegenerated={refetchItems} />
+          {/* 개수는 화면이 센다 — entities/personalization 은 타임라인 항목을 알지 못한다(레이어 규약).
+              모수는 `groups` 가 아니라 `data.items` 다: 그룹 분류는 표시 방식이고, 재생성은 항목 전체가 대상이다. */}
+          <RegenerateButton
+            domain="TIMELINE"
+            label="AI 타임라인 다시 생성"
+            impact={timelineRegenerateImpact(data.items)}
+            onRegenerated={refetchItems}
+          />
         </div>
         {/* 목업(s4-timeline.html:80)은 구간 헤더에 라벨과 날짜를 함께 보여준다 — 라벨만으로는
             "12개월 전이 정확히 언제인지" 알 수 없다. 날짜가 없는 유일한 경우("일정 미정" 그룹)는
