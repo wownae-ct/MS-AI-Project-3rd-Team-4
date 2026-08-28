@@ -42,7 +42,8 @@ async def _embed_all(
     달라 오프셋 계산이 틀리면 A 문서 청크에 B 문서 임베딩이 조용히 섞이는 버그가 생길 수
     있어(backend/old/rag/index/assemble.py와 동일한 이유), 개수 불일치를 명시적으로 검증한다."""
     client = get_azure_openai_client(settings)
-    # 문서 8개, 청크 140개를 전부 한 줄로 펼쳐서 "한 번에" 임베딩 API를 호출한다 — 문서마다
+    # 문서 10개, 청크 151개(2026-08-24 DS1_PRICE 3청크 + DS8_UGC 2차 수집분 8청크 추가로
+    # 8개/140개에서 갱신)를 전부 한 줄로 펼쳐서 "한 번에" 임베딩 API를 호출한다 — 문서마다
     # 따로따로 API를 부르면 요청 횟수가 늘어 느리고 비용도 더 든다(배치 처리).
     all_texts = [chunk.content for doc in documents for chunk in doc.chunks]
     all_embeddings = await embed_texts(
