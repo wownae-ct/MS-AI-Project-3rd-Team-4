@@ -274,3 +274,6 @@ describe("온보딩 2단계 — 총 예산 미정", () => {
     expect(payload.total_budget_unsure).toBe(true);
   });
 });
+
+// 8단계 배분 초과 가드(2026-08-28)는 파일을 나눴다 — OnboardingPage.over-allocation.test.tsx.
+// 이 파일이 이미 oxlint max-lines 300줄 상한에 가까워 여기 더 붙일 수 없었다.

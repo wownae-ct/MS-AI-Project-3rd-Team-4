@@ -8,3 +8,10 @@ import "@testing-library/jest-dom/vitest";
 if (typeof Element !== "undefined" && !Element.prototype.scrollTo) {
   Element.prototype.scrollTo = () => {};
 }
+
+// 같은 이유로 scrollIntoView 도 없다 — Step8Allocation.tsx가 총예산 인라인 수정 패널을 펼칠 때
+// 요약 카드를 화면 위로 올리는 데 쓴다(2026-08-28). 없으면 effect가 TypeError로 터져 8단계를
+// 렌더하는 테스트가 통째로 깨진다. 실제 스크롤 동작은 검증 대상이 아니라 no-op으로만 채운다.
+if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}

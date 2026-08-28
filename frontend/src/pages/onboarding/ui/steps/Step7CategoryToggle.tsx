@@ -11,7 +11,7 @@
 // **`AllocationRow`가 이 파일 소속인 이유.** `categoriesToAllocationRows`(GET /categories 응답을
 // 행 초기값으로 바꾸는 함수)가 활성 여부의 최초 소스이므로, 그 타입도 여기서 정의하고 8단계는
 // 이 파일에서 import만 한다 — 타입 정의가 두 곳에 흩어지면 필드가 갈릴 위험이 생긴다.
-import type { CategoryConstant } from "@/entities/wedding";
+import type { CategoryConstant, WeddingCategoryUpdateInput } from "@/entities/wedding";
 import { CHIP_SM_BASE, CHIP_SM_SELECTED, FIELD_NOTE } from "../onboarding-styles";
 
 export interface AllocationRow {
@@ -39,6 +39,27 @@ export function categoriesToAllocationRows(categories: CategoryConstant[]): Allo
       plannedBudget: 0,
       selectedOptions: [],
     }));
+}
+
+/**
+ * 배분 행 → `POST /weddings` 의 `categories` 항목. 위 `categoriesToAllocationRows` 의 역방향이라
+ * 같은 파일에 둔다 — 두 변환이 갈라져 있으면 필드가 하나 늘었을 때 한쪽만 고쳐도 조용하다.
+ * (OnboardingPage.tsx에서 옮겨왔다, 2026-08-28 — oxlint max-lines 상한.)
+ *
+ * ⚠️ **꺼둔 카테고리는 예산을 반드시 0으로 보낸다.** 서버의 초과 검증은 `is_active` 를 보지 않고
+ * 9개 전체를 합산하므로(01-endpoints.md:149), 끄면서 금액을 남기면 클라이언트 계산은 통과인데
+ * 서버가 400 BUDGET_EXCEEDED 를 낸다. 8단계에서 금액을 넣고 7단계로 돌아가 끈 경우가 실제로
+ * 그 조합을 만든다(행 배열의 `plannedBudget` 은 다시 켤 때를 위해 남아 있다).
+ */
+export function allocationRowsToCategoryUpdates(rows: readonly AllocationRow[]): WeddingCategoryUpdateInput[] {
+  return rows.map((row) => ({
+    category_code: row.categoryCode,
+    is_active: row.isActive,
+    planned_budget: row.isActive ? row.plannedBudget : 0,
+    display_order: row.displayOrder,
+    selected_options: row.isActive ? row.selectedOptions : null,
+    ...(row.isActive ? {} : { skip_reason: "온보딩에서 사용 안 함으로 표시" }),
+  }));
 }
 
 // `GET /categories`(CategoryConstant) 응답엔 하위 옵션 목록이 없다 — 이 카탈로그는 API 계약이
