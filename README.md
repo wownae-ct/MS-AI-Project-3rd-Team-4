@@ -121,22 +121,39 @@ infra/
     apps/          ArgoCD Application 정의(staging/production)
     argocd/        ArgoCD 자체 설정 + Image Updater CR
 
-인프라
-단일 AKS 클러스터, staging/production은 네임스페이스로만 분리(별도 클러스터 아님 — 예산 제약)
-backend + rag-cronjob이 같은 Docker 이미지·같은 브랜치를 쓰지만 별도 ArgoCD Application (backend-{staging,production}, rag-cronjob-{staging,production})으로 배포 — RAG 재색인을 backend와 독립적으로 sync/pause 가능
-GitOps: CI(backend-ci.yml)가 ACR에 이미지 push만 하고, ArgoCD Image Updater가 ACR을 폴링해 자동 배포(Workload Identity로 ACR 인증)
-Ingress: NGINX(Helm 설치, in-cluster) — backend /api, frontend / 를 같은 호스트에서 same-origin으로 서빙
-Key Vault: 외부 SaaS 시크릿(구글/네이버/카카오/애플 OAuth, Langfuse)까지 Bicep으로 Microsoft.KeyVault/vaults/secrets를 직접 작성 — CSI 드라이버가 K8s Secret으로 동기화
-VNet 없음: Postgres/AKS는 public + 방화벽 allowlist (private endpoint 아님, 명시적 비용/일정 트레이드오프)
-자세한 내용은 infra/README.md
-배포
-staging: https://20-249-52-148.nip.io — backend/frontend push가 각각 트리거
-production: https://merrymap-production.koreacentral.cloudapp.azure.com — main push가 트리거, ArgoCD Image Updater가 ACR 신규 태그 감지 후 자동 반영
-backend /api, frontend / 같은 AKS Ingress 아래 same-origin으로 서빙(2026-08-26, 서드파티 쿠키 차단 우회)
-브랜치 전략
-feature/backend-* / feature/infra-* / feature/rag-* → PR → backend → PR → main.
-전체 브랜치 전략·폴더 소유권은 main README 참고.
 
-보안
-모든 push/PR에서 gitleaks로 시크릿 유출 스캔. 시크릿은
+## 인프라
+
+- **단일 AKS 클러스터**, staging/production은 네임스페이스로만 분리(별도 클러스터 아님 — 예산
+  제약)
+- **backend + rag-cronjob이 같은 Docker 이미지·같은 브랜치**를 쓰지만 별도 ArgoCD Application
+  (`backend-{staging,production}`, `rag-cronjob-{staging,production}`)으로 배포 — RAG 재색인을
+  backend와 독립적으로 sync/pause 가능
+- **GitOps**: CI(`backend-ci.yml`)가 ACR에 이미지 push만 하고, **ArgoCD Image Updater**가 ACR을
+  폴링해 자동 배포(Workload Identity로 ACR 인증)
+- **Ingress**: NGINX(Helm 설치, in-cluster) — backend `/api`, frontend `/` 를 같은 호스트에서
+  same-origin으로 서빙
+- **Key Vault**: 외부 SaaS 시크릿(구글/네이버/카카오/애플 OAuth, Langfuse)까지 Bicep으로
+  `Microsoft.KeyVault/vaults/secrets`를 직접 작성 — CSI 드라이버가 K8s Secret으로 동기화
+- **VNet 없음**: Postgres/AKS는 public + 방화벽 allowlist (private endpoint 아님, 명시적
+  비용/일정 트레이드오프)
+- 자세한 내용은 [`infra/README.md`](../infra/README.md)
+
+## 배포
+
+- **staging**: `https://20-249-52-148.nip.io` — `backend`/`frontend` push가 각각 트리거
+- **production**: `https://merrymap-production.koreacentral.cloudapp.azure.com` — `main` push가
+  트리거, ArgoCD Image Updater가 ACR 신규 태그 감지 후 자동 반영
+- backend `/api`, frontend `/` 같은 AKS Ingress 아래 same-origin으로 서빙(2026-08-26, 서드파티
+  쿠키 차단 우회)
+
+## 브랜치 전략
+
+`feature/backend-*` / `feature/infra-*` / `feature/rag-*` → PR → `backend` → PR → `main`.
+전체 브랜치 전략·폴더 소유권은 [`main` README](../../tree/main/README.md#브랜치-전략--폴더-소유권) 참고.
+
+## 보안
+
+모든 push/PR에서 [gitleaks](../.github/workflows/gitleaks.yml)로 시크릿 유출 스캔. 시크릿은
 전부 Key Vault → CSI → K8s Secret 경로로만 주입되며 코드에 하드코딩하지 않는다.
+
