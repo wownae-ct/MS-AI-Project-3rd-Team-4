@@ -114,7 +114,7 @@ export function ReportPage() {
           <BudgetStats summary={budget} />
         </Card>
 
-        <Card title="카테고리별 진행률">
+        <Card title="타임라인 진행률">
           {byCompletion.length === 0 ? (
             <p className="text-sm text-ink-soft">진행률을 계산할 카테고리가 아직 없습니다.</p>
           ) : (
