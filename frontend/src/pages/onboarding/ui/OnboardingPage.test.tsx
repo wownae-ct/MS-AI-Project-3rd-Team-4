@@ -163,6 +163,10 @@ describe("9단계(자유 서술) — custom_request 제출 계약", () => {
     render(<OnboardingPage />);
 
     for (let i = 0; i < 8; i += 1) {
+      // 각 클릭이 다음 스텝 렌더링/검증을 트리거해야 다음 "다음" 버튼을 찾을 수 있다 — 순서가
+      // 있는 UI 상호작용이라 Promise.all로 병렬화할 수 없다(entities/wedding/api/wedding.ts의
+      // 스트림 read() 루프와 같은 이유).
+      // eslint-disable-next-line no-await-in-loop
       await userEvent.click(await screen.findByRole("button", { name: "다음" }));
     }
     await userEvent.type(await screen.findByRole("textbox"), "  반려동물과 함께하는 결혼식을 준비하고 있어요.  ");
