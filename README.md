@@ -3,41 +3,62 @@
 SeSAC MS AI 엔지니어 4기 3차 프로젝트 (2인 팀). 예식장·스드메(드레스/스튜디오/메이크업) 중심으로
 예산·타임라인·계약전 체크리스트를 관리하고, 실제 사례(좋은예/나쁜예)와 공식 통계에 근거한 RAG
 상담을 받는 웨딩 준비 앱. "크로스핏 폼 코치"(웹캠 운동 코칭) → "브리프코치"(AI 화법 트레이너)에
-이은 **2차 주제 전환**(2026-08-20)으로, 인프라·협업 구조는 그대로 두고 주제만 다시 바꿨다. 현재
-설계 문서는 `docs/wedding/plan/*.md` 10종(`00_BASELINE.md`가 SSOT, 로컬 전용, git 미추적).
+이은 **2차 주제 전환**(2026-08-20)으로, 인프라·협업 구조는 그대로 두고 주제만 다시 바꿨다.
 
-## 아키텍처 개요 (routers → services → models/rag)
+**2026-08-28: `backend`·`frontend`가 `main`으로 승격 완료.** 이제 `main`이 실제 배포 대상
+코드를 담고 있다(아래 "배포 현황" 참고). 현재 설계 문서는 `docs/wedding/new-plan/`(코드 실측
+기반으로 재작성 중, 로컬 전용, git 미추적) — 기존 `docs/wedding/plan/new/*.md`(BASELINE v4.0,
+2026-08-23 작성)는 설계 의도 확인용 1차 참고자료로 남아 있다.
 
-실시간 판정이나 다단계 에이전트 파이프라인이 필요 없는, CRUD API + RAG 상담 1개 엔드포인트 위주의
-비교적 단순한 구조다.
+## 아키텍처 개요 (routers → services → models/rag/personalization)
+
+CRUD API + RAG 상담 1개 엔드포인트 + 체크리스트/타임라인 개인화 에이전트로 구성된다. 각각
+독립된 3노드 LangGraph를 쓴다(챗: retrieve→generate→verify, 개인화: route→generate→validate).
 
 | 레이어 | 위치 | 역할 |
 |---|---|---|
-| Routers | `backend/app/routers/` | 23개 REST 엔드포인트(health/wedding/category/budget/vendor_case/chat/dashboard) |
+| Routers | `backend/app/routers/{system,wedding,ai}/` + `auth.py` | 도메인별 서브패키지로 재구성(2026-08-26) — 37개 엔드포인트(OpenAPI 노출 35개; OAuth 리다이렉트 2개는 스키마 비노출) |
 | Services | `backend/app/services/` | 비즈니스 로직 |
-| Models | `backend/app/models/` | SQLAlchemy 2.0 async, 14개 테이블 |
-| RAG | `backend/app/rag/` | indexing(오프라인 색인) / retrieval(하이브리드 검색+RRF) / graph(LangGraph 3노드: retrieve→generate→verify) |
+| Models | `backend/app/models/` | SQLAlchemy 2.0 async, 15개 테이블 |
+| RAG | `backend/app/rag/` | indexing(오프라인 색인) / retrieval(하이브리드 검색+RRF) / graph(LangGraph 3노드, CRAG 조건부 재시도 ≤1회) |
+| Personalization | `backend/app/personalization/` + `services/personalization.py` | 체크리스트/타임라인 전담 LangGraph 3노드, 카탈로그 폴백, 조건부 재시도 ≤1회 |
 
-**무인증 MVP** — 로그인 없음, 시드된 단일 `weddings` 행 하나로 데모(BASELINE §0). 실서비스 전환
-시에만 인증을 재도입한다.
+**이메일+비밀번호 로그인 + 소셜 로그인(구글·네이버 라이브, 카카오·애플 구현 완료·머지 보류)** —
+무인증 MVP가 아니다. BFF 패턴 + Opaque 세션 쿠키.
 
 ## 폴더 구조
 
 ```
 backend/    FastAPI(app/main.py) + SQLAlchemy 2.0 async 모델(app/models/) + Alembic(alembic/)
-            + routers/services/rag. backend/old/에 브리프코치 시절 구현 아카이브(lint/test 제외)
-frontend/   React + SSE 상담 클라이언트 (Vite+React+TS) — 2026-08-20 기준 아직 브리프코치 화면
-            그대로, frontend 브랜치에서 별도 재구성 필요
+            + routers(system/wedding/ai 서브패키지 + auth.py)/services/rag/personalization.
+            backend/old/에 이전 주제 구현 아카이브(lint/test 제외)
+frontend/   React 19 + Vite + TS. S0~S6 전 화면 + 설정(⚙️)/AI상담 화면까지 실구현 완료. 백엔드와
+            같은 AKS Ingress 아래 same-origin으로 배포(2026-08-26, 서드파티 쿠키 차단 우회) —
+            Azure Static Web Apps 배포는 PR 프리뷰/로컬 크로스오리진 검증용으로 별도 병행
 data/       RAG 코퍼스(DS1_PRICE~DS8_UGC — 참가격/소비자원 사례/표준계약서/정부정책/설문/
-            체크리스트/타임라인/UGC). data/old/에 브리프코치 화법 코퍼스 아카이브
-db/         콘텐츠 시드(seed/) + 브리프코치 시절 raw-SQL 마이그레이션 아카이브(old/) — 스키마
-            자체는 backend/app/models/ + backend/alembic/에 있음
-infra/      Bicep(Azure 리소스) + AKS 매니페스트 + ArgoCD — 이전 주제 빌드 그대로 재사용
-docs/       docs/wedding/plan/이 현재 설계 문서. 이전 주제들 설계 문서는 docs/old/에 보존(로컬 전용)
+            체크리스트/타임라인/UGC). data/old/에 이전 주제 코퍼스 아카이브
+db/         vendor_case/price_benchmark 콘텐츠 시드 로더 스크립트만 남음 — checklist/timeline은
+            공유 마스터 시드 없이 개인화 에이전트가 웨딩별로 생성. 스키마 자체는
+            backend/app/models/ + backend/alembic/에 있음
+infra/      Bicep(Azure 리소스) + AKS 매니페스트 + ArgoCD(GitOps, staging/production 네임스페이스
+            분리 + Image Updater 자동 배포) — 이전 주제 빌드 그대로 재사용
+docs/       docs/wedding/new-plan/이 코드 실측 기반 최신 설계 자료(작성 진행 중, 로컬 전용).
+            docs/wedding/plan/new/이 이전 BASELINE v4.0. 이전 주제 설계 문서는 docs/old/에 보존
 ```
 
-> **커스텀 모델 학습 없음**: RAG는 학습이 아니라 서비스가 매 요청 호출하는 라이브 컴포넌트라 이
-> 레포(`backend/app/rag/`, `data/`)에 있다. Azure OpenAI가 chat/embedding 배포를 분리 제공한다.
+> **커스텀 모델 학습 없음**: RAG/개인화는 학습이 아니라 서비스가 매 요청 호출하는 라이브
+> LangGraph 컴포넌트라 이 레포(`backend/app/rag/`, `backend/app/personalization/`, `data/`)에
+> 있다. Azure OpenAI가 chat/embedding 배포를 분리 제공한다.
+
+## 배포 현황
+
+- **production**: `https://merrymap-production.koreacentral.cloudapp.azure.com`(Azure
+  LoadBalancer 자동생성 DNS 라벨, 구매 도메인 아님) — `main` push가 트리거, ArgoCD Image
+  Updater가 ACR 신규 태그를 감지해 자동 반영.
+- **staging**: `https://20-249-52-148.nip.io`(같은 LB IP, nip.io 무료 와일드카드 DNS) —
+  `backend`/`frontend` push가 각각 트리거.
+- backend+frontend가 같은 AKS Ingress 아래 same-origin(`/api` → backend, `/` → frontend)으로
+  서빙된다. 상세: [`infra/README.md`](infra/README.md), `infra/k8s/`.
 
 ## 브랜치 전략 & 폴더 소유권
 
