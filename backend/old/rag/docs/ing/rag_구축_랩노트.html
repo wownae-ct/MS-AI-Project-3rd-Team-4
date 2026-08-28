@@ -1,0 +1,935 @@
+<title>RAG 구축 랩노트</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+  rel="stylesheet"
+/>
+<style>
+  :root {
+    --bg: #f1f2ee;
+    --surface: #fbfbf9;
+    --surface-2: #e9eae4;
+    --ink: #171a1e;
+    --ink-soft: #4b5259;
+    --ink-faint: #767d84;
+    --border: #d8d9d2;
+    --accent: #4a4789;
+    --accent-soft: #ecebf7;
+    --accent-ink: #322f66;
+    --warn: #b4530a;
+    --warn-soft: #fbeee0;
+    --warn-ink: #7a3806;
+    --good: #157a4b;
+    --good-soft: #e3f3ea;
+    --good-ink: #0e5636;
+    --code-bg: #1b2028;
+    --code-ink: #e7e9ee;
+    --code-accent: #8fd3c4;
+    --code-accent-2: #e8b06a;
+    --shadow: 0 1px 2px rgba(23, 26, 30, 0.04), 0 6px 20px rgba(23, 26, 30, 0.06);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14161a;
+      --surface: #1b1e24;
+      --surface-2: #23262d;
+      --ink: #e9eae6;
+      --ink-soft: #a7acb3;
+      --ink-faint: #7c828a;
+      --border: #2e323a;
+      --accent: #9c97e8;
+      --accent-soft: #262444;
+      --accent-ink: #c8c4f5;
+      --warn: #e2954b;
+      --warn-soft: #3a2a18;
+      --warn-ink: #f0c095;
+      --good: #4fce94;
+      --good-soft: #16301f;
+      --good-ink: #8fe6bb;
+      --code-bg: #0f1216;
+      --code-ink: #dce0e6;
+      --code-accent: #7fd9c4;
+      --code-accent-2: #e8b06a;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 10px 30px rgba(0, 0, 0, 0.35);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #14161a;
+    --surface: #1b1e24;
+    --surface-2: #23262d;
+    --ink: #e9eae6;
+    --ink-soft: #a7acb3;
+    --ink-faint: #7c828a;
+    --border: #2e323a;
+    --accent: #9c97e8;
+    --accent-soft: #262444;
+    --accent-ink: #c8c4f5;
+    --warn: #e2954b;
+    --warn-soft: #3a2a18;
+    --warn-ink: #f0c095;
+    --good: #4fce94;
+    --good-soft: #16301f;
+    --good-ink: #8fe6bb;
+    --code-bg: #0f1216;
+    --code-ink: #dce0e6;
+    --code-accent: #7fd9c4;
+    --code-accent-2: #e8b06a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { animation: none !important; transition: none !important; }
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "IBM Plex Sans KR", "Noto Sans KR", -apple-system, sans-serif;
+    font-size: 16px;
+    line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection { background: var(--accent-soft); color: var(--accent-ink); }
+
+  h1, h2, h3 {
+    font-family: "Noto Serif KR", "Noto Serif", serif;
+    text-wrap: balance;
+    line-height: 1.35;
+    color: var(--ink);
+    margin: 0;
+  }
+
+  a { color: var(--accent); }
+  a:focus-visible, button:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  code, pre, .mono {
+    font-family: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+  }
+
+  /* ---------- shell layout ---------- */
+
+  .masthead {
+    padding: 4.5rem 1.75rem 3rem;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, var(--surface-2), var(--bg) 140%);
+  }
+  .masthead-inner { max-width: 46rem; margin: 0 auto; }
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent-ink);
+    background: var(--accent-soft);
+    padding: 0.3rem 0.7rem;
+    border-radius: 999px;
+    margin-bottom: 1.4rem;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: inline-block;
+  }
+  h1.title {
+    font-size: clamp(2rem, 4.4vw, 2.9rem);
+    font-weight: 600;
+    margin-bottom: 0.9rem;
+  }
+  .subtitle {
+    color: var(--ink-soft);
+    font-size: 1.08rem;
+    max-width: 40rem;
+  }
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+    margin-top: 1.9rem;
+    font-size: 0.86rem;
+    color: var(--ink-faint);
+  }
+  .meta-row span strong { color: var(--ink-soft); font-weight: 500; }
+
+  .layout {
+    max-width: 76rem;
+    margin: 0 auto;
+    padding: 0 1.75rem 6rem;
+    display: grid;
+    grid-template-columns: 15rem minmax(0, 1fr);
+    gap: 3.5rem;
+    align-items: start;
+  }
+
+  nav.toc {
+    position: sticky;
+    top: 2rem;
+    padding-top: 3rem;
+    font-size: 0.88rem;
+  }
+  nav.toc h2 {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 500;
+    margin-bottom: 1rem;
+  }
+  nav.toc ol {
+    list-style: none;
+    margin: 0; padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    border-left: 1px solid var(--border);
+  }
+  nav.toc a {
+    display: flex;
+    gap: 0.6rem;
+    padding: 0.4rem 0 0.4rem 0.9rem;
+    margin-left: -1px;
+    border-left: 1px solid transparent;
+    text-decoration: none;
+    color: var(--ink-soft);
+    transition: color 0.15s, border-color 0.15s;
+  }
+  nav.toc a:hover { color: var(--accent-ink); border-left-color: var(--accent); }
+  nav.toc a .n {
+    font-family: "IBM Plex Mono", monospace;
+    color: var(--ink-faint);
+    font-size: 0.82em;
+    min-width: 1.3em;
+  }
+  details.toc-toggle { display: none; }
+
+  main { padding-top: 3rem; min-width: 0; }
+
+  section.chapter {
+    max-width: 42rem;
+    margin-bottom: 4.5rem;
+    scroll-margin-top: 1.5rem;
+  }
+  section.chapter:last-of-type { margin-bottom: 2rem; }
+
+  .chapter-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.9rem;
+    margin-bottom: 1.4rem;
+  }
+  .chapter-num {
+    font-family: "IBM Plex Mono", monospace;
+    color: var(--accent);
+    font-size: 1rem;
+    font-weight: 500;
+    flex-shrink: 0;
+  }
+  .chapter-head h2 { font-size: 1.55rem; font-weight: 600; }
+  .chapter-kicker {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.78rem;
+    color: var(--ink-faint);
+    margin: 0.35rem 0 1.6rem 2.35rem;
+  }
+
+  section.chapter > p, section.chapter > ul, section.chapter > ol {
+    color: var(--ink-soft);
+    margin: 0 0 1.15rem;
+    max-width: 40rem;
+  }
+  section.chapter > ul, section.chapter > ol { padding-left: 1.3rem; }
+  section.chapter li { margin-bottom: 0.45rem; }
+  section.chapter strong { color: var(--ink); font-weight: 600; }
+
+  h3.sub {
+    font-size: 1.05rem;
+    font-weight: 600;
+    font-family: "IBM Plex Sans KR", sans-serif;
+    color: var(--ink);
+    margin: 1.8rem 0 0.8rem;
+  }
+
+  /* ---------- content blocks ---------- */
+
+  .box {
+    border-radius: 10px;
+    padding: 1.2rem 1.4rem;
+    margin: 1.3rem 0;
+    border: 1px solid var(--border);
+  }
+  .box-label {
+    display: block;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 500;
+    margin-bottom: 0.55rem;
+  }
+  .box p:last-child { margin-bottom: 0; }
+  .box p { color: inherit; }
+
+  .box.concept {
+    background: var(--accent-soft);
+    border-color: transparent;
+    color: var(--accent-ink);
+  }
+  .box.concept .box-label { color: var(--accent-ink); opacity: 0.85; }
+
+  .box.lesson {
+    background: var(--warn-soft);
+    border-color: transparent;
+    color: var(--warn-ink);
+  }
+  .box.lesson .box-label { color: var(--warn-ink); opacity: 0.9; }
+
+  .box.verified {
+    background: var(--good-soft);
+    border-color: transparent;
+    color: var(--good-ink);
+  }
+  .box.verified .box-label { color: var(--good-ink); opacity: 0.9; }
+
+  .filepath {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.82rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--ink-soft);
+    padding: 0.15rem 0.6rem;
+    border-radius: 6px;
+  }
+  .filepath::before { content: "📄"; font-size: 0.85em; }
+
+  pre.code {
+    background: var(--code-bg);
+    color: var(--code-ink);
+    border-radius: 10px;
+    padding: 1.1rem 1.3rem;
+    overflow-x: auto;
+    font-size: 0.84rem;
+    line-height: 1.65;
+    margin: 1.2rem 0;
+    box-shadow: var(--shadow);
+  }
+  pre.code code { font-family: inherit; }
+  .code-comment { color: var(--ink-faint); }
+  .code-accent { color: var(--code-accent); }
+  .code-accent2 { color: var(--code-accent-2); }
+
+  table.data {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.3rem 0;
+    font-size: 0.9rem;
+  }
+  table.data th, table.data td {
+    text-align: left;
+    padding: 0.55rem 0.8rem;
+    border-bottom: 1px solid var(--border);
+  }
+  table.data th {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 500;
+  }
+  table.data td.num { font-variant-numeric: tabular-nums; font-family: "IBM Plex Mono", monospace; }
+  .table-wrap { overflow-x: auto; }
+
+  .badge {
+    display: inline-block;
+    font-size: 0.74rem;
+    padding: 0.12rem 0.55rem;
+    border-radius: 999px;
+    background: var(--surface-2);
+    color: var(--ink-soft);
+    border: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  /* search result cards, section 5 */
+  .query-block { margin: 1.6rem 0 2rem; }
+  .query-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.86rem;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    padding: 0.5rem 0.9rem;
+    border-radius: 8px;
+    margin-bottom: 0.7rem;
+  }
+  .query-chip::before { content: "🔎"; }
+  .result-list { list-style: none; margin: 0; padding: 0 0 0 1.1rem; border-left: 2px solid var(--border); }
+  .result-item {
+    display: flex;
+    align-items: baseline;
+    gap: 0.7rem;
+    padding: 0.5rem 0;
+    font-size: 0.94rem;
+  }
+  .result-item .dist {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.78rem;
+    color: var(--ink-faint);
+    min-width: 3.4rem;
+  }
+  .result-item .title { color: var(--ink); }
+  .result-item .cat { color: var(--ink-faint); font-size: 0.82rem; }
+
+  /* corpus category table bars */
+  .bar-track {
+    background: var(--surface-2);
+    border-radius: 4px;
+    height: 8px;
+    width: 6rem;
+    overflow: hidden;
+    display: inline-block;
+    vertical-align: middle;
+  }
+  .bar-fill { background: var(--accent); height: 100%; border-radius: 4px; }
+
+  hr.divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 2.6rem 0;
+    max-width: 42rem;
+  }
+
+  footer.colophon {
+    max-width: 42rem;
+    color: var(--ink-faint);
+    font-size: 0.85rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; gap: 1.5rem; }
+    nav.toc { position: static; padding-top: 0; }
+    nav.toc .always { display: none; }
+    details.toc-toggle {
+      display: block;
+      margin-top: 1.5rem;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface);
+      padding: 0.2rem 1rem;
+    }
+    details.toc-toggle summary {
+      cursor: pointer;
+      padding: 0.8rem 0;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.8rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+    }
+    details.toc-toggle[open] summary { color: var(--accent-ink); }
+    details.toc-toggle ol { padding-bottom: 0.8rem; }
+    main { padding-top: 1.5rem; }
+    .masthead { padding: 3rem 1.25rem 2.2rem; }
+    .layout { padding: 0 1.25rem 4rem; }
+  }
+</style>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <span class="eyebrow">브리프코치 · 백엔드 학습노트</span>
+    <h1 class="title">RAG 구축 랩노트</h1>
+    <p class="subtitle">
+      화법 가이드 40건을 실제로 검색 가능하게 만들기까지 — 개념 하나하나를 처음 배우는
+      사람 눈높이에서, 오늘 하루 동안 무엇을 왜 그렇게 만들었는지 순서대로 적어둔다.
+    </p>
+    <div class="meta-row">
+      <span>대상 시스템: <strong>speech_guide_doc / speech_guide_chunk</strong></span>
+      <span>코퍼스: <strong>40건</strong></span>
+      <span>자동 테스트: <strong>32개 전부 통과</strong></span>
+      <span>실제 환경: <strong>team4hc-pg · team4hc-aoai 검증 완료</strong></span>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="toc" aria-label="목차">
+    <div class="always">
+      <h2>목차</h2>
+      <ol>
+        <li><a href="#s1"><span class="n mono">01</span> RAG가 뭔지</a></li>
+        <li><a href="#s2"><span class="n mono">02</span> 코퍼스</a></li>
+        <li><a href="#s3"><span class="n mono">03</span> 청킹</a></li>
+        <li><a href="#s4"><span class="n mono">04</span> 임베딩</a></li>
+        <li><a href="#s5"><span class="n mono">05</span> pgvector 검색</a></li>
+        <li><a href="#s6"><span class="n mono">06</span> 재조립</a></li>
+        <li><a href="#s7"><span class="n mono">07</span> DB 저장(upsert)</a></li>
+        <li><a href="#s8"><span class="n mono">08</span> 검색 함수</a></li>
+        <li><a href="#s9"><span class="n mono">09</span> 인증(AAD)</a></li>
+        <li><a href="#s10"><span class="n mono">10</span> 테스트</a></li>
+        <li><a href="#s11"><span class="n mono">11</span> 오늘의 교훈</a></li>
+      </ol>
+    </div>
+    <details class="toc-toggle">
+      <summary>목차 펼치기</summary>
+      <ol>
+        <li><a href="#s1"><span class="n mono">01</span> RAG가 뭔지</a></li>
+        <li><a href="#s2"><span class="n mono">02</span> 코퍼스</a></li>
+        <li><a href="#s3"><span class="n mono">03</span> 청킹</a></li>
+        <li><a href="#s4"><span class="n mono">04</span> 임베딩</a></li>
+        <li><a href="#s5"><span class="n mono">05</span> pgvector 검색</a></li>
+        <li><a href="#s6"><span class="n mono">06</span> 재조립</a></li>
+        <li><a href="#s7"><span class="n mono">07</span> DB 저장(upsert)</a></li>
+        <li><a href="#s8"><span class="n mono">08</span> 검색 함수</a></li>
+        <li><a href="#s9"><span class="n mono">09</span> 인증(AAD)</a></li>
+        <li><a href="#s10"><span class="n mono">10</span> 테스트</a></li>
+        <li><a href="#s11"><span class="n mono">11</span> 오늘의 교훈</a></li>
+      </ol>
+    </details>
+  </nav>
+
+  <main>
+
+    <section class="chapter" id="s1">
+      <div class="chapter-head"><span class="chapter-num mono">01</span><h2>RAG가 뭔지 — 개념부터</h2></div>
+      <p class="chapter-kicker">Retrieval-Augmented Generation · "찾아서, 그걸 근거로 답하기"</p>
+
+      <p>
+        LLM(대형 언어모델)은 방대한 텍스트를 학습해서 그럴듯한 문장을 만들어내는 데는 뛰어나지만,
+        가끔 "모르는 걸 아는 척 지어내는" 문제가 있다. 이걸 흔히 <strong>할루시네이션</strong>이라고
+        부른다. 예를 들어 "이 답변은 STAR 구조를 잘 지켰다"라고 LLM이 말했을 때, 그게 실제로 어떤
+        기준에 근거한 판단인지, 아니면 그냥 그럴듯하게 지어낸 말인지 우리는 알 방법이 없다.
+      </p>
+      <div class="box concept">
+        <span class="box-label">개념</span>
+        <p>
+          RAG(Retrieval-Augmented Generation, 검색 증강 생성)는 이 문제를 줄이는 방법이다.
+          LLM이 답을 <em>혼자 지어내게</em> 두는 대신, 먼저 믿을 수 있는 문서 더미에서 관련
+          내용을 <strong>찾아온 다음</strong>, 그 내용을 근거로 삼아 답하게 만든다. 시험 볼 때
+          "책 보고 풀어도 됩니다"라고 하면 답의 신뢰도가 확 올라가는 것과 비슷하다 — LLM에게도
+          참고할 "책"을 손에 쥐여주는 것이다.
+        </p>
+      </div>
+      <p>
+        브리프코치에서는 이 "책"이 STAR 기법·두괄식 화법·기술 커뮤니케이션 같은 <strong>화법 가이드
+        문서 40건</strong>이다. 나중에 근거검증(guardrail) 에이전트가 코칭 코멘트("이 답변은
+        두괄식이 아니에요" 같은)를 만들 때, "그 판단이 진짜 이 가이드 문서 중 어딘가에 근거하고
+        있는지"를 확인하는 데 이 RAG 시스템을 쓴다. 오늘 만든 건 정확히 그 "책"을 만들고, 빠르게
+        찾아볼 수 있게 색인을 붙이는 작업이다. coach/verify 에이전트가 실제로 이 책을 펼쳐보는 것은
+        다음 단계 작업이다.
+      </p>
+    </section>
+
+    <section class="chapter" id="s2">
+      <div class="chapter-head"><span class="chapter-num mono">02</span><h2>코퍼스 — 무엇을 모았나</h2></div>
+      <p class="chapter-kicker"><span class="filepath">data/rag_corpus/speech_guide_corpus.json</span></p>
+
+      <p>
+        코퍼스(corpus)는 "찾아볼 대상이 되는 원본 문서 뭉치"를 부르는 말이다. 브리프코치의
+        코퍼스는 정확히 <strong>40건</strong>의 짧은 화법 가이드 글로 구성돼 있고, 각 글은
+        <code>doc_number</code>(고유 번호), <code>category</code>(카테고리), <code>title</code>,
+        <code>source</code>(출처), <code>body_text</code>(본문) 다섯 개 필드를 가진 JSON
+        객체 하나다.
+      </p>
+
+      <h3 class="sub">카테고리 분포</h3>
+      <div class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr><th>카테고리 묶음</th><th>건수</th><th></th></tr>
+          </thead>
+          <tbody>
+            <tr><td>STAR (기법·정의·예시)</td><td class="num">6</td><td><span class="bar-track"><span class="bar-fill" style="width:100%"></span></span></td></tr>
+            <tr><td>기술 설득 / 고객 설명 / 팀 기술리뷰</td><td class="num">9</td><td><span class="bar-track"><span class="bar-fill" style="width:100%"></span></span></td></tr>
+            <tr><td>두괄식 (화법·정의·예시)</td><td class="num">3</td><td><span class="bar-track"><span class="bar-fill" style="width:50%"></span></span></td></tr>
+            <tr><td>전달력 / 의사소통 저해요인 / 장애·설명 공통</td><td class="num">6</td><td><span class="bar-track"><span class="bar-fill" style="width:100%"></span></span></td></tr>
+            <tr><td>그 외 개별 주제 (간결성·시간관리·꼬리질문·문서작성 등 14종)</td><td class="num">14</td><td><span class="bar-track"><span class="bar-fill" style="width:100%"></span></span></td></tr>
+            <tr><td><strong>합계</strong></td><td class="num"><strong>40</strong></td><td></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="sub">번호가 16, 17, 28에서 비는 이유</h3>
+      <p>
+        <code>doc_number</code>를 쭉 나열해보면 16·17·28이 빠져있다. 실수로 빠진 게 아니라
+        의도적인 정리 결과다. 16·17번은 원래 두괄식/공공언어 원칙을 다뤘는데, 나중에 더 정확한
+        1차 자료(국립국어원 공식 간행물)를 직접 확인해보니 처음 정리했던 내용이 부정확했다는 게
+        드러나서 제외했다. 28번은 애초에 코퍼스 항목이 아니라 작업 중 남긴 메타노트였다. 대신
+        상대적으로 얇았던 <strong>기술 설득</strong>과 <strong>장애·설명 공통</strong> 카테고리를
+        각각 한 건씩 새로 써서 42번, 43번으로 보강해 정확히 40건을 맞췄다.
+      </p>
+
+      <div class="box concept">
+        <span class="box-label">저작권은 어떻게 다뤘나</span>
+        <p>
+          상업 사이트 글을 그대로 긁어오지 않았다. 국립국어원 『한눈에 알아보는 공공언어 바로
+          쓰기』, NCS 의사소통능력 학습모듈 같은 <strong>공공저작물을 팀이 직접 읽고
+          재구성</strong>했고, 나머지 상당수는 팀이 직접 쓴 원본 콘텐츠다(예: "코드가 아니라
+          나를 주어로 말하기(I-message)", "장애 보고는 발견→영향→조치 순서로"). 그래서
+          출처(<code>source</code> 필드) 없이 <code>null</code>인 문서도 많은데, 이건
+          "팀 자체 작성"이라는 뜻이지 출처를 빠뜨린 게 아니다.
+        </p>
+      </div>
+    </section>
+
+    <section class="chapter" id="s3">
+      <div class="chapter-head"><span class="chapter-num mono">03</span><h2>청킹 — 문서를 왜 잘게 쪼개나</h2></div>
+      <p class="chapter-kicker"><span class="filepath">backend/rag/index/chunker.py</span></p>
+
+      <p>
+        문서 한 편을 통째로 검색 대상으로 삼으면 문제가 생긴다. 문서가 길면 그 안에 관련 없는
+        내용까지 잔뜩 딸려 들어오고, 반대로 너무 잘게 쪼개면 문장이 맥락을 잃는다. 그래서
+        <strong>300~500자</strong> 정도 되는 "청크(chunk)" 단위로 나눠서 저장한다 — 딱 한
+        문단 분량, 검색했을 때 "이 부분이 정확히 관련 있다"고 말할 수 있을 만큼 좁으면서도
+        문장이 끊기지 않을 만큼은 넉넉한 크기다.
+      </p>
+
+      <div class="box concept">
+        <span class="box-label">알고리즘</span>
+        <p>
+          문단 단위로 먼저 순서대로 이어 붙이다가, 다음 문단을 더하면 500자를 넘을 것 같으면
+          거기서 끊고 새 청크를 시작한다("그리디 패킹"). 그런데 문단 하나가 그 자체로 500자를
+          넘는 경우도 있다 — 이때만 예외적으로 그 문단 안에서 문장 단위로 같은 방식을 적용한다.
+          어떤 경우에도 <strong>문장 중간에서는 절대 자르지 않는다</strong>. 크기 제한보다
+          "뜻이 안 깨지는 것"이 항상 우선이다.
+        </p>
+      </div>
+      <p>
+        코퍼스 40건 대부분은 원래부터 한 문단, 300~500자 정도로 써져 있어서 대부분 청크 1개로
+        끝난다. 문단이 길어서 청크가 2개 이상 나뉘는 문서만 소수 있다.
+      </p>
+    </section>
+
+    <section class="chapter" id="s4">
+      <div class="chapter-head"><span class="chapter-num mono">04</span><h2>임베딩 — 텍스트를 숫자로 바꾸기</h2></div>
+      <p class="chapter-kicker"><span class="filepath">backend/app/core/embeddings.py</span> · Azure OpenAI text-embedding-3-small</p>
+
+      <div class="box concept">
+        <span class="box-label">벡터란</span>
+        <p>
+          임베딩(embedding)은 문장을 <strong>숫자로 이뤄진 좌표(벡터)</strong>로 바꾸는 작업이다.
+          "의미가 비슷한 문장은 좌표도 가깝게" 배치되도록 학습된 모델이 이 변환을 해준다. 예를
+          들어 "결론부터 말하기"와 "두괄식"은 글자는 완전히 다르지만 뜻이 비슷하니 벡터 공간에서도
+          가까운 자리에 놓인다. 이 프로젝트는 Azure OpenAI의 <code>text-embedding-3-small</code>
+          모델을 써서 문장 하나를 <strong>1536개의 숫자</strong>로 이뤄진 벡터로 바꾼다.
+        </p>
+      </div>
+
+      <p>
+        청크 40여 개를 하나하나 API로 보내면 느리고 비효율적이라, <strong>16개씩 묶어서(배치)</strong>
+        한 번에 임베딩 요청을 보낸다.
+      </p>
+
+      <div class="box lesson">
+        <span class="box-label">코드 리뷰에서 잡힌 버그</span>
+        <p>
+          배치로 응답을 받을 때, API가 <em>보낸 순서 그대로</em> 결과를 돌려준다고 그냥 믿으면
+          위험하다. 응답에 딸려오는 <code>item.index</code> 필드가 바로 "이 결과가 원래 몇 번째
+          입력이었는지"를 알려주는 용도인데, 처음엔 이 필드를 안 쓰고 리스트 순서만 믿었다.
+          리뷰에서 "응답 순서를 실제로 뒤섞어서 반환하는 가짜 테스트를 만들어야, 이 재정렬 로직이
+          진짜 있는지 검증할 수 있다"는 지적을 받고 <code>item.index</code>로 명시적으로
+          재정렬하도록 고쳤다.
+        </p>
+      </div>
+    </section>
+
+    <section class="chapter" id="s5">
+      <div class="chapter-head"><span class="chapter-num mono">05</span><h2>pgvector — DB가 "비슷한 것"을 찾는 법</h2></div>
+      <p class="chapter-kicker">PostgreSQL + pgvector 확장 · HNSW 인덱스 · cosine distance</p>
+
+      <div class="box concept">
+        <span class="box-label">개념</span>
+        <p>
+          <strong>pgvector</strong>는 일반 PostgreSQL에 "벡터를 저장하고, 벡터끼리 얼마나
+          가까운지 빠르게 계산하는" 기능을 얹어주는 확장이다. 벡터가 40개뿐이면 하나하나 다
+          비교해도 되지만, 실제 서비스에서는 수만~수백만 개가 될 수 있어서 <strong>HNSW</strong>
+          라는 인덱스 구조를 쓴다 — "완벽하게 가장 가까운 것"을 찾는 대신 "충분히 가까운 것"을
+          훨씬 빠르게 찾아주는 근사 탐색 방식이라고 생각하면 된다.
+        </p>
+      </div>
+      <p>
+        "얼마나 가까운지"는 <strong>코사인 거리(cosine distance)</strong>로 잰다. 값이
+        <strong>작을수록</strong> 더 비슷하다는 뜻이다(0에 가까울수록 거의 같은 의미). 아래는
+        실제로 이 프로젝트의 검색 함수를 다섯 개 질문으로 돌려본 결과다 — 거리 숫자가 작은
+        순서대로 정렬돼 나온다.
+      </p>
+
+      <div class="query-block">
+        <div class="query-chip">두괄식이 뭐야</div>
+        <ul class="result-list">
+          <li class="result-item"><span class="dist mono">0.6055</span><span class="title">두괄식 화법이 필요한 이유</span><span class="cat">두괄식</span></li>
+          <li class="result-item"><span class="dist mono">0.7053</span><span class="title">숫자로 위험과 이득을 말하기</span><span class="cat">기술 설득</span></li>
+          <li class="result-item"><span class="dist mono">0.7190</span><span class="title">표준국어대사전의 정의</span><span class="cat">두괄식 정의</span></li>
+        </ul>
+      </div>
+      <div class="query-block">
+        <div class="query-chip">STAR 기법 예시 보여줘</div>
+        <ul class="result-list">
+          <li class="result-item"><span class="dist mono">0.6278</span><span class="title">개발자 상황의 STAR 답변 예시</span><span class="cat">STAR 예시</span></li>
+          <li class="result-item"><span class="dist mono">0.6730</span><span class="title">STAR 기법의 유래, IT 업계에 각인된 계기</span><span class="cat">STAR 정의</span></li>
+          <li class="result-item"><span class="dist mono">0.7308</span><span class="title">STAR 기법이란 무엇인가</span><span class="cat">STAR</span></li>
+        </ul>
+      </div>
+      <div class="query-block">
+        <div class="query-chip">코드 리뷰할 때 어떻게 말해야 해</div>
+        <ul class="result-list">
+          <li class="result-item"><span class="dist mono">0.4360</span><span class="title">코드가 아니라 나를 주어로 말하기(I-message)</span><span class="cat">팀 기술리뷰</span></li>
+          <li class="result-item"><span class="dist mono">0.5224</span><span class="title">저문맥 커뮤니케이션 — 안다고 가정하지 않기</span><span class="cat">팀 기술리뷰</span></li>
+          <li class="result-item"><span class="dist mono">0.5235</span><span class="title">의견이 아니라 근거로 제안하기</span><span class="cat">팀 기술리뷰</span></li>
+        </ul>
+      </div>
+      <div class="query-block">
+        <div class="query-chip">필러워드 줄이는 법</div>
+        <ul class="result-list">
+          <li class="result-item"><span class="dist mono">0.6012</span><span class="title">필러워드와 침묵의 관계</span><span class="cat">전달력</span></li>
+          <li class="result-item"><span class="dist mono">0.7445</span><span class="title">짧고 긍정문으로 쓰기</span><span class="cat">문서작성 원칙</span></li>
+          <li class="result-item"><span class="dist mono">0.7451</span><span class="title">전문용어를 줄이고 분명하게 말하기</span><span class="cat">의사표현</span></li>
+        </ul>
+      </div>
+      <div class="query-block">
+        <div class="query-chip">고객한테 기술적 제약 설명하는 법</div>
+        <ul class="result-list">
+          <li class="result-item"><span class="dist mono">0.5066</span><span class="title">무엇을 원하는지부터 확인하기</span><span class="cat">고객 설명</span></li>
+          <li class="result-item"><span class="dist mono">0.5319</span><span class="title">대안과 비교해서 제시하기</span><span class="cat">기술 설득</span></li>
+          <li class="result-item"><span class="dist mono">0.5602</span><span class="title">기술적 제약을 고객의 언어로 바꾸기</span><span class="cat">고객 설명</span></li>
+        </ul>
+      </div>
+      <p>
+        다섯 질문 전부 카테고리·제목이 질문 의도와 정확히 맞아떨어졌다 — 코퍼스·청킹·임베딩·검색
+        경로 전체가 실제로 의미를 이해하고 찾아온다는 뜻이다.
+      </p>
+    </section>
+
+    <section class="chapter" id="s6">
+      <div class="chapter-head"><span class="chapter-num mono">06</span><h2>재조립 — 가장 실수하기 쉬웠던 부분</h2></div>
+      <p class="chapter-kicker"><span class="filepath">backend/rag/index/assemble.py</span></p>
+
+      <p>
+        임베딩 API를 호출할 때 40개 문서의 청크를 <strong>한 줄로 쭉 펴서</strong> 한 번에
+        보내는 게 훨씬 효율적이다. 문제는 그 다음이다 — 평탄화된 임베딩 리스트를 다시
+        "몇 번째 문서의 몇 번째 청크"였는지 정확히 되돌려 붙여야 한다.
+      </p>
+      <pre class="code"><code><span class="code-comment"># 문서마다 청크 개수가 다르므로(1개짜리, 3개짜리...) 오프셋을 누적해서 추적</span>
+offset = 0
+<span class="code-accent2">for</span> doc, chunk_texts <span class="code-accent2">in</span> chunked:
+    doc_embeddings = embeddings[offset : offset + len(chunk_texts)]
+    offset += len(chunk_texts)
+    <span class="code-comment"># ... 이 doc_embeddings를 doc에 붙여서 InsertableDoc으로 만듦</span></code></pre>
+
+      <div class="box lesson">
+        <span class="box-label">왜 위험한가</span>
+        <p>
+          이 오프셋 계산이 하나라도 틀리면 <strong>A 문서의 청크에 B 문서의 임베딩이 붙는다.</strong>
+          그런데 이건 에러를 던지지 않는다 — 그냥 벡터 값이 하나 잘못 들어갈 뿐이라, 프로그램은
+          멀쩡히 끝나고 검색 결과만 "미묘하게" 이상해진다. 가장 알아채기 어려운 유형의 버그다.
+          그래서 이 재조립 로직만 따로 떼서, 청크 수가 다른 문서 여러 개를 섞어 넣고 "각 청크가
+          진짜 자기 임베딩과 정확히 짝지어지는지"를 확인하는 전용 테스트를 만들었다. 그리고
+          마지막에 <code>offset != len(embeddings)</code>이면 <strong>조용히 넘어가지 않고
+          바로 예외를 던지게</strong> 했다(디버깅용 <code>assert</code>가 아니라 진짜
+          <code>ValueError</code>로 — <code>assert</code>는 파이썬을 최적화 모드로 실행하면
+          통째로 사라져 버리기 때문).
+        </p>
+      </div>
+    </section>
+
+    <section class="chapter" id="s7">
+      <div class="chapter-head"><span class="chapter-num mono">07</span><h2>DB에 저장하기 — 왜 TRUNCATE 대신 upsert인가</h2></div>
+      <p class="chapter-kicker"><span class="filepath">backend/app/db/queries/speech_guide.py</span></p>
+
+      <p>
+        <code>rag-reindex</code>는 매일 새벽 3시에 자동으로 다시 돈다. 처음 든 생각은
+        "매번 그냥 싹 지우고 새로 넣으면 되지 않나"였다. 그런데 그러면 문제가 생긴다 —
+        <code>speech_guide_chunk</code>의 <code>id</code>는 데이터베이스가 자동으로 매기는
+        번호라서, 싹 지우고 다시 넣으면 <strong>재색인할 때마다 같은 내용인데도 id가 바뀐다.</strong>
+        나중에 근거검증 에이전트가 "이 코칭 코멘트는 청크 id 123을 근거로 삼았다"처럼 기록해두면,
+        다음날 재색인 후엔 그 id가 사라져 있는 문제가 생긴다.
+      </p>
+      <div class="box concept">
+        <span class="box-label">해결책 — 자연키</span>
+        <p>
+          그래서 코퍼스의 <code>doc_number</code>와 <code>(doc_id, chunk_index)</code> 조합을
+          "자연키"로 삼았다. 내용이 안 바뀐 문서·청크는 재색인해도 <strong>같은 id를 그대로
+          유지</strong>한다 — SQL의 <code>INSERT ... ON CONFLICT (...) DO UPDATE</code> 구문으로,
+          "이미 있으면 업데이트, 없으면 새로 삽입"을 한 문장으로 처리한다.
+        </p>
+      </div>
+
+      <h3 class="sub">외래키(FK) 순서 문제</h3>
+      <p>
+        코퍼스에서 아예 빠진 문서(이번 세션의 16·17·28번 같은)는 DB에서도 지워야 한다. 그런데
+        <code>speech_guide_chunk</code>는 <code>speech_guide_doc</code>을 참조하고 있고
+        (외래키), 이 참조에 "부모가 지워지면 자식도 자동으로 같이 지운다"는 설정
+        (<code>ON DELETE CASCADE</code>)이 <strong>없다</strong>. 그래서 자식 청크가 남아있는
+        채로 부모 문서부터 지우려고 하면 데이터베이스가 참조 무결성 위반으로 막는다. 그래서
+        코드에서 <strong>자식(청크)을 먼저 지우고, 그다음 부모(문서)를 지우도록</strong>
+        순서를 명시적으로 맞췄다.
+      </p>
+    </section>
+
+    <section class="chapter" id="s8">
+      <div class="chapter-head"><span class="chapter-num mono">08</span><h2>검색 함수 — 질문 하나가 던져지면</h2></div>
+      <p class="chapter-kicker"><span class="filepath">backend/app/agents/retriever/search.py</span> · search_speech_guide(query, k)</p>
+      <p>실제 질문이 들어왔을 때 벌어지는 일은 세 단계뿐이다.</p>
+      <pre class="code"><code><span class="code-accent2">async def</span> search_speech_guide(query, k):
+    <span class="code-comment"># 1) 질문 문장도 코퍼스와 똑같은 방식으로 벡터로 바꾼다</span>
+    query_embedding = <span class="code-accent2">await</span> embed_query(client, query, ...)
+    <span class="code-comment"># 2) DB에서 코사인 거리가 가장 가까운 k개 청크를 가져온다</span>
+    rows = <span class="code-accent2">await</span> search_chunks_by_embedding(conn, query_embedding, k)
+    <span class="code-comment"># 3) 결과를 다루기 쉬운 형태(SpeechGuideMatch)로 감싸서 반환</span>
+    <span class="code-accent2">return</span> [SpeechGuideMatch(**dict(r)) <span class="code-accent2">for</span> r <span class="code-accent2">in</span> rows]</code></pre>
+      <p>
+        "질문도 결국 코퍼스랑 똑같은 방법(임베딩)으로 벡터로 바꿔서, 같은 공간에서 거리를
+        재는 것"이라는 게 핵심이다 — 그래야 "의미가 비슷한 것끼리 가깝다"는 임베딩의 성질을
+        검색에 그대로 활용할 수 있다.
+      </p>
+    </section>
+
+    <section class="chapter" id="s9">
+      <div class="chapter-head"><span class="chapter-num mono">09</span><h2>인증 — API 키 없이 접속하기</h2></div>
+      <p class="chapter-kicker">Azure AD (Entra ID) · Managed Identity · Workload Identity</p>
+
+      <div class="box concept">
+        <span class="box-label">왜 API 키를 안 쓰나</span>
+        <p>
+          보통은 비밀번호나 API 키를 코드/설정 파일에 넣어서 인증한다. 근데 그런 값은
+          <strong>어딘가로 새어나갈 위험</strong>이 항상 있다(오늘 세션에서도 실제로 관련
+          사고가 하나 있었을 정도다). 그래서 이 프로젝트는 Postgres도, Azure OpenAI도
+          <strong>고정된 비밀값을 아예 안 쓴다.</strong>
+        </p>
+      </div>
+      <p>
+        대신 <strong>Managed Identity</strong>라는 걸 쓴다 — Azure가 "이 애플리케이션이 진짜
+        우리가 등록해준 그 앱이 맞다"는 걸 매번 새로 확인해서 짧은 시간만 유효한 토큰을
+        발급해주는 방식이다. 신분증을 코드에 박아두는 대신, 필요할 때마다 창구에 가서 새
+        신분증을 받아오는 것과 비슷하다. 클러스터 안에서는 이걸 <strong>Workload
+        Identity</strong>라는 메커니즘으로 연결한다.
+      </p>
+      <p>
+        로컬 개발 환경(Postgres가 클러스터 밖에 없는)과 실제 클러스터, 두 가지를 하나의 설정으로
+        지원하기 위해 <code>database_auth_mode</code>라는 값을 뒀다 — 로컬은
+        <code>"password"</code>(연결 문자열에 비밀번호 포함), 클러스터는 <code>"aad"</code>
+        (비밀번호 없는 연결 문자열 + 연결 시점에 AAD 토큰을 따로 전달)로 명확히 분기시켰다.
+      </p>
+    </section>
+
+    <section class="chapter" id="s10">
+      <div class="chapter-head"><span class="chapter-num mono">10</span><h2>테스트 — 진짜 맞는지 어떻게 확인했나</h2></div>
+
+      <h3 class="sub">자동 테스트 32개</h3>
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr><th>대상</th><th>확인하는 것</th></tr></thead>
+          <tbody>
+            <tr><td>코퍼스 파서</td><td>필수 필드 누락·중복 doc_number 감지</td></tr>
+            <tr><td>청커</td><td>문장 경계 준수, 300~500자 경계 처리</td></tr>
+            <tr><td>임베딩</td><td>배치 경계, <strong>응답 순서 뒤섞임 방어</strong></td></tr>
+            <tr><td>재조립</td><td>청크 수가 다른 문서들 사이 <strong>오프셋 정확도</strong></td></tr>
+            <tr><td>DB 저장</td><td>upsert SQL, <strong>FK 삭제 순서</strong>(자식→부모)</td></tr>
+            <tr><td>검색 함수</td><td>실제 SELECT 컬럼 기준 필드 매핑(dataclass 필드 기준 아님)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="box lesson">
+        <span class="box-label">"통과한다"와 "동작한다"는 다르다</span>
+        <p>
+          자동 테스트가 전부 초록불이어도, 그건 "코드가 논리적으로 맞다"는 것만 증명한다.
+          실제로 진짜 Postgres·Azure OpenAI에 붙여서 확인해보니, <code>0001_init.sql</code>
+          스키마가 이 프로젝트에서 <strong>한 번도 적용된 적이 없었다</strong>는 사실부터
+          드러났다. 마이그레이션을 실제로 적용하고, <code>rag.index</code>를 두 번 실행해서
+          청크 id가 안 바뀌는지(진짜 idempotent인지) 확인하고, 위 5개 검색 쿼리로 실제 정확도를
+          확인했다.
+        </p>
+      </div>
+
+      <h3 class="sub">실제 클러스터에서 터진 진짜 버그 2개</h3>
+      <p>
+        로컬 검증도 끝났으니 다 됐다고 생각했지만, 실제 Kubernetes 클러스터의 자동 색인 작업
+        (<code>rag-reindex</code> CronJob)을 수동으로 트리거해보니 또 다른 층위의 문제가
+        나왔다 — <strong>코드 리뷰로는 절대 못 잡는 종류</strong>다.
+      </p>
+      <ol>
+        <li>
+          <strong>Key Vault 시크릿 미배포</strong> — <code>pg-connstr</code> 비밀정보가
+          Bicep(인프라 코드) 파일 안에는 있었지만, 실제로 Azure에 <em>배포된 적이 없었다.</em>
+          코드는 맞는데 실제 인프라 상태가 그 코드를 반영하지 않고 있었던 것.
+        </li>
+        <li>
+          <strong>인증 라벨 누락</strong> — <code>rag-reindex</code> 파드 설정에
+          <code>azure.workload.identity/use: "true"</code> 라벨이 처음부터 빠져 있었다.
+          이 라벨이 없으면 앞서 §9에서 설명한 Workload Identity 메커니즘 자체가 작동을 안 해서,
+          인증 시도가 전부 실패한다. <code>python -m rag.index</code>가 이제껏 늘
+          <code>NotImplementedError</code>로 먼저 죽어서 인증 단계까지 간 적이 없었기 때문에
+          아무도 눈치채지 못하고 있었던 기존 버그였다.
+        </li>
+      </ol>
+      <div class="box verified">
+        <span class="box-label">최종 확인</span>
+        <p>
+          두 버그를 고치고 다시 트리거하니 <code>indexed 40 docs, 40 chunks</code>로 실제
+          클러스터에서 정상 완료됐다. 이걸로 코퍼스 → 청킹 → 임베딩 → 색인 → 검색 → 실제
+          배포까지 전 구간이 실제 환경에서 검증됐다.
+        </p>
+      </div>
+    </section>
+
+    <section class="chapter" id="s11">
+      <div class="chapter-head"><span class="chapter-num mono">11</span><h2>오늘의 교훈</h2></div>
+      <p>다음에 비슷한 파이프라인을 만들 때 그대로 다시 써먹을 만한 것들.</p>
+      <ul>
+        <li>
+          <strong>"코드가 맞아 보인다"와 "실제로 동작한다"는 완전히 다른 문장이다.</strong>
+          diff 리뷰와 자동 테스트는 논리적 정합성만 증명한다. 실제 인프라(진짜 DB, 진짜 인증,
+          진짜 클러스터)에 직접 붙여봐야만 드러나는 배포 상태 불일치가 있다 — 오늘의 두 버그
+          모두 코드는 처음부터 맞았고, "배포됐다고 가정한 것"이 틀렸던 경우다.
+        </li>
+        <li>
+          <strong>테스트용 가짜 데이터는 "결과로 받고 싶은 형태"가 아니라 "실제로 시스템이
+          만들어내는 형태"를 기준으로 만들어야 한다.</strong> 검색 함수 테스트에서, 만약
+          dataclass 필드 목록을 기준으로 가짜 DB 응답(mock)을 만들었다면 실제 SQL이 반환하는
+          컬럼 하나가 빠져도 테스트가 통과해버렸을 것이다 — 실제 SELECT 쿼리를 기준으로
+          mock을 짜야 이런 "필드셋 드리프트" 버그를 잡을 수 있다.
+        </li>
+        <li>
+          <strong>작아 보이는 순서·형식 실수가 조용히 큰 문제를 만든다.</strong> FK 삭제 순서
+          (자식 먼저), <code>assert</code> 대신 명시적 예외, 임베딩 배치 응답 재정렬 — 셋 다
+          "이 정도는 괜찮겠지" 싶을 만큼 작은 디테일이었지만, 방치하면 각각 트랜잭션 실패·
+          프로덕션에서 무력화되는 방어 코드·조용한 데이터 오염으로 이어질 수 있는 것들이었다.
+        </li>
+      </ul>
+    </section>
+
+    <footer class="colophon">
+      브리프코치(BriefCoach) RAG 파이프라인 구축 세션 기록 · backend/rag/docs/ing/rag_구축_랩노트.html
+    </footer>
+
+  </main>
+</div>

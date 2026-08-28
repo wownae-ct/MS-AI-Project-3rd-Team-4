@@ -100,9 +100,11 @@ export function ChecklistItemRow({ item, categoryCode, onStatusChange }: Checkli
             </option>
           ))}
         </select>
-        {/* 신고(F13)는 AI가 생성한 항목에만 의미가 있다 — 사용자가 직접 추가한 항목(origin=USER)은
-            본인 입력이라 신고 대상이 아니다. */}
-        {item.origin === "LLM" && <ReportButton targetType="CHECKLIST_ITEM" targetId={item.id} />}
+        {/* 신고(F13)는 사용자가 직접 추가하지 않은 항목에만 의미가 있다 — 본인 입력(origin=USER)은
+            신고 대상이 아니다. LLM 생성분뿐 아니라 카탈로그 폴백(origin=CATALOG_FALLBACK)도
+            시스템이 만든 콘텐츠라 오류가 있으면 똑같이 신고할 수 있어야 한다(2026-08-28,
+            origin='LLM' mislabel 수정으로 두 값이 분리되면서 명시적으로 확인). */}
+        {item.origin !== "USER" && <ReportButton targetType="CHECKLIST_ITEM" targetId={item.id} />}
       </div>
     </li>
   );

@@ -7,7 +7,7 @@
 // 텍스트 한 줄만 바꾸고 "다음"을 그대로 통과시켰고, 그 값이 `POST /weddings` 의
 // `planned_budget` 으로 나가 서버가 **400 BUDGET_EXCEEDED** 를 냈다
 // (`sum(planned_budget) > total_budget`, backend services/wedding.py:300 — `is_active` 무관).
-// 사용자는 온보딩을 끝까지 채우고 "시작하기"를 눌러야 그 사실을 알았고, 9단계 확인 화면은
+// 사용자는 온보딩을 끝까지 채우고 "시작하기"를 눌러야 그 사실을 알았고, 10단계 확인 화면은
 // "5,000만원 / 4,000만원"으로 나란히 찍을 뿐 "초과"라는 말조차 하지 않아 어디를 고쳐야 하는지도
 // 알 수 없었다.
 //
@@ -30,13 +30,13 @@ export interface AllocationGuardDeps {
   /** 원 단위 문자열. OnboardingPage의 `totalBudget` state 계약 그대로다. */
   setTotalBudget: (wonString: string) => void;
   setTotalBudgetUnsure: (unsure: boolean) => void;
-  /** 9단계(확인)로 이동. 스텝 번호를 이 훅이 알 필요는 없다. */
+  /** 10단계(확인)로 이동. 스텝 번호를 이 훅이 알 필요는 없다. */
   goToReview: () => void;
 }
 
 export interface AllocationGuard {
   isOverAllocated: boolean;
-  /** 초과 상태로 "나중에 설정"을 눌러 배분 금액이 전부 0으로 되돌아갔다(9단계가 이 사실을 알린다). */
+  /** 초과 상태로 "나중에 설정"을 눌러 배분 금액이 전부 0으로 되돌아갔다(10단계가 이 사실을 알린다). */
   wasAllocationReset: boolean;
   handleAllocationRowsChange: (next: AllocationRow[]) => void;
   handleTotalBudgetChange: (wonString: string) => void;
@@ -76,17 +76,18 @@ export function useAllocationGuard({
       setTotalBudget(wonString);
     },
 
-    // "나중에 설정"의 목적지는 항상 9단계다. 다만 초과 상태를 그대로 들고 가면 9단계
+    // "나중에 설정"의 목적지는 항상 10단계(확인)다. 다만 초과 상태를 그대로 들고 가면 10단계
     // "시작하기"가 곧바로 400을 맞는다 — 그래서 넘어가기 전에 배분 금액만 0으로 되돌린다
     // (2026-08-28 사용자 결정). `isActive`/`selectedOptions`는 건드리지 않는다: 그건 7단계에서
     // 내린 별개의 결정이고, "예산 배분은 나중에"가 "카테고리 선택도 취소"를 뜻하지는 않는다.
     //
     // 지워진다는 사실은 두 번 알린다 — 누르기 전(8단계 초과 블록의 보조 문구)과 누른 뒤
-    // (9단계 ALLOCATION_RESET_NOTE). 조용히 지우면 9단계의 "0원 배분"이 버그로 읽힌다.
+    // (10단계 ALLOCATION_RESET_NOTE). 조용히 지우면 10단계의 "0원 배분"이 버그로 읽힌다.
     //
-    // 이 처리 덕분에 9단계에 도달하는 두 경로(8단계 "다음" — 초과면 막힘 / "나중에 설정" —
-    // 초과면 초기화)가 모두 초과 아님을 보장한다. 9단계엔 입력이 없으므로 "시작하기"에는
-    // 별도 가드를 달지 않는다(도달 불가능한 코드가 된다).
+    // 이 처리 덕분에 10단계에 도달하는 두 경로(8단계 "다음" — 초과면 막힘, 그 뒤 9단계 자유
+    // 서술은 예산을 건드리지 않는다 / "나중에 설정" — 초과면 초기화)가 모두 초과 아님을
+    // 보장한다. 9·10단계엔 금액 입력이 없으므로 "시작하기"에는 별도 가드를 달지 않는다
+    // (도달 불가능한 코드가 된다).
     handleSkipToReview: () => {
       if (isOverAllocated) {
         setAllocationRows((rows) => rows.map((row) => ({ ...row, plannedBudget: 0 })));

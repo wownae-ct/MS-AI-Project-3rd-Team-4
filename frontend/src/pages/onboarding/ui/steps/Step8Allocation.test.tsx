@@ -86,7 +86,7 @@ describe("Step8Allocation — 배분 초과 안내", () => {
 
     expectOverBlock(true);
     expect(screen.getByRole("button", { name: CTA })).toBeInTheDocument();
-    // 조용히 지우면 9단계의 "0원 배분"이 버그로 읽힌다 — 누르기 전에 한 번 알린다.
+    // 조용히 지우면 10단계의 "0원 배분"이 버그로 읽힌다 — 누르기 전에 한 번 알린다.
     expect(screen.getByText(/‘나중에 설정’을 누르면 배분한 금액이 모두 지워져요\./u)).toBeInTheDocument();
     expect(screen.getByText("2,000,000원 초과")).toBeInTheDocument();
   });

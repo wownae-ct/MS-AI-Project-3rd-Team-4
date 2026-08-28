@@ -1,0 +1,5 @@
+# Windows에서 커밋해도 리눅스 기반 CI/AKS에서 실행되는 셸 스크립트(deploy-infra.sh, ansible 태스크,
+# argocd-image-updater-auth-script.yaml, deployment.yaml Init Container 등)가 CRLF 때문에 깨지지 않도록,
+# 텍스트 파일은 저장소에 항상 LF로만 저장한다. 이 파일이 없으면 core.autocrlf 설정에 따라 CRLF가
+# 그대로 커밋될 수 있다(실제로 이 프로젝트 초기 커밋부터 CRLF로 들어가 있었음 — 2026-08-13 정규화).
+* text=auto eol=lf

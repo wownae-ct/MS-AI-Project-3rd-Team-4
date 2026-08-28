@@ -1,7 +1,8 @@
-// 9단계(확인) 표시용 라벨 계산 — OnboardingPage.tsx에서 뽑아냈다(oxlint max-lines 300줄 상한
-// 초과, 2026-08-26). 순수 함수라 훅/JSX 의존이 없다 — OnboardingPage는 원본 state에서 파생한
-// "실제 제출될 값"만 이 함수에 넘기고, 결과를 그대로 Step9Review에 전달한다(단일 진실 공급원은
-// 여전히 OnboardingPage — 이 파일은 그 값을 문자열로 바꾸는 표시 계층일 뿐이다).
+// 10단계(확인) 표시용 라벨 계산 — OnboardingPage.tsx에서 뽑아냈다(oxlint max-lines 300줄 상한
+// 초과, 2026-08-26; 2026-08-28 9단계 자유 서술 추가로 9→10단계 재편). 순수 함수라 훅/JSX 의존이
+// 없다 — OnboardingPage는 원본 state에서 파생한 "실제 제출될 값"만 이 함수에 넘기고, 결과를
+// 그대로 Step10Review에 전달한다(단일 진실 공급원은 여전히 OnboardingPage — 이 파일은 그 값을
+// 문자열로 바꾸는 표시 계층일 뿐이다).
 import type { DoneSoFarCategory, SdmPriority, TastePreference, VenuePriority } from "@/entities/wedding";
 import type { UnsurePrecision } from "./steps/Step1RoleDate";
 import type { UnsurePrecisionOption } from "@/shared/lib/wedding-date";
@@ -25,6 +26,7 @@ export interface ReviewLabelInputs {
   doneSoFar: DoneSoFarCategory[];
   allocatedBudget: number;
   totalBudgetEstimate: number;
+  customRequest: string;
 }
 
 export interface ReviewLabels {
@@ -38,6 +40,7 @@ export interface ReviewLabels {
   sdmPriorityLabel: string;
   progressLabel: string;
   allocatedBudgetLabel: string;
+  customRequestLabel: string;
 }
 
 function buildWeddingDateLabel(
@@ -91,5 +94,8 @@ export function buildReviewLabels(inputs: ReviewLabelInputs): ReviewLabels {
             .map((item) => item.label)
             .join(", "),
     allocatedBudgetLabel: `${inputs.allocatedBudget.toLocaleString("ko-KR")}원 / ${inputs.totalBudgetEstimate.toLocaleString("ko-KR")}원`,
+    // 취향/목표와 달리 이 필드는 "나중에 설정"이 채워주는 기본값이 없다 — 빈 값은 그냥
+    // null로 저장된다(하객 수와 같은 부류, Step10Review.tsx 주석 참고).
+    customRequestLabel: inputs.customRequest.trim() === "" ? "작성 안 함" : inputs.customRequest,
   };
 }

@@ -1,13 +1,13 @@
-// 온보딩 — S1, 9단계 위저드(8단계 입력 + 9단계 최종 확인). 시각 스펙: docs/mockups/s1-onboarding.html,
+// 온보딩 — S1, 10단계 위저드(9단계 입력 + 10단계 최종 확인). 시각 스펙: docs/mockups/s1-onboarding.html,
 // 필드 계약: 03_API_spec.md #6(POST /weddings) · #10(PUT /wedding-categories) ·
 // #31(GET /benchmarks/total-average).
 //
 // 1~8단계 순서는 최종 프로토타입(docs/wedding/plan/new/12_final_prototype_mockup.html)의
 // onbStep1~8 번호와 그대로 맞춘다: 1 역할/날짜 · 2 지역/예산/하객수 · 3 취향(스킵) ·
 // 4 목표(스킵) · 5 우선순위(스킵) · 6 진행상황 · 7 카테고리 on/off · 8 예산 배분.
-// 9단계(확인, 2026-08-26 사용자 지시 신규)는 목업에 없다 — 모든 단계(1~8)가 "나중에 설정"
-// 버튼을 갖게 되면서, 몇 단계를 건너뛰었든 마지막엔 항상 여기서 "실제로 고른 값"과 "기본값으로
-// 채워질 값"을 한 화면에 모아 확인하고 시작하게 한다.
+// 9단계(자유 서술, 2026-08-28 신규)·10단계(확인, 2026-08-26 사용자 지시 신규)는 목업에 없다 —
+// 모든 입력 단계(1~9)가 "나중에 설정" 버튼을 갖게 되면서, 몇 단계를 건너뛰었든 마지막엔 항상
+// 10단계에서 "실제로 고른 값"과 "기본값으로 채워질 값"을 한 화면에 모아 확인하고 시작하게 한다.
 //
 // **이 컴포넌트는 라우터를 모르지 않는다 — LoginPage.tsx 와 같은 관례.** 콜백 prop(onSuccess) 대신
 // `useNavigate` 를 직접 쓴다 — 이 브랜치의 `_authed`/`_shell` 가드·`LoginPage.tsx` 가 이미 이
@@ -29,11 +29,12 @@ import {
 } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
 import { computeDefaultUnsurePrecision, computeUnsurePrecisionOptions } from "@/shared/lib/wedding-date";
-import { Button, Card, Loading, Page, SkeletonRows } from "@/shared/ui";
+import { Card, Loading, Page, SkeletonRows } from "@/shared/ui";
 import { buildReviewLabels } from "./build-review-labels";
 import {
   GeneratingOverlay,
   GUEST_COUNT_UNSURE_DEFAULT,
+  OnboardingNav,
   STEP_HEADLINE,
   STEP_SUBTITLE,
   Step1RoleDate,
@@ -44,7 +45,8 @@ import {
   Step6Progress,
   Step7CategoryToggle,
   Step8Allocation,
-  Step9Review,
+  Step9CustomRequest,
+  Step10Review,
   TOTAL_STEPS,
   allocationRowsToCategoryUpdates,
   useAllocationGuard,
@@ -97,6 +99,11 @@ export function OnboardingPage() {
   // 6단계
   const [doneSoFar, setDoneSoFar] = useState<DoneSoFarCategory[]>([]);
 
+  // 9단계(신규, 2026-08-28 — 자유 서술, 스킵 가능). 하객 수와 같은 부류 — "나중에 설정"이
+  // 대신 채워주는 기본값이 없다(빈 문자열이면 그냥 null로 나간다), 그래서 다른 defaulted
+  // 필드들과 달리 별도 effective/isDefaulted 파생값이 필요 없다.
+  const [customRequest, setCustomRequest] = useState("");
+
   // 7·8단계 — GET /categories 로 한 번만 채운다. 토글(7)과 배분(8)이 같은 행 배열을 공유한다.
   // 2단계/8단계가 같이 쓰는 참고 벤치마크도 같은 훅이 받아온다(use-onboarding-data.ts —
   // oxlint max-lines 300줄 상한 초과로 뽑아냄). 두 조회 모두 실패를 조용히 삼키지 않는다
@@ -110,7 +117,7 @@ export function OnboardingPage() {
   const parsedTotalBudget = totalBudget === "" ? 0 : Number(totalBudget);
 
   // "나중에 설정" 기본값 파생 블록 (2026-08-26 사용자 지시) — 실제 state는 건드리지 않고,
-  // 제출/9단계 확인 화면에 쓸 "실제로 반영될 값"만 여기서 계산한다. 각 필드가 비어있는 채로
+  // 제출/10단계 확인 화면에 쓸 "실제로 반영될 값"만 여기서 계산한다. 각 필드가 비어있는 채로
   // 넘어왔다는 것 자체가 "건드리지 않았다"는 신호라 별도의 "건너뛴 단계" 추적 상태가 필요 없다
   // — 나중에 돌아가서 채우면 이 파생값도 자동으로 "실제 선택"으로 바뀐다.
   //
@@ -118,14 +125,14 @@ export function OnboardingPage() {
   // 나갔다(실제 버그, 2026-08-26 발견) — 0은 "미정"이 아니라 진짜 0원/0명으로 해석된다. 아래
   // `isBudgetDefaulted`/`isGuestCountDefaulted`가 이 버그를 "나중에 설정" 여부와 무관하게 항상
   // 닫는다. 하객수는 여기서 걸린 경우(명시적 미정 토글이든, 비워둬서 defaulted든) 똑같이
-  // `GUEST_COUNT_UNSURE_DEFAULT`로 나간다 — 두 경로가 다른 값을 저장하면 9단계 확인 화면이
+  // `GUEST_COUNT_UNSURE_DEFAULT`로 나간다 — 두 경로가 다른 값을 저장하면 10단계 확인 화면이
   // 보여준 값과 실제 저장값이 갈린다.
   const isBudgetDefaulted = !totalBudgetUnsure && totalBudget === "";
   const effectiveTotalBudgetUnsure = totalBudgetUnsure || isBudgetDefaulted;
   const isGuestCountDefaulted = !guestCountUnsure && guestCount === "";
   const effectiveGuestCountUnsure = guestCountUnsure || isGuestCountDefaulted;
   // 같은 부류의 버그 — "정확한 날짜"를 고르고 값은 비운 채로 "나중에 설정"(1단계에서 바로
-  // 9단계로 점프)을 누르면 isDateExact=true·weddingDate=""가 그대로 남는다. 이 조합으로
+  // 10단계로 점프)을 누르면 isDateExact=true·weddingDate=""가 그대로 남는다. 이 조합으로
   // 제출하면 wedding_date:"" 가 Pydantic date 강제 변환에서 422 로 튕긴다(레드팀 감사) — 다른
   // defaulted 필드들과 같은 패턴으로, "선택은 EXACT 지만 값이 없다"를 실제로는 미정 취급한다.
   const isDateDefaulted = isDateExact && weddingDate === "";
@@ -151,7 +158,7 @@ export function OnboardingPage() {
       setAllocationRows,
       setTotalBudget,
       setTotalBudgetUnsure,
-      goToReview: () => setStep(9),
+      goToReview: () => setStep(10),
     });
 
   async function handleSubmit() {
@@ -183,6 +190,7 @@ export function OnboardingPage() {
           sdm_priority: sdmPriority ?? undefined,
           primary_goals: effectiveGoals,
           done_so_far: doneSoFar,
+          custom_request: customRequest.trim() === "" ? undefined : customRequest.trim(),
           categories: categoryUpdates,
         });
       } catch (err) {
@@ -219,7 +227,7 @@ export function OnboardingPage() {
   // 거의 같아, 사용자 눈에 "오버레이 → 대시보드"로 자연스럽게 이어진다.
   if (isSubmitting) return <GeneratingOverlay />;
 
-  // 9단계(확인) 라벨 계산 — Step9Review도 이 컴포넌트도 라벨 변환 로직을 갖지 않는다
+  // 10단계(확인) 라벨 계산 — Step10Review도 이 컴포넌트도 라벨 변환 로직을 갖지 않는다
   // (build-review-labels.ts로 뽑아냄, oxlint max-lines 300줄 상한 초과).
   const reviewLabels = buildReviewLabels({
     isDateExact,
@@ -239,6 +247,7 @@ export function OnboardingPage() {
     doneSoFar,
     allocatedBudget,
     totalBudgetEstimate,
+    customRequest,
   });
   const activeCategoryCount = allocationRows.filter((row) => row.isActive).length;
 
@@ -310,11 +319,12 @@ export function OnboardingPage() {
           />
         )}
         {step === 6 && <Step6Progress doneSoFar={doneSoFar} onDoneSoFarChange={setDoneSoFar} />}
-        {/* `ReviewLabels`의 10개 필드 이름이 `Step9ReviewProps`와 그대로 일치한다 — 그러라고
+        {step === 9 && <Step9CustomRequest customRequest={customRequest} onCustomRequestChange={setCustomRequest} />}
+        {/* `ReviewLabels`의 11개 필드 이름이 `Step10ReviewProps`와 그대로 일치한다 — 그러라고
             만든 객체다(build-review-labels.ts 머리말). 한 줄씩 옮겨 적으면 필드가 늘 때마다
             여기도 같이 고쳐야 하고, 빠뜨려도 타입이 잡아 주기 전까지는 조용하다. */}
-        {step === 9 && (
-          <Step9Review
+        {step === 10 && (
+          <Step10Review
             {...reviewLabels}
             isDateDefaulted={isDateDefaulted}
             isBudgetDefaulted={isBudgetDefaulted}
@@ -357,46 +367,18 @@ export function OnboardingPage() {
           </p>
         )}
 
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            {step > 1 && (
-              <Button variant="ghost" onClick={() => setStep((current) => (current - 1) as Step)}>
-                <span aria-hidden="true">←</span> 이전
-              </Button>
-            )}
-            {/* 모든 입력 단계(1~8)에 "나중에 설정"이 있다(2026-08-26 사용자 지시) — 목적지는
-                항상 9단계(확인)다. 몇 단계에서 눌렀든 남은 단계는 그냥 건너뛰고, 비워둔 필드는
-                9단계가 정한 기본값으로 채워진다(§ isXxxDefaulted 파생값 블록) — "다음"으로
-                하나씩 넘기는 것과 달리 여기선 중간 단계를 굳이 보여줄 필요가 없다.
-                배분 초과 상태에서 누르면 배분 금액이 0으로 되돌아간다(§ handleSkipToReview). */}
-            {step < TOTAL_STEPS && (
-              <Button variant="ghost" onClick={handleSkipToReview}>
-                나중에 설정
-              </Button>
-            )}
-          </div>
-          {step < TOTAL_STEPS ? (
-            <Button
-              // 1단계에서 "정확한 날짜"를 고르고 값을 비운 채로는 다음으로 넘어가지 못하게 막는다
-              // — "나중에 설정"은 여전히 열려 있다(그 경우 isDateDefaulted 파생값이 안전하게
-              // 미정 취급한다). 값 없이 "다음"만 눌러 진행하면 결국 9단계 제출 시점에야 422로
-              // 알게 되던 문제를 여기서 먼저 막는다(레드팀 감사).
-              //
-              // 8단계 배분 초과도 같은 이유로 막는다 — 그대로 두면 9단계 "시작하기"에서 400
-              // BUDGET_EXCEEDED로 알게 된다. 여기서도 "나중에 설정"은 열려 있지만, 1단계와 달리
-              // 그냥 통과시키지 않고 배분 금액을 비운다(§ handleSkipToReview) — 날짜와 달리
-              // 초과 배분은 안전하게 기본값 처리할 방법이 없다.
-              disabled={(step === 1 && isDateDefaulted) || (step === 8 && isOverAllocated)}
-              onClick={() => setStep((current) => (current + 1) as Step)}
-            >
-              다음
-            </Button>
-          ) : (
-            <Button disabled={isSubmitting} onClick={() => void handleSubmit()}>
-              시작하기
-            </Button>
-          )}
-        </div>
+        {/* 버튼 줄 자체는 OnboardingNav.tsx가 그린다(max-lines 상한으로 뽑아냄) — 다만 "다음"을
+            막는 술어는 여기와 useAllocationGuard가 계속 소유한다(그 파일 머리말). */}
+        <OnboardingNav
+          step={step}
+          isDateDefaulted={isDateDefaulted}
+          isOverAllocated={isOverAllocated}
+          isSubmitting={isSubmitting}
+          onBack={() => setStep((current) => (current - 1) as Step)}
+          onNext={() => setStep((current) => (current + 1) as Step)}
+          onSkipToReview={handleSkipToReview}
+          onSubmit={() => void handleSubmit()}
+        />
       </Card>
     </Page>
   );
