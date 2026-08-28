@@ -1,8 +1,8 @@
 // 온보딩 스텝 타입 + 화면 문구(제목/부제) — OnboardingPage.tsx에서 뽑아냈다(oxlint max-lines
 // 300줄 상한 초과, 2026-08-26). 문구 상수를 로직과 분리해두면 스텝이 늘 때마다 헤드라인 표를
 // 찾기 쉽다.
-export type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
-export const TOTAL_STEPS = 9;
+export type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+export const TOTAL_STEPS = 10;
 
 export const STEP_HEADLINE: Record<Step, string> = {
   1: "당신에 대해 알려주세요",
@@ -13,7 +13,8 @@ export const STEP_HEADLINE: Record<Step, string> = {
   6: "지금까지 진행한 게 있나요?",
   7: "카테고리를 켜고 꺼볼까요?",
   8: "카테고리별 예산을 나눠볼까요?",
-  9: "확인하고 시작해요",
+  9: "더 하고 싶은 말이 있나요?",
+  10: "확인하고 시작해요",
 };
 
 export const STEP_SUBTITLE: Record<Step, string> = {
@@ -25,5 +26,6 @@ export const STEP_SUBTITLE: Record<Step, string> = {
   6: "체크한 항목은 타임라인에 완료로 미리 표시해드려요.",
   7: "필요 없는 카테고리는 꺼두면 체크리스트·타임라인에서 제외돼요.",
   8: "총 예산 안에서 자유롭게 배분하세요.",
-  9: "이전 단계로 돌아가서 언제든 바꿀 수 있어요.",
+  9: "선택이에요 — 맞춤 체크리스트·타임라인을 만들 때 참고만 해요.",
+  10: "이전 단계로 돌아가서 언제든 바꿀 수 있어요.",
 };

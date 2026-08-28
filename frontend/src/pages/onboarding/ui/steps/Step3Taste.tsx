@@ -7,7 +7,7 @@
 import type { TastePreference } from "@/entities/wedding";
 import { CHOICE_CARD_BASE, CHOICE_CARD_SELECTED, CHOICE_CARD_SUB, CHOICE_CARD_TITLE, CHOICE_CARD_TITLE_SELECTED } from "../onboarding-styles";
 
-// export하는 이유 — Step9Review가 TastePreference→한글 라벨 변환에 재사용한다.
+// export하는 이유 — Step10Review가 TastePreference→한글 라벨 변환에 재사용한다.
 export const TASTE_CARDS: { value: TastePreference; title: string; sub: string }[] = [
   { value: "MINIMAL", title: "미니멀", sub: "군더더기 없이 심플하게" },
   { value: "BUDGET", title: "가성비", sub: "합리적인 비용 안에서" },

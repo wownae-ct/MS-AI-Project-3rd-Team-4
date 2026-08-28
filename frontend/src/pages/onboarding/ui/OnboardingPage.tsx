@@ -1,13 +1,13 @@
-// 온보딩 — S1, 9단계 위저드(8단계 입력 + 9단계 최종 확인). 시각 스펙: docs/mockups/s1-onboarding.html,
+// 온보딩 — S1, 10단계 위저드(9단계 입력 + 10단계 최종 확인). 시각 스펙: docs/mockups/s1-onboarding.html,
 // 필드 계약: 03_API_spec.md #6(POST /weddings) · #10(PUT /wedding-categories) ·
 // #31(GET /benchmarks/total-average).
 //
 // 1~8단계 순서는 최종 프로토타입(docs/wedding/plan/new/12_final_prototype_mockup.html)의
 // onbStep1~8 번호와 그대로 맞춘다: 1 역할/날짜 · 2 지역/예산/하객수 · 3 취향(스킵) ·
 // 4 목표(스킵) · 5 우선순위(스킵) · 6 진행상황 · 7 카테고리 on/off · 8 예산 배분.
-// 9단계(확인, 2026-08-26 사용자 지시 신규)는 목업에 없다 — 모든 단계(1~8)가 "나중에 설정"
-// 버튼을 갖게 되면서, 몇 단계를 건너뛰었든 마지막엔 항상 여기서 "실제로 고른 값"과 "기본값으로
-// 채워질 값"을 한 화면에 모아 확인하고 시작하게 한다.
+// 9단계(자유 서술, 2026-08-28 신규)·10단계(확인, 2026-08-26 사용자 지시 신규)는 목업에 없다 —
+// 모든 입력 단계(1~9)가 "나중에 설정" 버튼을 갖게 되면서, 몇 단계를 건너뛰었든 마지막엔 항상
+// 10단계에서 "실제로 고른 값"과 "기본값으로 채워질 값"을 한 화면에 모아 확인하고 시작하게 한다.
 //
 // **이 컴포넌트는 라우터를 모르지 않는다 — LoginPage.tsx 와 같은 관례.** 콜백 prop(onSuccess) 대신
 // `useNavigate` 를 직접 쓴다 — 이 브랜치의 `_authed`/`_shell` 가드·`LoginPage.tsx` 가 이미 이
@@ -44,7 +44,8 @@ import {
   Step6Progress,
   Step7CategoryToggle,
   Step8Allocation,
-  Step9Review,
+  Step9CustomRequest,
+  Step10Review,
   TOTAL_STEPS,
   type Step,
   type UnsurePrecision,
@@ -92,6 +93,11 @@ export function OnboardingPage() {
 
   // 6단계
   const [doneSoFar, setDoneSoFar] = useState<DoneSoFarCategory[]>([]);
+
+  // 9단계(신규, 2026-08-28 — 자유 서술, 스킵 가능). 하객 수와 같은 부류 — "나중에 설정"이
+  // 대신 채워주는 기본값이 없다(빈 문자열이면 그냥 null로 나간다), 그래서 다른 defaulted
+  // 필드들과 달리 별도 effective/isDefaulted 파생값이 필요 없다.
+  const [customRequest, setCustomRequest] = useState("");
 
   // 7·8단계 — GET /categories 로 한 번만 채운다. 토글(7)과 배분(8)이 같은 행 배열을 공유한다.
   // 2단계/8단계가 같이 쓰는 참고 벤치마크도 같은 훅이 받아온다(use-onboarding-data.ts —
@@ -171,6 +177,7 @@ export function OnboardingPage() {
           sdm_priority: sdmPriority ?? undefined,
           primary_goals: effectiveGoals,
           done_so_far: doneSoFar,
+          custom_request: customRequest.trim() === "" ? undefined : customRequest.trim(),
           categories: categoryUpdates,
         });
       } catch (err) {
@@ -209,7 +216,7 @@ export function OnboardingPage() {
   // 거의 같아, 사용자 눈에 "오버레이 → 대시보드"로 자연스럽게 이어진다.
   if (isSubmitting) return <GeneratingOverlay />;
 
-  // 9단계(확인) 라벨 계산 — Step9Review도 이 컴포넌트도 라벨 변환 로직을 갖지 않는다
+  // 10단계(확인) 라벨 계산 — Step10Review도 이 컴포넌트도 라벨 변환 로직을 갖지 않는다
   // (build-review-labels.ts로 뽑아냄, oxlint max-lines 300줄 상한 초과).
   const reviewLabels = buildReviewLabels({
     isDateExact,
@@ -229,6 +236,7 @@ export function OnboardingPage() {
     doneSoFar,
     allocatedBudget,
     totalBudgetEstimate,
+    customRequest,
   });
   const activeCategoryCount = allocationRows.filter((row) => row.isActive).length;
 
@@ -300,8 +308,9 @@ export function OnboardingPage() {
           />
         )}
         {step === 6 && <Step6Progress doneSoFar={doneSoFar} onDoneSoFarChange={setDoneSoFar} />}
-        {step === 9 && (
-          <Step9Review
+        {step === 9 && <Step9CustomRequest customRequest={customRequest} onCustomRequestChange={setCustomRequest} />}
+        {step === 10 && (
+          <Step10Review
             weddingDateLabel={reviewLabels.weddingDateLabel}
             isDateDefaulted={isDateDefaulted}
             regionLabel={reviewLabels.regionLabel}
@@ -319,6 +328,7 @@ export function OnboardingPage() {
             activeCategoryCount={activeCategoryCount}
             totalCategoryCount={allocationRows.length}
             allocatedBudgetLabel={reviewLabels.allocatedBudgetLabel}
+            customRequestLabel={reviewLabels.customRequestLabel}
           />
         )}
         {(step === 7 || step === 8) &&
@@ -348,12 +358,13 @@ export function OnboardingPage() {
                 <span aria-hidden="true">←</span> 이전
               </Button>
             )}
-            {/* 모든 입력 단계(1~8)에 "나중에 설정"이 있다(2026-08-26 사용자 지시) — 목적지는
-                항상 9단계(확인)다. 몇 단계에서 눌렀든 남은 단계는 그냥 건너뛰고, 비워둔 필드는
-                9단계가 정한 기본값으로 채워진다(§ isXxxDefaulted 파생값 블록) — "다음"으로
-                하나씩 넘기는 것과 달리 여기선 중간 단계를 굳이 보여줄 필요가 없다. */}
+            {/* 모든 입력 단계(1~9)에 "나중에 설정"이 있다(2026-08-26 사용자 지시, 2026-08-28
+                9단계 자유 서술 추가로 범위가 자연스럽게 넓어졌다) — 목적지는 항상 10단계(확인)다.
+                몇 단계에서 눌렀든 남은 단계는 그냥 건너뛰고, 비워둔 필드는 10단계가 정한
+                기본값으로 채워진다(§ isXxxDefaulted 파생값 블록) — "다음"으로 하나씩 넘기는 것과
+                달리 여기선 중간 단계를 굳이 보여줄 필요가 없다. */}
             {step < TOTAL_STEPS && (
-              <Button variant="ghost" onClick={() => setStep(9)}>
+              <Button variant="ghost" onClick={() => setStep(10)}>
                 나중에 설정
               </Button>
             )}
