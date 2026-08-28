@@ -34,7 +34,7 @@ env:
     IMAGE: ${{ vars.ACR_LOGIN_SERVER }}/frontend
     # same-origin 호스트 — infra/k8s/overlays/backend-production/ingress.yaml의 host와 문자
     # 그대로 일치해야 한다(다르면 로그인 후 OAuth 리다이렉트/API 호출이 깨진다).
-    PRODUCTION_ORIGIN: https://merrymap-production.koreacentral.cloudapp.azure.com
+    PRODUCTION_ORIGIN: https://marrymap-production.koreacentral.cloudapp.azure.com
 
 jobs:
     build-and-push:
