@@ -28,11 +28,16 @@
 // "참고값"이 구분되지 않는다. 제출 payload는 지금까지처럼 `total_budget_unsure` 플래그만 보내고
 // 서버가 같은 벤치마크로 채운다(03_API_spec.md #6 규칙 4) — 화면이 보여준 금액과 저장될 금액이
 // 어차피 같은 출처라 어긋나지 않는다.
+//
+// **총예산 입력칸 자체는 이제 `TotalBudgetField` 가 그린다(2026-08-28).** 8단계(Step8Allocation)가
+// 배분 초과를 그 자리에서 고치려고 같은 입력을 쓰기 때문이다 — 마크업을 복사하면 두 화면의 스텝·
+// 콤마·반올림이 조용히 갈린다. 이 컴포넌트는 "미정" 토글과 안내 문구만 그 필드에 끼워 넣는다.
 import type { TotalAverageBenchmark } from "@/entities/wedding";
 import { REGION_CODES, type RegionCode } from "@/shared/api";
-import { AMOUNT_STEP_MANWON, manwonToWonString, wonStringToManwon, wonToManwon } from "@/shared/lib/money";
+import { wonStringToManwon, wonToManwon } from "@/shared/lib/money";
 import { NumberInput } from "@/shared/ui";
 import { FIELD_LABEL, FIELD_NOTE_KEEP, INPUT, INPUT_DISABLED, SELECT } from "../onboarding-styles";
+import { TotalBudgetField } from "./TotalBudgetField";
 
 // 2026-08-26 사용자 피드백: 5개(서울강남/서울외/경기/인천/부산)만 노출돼 있었다 — 지역 14개
 // 전체를 보여야 한다. `REGION_CODES`(17값)에서 실제 지역이 아닌 폴백 3개(전국/수도권/비수도권,
@@ -134,9 +139,14 @@ export function Step2RegionBudget({
         </select>
       </label>
 
-      <div className={FIELD_LABEL}>
-        <div className="flex items-center justify-between">
-          총 예산
+      <TotalBudgetField
+        onTotalBudgetChange={onTotalBudgetChange}
+        // 미정이면 참고 벤치마크를, 아니면 사용자가 넣은 값을 보인다. 벤치마크가 아직 안 왔거나
+        // 실패했으면 `benchmarkManwon`이 null 이라 빈 칸이 된다(0을 채우면 "0원으로 시작한다"는
+        // 거짓말이 된다, §머리말).
+        valueManwon={totalBudgetUnsure ? benchmarkManwon : wonStringToManwon(totalBudget)}
+        disabled={totalBudgetUnsure}
+        labelAction={
           <button
             type="button"
             className={MINI_TOGGLE}
@@ -146,20 +156,8 @@ export function Step2RegionBudget({
             <span className={totalBudgetUnsure ? MINI_TOGGLE_BOX_CHECKED : MINI_TOGGLE_BOX} />
             미정이에요
           </button>
-        </div>
-        <div className="flex items-center gap-2">
-          <NumberInput
-            wrapClassName="min-w-0 flex-1"
-            className={totalBudgetUnsure ? INPUT_DISABLED : INPUT}
-            step={AMOUNT_STEP_MANWON}
-            min={0}
-            aria-label="총 예산(만원)"
-            value={totalBudgetUnsure ? benchmarkManwon : wonStringToManwon(totalBudget)}
-            disabled={totalBudgetUnsure}
-            onValueChange={(next) => onTotalBudgetChange(manwonToWonString(next))}
-          />
-          <span className="flex-none text-sm font-bold text-ink-soft">만원</span>
-        </div>
+        }
+      >
         {/* 미정이면 "이 값으로 설정됐다"고 단정하고, 아니면 참고값으로만 알린다 — 사용자가 직접
             금액을 입력하는 중에 "설정됐어요"라고 하면 화면의 입력값과 다른 말을 하게 된다.
             비활성 입력칸의 value 는 스크린리더 전달이 불확실하므로 같은 금액을 이 문단이 원 단위
@@ -174,7 +172,7 @@ export function Step2RegionBudget({
         {totalBudgetUnsure && (
           <p className={FIELD_NOTE_KEEP}>위 참고값으로 시작하고, 나중에 정확한 예산으로 바꿀 수 있어요.</p>
         )}
-      </div>
+      </TotalBudgetField>
 
       <div className={FIELD_LABEL}>
         <div className="flex items-center justify-between">
