@@ -47,9 +47,40 @@ class TestChecklistFewShotVenueSdmBalance:
                 assert f"[{category_code}] ({item_type})" in few_shot
 
 
-def _parse_timeline_few_shot_entries() -> list[dict]:
+class TestChecklistFewShotActiveCategoryFiltering:
+    """2026-08-28 버그 수정(red-bug.md #9-1) — 비활성 카테고리 few-shot이 활성 카테고리
+    필터링 없이 그대로 노출돼, LLM이 "비활성 카테고리 항목은 만들지 마세요" 규칙과 모순되는
+    예시를 보고 실제로 그 카테고리 항목을 만들어버렸다(실계정 재현: HONEYMOON을 껐는데도
+    타임라인에 HONEYMOON 항목이 생성됨). 체크리스트도 같은 few-shot 조립 구조를 공유하므로
+    같이 검증한다."""
+
+    def test_no_filtering_when_active_categories_omitted(self):
+        # 하위호환: 호출부가 active_categories를 안 넘기면(기존 테스트 다수 포함) 기존처럼
+        # 전체를 보여줘야 한다.
+        assert _build_checklist_few_shot() == _build_checklist_few_shot(None)
+
+    def test_inactive_mockup_category_is_excluded(self):
+        active = {"VENUE", "SDM", "MEETING", "GIFT", "HOMEWARE", "INVITATION", "HOMENEW", "ETC"}
+        few_shot = _build_checklist_few_shot(active)
+        assert "[HONEYMOON]" not in few_shot
+
+    def test_active_mockup_category_still_appears(self):
+        active = {"VENUE", "SDM", "MEETING"}
+        few_shot = _build_checklist_few_shot(active)
+        assert "[MEETING]" in few_shot
+        assert "[GIFT]" not in few_shot
+
+    def test_inactive_venue_or_sdm_is_also_excluded(self):
+        # VENUE/SDM도 온보딩에서 꺼질 수 있는 카테고리라 MOCKUP과 동일하게 필터링 대상이다.
+        active = {"SDM", "MEETING"}
+        few_shot = _build_checklist_few_shot(active)
+        assert "[VENUE]" not in few_shot
+        assert "[SDM]" in few_shot
+
+
+def _parse_timeline_few_shot_entries(active_categories: set[str] | None = None) -> list[dict]:
     """첫 줄(헤더 설명)을 제외한 나머지를 JSON 한 줄씩 파싱한다."""
-    lines = _build_timeline_few_shot().splitlines()
+    lines = _build_timeline_few_shot(active_categories).splitlines()
     return [json.loads(line) for line in lines[1:]]
 
 
@@ -77,6 +108,44 @@ class TestTimelineFewShotDiversity:
             assert few_shot_count == catalog_count
 
 
+class TestTimelineFewShotActiveCategoryFiltering:
+    """2026-08-28 버그 수정(red-bug.md #9-1) — 이 항목이 실제로 재현된 버그다: HONEYMOON을
+    비활성화한 웨딩인데도 타임라인 few-shot에 HONEYMOON 예시가 그대로 남아 있어 LLM이
+    "비활성 카테고리 항목은 만들지 마세요" 규칙과 모순되는 예시를 보고 실제 HONEYMOON
+    항목을 만들어버렸다(validate 규칙①에 걸려 도메인 전체 BLOCKED → 카탈로그 폴백)."""
+
+    def test_no_filtering_when_active_categories_omitted(self):
+        assert _build_timeline_few_shot() == _build_timeline_few_shot(None)
+
+    def test_inactive_mockup_category_is_excluded(self):
+        active = {"VENUE", "SDM", "MEETING", "GIFT", "HOMEWARE", "INVITATION", "HOMENEW", "ETC"}
+        entries = _parse_timeline_few_shot_entries(active)
+        assert all(entry["category_code"] != "HONEYMOON" for entry in entries)
+
+    def test_active_mockup_category_still_appears(self):
+        active = {"VENUE", "SDM", "MEETING"}
+        entries = _parse_timeline_few_shot_entries(active)
+        codes = {entry["category_code"] for entry in entries}
+        assert "MEETING" in codes
+        assert "GIFT" not in codes
+
+    def test_inactive_venue_or_sdm_is_also_excluded(self):
+        active = {"SDM", "MEETING"}
+        entries = _parse_timeline_few_shot_entries(active)
+        codes = {entry["category_code"] for entry in entries}
+        assert "VENUE" not in codes
+        assert "SDM" in codes
+
+    def test_universal_null_category_items_always_shown(self):
+        # 범용 항목(category_code=None)은 특정 카테고리에 속하지 않으므로 활성/비활성 필터링
+        # 대상이 아니다 — 어떤 카테고리를 꺼도 그대로 전부 보여야 한다.
+        active = {"VENUE"}
+        entries = _parse_timeline_few_shot_entries(active)
+        null_count = sum(1 for entry in entries if entry["category_code"] is None)
+        catalog_null_count = sum(1 for item in TIMELINE_CATALOG if item.category_code is None)
+        assert null_count == catalog_null_count > 0
+
+
 class TestTimelineFewShotIsValidJson:
     def test_every_line_after_header_parses_as_valid_json(self):
         # 2026-08-24 버그 회귀 방지(수정 3) — 이전 두 시도(사람이 읽는 텍스트 라벨 "범용"→
@@ -91,6 +160,20 @@ class TestTimelineFewShotIsValidJson:
     def test_no_natural_language_placeholder_anywhere(self):
         few_shot = _build_timeline_few_shot()
         assert "범용" not in few_shot
+
+
+class TestNoDuplicateTitleRule:
+    """2026-08-28 결정(red-bug.md #9-2) — 예방적 조치: 규칙 텍스트에 "제목 중복 금지"가
+    없어서 LLM이 같은 배치 안에서 제목이 겹치는 항목을 만들어도 막을 방법이 없었다(코드
+    레벨 dedup은 그 이후의 안전망일 뿐). 두 도메인 규칙 모두에 명시적으로 추가됐는지 확인."""
+
+    def test_checklist_rules_mention_no_duplicate_titles(self):
+        prompt = build_generate_prompt(["CHECKLIST"], {}, {})
+        assert "title이 겹치는 항목을 두 개 이상 만들지 마세요" in prompt
+
+    def test_timeline_rules_mention_no_duplicate_titles(self):
+        prompt = build_generate_prompt(["TIMELINE"], {}, {})
+        assert "title이 겹치는 항목을 두 개 이상 만들지 마세요" in prompt
 
 
 class TestGenerateRetryFeedback:
@@ -171,6 +254,34 @@ class TestContractCitationMenu:
     def test_generate_prompt_output_schema_mentions_source_ref_id(self):
         prompt = build_generate_prompt(["CHECKLIST"], {}, {})
         assert "source_ref_id" in prompt
+
+
+class TestGeneratePromptActiveCategoryFiltering:
+    """2026-08-28 버그 수정(red-bug.md #9-1) — build_generate_prompt가 profile의
+    active_categories를 실제로 few-shot 필터링까지 배선하는지 확인하는 종단 테스트
+    (개별 함수 단위 테스트는 위 TestChecklistFewShotActiveCategoryFiltering/
+    TestTimelineFewShotActiveCategoryFiltering가 커버, 여기는 배관 자체를 확인)."""
+
+    def test_missing_active_categories_key_does_not_filter(self):
+        # profile에 active_categories 키 자체가 없는 기존 호출부(다수 테스트 포함) 회귀 없음.
+        prompt = build_generate_prompt(["CHECKLIST", "TIMELINE"], {}, {})
+        assert "HONEYMOON" in prompt
+
+    def test_active_categories_from_profile_filters_both_domains(self):
+        profile = {
+            "active_categories": [
+                "VENUE",
+                "SDM",
+                "MEETING",
+                "GIFT",
+                "HOMEWARE",
+                "INVITATION",
+                "HOMENEW",
+                "ETC",
+            ]
+        }
+        prompt = build_generate_prompt(["CHECKLIST", "TIMELINE"], profile, {})
+        assert "HONEYMOON" not in prompt
 
 
 class TestCustomRequestNote:

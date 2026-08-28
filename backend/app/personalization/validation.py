@@ -73,7 +73,13 @@ def _validate_no_duplicate_titles(
     """규칙 (4): 같은 카테고리 내 제목 중복이 없는가 — protected_titles(사용자가 이미 직접
     수정한 기존 행의 (category_code, title))도 처음부터 seen에 넣어 같이 검사한다
     (2026-08-26 레드팀 감사 3라운드 MEDIUM #7 — 이전엔 새로 만든 항목끼리만 중복을 봐서,
-    LLM이 보호 항목과 제목이 겹치는 새 항목을 만들어도 안 걸러졌다)."""
+    LLM이 보호 항목과 제목이 겹치는 새 항목을 만들어도 안 걸러졌다).
+
+    2026-08-28 결정(red-bug.md #9-2) 이후로는 `deduplicate_titles()`가 validate 호출 전에
+    먼저 중복을 드롭하므로, 정상 경로에서는 이 규칙이 사실상 발동하지 않는다 — 그래도
+    남겨두는 이유는 (a) dedup을 거치지 않고 이 함수를 직접 부르는 다른 호출부가 생기더라도
+    안전망이 되도록, (b) dedup 로직 자체에 버그가 있어 중복이 새어 들어온 경우를 여전히
+    잡아내도록 하기 위함이다."""
     errors = []
     seen: set[tuple] = set(protected_titles or ())
     for item in items:
@@ -82,6 +88,35 @@ def _validate_no_duplicate_titles(
             errors.append(f"{domain_label}: category_code={key[0]!r}에 제목 중복 {key[1]!r}")
         seen.add(key)
     return errors
+
+
+def deduplicate_titles(
+    items: list[dict], protected_titles: set[tuple] | None = None
+) -> tuple[list[dict], list[dict]]:
+    """2026-08-28 결정(red-bug.md #9-2) — 같은 배치 안에서 LLM이 (category_code, title)이
+    같은 항목을 두 번 이상 만드는 경우, 예전에는 `_validate_no_duplicate_titles`가 이를 잡아
+    도메인 전체를 BLOCKED시켰다(항목 하나의 중복 때문에 정상 생성된 나머지 항목까지 카탈로그
+    폴백으로 버려지는 과한 벌칙). 이제는 뒤에 나온 중복만 드롭하고 먼저 나온 항목(및
+    protected_items — 사용자가 이미 수정한 기존 행)은 그대로 채택한다.
+
+    이 함수를 호출하면 validate가 순수 구조 검증만 한다는 원래 설계 원칙
+    (13_personalization_router_agent_design.md §1-4)이 "일부 자동 교정"으로 성격이 바뀐다 —
+    의도된 변경이며 그 문서에도 함께 기록돼 있다.
+
+    반환값 (kept, dropped) — kept는 validate에 그대로 넘길 정제된 목록, dropped는 호출부가
+    관측성(로그)을 위해서만 쓴다(2026-08-24 "null-string category_code" 버그가 무로깅으로
+    3번 재발했던 전례를 따라, 이 자동 교정도 발동 시 반드시 로그를 남기도록 호출부에 위임)."""
+    kept: list[dict] = []
+    dropped: list[dict] = []
+    seen: set[tuple] = set(protected_titles or ())
+    for item in items:
+        key = (item.get("category_code"), item.get("title"))
+        if key in seen:
+            dropped.append(item)
+            continue
+        seen.add(key)
+        kept.append(item)
+    return kept, dropped
 
 
 def validate_checklist_items(
@@ -113,7 +148,10 @@ def validate_timeline_items(
     return errors
 
 
-def _protected_titles(protected_items: dict, domain: str) -> set[tuple]:
+def protected_titles_for_domain(protected_items: dict, domain: str) -> set[tuple]:
+    """공개 함수(2026-08-28부터, red-bug.md #9-2) — 원래는 이 모듈 내부에서만 쓰던 헬퍼였으나,
+    `app/personalization/graph.py::validate_node`가 validate 호출 전에 `deduplicate_titles()`로
+    먼저 중복을 드롭할 때도 같은 protected_titles 집합이 필요해져 공유한다."""
     return {(item["category_code"], item["title"]) for item in protected_items.get(domain) or []}
 
 
@@ -141,10 +179,12 @@ def validate_personalization_draft(
         result["CHECKLIST"] = validate_checklist_items(
             active_categories,
             checklist_draft or [],
-            _protected_titles(protected_items, "CHECKLIST"),
+            protected_titles_for_domain(protected_items, "CHECKLIST"),
         )
     if "TIMELINE" in affected_domains:
         result["TIMELINE"] = validate_timeline_items(
-            active_categories, timeline_draft or [], _protected_titles(protected_items, "TIMELINE")
+            active_categories,
+            timeline_draft or [],
+            protected_titles_for_domain(protected_items, "TIMELINE"),
         )
     return result
