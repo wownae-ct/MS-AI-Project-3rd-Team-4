@@ -6,7 +6,7 @@
 export { GeneratingOverlay } from "../GeneratingOverlay";
 export { STEP_HEADLINE, STEP_SUBTITLE, TOTAL_STEPS, type Step } from "../step-copy";
 export { Step1RoleDate, type UnsurePrecision } from "./Step1RoleDate";
-export { REGION_LABELS, Step2RegionBudget } from "./Step2RegionBudget";
+export { GUEST_COUNT_UNSURE_DEFAULT, REGION_LABELS, Step2RegionBudget } from "./Step2RegionBudget";
 export { Step3Taste, TASTE_CARDS } from "./Step3Taste";
 export { Step4Goals } from "./Step4Goals";
 export { SDM_CHIPS, Step5Priority, VENUE_CHIPS } from "./Step5Priority";

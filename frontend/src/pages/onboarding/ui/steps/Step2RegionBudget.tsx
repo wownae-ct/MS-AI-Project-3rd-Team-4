@@ -17,10 +17,21 @@
 // 원 단위 문자열이다 — `OnboardingPage`가 그대로 `POST /weddings`에 보내야 하고, 컨테이너 상태의
 // 의미를 바꾸면 그쪽 제출 로직도 같이 손대야 해서 범위가 커진다. 대신 이 컴포넌트가 입력 경계에서만
 // 원↔만원을 변환한다 — 사용자는 "4500"을 입력하고 이 필드는 부모에게 "45000000"을 돌려준다.
+//
+// **총예산 미정일 때 입력칸을 감추지 않는다(2026-08-28 사용자 지시).** 예전엔 토글을 켜면 입력칸이
+// 통째로 사라져 (1) 같은 화면의 하객수(비활성만 됨)와 동작이 갈렸고 (2) "그래서 얼마로 잡히는지"를
+// 숫자로 확인할 수 없었다. 이제 자리에 남기되 비활성화하고 벤치마크 중앙값을 만원 단위로 채워 보인다.
+//
+// 채워 보이는 값은 **표시 전용이다 — 부모 state(`totalBudget`)를 건드리지 않는다.** 토글을 켤 때
+// state에 써 넣으면 (a) 비동기로 늦게 도착하는 `benchmark`와 지역 변경을 따라가는 동기화 effect가
+// 필요해지고 (b) 사용자가 이미 입력해 둔 값을 덮어쓰며 (c) 토글을 껐을 때 "사용자가 확정한 값"과
+// "참고값"이 구분되지 않는다. 제출 payload는 지금까지처럼 `total_budget_unsure` 플래그만 보내고
+// 서버가 같은 벤치마크로 채운다(03_API_spec.md #6 규칙 4) — 화면이 보여준 금액과 저장될 금액이
+// 어차피 같은 출처라 어긋나지 않는다.
 import type { TotalAverageBenchmark } from "@/entities/wedding";
 import { REGION_CODES, type RegionCode } from "@/shared/api";
-import { manwonInputToWonString, wonStringToManwonDisplay } from "@/shared/lib/money";
-import { FIELD_LABEL, FIELD_NOTE, INPUT, SELECT } from "../onboarding-styles";
+import { manwonInputToWonString, wonStringToManwonDisplay, wonToManwon } from "@/shared/lib/money";
+import { FIELD_LABEL, FIELD_NOTE_KEEP, INPUT, INPUT_DISABLED, SELECT } from "../onboarding-styles";
 
 // 2026-08-26 사용자 피드백: 5개(서울강남/서울외/경기/인천/부산)만 노출돼 있었다 — 지역 14개
 // 전체를 보여야 한다. `REGION_CODES`(17값)에서 실제 지역이 아닌 폴백 3개(전국/수도권/비수도권,
@@ -45,6 +56,19 @@ export const REGION_LABELS: Record<Exclude<RegionCode, "NATIONWIDE" | "METRO" | 
   GANGWON: "강원",
   JEJU: "제주",
 };
+
+// 하객수 미정일 때 실제로 저장할 기본값(2026-08-28 사용자 지시). 목업 s1-onboarding.html:261-262가
+// 원래 정한 값 — "평균 보증인원 기준 200명"이다.
+//
+// **이 상수가 화면 문구와 payload의 단일 진실 공급원이다.** 총예산(`total_budget_unsure`)은 서버가
+// 벤치마크 중앙값으로 대신 채워주지만 하객수는 그런 경로가 없다 — `WeddingCreate.guest_count`는
+// `int | None` 기본 `None`, DB 컬럼도 nullable에 기본값이 없어서, 프론트가 안 보내면 그냥 NULL로
+// 저장된다. 그래서 예전엔 "200명으로 시작해요" 문구를 지우고 "미정으로 저장돼요"로 되돌렸었다.
+// 이번엔 반대 방향으로 맞춘다 — 백엔드는 그대로 두고 프론트가 200을 실어 보내 문구와 저장값을
+// 일치시킨다. `guest_count_unsure`는 계속 true로 보낸다(200은 시작값일 뿐 사용자가 확정한 값이
+// 아니라는 신호). POST /weddings의 교차검증은 날짜·총예산 2건뿐이라 두 필드를 같이 보내도 422가
+// 나지 않는다. 문구·placeholder·payload가 따로 놀지 않도록 상수를 보간해 쓴다.
+export const GUEST_COUNT_UNSURE_DEFAULT = 200;
 
 const REGION_OPTIONS: { value: string; label: string }[] = REGION_CODES.filter(
   (code) => !FALLBACK_REGION_CODES.has(code),
@@ -88,6 +112,10 @@ export function Step2RegionBudget({
   benchmark,
 }: Step2Props) {
   const regionLabel = REGION_OPTIONS.find((option) => option.value === regionCode)?.label ?? regionCode;
+  // 미정일 때 비활성 입력칸에 보여줄 값. 입력칸은 만원 단위라 여기서 변환한다(§머리말).
+  // 벤치마크가 아직 안 왔거나 조회에 실패했으면 빈 칸으로 둔다 — 0을 채우면 "0원으로 시작한다"는
+  // 거짓말이 된다. 실패 사실은 OnboardingPage 의 benchmarkError 배너가 따로 알린다.
+  const benchmarkManwon = benchmark === null ? "" : String(wonToManwon(benchmark.median_price));
 
   return (
     <div className="flex flex-col gap-5">
@@ -115,26 +143,33 @@ export function Step2RegionBudget({
             미정이에요
           </button>
         </div>
-        {!totalBudgetUnsure && (
-          <div className="flex items-center gap-2">
-            <input
-              className={INPUT}
-              type="number"
-              inputMode="numeric"
-              min={0}
-              aria-label="총 예산(만원)"
-              value={wonStringToManwonDisplay(totalBudget)}
-              onChange={(event) => onTotalBudgetChange(manwonInputToWonString(event.target.value))}
-            />
-            <span className="flex-none text-sm font-bold text-ink-soft">만원</span>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <input
+            className={totalBudgetUnsure ? INPUT_DISABLED : INPUT}
+            type="number"
+            inputMode="numeric"
+            min={0}
+            aria-label="총 예산(만원)"
+            value={totalBudgetUnsure ? benchmarkManwon : wonStringToManwonDisplay(totalBudget)}
+            disabled={totalBudgetUnsure}
+            onChange={(event) => onTotalBudgetChange(manwonInputToWonString(event.target.value))}
+          />
+          <span className="flex-none text-sm font-bold text-ink-soft">만원</span>
+        </div>
+        {/* 미정이면 "이 값으로 설정됐다"고 단정하고, 아니면 참고값으로만 알린다 — 사용자가 직접
+            금액을 입력하는 중에 "설정됐어요"라고 하면 화면의 입력값과 다른 말을 하게 된다.
+            비활성 입력칸의 value 는 스크린리더 전달이 불확실하므로 같은 금액을 이 문단이 원 단위
+            텍스트로도 반드시 전달하게 둔다(하객수 쪽과 같은 근거). */}
         {benchmark !== null && (
-          <p className={FIELD_NOTE}>
-            참고 · {regionLabel} 지역 예식장+스드메 참가격 평균 합산 {benchmark.median_price.toLocaleString("ko-KR")}원
+          <p className={FIELD_NOTE_KEEP}>
+            {totalBudgetUnsure
+              ? `${regionLabel} 지역 예식장+스드메 참가격 평균 합산인 ${benchmark.median_price.toLocaleString("ko-KR")}원으로 설정됐어요.`
+              : `${regionLabel} 지역 예식장+스드메 참가격 평균 합산은 ${benchmark.median_price.toLocaleString("ko-KR")}원 이에요.`}
           </p>
         )}
-        {totalBudgetUnsure && <p className={FIELD_NOTE}>위 참고값으로 시작하고, 나중에 정확한 예산으로 바꿀 수 있어요.</p>}
+        {totalBudgetUnsure && (
+          <p className={FIELD_NOTE_KEEP}>위 참고값으로 시작하고, 나중에 정확한 예산으로 바꿀 수 있어요.</p>
+        )}
       </div>
 
       <div className={FIELD_LABEL}>
@@ -150,22 +185,29 @@ export function Step2RegionBudget({
             미정이에요
           </button>
         </div>
+        {/* 총예산 쪽과 같은 비활성 표현을 쓴다 — 같은 화면의 두 "미정" 필드 중 하나만 흐려지면
+            버그처럼 보인다. */}
         <input
-          className={INPUT}
+          className={guestCountUnsure ? INPUT_DISABLED : INPUT}
           type="number"
           inputMode="numeric"
           min={0}
           aria-label="예상 하객 수"
-          placeholder={guestCountUnsure ? "미정" : undefined}
+          placeholder={guestCountUnsure ? GUEST_COUNT_UNSURE_DEFAULT.toString() : undefined}
           value={guestCountUnsure ? "" : guestCount}
           disabled={guestCountUnsure}
           onChange={(event) => onGuestCountChange(event.target.value)}
         />
-        {/* 실제로 200명을 기본값으로 저장하지 않는다 — guest_count_unsure=true 면 서버는
-            guest_count 를 NULL 로 저장할 뿐, 총예산(total_budget_unsure)과 달리 대신 계산해
-            채워주는 값이 없다. "200명으로 시작해요"라고 하면 실제 저장값과 다른 문구가 된다
-            (레드팀 감사 라운드 2) — 실제 동작 그대로 안내한다. */}
-        {guestCountUnsure && <p className={FIELD_NOTE}>인원 수는 미정으로 저장돼요. 나중에 언제든 입력할 수 있어요.</p>}
+        {/* 이 문구가 실제 저장값을 그대로 말한다 — 미정이면 OnboardingPage가 guest_count 에
+            GUEST_COUNT_UNSURE_DEFAULT 를 실어 보낸다(§ 상수 주석). disabled 입력칸의
+            placeholder 는 스크린리더로 잘 전달되지 않으므로, 같은 200을 이 문단이 텍스트로도
+            반드시 전달하게 둔다(둘 다 같은 상수에서 나온다). */}
+        {guestCountUnsure && (
+          <p className={FIELD_NOTE_KEEP}>
+            평균 보증인원 기준인 {GUEST_COUNT_UNSURE_DEFAULT}명으로 시작해요. 나중에 언제든
+            바꿀 수 있어요.
+          </p>
+        )}
       </div>
     </div>
   );

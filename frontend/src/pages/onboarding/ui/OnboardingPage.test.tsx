@@ -75,6 +75,18 @@ async function jumpToReviewAndSubmit() {
   await userEvent.click(await screen.findByRole("button", { name: "시작하기" }));
 }
 
+// 2단계까지 진행해 하객수 "미정이에요"만 켜고 제출한다. 총예산에도 같은 이름의 토글이 있어
+// (Step2RegionBudget.tsx — 두 필드가 같은 미니 토글 패턴을 쓴다) 이름만으로는 못 고른다:
+// DOM 순서상 두 번째(index 1)가 하객수 쪽이다.
+async function toggleGuestCountUnsureAndSubmit() {
+  render(<OnboardingPage />);
+  await userEvent.click(await screen.findByRole("button", { name: "다음" }));
+  const unsureToggles = await screen.findAllByRole("button", { name: "미정이에요" });
+  await userEvent.click(unsureToggles[1]);
+  await userEvent.click(await screen.findByRole("button", { name: "나중에 설정" }));
+  await userEvent.click(await screen.findByRole("button", { name: "시작하기" }));
+}
+
 describe("온보딩 제출 — createWedding 단일 호출", () => {
   it("성공하면 categories를 함께 실어 보내고, 세션을 무효화한 뒤 홈으로 이동한다", async () => {
     createWeddingFn.mockResolvedValue({ id: "w1" });
@@ -82,8 +94,16 @@ describe("온보딩 제출 — createWedding 단일 호출", () => {
     await jumpToReviewAndSubmit();
 
     expect(createWeddingFn).toHaveBeenCalledTimes(1);
-    const payload = createWeddingFn.mock.calls[0][0] as { categories: unknown };
+    const payload = createWeddingFn.mock.calls[0][0] as {
+      categories: unknown;
+      guest_count: unknown;
+      guest_count_unsure: unknown;
+    };
     expect(Array.isArray(payload.categories)).toBe(true);
+    // 하객수를 아예 보지 않고 건너뛴 경로 — 이전엔 필드를 안 보내 서버에 NULL로 저장됐다
+    // (2026-08-28 사용자 지시로 기본값 200을 실어 보낸다). 미확정 신호는 플래그로 남긴다.
+    expect(payload.guest_count).toBe(200);
+    expect(payload.guest_count_unsure).toBe(true);
     expect(payload.categories).toEqual(
       expect.arrayContaining([expect.objectContaining({ category_code: "VENUE" })]),
     );
@@ -142,5 +162,114 @@ describe("온보딩 제출 — createWedding 단일 호출", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("배정 합계가 예산을 초과합니다.");
     expect(navigate).not.toHaveBeenCalled();
+  });
+});
+
+// 하객수만 이 파일에서 별도로 고정하는 이유 — 화면 문구("200명으로 시작해요")와 실제 payload가
+// 어긋난 채로 배포된 전력이 있다(과거엔 문구 쪽을 NULL 저장에 맞춰 되돌렸다). 두 값이 같은
+// 상수에서 나오는지는 Step 컴포넌트 단독으로는 확인할 수 없어, 제출 payload를 보는 여기서 묶는다.
+describe("온보딩 2단계 — 예상 하객 수 미정", () => {
+  it("미정 토글을 켜면 기본값 200명과 미확정 플래그를 함께 보낸다", async () => {
+    createWeddingFn.mockResolvedValue({ id: "w1" });
+
+    await toggleGuestCountUnsureAndSubmit();
+
+    expect(createWeddingFn).toHaveBeenCalledTimes(1);
+    const payload = createWeddingFn.mock.calls[0][0] as { guest_count: unknown; guest_count_unsure: unknown };
+    expect(payload.guest_count).toBe(200);
+    expect(payload.guest_count_unsure).toBe(true);
+  });
+
+  it("미정 토글을 켜면 입력칸 placeholder와 안내 문구가 같은 200을 가리킨다", async () => {
+    render(<OnboardingPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "다음" }));
+    const guestInput = await screen.findByLabelText("예상 하객 수");
+    expect(guestInput).not.toHaveAttribute("placeholder");
+
+    await userEvent.click((await screen.findAllByRole("button", { name: "미정이에요" }))[1]);
+
+    expect(guestInput).toHaveAttribute("placeholder", "200");
+    expect(screen.getByText(/200명으로 시작해요/u)).toBeInTheDocument();
+  });
+
+  it("직접 입력한 하객수는 그대로 보내고 미확정 플래그를 세우지 않는다", async () => {
+    createWeddingFn.mockResolvedValue({ id: "w1" });
+    render(<OnboardingPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "다음" }));
+    await userEvent.type(await screen.findByLabelText("예상 하객 수"), "250");
+    await userEvent.click(await screen.findByRole("button", { name: "나중에 설정" }));
+    await userEvent.click(await screen.findByRole("button", { name: "시작하기" }));
+
+    const payload = createWeddingFn.mock.calls[0][0] as { guest_count: unknown; guest_count_unsure: unknown };
+    expect(payload.guest_count).toBe(250);
+    expect(payload.guest_count_unsure).toBe(false);
+  });
+});
+
+// 총예산 미정 — 입력칸을 감추지 않고 비활성 상태로 남겨 지역 벤치마크 평균값을 채워 보인다
+// (2026-08-28 사용자 지시). 채워 보이는 값은 **표시 전용**이라 부모 state/제출 payload에 새면
+// 안 된다 — 화면 표시와 payload 계약을 같은 파일에서 묶어 고정하는 이유다(하객수 쪽과 같은 근거).
+// mock 벤치마크는 median_price 30,000,000원, 지역 기본값은 SEOUL_OTHER("서울(강남 외)").
+// "미정이에요" 토글은 DOM 순서상 첫 번째(index 0)가 총예산 쪽이다.
+const BUDGET_LABEL = "총 예산(만원)";
+
+async function goToStep2() {
+  render(<OnboardingPage />);
+  await userEvent.click(await screen.findByRole("button", { name: "다음" }));
+  // 벤치마크 조회가 끝나야 안내 문구와 자동 채움 값이 나타난다.
+  await screen.findByText(/평균 합산은/u);
+}
+
+async function toggleBudgetUnsure() {
+  await userEvent.click((await screen.findAllByRole("button", { name: "미정이에요" }))[0]);
+}
+
+describe("온보딩 2단계 — 총 예산 미정", () => {
+  it("미정이 아닐 때는 입력칸이 활성이고 문구가 참고값만 알린다", async () => {
+    await goToStep2();
+
+    expect(screen.getByLabelText(BUDGET_LABEL)).toBeEnabled();
+    expect(
+      screen.getByText("서울(강남 외) 지역 예식장+스드메 참가격 평균 합산은 30,000,000원 이에요."),
+    ).toBeInTheDocument();
+  });
+
+  it("미정 토글을 켜면 입력칸이 사라지지 않고 비활성 상태로 평균값(만원)이 채워진다", async () => {
+    await goToStep2();
+
+    await toggleBudgetUnsure();
+
+    const budgetInput = screen.getByLabelText(BUDGET_LABEL);
+    expect(budgetInput).toBeDisabled();
+    expect(budgetInput).toHaveValue(3000);
+    expect(
+      screen.getByText("서울(강남 외) 지역 예식장+스드메 참가격 평균 합산인 30,000,000원으로 설정됐어요."),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/위 참고값으로 시작하고/u)).toBeInTheDocument();
+  });
+
+  it("표시 전용이다 — 미정을 껐다 켜도 사용자가 입력한 값이 그대로 남는다", async () => {
+    await goToStep2();
+    await userEvent.type(screen.getByLabelText(BUDGET_LABEL), "4500");
+
+    await toggleBudgetUnsure();
+    expect(screen.getByLabelText(BUDGET_LABEL)).toHaveValue(3000);
+
+    await toggleBudgetUnsure();
+    const budgetInput = screen.getByLabelText(BUDGET_LABEL);
+    expect(budgetInput).toBeEnabled();
+    expect(budgetInput).toHaveValue(4500);
+  });
+
+  it("미정으로 제출하면 total_budget 없이 미확정 플래그만 보낸다(서버가 벤치마크로 채운다)", async () => {
+    createWeddingFn.mockResolvedValue({ id: "w1" });
+    await goToStep2();
+    await toggleBudgetUnsure();
+    await userEvent.click(await screen.findByRole("button", { name: "나중에 설정" }));
+    await userEvent.click(await screen.findByRole("button", { name: "시작하기" }));
+
+    const payload = createWeddingFn.mock.calls[0][0] as { total_budget: unknown; total_budget_unsure: unknown };
+    expect(payload.total_budget).toBeUndefined();
+    expect(payload.total_budget_unsure).toBe(true);
   });
 });
