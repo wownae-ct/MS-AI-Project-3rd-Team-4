@@ -8,6 +8,8 @@
 //
 // 규범 준수 (docs/design/README.md): 그림자 없음. 표면 구분은 1px 헤어라인 보더로만.
 import { useEffect, useRef, type ReactNode } from "react";
+// 배럴(./index.ts)이 아니라 파일을 직접 가리킨다 — 같은 폴더 안에서 배럴을 거치면 순환이 된다.
+import { Brand } from "./Brand";
 
 /**
  * 스킵 링크의 목적지. 루트 라우트가 이 값으로 링크를 만들고 여기가 그 대상을 렌더한다 —
@@ -69,6 +71,18 @@ export interface PageProps {
    * 지금 동작을 그대로 유지한다.
    */
   fill?: boolean;
+  /**
+   * 제목 위에 브랜드 **워드마크**를 높이 N(px)으로 렌더한다. **셸 밖 화면 전용**(로그인 · 온보딩).
+   *
+   * 왜 `children` 이 아니라 prop 인가 — 이 컴포넌트가 `<header>`(h1)를 첫 자식으로 내므로 호출부는
+   * `children` 으로 **제목 위**에 아무것도 놓을 수 없다. 셸 안 화면은 사이드바·모바일 상단 바가
+   * 이미 브랜드를 담당하므로 여기서 또 내면 중복 노출이 된다 — 그래서 **기본값이 없다**(미지정이면
+   * 렌더하지 않는다 → 기존 화면들의 출력이 바이트 단위로 그대로다).
+   *
+   * ⚠️ `fill` 과 함께 쓰지 않는다 — `CONTAINER_FILL` 의 `12rem` 이 헤더 높이를 상수로 가정하고 있어
+   * 락업 높이만큼 어긋난다. 현재 `fill` 사용처는 셸 안의 AI상담뿐이라 실제 충돌은 없다.
+   */
+  brand?: number;
 }
 
 export function Page({
@@ -79,6 +93,7 @@ export function Page({
   focusOnMount = false,
   width = DEFAULT_WIDTH,
   fill = false,
+  brand,
 }: PageProps) {
   const titleRef = useRef<HTMLHeadingElement>(null);
 
@@ -94,6 +109,11 @@ export function Page({
 
   return (
     <div className={`${fill ? CONTAINER_FILL : CONTAINER} ${width}`}>
+      {/* `self-start` — 이 컨테이너는 `flex flex-col` 이라 기본 `align-items: stretch` 다. img 는
+          width 속성이 있어 실제로는 늘어나지 않지만(계산된 cross size 가 auto 가 아니다), 그 사실에
+          기대지 않고 명시한다. */}
+      {brand !== undefined && <Brand size={brand} className="self-start" />}
+
       <header className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 flex-col gap-1">
           <h1 ref={titleRef} tabIndex={-1} className="text-xl font-bold text-ink outline-none md:text-2xl">

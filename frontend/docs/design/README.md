@@ -55,6 +55,7 @@
 
 - **The One Accent Rule** — 베리 플럼은 배지 · 주요 버튼 · 강조 텍스트 · 진행률 채움에만. **배경 워시나 큰 면적 채우기로 쓰지 않는다.** 희소성이 곧 그 색의 힘이다. 「큰 면적」의 경계는 [D2](decisions.md#d2-primary-면-채움을-면적으로-등급-분리한다)가 정한다 — 카드 전면 채움은 **기각**(2026-08-22 종결).
 - **The No-Pink-Cliché Rule** — "웨딩 = 밝은 핑크 + 세리프 + 그라디언트" 조합을 쓰지 않는다. 베리 플럼은 채도를 낮춘 와인 톤이지 밝은 핑크가 아니다.
+  - ⚠️ **브랜드 마크는 이 규칙과 The One Accent Rule 의 대상이 아니다** → [D15](decisions.md#d15-브랜드-마크를-색-규범의-예외로-둔다). 로고(파스텔 핑크·블루)는 원색을 지키고, 억제는 색이 아니라 **크기 상한**으로 건다. 이 예외는 UI 를 칠하는 색에는 적용되지 않는다 — 아래 「브랜드 자산」 참고.
 - **상태 색(성공 · 경고 · 위험)이 없다.** 지어내지 않는다 → [D6](decisions.md#d6-상태-색을-도입하지-않는다)
 - ⚠️ **`--color-*: initial`은 임의값을 막지 못한다.** `bg-[#77354F]`는 그대로 컴파일된다 → [D8](decisions.md#d8-팔레트-밖-색-서술을-사실에-맞게-고치고-게이트로-강제한다)
 
@@ -93,6 +94,19 @@
 | `button` primary / secondary | primary 면 + surface 글자 / surface 면 + line 보더 + ink 글자 · `rounded-md` | `Button` — 호버 **적용 완료**([D4](decisions.md#d4-호버-색을-77354f로-확정한다)): `enabled:hover:bg-primary-hover`. `enabled:` 를 붙여 비활성 상태에서 호버가 살아나지 않게 한다 |
 | 진행률 | 트랙 `line` · 채움 `primary` · `rounded-pill` · 높이 8px | `Progress` — 불확정 표현은 [D11](decisions.md#d11-불확정-진행률의-시각-표현) |
 | 카드 | `surface` 면 · 1px `line` 보더 · **`rounded-lg`(16px)** · padding 16px | `Card` — 라운드 16px **전환 완료**([D1](decisions.md#d1-라운드를-4단계로-고정한다)). 슬롯 2개: `title`(→ `<h2>`) · `subtitle`(→ `<p>` · `text-xs ink-soft`) |
+
+### 브랜드 자산 (현행 — [D15](decisions.md#d15-브랜드-마크를-색-규범의-예외로-둔다))
+
+| 항목 | 값 |
+|---|---|
+| 워드마크 | `src/shared/assets/merrymap-wordmark-96.png` (461×96 = **4.803:1**) — `logos/logo-text-3.png` 를 알파 bbox 로 크롭 후 축소한 파생본 |
+| 심볼 | `src/shared/assets/merrymap-symbol-256.png` (1024×951 = **1.0768:1**) — `logo/` 원본 그대로 |
+| **함께 쓰지 않는다** | 워드마크가 이미 반지·하트 핀 모티프를 품고 있어 심볼을 곁들이면 모티프가 중복된다. **자리마다 하나만** |
+| 구현 | `shared/ui/Brand.tsx` 하나(`variant="wordmark" \| "symbol"`). 셸은 `AppShell`, 셸 밖 화면은 `Page` 의 `brand` prop |
+| 크기 | 사이드바 26 · 모바일 상단 바 22 · 로그인 32 · 온보딩 22 (전부 워드마크) / 생성 오버레이 56 (심볼) |
+| 최소 크기 | **워드마크 18 · 심볼 24.** 벡터 원본이 없어 렌더러가 보정하지 못한다 |
+| 접근성 | 워드마크 `alt="메리맵"`(유일한 브랜드 표기) · 심볼 `alt=""`(장식) · `width`/`height` 둘 다 명시(CLS) · **링크로 만들지 않는다**(`aria-current` 계약) |
+| 파비콘 | `public/favicon.png`(96, 투명) · `public/apple-touch-icon.png`(180, **흰 배경 평탄화** + 여백 10%) — 전용 원본 `logos/favicon.png`(1.007:1, 사실상 정사각). 자리표시 `favicon.svg` 는 **삭제**했다 |
 
 ### 범위 밖 (현행)
 

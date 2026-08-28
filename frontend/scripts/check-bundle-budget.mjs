@@ -253,7 +253,23 @@ const BUDGETS = [
   // `frontend-docker-ci.yml`의 `PRODUCTION_ORIGIN`을 그대로 넣고 빌드했다. 그 조건에서 `frontend`
   // 부모가 97,898 B 로 나와 CI가 기록한 97,896 B 와 2 B 차 — 이 환경이 production 빌드를
   // 재현한다는 확인이다. (같은 커밋을 `.env` 기본값으로 빌드하면 약 30 B 작게 나온다.)
-  { key: "jsChunkGzip", limit: 98_700, measured: 98_614, label: "최대 단일 JS 청크 (gzip)" },
+  // ── 2026-08-29 브랜드 로고 배치(D15)로 98,614 → 98,634 · **한도는 올리지 않는다** ────────────
+  // 같은 조건에서 재측정했다 — `frontend-docker-ci.yml` 의 `PRODUCTION_ORIGIN` 을 `VITE_API_BASE` 로
+  // 넣고 빌드했다(바로 위 항목이 세운 측정 규약 그대로).
+  //
+  // 증가분 **20 B** 의 정체: `shared/ui/Brand.tsx` + 해시된 PNG **2개**의 URL 문자열이다.
+  // 초기 청크에 들어갈 수밖에 없다 — `AppShell`(정적) 이 사이드바·모바일 상단 바에서 쓴다.
+  // **이미지 자체는 이 지표와 무관하다**(워드마크 29.9 kB · 심볼 19.4 kB) — 둘 다 별도 파일로
+  // 나가고(assetsInlineLimit 4,096 B 를 넘는다) 게이트는 `.js`/`.css`/폰트만 계측한다.
+  // 만약 더 작은 자산으로 바꾸면 base64 로 JS 에 인라인돼 **여기에 그대로 잡힌다** —
+  // 자산 교체 시 이 줄을 먼저 볼 것.
+  //
+  // ⚠️ 남은 여유가 **66 B** 다. 위 두 항목이 86 B · 94 B 를 "좁게 유지한다"고 남긴 그 폭보다 좁다 —
+  // 초기 청크에 닿는 다음 변경은 거의 확실히 한도를 밀어 올린다. 그때는 한도를 올리기 전에
+  // `LoginPage` 정적 import(위 2026-08-22 항목)를 다시 재는 편이 낫다: 그 결정의 근거는 "lazy 로
+  // 내려도 `Page` 공유 청크가 modulepreload 로 남아 실제로 지연되는 바이트가 없다"였는데,
+  // 그 사이 `Page` 는 브랜드 슬롯까지 갖게 됐다.
+  { key: "jsChunkGzip", limit: 98_700, measured: 98_634, label: "최대 단일 JS 청크 (gzip)" },
   { key: "cssGzip", limit: 6_000, measured: 4_237, label: "CSS (gzip, @font-face 제외)" },
   // 폰트는 unicode-range 로 분할돼 전량 전송되지 않으므로 이 값은 전송량이 아니라 **배포 크기** 가드다.
   // 잡으려는 사고: variable/split(2.3 MB) 대신 static/split(8.8 MB)이나 static/complete(4.7 MB)를

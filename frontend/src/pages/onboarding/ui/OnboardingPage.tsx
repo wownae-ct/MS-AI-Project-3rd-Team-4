@@ -256,6 +256,9 @@ export function OnboardingPage() {
       title={STEP_HEADLINE[step]}
       subtitle={STEP_SUBTITLE[step]}
       width="max-w-[430px]"
+      // 온보딩은 셸이 아예 없다(layout.md §1) — 10단계를 통과하는 내내 앵커가 하나도 없었다.
+      // 상시 크롬과 같은 「소」 크기로만 둔다 — 이 열은 430px 이고 아래로 단계 점·카드가 이어진다. D15.
+      brand={22}
       // 최초 진입(1단계)만 끈다 — 문서 제목과 중복 낭독을 피한다(Page.tsx 규범). 이후 모든 단계
       // 전환은 헤드라인이 바뀌므로(Page.tsx의 focus effect가 title도 의존성으로 본다) 스크린
       // 리더가 화면이 바뀐 것을 알 수 있어야 한다(접근성 감사 2026-08-26, WCAG 4.1.3 관점).
