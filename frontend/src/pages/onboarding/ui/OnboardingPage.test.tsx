@@ -241,7 +241,8 @@ describe("온보딩 2단계 — 총 예산 미정", () => {
 
     const budgetInput = screen.getByLabelText(BUDGET_LABEL);
     expect(budgetInput).toBeDisabled();
-    expect(budgetInput).toHaveValue(3000);
+    // 콤마가 붙은 표시 문자열이다(2026-08-28). 부모 state 는 여전히 원 단위 정수 문자열이다.
+    expect(budgetInput).toHaveValue("3,000");
     expect(
       screen.getByText("서울(강남 외) 지역 예식장+스드메 참가격 평균 합산인 30,000,000원으로 설정됐어요."),
     ).toBeInTheDocument();
@@ -253,12 +254,12 @@ describe("온보딩 2단계 — 총 예산 미정", () => {
     await userEvent.type(screen.getByLabelText(BUDGET_LABEL), "4500");
 
     await toggleBudgetUnsure();
-    expect(screen.getByLabelText(BUDGET_LABEL)).toHaveValue(3000);
+    expect(screen.getByLabelText(BUDGET_LABEL)).toHaveValue("3,000");
 
     await toggleBudgetUnsure();
     const budgetInput = screen.getByLabelText(BUDGET_LABEL);
     expect(budgetInput).toBeEnabled();
-    expect(budgetInput).toHaveValue(4500);
+    expect(budgetInput).toHaveValue("4,500");
   });
 
   it("미정으로 제출하면 total_budget 없이 미확정 플래그만 보낸다(서버가 벤치마크로 채운다)", async () => {

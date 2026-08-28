@@ -11,7 +11,8 @@
 // 즉시 반영된다. 막대 조절 단위는 10만원(2026-08-26 사용자 지시) — 클수록 조작이 거칠어지지만,
 // 예식 예산 규모(수백~수천만원)에서 만원 단위 세밀 조정은 막대로는 오히려 부정확하다.
 import type { AllocationRow } from "./Step7CategoryToggle";
-import { manwonToWon, wonToManwon } from "@/shared/lib/money";
+import { AMOUNT_STEP_MANWON, manwonToWon, wonToManwon } from "@/shared/lib/money";
+import { NumberInput } from "@/shared/ui";
 
 const ROW = "flex flex-col gap-2 border-b border-line py-3 last:border-b-0 last:pb-0 first:pt-0";
 const TOP_ROW = "flex items-center gap-2.5";
@@ -21,7 +22,8 @@ const AMOUNT_INPUT =
 const SLIDER = "h-1.5 w-full cursor-pointer accent-primary";
 
 const BUDGET_STEP_WON = 100_000; // 10만원 단위
-const BUDGET_STEP_MANWON = 10;
+// 만원 단위 스텝은 shared 로 올라갔다 — 예산 페이지의 슬라이더(CategoryAllocationRow)와
+// 총예산 인라인 수정(BudgetDonut)이 같은 값을 써야 하는데, 여기 사문 상수로 두면 갈린다.
 
 export interface Step8Props {
   rows: AllocationRow[];
@@ -67,17 +69,19 @@ export function Step8Allocation({ rows, onRowsChange, totalBudgetEstimate }: Ste
                 <span className="flex-1 text-sm font-bold text-ink">{row.nameKo}</span>
                 {row.hasCost ? (
                   <div className="flex flex-none items-center gap-1.5">
-                    <input
+                    <NumberInput
                       className={AMOUNT_INPUT}
-                      type="number"
-                      inputMode="numeric"
                       min={0}
-                      step={BUDGET_STEP_MANWON}
+                      step={AMOUNT_STEP_MANWON}
                       aria-label={`${row.nameKo} 예산 금액`}
                       // 행 배열 자체는 원 단위를 유지한다(합계·진행률 계산이 이미 원 단위로 짜여
                       // 있다) — 만원 변환은 이 입력의 표시/입력 경계에서만 일어난다.
                       value={wonToManwon(row.plannedBudget)}
-                      onChange={(event) => updateRow(row.categoryCode, manwonToWon(Number(event.target.value)))}
+                      // 이 행은 슬라이더와 값을 공유해 "빈 칸"을 담을 수 없다 — null 은 0으로
+                      // 접는다. 지운 직후의 빈 칸 표시는 NumberInput 이 스스로 지킨다(그쪽 주석).
+                      onValueChange={(next) => {
+                        updateRow(row.categoryCode, manwonToWon(next ?? 0));
+                      }}
                     />
                     <span className="text-xs font-bold text-ink-soft">만원</span>
                   </div>

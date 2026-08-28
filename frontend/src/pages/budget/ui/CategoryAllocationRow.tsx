@@ -4,7 +4,7 @@
 import { Slider } from "@base-ui/react/slider";
 import type { BenchmarkComparison } from "@/entities/payment";
 import type { WeddingCategory } from "@/entities/wedding";
-import { manwonToWon, wonToManwon, wonToManwonCeil } from "@/shared/lib/money";
+import { AMOUNT_STEP_MANWON, formatManwon, manwonToWon, wonToManwon, wonToManwonCeil } from "@/shared/lib/money";
 import { Badge, Money, Progress } from "@/shared/ui";
 
 export interface CategoryAllocationRowProps {
@@ -26,7 +26,9 @@ export interface CategoryAllocationRowProps {
 const ROW = "flex flex-col gap-1.5 border-b border-line py-3 last:border-b-0 last:pb-0 first:pt-0";
 // 10만원 단위(2026-08-26 사용자 지시) — 단위가 "만원"이라 여기선 10. 온보딩 Step8Allocation의
 // 같은 지시(BUDGET_STEP_WON = 100_000원)와 값 자체는 동일하다, 단위만 다르다.
-const SLIDER_STEP_MANWON = 10;
+// 2026-08-28: 손으로 적어 둔 10을 shared 상수로 바꿨다 — 같은 값이 세 파일에 흩어져 있으면
+// 하나만 바뀌었을 때 슬라이더와 숫자 입력의 스텝이 조용히 갈린다.
+const SLIDER_STEP_MANWON = AMOUNT_STEP_MANWON;
 
 export function CategoryAllocationRow({
   category,
@@ -72,13 +74,13 @@ export function CategoryAllocationRow({
         <div className="flex items-baseline justify-between gap-2">
           <span className="text-sm font-bold text-ink">{category.name_ko}</span>
           <span className="text-sm font-bold text-ink [font-variant-numeric:tabular-nums]">
-            {wonToManwon(headlineAmount)}만원
+            {formatManwon(headlineAmount)}만원
           </span>
         </div>
         <Progress value={progressValue} label={`${category.name_ko} 예산 지불률`} />
         {overspend > 0 && (
           <span className="text-xs font-bold text-primary">
-            {wonToManwon(overspend)}만원 초과 지불
+            {formatManwon(overspend)}만원 초과 지불
             {/* 미배정 카테고리는 위 헤드라인 금액이 이미 실지출액이라(B안) "초과분"과 값이
                 같다 — 왜 그런지(배정 자체가 없어서) 회색 보조 표기로 밝혀 헷갈리지 않게 한다
                 (사용자 지시, 2026-08-27). */}
@@ -110,8 +112,8 @@ export function CategoryAllocationRow({
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-sm font-bold text-ink">{category.name_ko}</span>
         <span className="flex-none text-sm font-bold text-ink [font-variant-numeric:tabular-nums]">
-          {changed && <span className="mr-1 font-normal text-ink-soft line-through">{wonToManwon(originalAmount)}만원</span>}
-          {wonToManwon(category.planned_budget)}만원
+          {changed && <span className="mr-1 font-normal text-ink-soft line-through">{formatManwon(originalAmount)}만원</span>}
+          {formatManwon(category.planned_budget)}만원
         </span>
       </div>
 
@@ -155,11 +157,11 @@ export function CategoryAllocationRow({
       </Slider.Root>
 
       <div className="flex items-baseline justify-between gap-2 text-xs text-ink-soft">
-        <span>지급 {wonToManwon(category.paid_amount)}만원 잠김</span>
+        <span>지급 {formatManwon(category.paid_amount)}만원 잠김</span>
         {changed && (
           <span aria-live="polite" className="font-bold text-primary">
             {delta > 0 ? "+" : ""}
-            {wonToManwon(delta)}만원
+            {formatManwon(delta)}만원
           </span>
         )}
       </div>

@@ -60,7 +60,8 @@ describe("PaymentListRow — 수정", () => {
     await user.click(screen.getByRole("button", { name: "수정" }));
 
     expect(screen.getByRole("textbox", { name: "항목명" })).toHaveValue("본식장 잔금");
-    expect(screen.getByRole("spinbutton", { name: "금액(원)" })).toHaveValue(28_000_000);
+    // 값은 콤마가 붙은 표시 문자열이다(2026-08-28) — 실제 값은 저장 시 콤마 없는 정수로 나간다.
+    expect(screen.getByRole("spinbutton", { name: "금액(원)" })).toHaveValue("28,000,000");
     // PLANNED(paid_date 없음)는 예정일(due_date)을 편집 대상으로 쓴다.
     expect(screen.getByLabelText("예정일")).toHaveValue("2026-11-02");
   });

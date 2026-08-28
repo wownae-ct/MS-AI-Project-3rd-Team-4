@@ -38,7 +38,8 @@
 // 변경은 없다).
 import { useState } from "react";
 import { ApiError } from "@/shared/api";
-import { Badge, Money } from "@/shared/ui";
+import { AMOUNT_STEP_WON } from "@/shared/lib/money";
+import { Badge, Money, NumberInput } from "@/shared/ui";
 import { deletePayment, patchPayment } from "../api/payment";
 import type { Payment, PaymentPatchInput } from "../model";
 import { PAYMENT_TYPE_BADGE_CLASS, PAYMENT_TYPE_LABEL } from "./payment-labels";
@@ -71,7 +72,8 @@ type Mode = "idle" | "editing" | "deleting";
 export function PaymentListRow({ payment: p, categoryLabel, onChanged }: PaymentListRowProps) {
   const [mode, setMode] = useState<Mode>("idle");
   const [draftName, setDraftName] = useState("");
-  const [draftAmount, setDraftAmount] = useState("");
+  // `number | null` — 빈 칸의 표현이 `""` 에서 `null` 로 옮겨갔다(NumberInput 계약).
+  const [draftAmount, setDraftAmount] = useState<number | null>(null);
   const [draftDate, setDraftDate] = useState("");
   const [markAsPaid, setMarkAsPaid] = useState(false);
   const [markAsCanceled, setMarkAsCanceled] = useState(false);
@@ -87,7 +89,7 @@ export function PaymentListRow({ payment: p, categoryLabel, onChanged }: Payment
 
   function startEdit() {
     setDraftName(p.item_name);
-    setDraftAmount(String(p.amount));
+    setDraftAmount(p.amount);
     setDraftDate((isPlanned ? p.due_date : p.paid_date) ?? "");
     setMarkAsPaid(false);
     setMarkAsCanceled(false);
@@ -108,7 +110,8 @@ export function PaymentListRow({ payment: p, categoryLabel, onChanged }: Payment
   }
 
   async function handleSave() {
-    const parsedAmount = Number(draftAmount);
+    // 빈 칸(null)은 0으로 떨어뜨려 아래 `<= 0` 검증이 그대로 잡게 둔다.
+    const parsedAmount = draftAmount ?? 0;
     if (!draftName || !Number.isFinite(parsedAmount) || parsedAmount <= 0 || !draftDate) {
       setSaveState("error");
       setErrorMessage("항목명·금액·날짜를 모두 올바르게 입력해 주세요.");
@@ -212,13 +215,14 @@ export function PaymentListRow({ payment: p, categoryLabel, onChanged }: Payment
         </div>
         <input className={ROW_INPUT} aria-label="항목명" value={draftName} onChange={(e) => setDraftName(e.target.value)} />
         <div className="flex gap-2">
-          <input
+          <NumberInput
+            wrapClassName="flex-1"
             className={`${ROW_INPUT} [font-variant-numeric:tabular-nums]`}
-            type="number"
+            step={AMOUNT_STEP_WON}
             min={0}
             aria-label="금액(원)"
             value={draftAmount}
-            onChange={(e) => setDraftAmount(e.target.value)}
+            onValueChange={setDraftAmount}
           />
           <input
             className={`${ROW_INPUT} [font-variant-numeric:tabular-nums]`}

@@ -17,6 +17,8 @@
 // 손으로 채워둔 값을 빈 결과로 덮어쓰면 오히려 손해다.
 import { useRef, useState } from "react";
 import { ApiError } from "@/shared/api";
+import { AMOUNT_STEP_WON } from "@/shared/lib/money";
+import { NumberInput } from "@/shared/ui";
 import { createPayment, getReceiptExtract } from "../api/payment";
 import type { PaymentType } from "../model";
 import { PAYMENT_TYPE_LABEL } from "./payment-labels";
@@ -49,7 +51,9 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
   const [itemName, setItemName] = useState("");
   const [paymentType, setPaymentType] = useState<PaymentType>("DEPOSIT");
   const [vendorName, setVendorName] = useState("");
-  const [amount, setAmount] = useState("");
+  // 문자열이 아니라 `number | null` 이다 — 금액 칸이 `NumberInput` 으로 바뀌면서 "빈 칸"의
+  // 표현이 `""` 에서 `null` 로 옮겨갔다. 0 과 빈 칸은 여전히 구분된다(0원 항목은 아래 검증이 막는다).
+  const [amount, setAmount] = useState<number | null>(null);
   const [dueDate, setDueDate] = useState("");
   const [paidDate, setPaidDate] = useState("");
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
@@ -68,7 +72,7 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
     setItemName("");
     setPaymentType("DEPOSIT");
     setVendorName("");
-    setAmount("");
+    setAmount(null);
     setDueDate("");
     setPaidDate("");
     setReceiptUrl(null);
@@ -97,7 +101,7 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
       const result = await getReceiptExtract(file, abortController.signal);
       if (result.item_name !== null) setItemName(result.item_name);
       if (result.vendor_name !== null) setVendorName(result.vendor_name);
-      if (result.amount !== null) setAmount(String(result.amount));
+      if (result.amount !== null) setAmount(result.amount);
       if (result.paid_date !== null) setPaidDate(result.paid_date);
       setReceiptUrl(result.receipt_url);
     } catch (err) {
@@ -109,7 +113,9 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
   }
 
   async function handleSubmit() {
-    const parsedAmount = Number(amount);
+    // 빈 칸(null)은 0으로 떨어뜨려 아래 `<= 0` 검증이 그대로 잡게 둔다 — 검증 문구를
+    // "금액을 입력해 주세요"로 따로 갈래를 내지 않는다(다른 필드와 같은 한 줄 안내를 쓴다).
+    const parsedAmount = amount ?? 0;
     // due_date는 무조건 필수가 아니다 — backend PaymentCreate.due_date도 optional이고, 영수증
     // OCR로 결제일(paidDate)이 이미 채워진 건은 "언제까지 낼지"가 더 이상 의미가 없을 수 있다.
     if (
@@ -231,14 +237,14 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
         value={vendorName}
         onChange={(e) => setVendorName(e.target.value)}
       />
-      <input
+      <NumberInput
         className={FORM_INPUT}
-        type="number"
+        step={AMOUNT_STEP_WON}
         min={0}
         aria-label="금액(원)"
         placeholder="금액(원)"
         value={amount}
-        onChange={(e) => setAmount(e.target.value)}
+        onValueChange={setAmount}
       />
       <label className="flex flex-col gap-1">
         <span className={FIELD_NOTE}>납부 예정일{paidDate !== "" && "(선택 — 이미 결제했다면 비워둬도 돼요)"}</span>
