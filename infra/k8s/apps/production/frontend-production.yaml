@@ -1,0 +1,28 @@
+# main 브랜치는 PR 필수 + 리뷰 승인이 곧 "프로덕션 승인"이므로 머지 후 automated sync
+# (backend-production.yaml과 동일 정책).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: frontend-production
+  namespace: argocd
+  annotations:
+    # 태그는 :production-latest — overlays/frontend-production/kustomization.yaml의 images
+    # 트랜스포머와 반드시 일치해야 한다(frontend-staging.yaml과 동일한 이유).
+    argocd-image-updater.argoproj.io/image-list: frontend=team4hcacr-drascbaqe8f2gcca.azurecr.io/frontend:production-latest
+    argocd-image-updater.argoproj.io/frontend.update-strategy: digest
+    argocd-image-updater.argoproj.io/write-back-method: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4.git
+    targetRevision: main
+    path: infra/k8s/overlays/frontend-production
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

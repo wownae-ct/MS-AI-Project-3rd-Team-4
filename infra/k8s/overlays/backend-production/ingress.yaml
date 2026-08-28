@@ -1,0 +1,73 @@
+# Ingress란?
+# Service(ClusterIP)는 클러스터 "안"에서만 접근 가능하다 — 인터넷에서 우리 도메인으로 들어온
+# 요청을 실제로 받아서 올바른 Service로 넘겨주는 "정문 경비원"이 Ingress다. 이 파일은 "이
+# 도메인(host)으로 오는 요청은 backend Service(80번 포트)로 보내라"는 라우팅 규칙 하나를
+# 정의한다. 실제로 이 규칙을 처리하는 건 클러스터에 설치된 NGINX Ingress Controller(별도
+# 컴포넌트, infra/k8s/ingress-nginx/README.md) — 이 YAML은 그 컨트롤러에게 주는 "설정값"일 뿐,
+# Ingress 자체가 트래픽을 처리하는 프로그램은 아니다.
+# 도메인: AKS/Azure LoadBalancer 자동생성 DNS 라벨(infra/k8s/ingress-nginx/README.md 참고).
+# TLS: cert-manager가 letsencrypt-nginx ClusterIssuer로 자동 발급(infra/k8s/cert-manager/README.md).
+#
+# 경로 분기(2026-08-26): 같은 호스트 아래 `/api`는 backend Service로, 그 외 전부(`/`)는 frontend
+# Service(nginx 정적 서빙, base/frontend)로 보낸다 — 프론트·백엔드를 완전 same-origin으로 만들어
+# 사파리(ITP)/브레이브(Shields)의 서드파티 쿠키 차단을 우회하기 위함(SWA cross-origin 배포는
+# frontend-ci.yml이 PR 프리뷰용으로 계속 병행). ingress-nginx는 경로 길이 기준으로 더 구체적인
+# 규칙을 우선 매칭하므로 `/api`가 `/`보다 항상 먼저 매치된다.
+#
+# proxy-read-timeout/proxy-send-timeout(2026-08-26, 챗 SSE 타임아웃 회귀 수정): 어노테이션이
+# 하나도 없으면 ingress-nginx 기본값(둘 다 60초)이 적용된다. 챗 그래프(backend/app/rag/graph.py,
+# retrieve→generate→verify + CRAG 조건부 재시도)의 verify/reformulate_query 구간은 스트리밍이
+# 없어 그 대기 중엔 SSE로 바이트가 하나도 안 나가는데, 이게 60초에 가까워지면 프록시가 먼저
+# 커넥션을 끊어버려 사용자에게 "타임아웃 에러"로 보였다(backend가 자체적으로도 이제 verify/
+# reformulate_query 대기 중 SSE heartbeat를 흘려보내지만, 그것과 별개로 프록시 쪽 여유도 둔다).
+# 이 Ingress는 /api와 / 둘 다 같은 리소스라 어노테이션이 두 경로 모두에 적용되지만, 정적 파일
+# 서빙(frontend)은 원래도 순식간에 끝나 상한이 늘어나도 영향이 없다. 120초로 정함(staging
+# ingress.yaml과 동일 값) — 백엔드의 settings.azure_openai_timeout_seconds(45초, backend/
+# app/core/config.py)로 개별 LLM 호출을 하드 캡한 뒤에도, 여러 호출이 순차로 겹치는 챗 그래프
+# worst-case(최대 5회) 총 소요시간에 여유를 남기기 위해서다.
+#
+# proxy-body-size(2026-08-28, staging ingress.yaml과 동일 — red-bug.md #8 실측 중 발견):
+# 어노테이션이 없으면 ingress-nginx 기본값(1m)이 적용돼, 백엔드 자체는 15MB까지 허용하는
+# 영수증 OCR(_MAX_RECEIPT_BYTES)이 실제 휴대폰 사진(1~5MB 흔함)에서 앱 로직 도달 전에
+# nginx "413 Request Entity Too Large"로 막혔다. 백엔드 15MB 상한과 맞춰 16m으로 둔다.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: backend
+  annotations:
+    # cert-manager가 이 Ingress를 감시하다가, host가 가리키는 도메인 앞으로 Let's Encrypt에
+    # 자동으로 인증서를 요청·발급·갱신해준다(90일마다 자동 갱신, 사람이 손댈 필요 없음).
+    cert-manager.io/cluster-issuer: letsencrypt-nginx
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-body-size: "16m"
+spec:
+  ingressClassName: nginx # 클러스터에 여러 Ingress 컨트롤러가 있을 수 있는데, 그중 "nginx"라는
+      # 이름으로 설치된 걸 쓰겠다는 지정(이 클러스터엔 NGINX 하나뿐).
+  tls: # HTTPS 설정 — cert-manager가 여기 적힌 host용 인증서를 발급해서 secretName에 저장한다.
+    - hosts:
+        - merrymap-production.koreacentral.cloudapp.azure.com
+      secretName: backend-production-tls # 발급된 인증서(공개키+개인키)가 저장되는 K8s Secret
+          # 이름 — cert-manager가 자동으로 만들고 채운다, 사람이 직접 만들 필요 없음.
+  rules:
+    - host: "merrymap-production.koreacentral.cloudapp.azure.com" # 이 도메인으로 들어온
+          # 요청만 아래 규칙에 매칭된다. 다른 Host 헤더로 오는 요청(예: 인그레스 컨트롤러 헬스
+          # 체크가 쓰는 맨 IP 요청)은 이 규칙에 안 걸려서 ingress-nginx 기본 백엔드가
+          # 처리한다(보통 404).
+      http:
+        paths:
+          - path: /api # backend API 전용 경로 — 03_API_spec.md의 모든 엔드포인트가 이미
+                # /api/v1/... 프리픽스라 ingress-nginx가 경로를 벗기지 않고 그대로 넘겨도 된다.
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 80
+          - path: / # 그 외 전부 — frontend 정적 파일(nginx, base/frontend).
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80

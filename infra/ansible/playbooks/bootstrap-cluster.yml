@@ -1,0 +1,376 @@
+---
+# AKS 클러스터 컴포넌트 부트스트랩: ingress-nginx / cert-manager / ArgoCD(+Image Updater) 설치 + root-app.yaml 등록.
+# infra/k8s/{ingress-nginx,cert-manager,argocd}/README.md에 있던 수동 kubectl/helm 절차를 그대로 옮긴 것 —
+# 새 컴포넌트를 추가하는 게 아니라 같은 단계를 반복 가능하게 만든 것뿐이다.
+#
+# 사전조건:
+#   - P1(az deployment group create) 완료, `az aks get-credentials --resource-group <RG> --name <AKS_NAME>`로
+#     kubeconfig 컨텍스트가 이미 잡혀있을 것
+#   - kubectl, helm 이 PATH에 있을 것 (podman은 여기 관여 없음 — 백엔드 이미지 로컬 빌드용으로 별도 사용)
+#   - cd infra/ansible && ansible-galaxy collection install -r requirements.yml
+#   - infra/.env 값(LETSENCRYPT_EMAIL/GITHUB_PAT/IMAGE_UPDATER_IDENTITY_CLIENT_ID/AKS_KUBE_CONTEXT) 채우고
+#     `set -a && source ../.env && set +a` 로 환경변수 로드 후 실행
+#
+# 실행: cd infra/ansible && ansible-playbook playbooks/bootstrap-cluster.yml
+#
+# Ansible은 git에 아무것도 커밋/푸시하지 않는다 — infra/k8s/base/**의 <PLACEHOLDER> 값 채우기나
+# staging nip.io 호스트 반영은 이 프로젝트의 PR 필수/코드오너 리뷰 흐름(CLAUDE.md)을 그대로 타야 하므로
+# 의도적으로 사람이 하는 단계로 남겨두고, 이 플레이북은 마지막에 값만 출력한다.
+
+- name: AKS 클러스터 컴포넌트 부트스트랩
+  hosts: local
+  gather_facts: false
+  vars:
+      argocd_namespace: argocd
+      ingress_namespace: ingress-nginx
+      cert_manager_namespace: cert-manager
+      production_dns_label: merrymap-production
+      image_updater_sa_name: argocd-image-updater-controller
+      github_repo_url: https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4.git
+      repo_secret_name: repo-ms-ai-project-3rd-team-4
+      letsencrypt_email: "{{ lookup('env', 'LETSENCRYPT_EMAIL') }}"
+      github_pat: "{{ lookup('env', 'GITHUB_PAT') }}"
+      image_updater_identity_client_id: "{{ lookup('env', 'IMAGE_UPDATER_IDENTITY_CLIENT_ID') }}"
+      expected_kube_context: "{{ lookup('env', 'AKS_KUBE_CONTEXT') }}"
+      acr_login_server: "{{ lookup('env', 'ACR_LOGIN_SERVER') }}"
+
+  tasks:
+      - name: 필수 값 확인
+        assert:
+            that:
+                - letsencrypt_email | length > 0
+                - github_pat | length > 0
+                - image_updater_identity_client_id | length > 0
+                - acr_login_server | length > 0
+            fail_msg: >-
+                infra/.env의 LETSENCRYPT_EMAIL / GITHUB_PAT / IMAGE_UPDATER_IDENTITY_CLIENT_ID /
+                ACR_LOGIN_SERVER를 채우고
+                `set -a && source ../.env && set +a` 로 로드한 뒤 다시 실행하세요.
+
+      - name: 현재 kubectl 컨텍스트 확인
+        command: kubectl config current-context
+        register: current_context
+        changed_when: false
+
+      - name: 의도한 클러스터인지 확인 (AKS_KUBE_CONTEXT가 채워진 경우에만)
+        assert:
+            that: current_context.stdout == expected_kube_context
+            fail_msg: >-
+                현재 kubectl 컨텍스트({{ current_context.stdout }})가 infra/.env의 AKS_KUBE_CONTEXT
+                ({{ expected_kube_context }})와 다릅니다. az aks get-credentials로 올바른 클러스터를 먼저 선택하세요.
+        when: expected_kube_context | length > 0
+
+      - debug:
+            msg: "대상 클러스터 컨텍스트: {{ current_context.stdout }}"
+
+      # ---------- ingress-nginx (infra/k8s/ingress-nginx/README.md) ----------
+      - name: ingress-nginx Helm 레포 등록
+        kubernetes.core.helm_repository:
+            name: ingress-nginx
+            repo_url: https://kubernetes.github.io/ingress-nginx
+
+      - name: ingress-nginx 설치 (Public IP 1개, production DNS 라벨만 붙임 — staging은 같은 IP를 nip.io로 재사용)
+        kubernetes.core.helm:
+            name: ingress-nginx
+            chart_ref: ingress-nginx/ingress-nginx
+            release_namespace: "{{ ingress_namespace }}"
+            create_namespace: true
+            values:
+                controller:
+                    service:
+                        annotations:
+                            service.beta.kubernetes.io/azure-dns-label-name: "{{ production_dns_label }}"
+                            # Azure LB의 자동 생성 헬스프로브는 이 어노테이션이 없으면 nodePort의 "/"를
+                            # 친다 — ingress-nginx 기본 백엔드는 매칭되는 Host가 없는 요청에 404를
+                            # 돌려주므로(정상 동작) Azure는 이를 실패로 보고 모든 백엔드를 영구
+                            # unhealthy로 표시한다(DipAvailability/VipAvailability 0%로 실측 확인,
+                            # 2026-08-21). 결과적으로 실제 인터넷에서 오는 트래픽(Let's Encrypt
+                            # HTTP-01 challenge 포함)이 조용히 타임아웃된다 — 같은 VNet 내부 트래픽은
+                            # 다른 경로를 타서 영향받지 않아 오래 안 들켰다. ingress-nginx가 Host 무관
+                            # 하게 200을 돌려주는 /healthz로 프로브 경로를 지정해 해결.
+                            service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path: /healthz
+
+      - name: ingress-nginx LoadBalancer 공인 IP 할당 대기
+        kubernetes.core.k8s_info:
+            kind: Service
+            name: ingress-nginx-controller
+            namespace: "{{ ingress_namespace }}"
+        register: ingress_svc
+        until: >-
+            ingress_svc.resources | length > 0 and
+            (ingress_svc.resources[0].status.loadBalancer.ingress | default([])) | length > 0
+        retries: 30
+        delay: 10
+
+      - name: staging용 nip.io 호스트 계산
+        set_fact:
+            ingress_public_ip: "{{ ingress_svc.resources[0].status.loadBalancer.ingress[0].ip }}"
+            staging_nip_io_host: >-
+                {{ ingress_svc.resources[0].status.loadBalancer.ingress[0].ip | regex_replace('\.', '-') }}.nip.io
+
+      - debug:
+            msg: >-
+                공인 IP: {{ ingress_public_ip }} / staging nip.io 호스트: {{ staging_nip_io_host }}
+                — infra/k8s/overlays/backend-staging/ingress.yaml의 <STAGING_NIP_IO_HOST_TBD> 2곳을 이 값으로 바꿔서
+                PR 하세요 (path-guard/코드오너 리뷰를 거쳐야 하므로 이 플레이북이 직접 git에 쓰지 않습니다).
+
+      # ---------- cert-manager (infra/k8s/cert-manager/README.md) ----------
+      - name: cert-manager Helm 레포 등록
+        kubernetes.core.helm_repository:
+            name: jetstack
+            repo_url: https://charts.jetstack.io
+
+      - name: cert-manager 설치 (CRD 포함)
+        kubernetes.core.helm:
+            name: cert-manager
+            chart_ref: jetstack/cert-manager
+            release_namespace: "{{ cert_manager_namespace }}"
+            create_namespace: true
+            values:
+                crds:
+                    enabled: true
+
+      - name: cert-manager webhook 준비 대기
+        kubernetes.core.k8s_info:
+            kind: Deployment
+            name: cert-manager-webhook
+            namespace: "{{ cert_manager_namespace }}"
+        register: webhook_deploy
+        until: >-
+            webhook_deploy.resources | length > 0 and
+            (webhook_deploy.resources[0].status.readyReplicas | default(0)) > 0
+        retries: 30
+        delay: 10
+
+      - name: ClusterIssuer(letsencrypt-nginx) 적용 — <LETSENCRYPT_EMAIL> 자리표시자만 치환, 원본 파일은 안 건드림
+        kubernetes.core.k8s:
+            state: present
+            definition: >-
+                {{
+                  lookup('file', '../../k8s/cert-manager/cluster-issuer.yaml')
+                  | replace('<LETSENCRYPT_EMAIL>', letsencrypt_email)
+                  | from_yaml
+                }}
+
+      # ---------- ArgoCD (infra/k8s/argocd/README.md) ----------
+      - name: argocd 네임스페이스 생성
+        kubernetes.core.k8s:
+            api_version: v1
+            kind: Namespace
+            name: "{{ argocd_namespace }}"
+            state: present
+
+      - name: ArgoCD 업스트림 매니페스트 적용 (raw manifest — Helm 아님, README와 동일 절차)
+        command: >-
+            kubectl apply --server-side --force-conflicts -n {{ argocd_namespace }}
+            -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+        register: argocd_install
+        changed_when: true # --server-side는 unchanged/configured 구분을 안 하고 항상 "serverside-applied"만 찍음(kubectl apply.go 확인) — 문자열로 idempotency 판별 불가
+
+      - name: argocd-cmd-params-cm 적용 (server.insecure — TLS는 ingress에서 종료)
+        kubernetes.core.k8s:
+            state: present
+            src: ../../k8s/argocd/argocd-cmd-params-cm.yaml
+            namespace: "{{ argocd_namespace }}"
+
+      - name: argocd-server 재시작 (cmd-params 반영)
+        command: kubectl rollout restart deployment argocd-server -n {{ argocd_namespace }}
+        changed_when: true
+
+      - name: 프라이빗 레포 접근용 Secret 적용 (GitHub PAT)
+        kubernetes.core.k8s:
+            state: present
+            definition:
+                apiVersion: v1
+                kind: Secret
+                metadata:
+                    name: "{{ repo_secret_name }}"
+                    namespace: "{{ argocd_namespace }}"
+                    labels:
+                        argocd.argoproj.io/secret-type: repository
+                stringData:
+                    type: git
+                    url: "{{ github_repo_url }}"
+                    username: wownae-ct
+                    password: "{{ github_pat }}"
+        no_log: true
+
+      - name: ArgoCD Image Updater 업스트림 매니페스트 적용
+        command: >-
+            kubectl apply --server-side --force-conflicts -n {{ argocd_namespace }}
+            -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/config/install.yaml
+        register: image_updater_install
+        changed_when: true # 위와 동일한 이유(--server-side가 항상 serverside-applied만 출력)
+
+      # ACR 인증은 static docker-registry secret이 아니라 전용 Workload Identity(infra/bicep/modules/aks.bicep의
+      # imageUpdaterIdentity) — infra/k8s/argocd/README.md "ACR 인증" 절 참고.
+      - name: Image Updater ServiceAccount에 Workload Identity client-id 어노테이션
+        command: >-
+            kubectl annotate serviceaccount {{ image_updater_sa_name }} -n {{ argocd_namespace }}
+            azure.workload.identity/client-id={{ image_updater_identity_client_id }} --overwrite
+        changed_when: true
+
+      - name: Image Updater Deployment에 workload-identity 라벨 patch
+        command: >-
+            kubectl patch deployment argocd-image-updater-controller -n {{ argocd_namespace }} --type merge -p
+            '{"spec":{"template":{"metadata":{"labels":{"azure.workload.identity/use":"true"}}}}}'
+        changed_when: true
+
+      # ACR 인증 스크립트(공식 문서 예제) — 자세한 배경은 argocd-image-updater-auth-script.yaml 파일 상단 주석 참고.
+      - name: Image Updater 인증 스크립트 ConfigMap 적용
+        kubernetes.core.k8s:
+            state: present
+            src: ../../k8s/argocd/argocd-image-updater-auth-script.yaml
+
+      - name: argocd-image-updater-config에 registries.conf(ACR, ext 인증) 병합 — 기존 다른 키는 안 건드림
+        kubernetes.core.k8s:
+            state: patched
+            api_version: v1
+            kind: ConfigMap
+            name: argocd-image-updater-config
+            namespace: "{{ argocd_namespace }}"
+            merge_type: merge
+            definition:
+                data:
+                    registries.conf: |
+                        registries:
+                          - name: aicoach-acr
+                            prefix: {{ acr_login_server }}
+                            api_url: https://{{ acr_login_server }}
+                            default: true
+                            credentials: ext:/app/auth/auth.sh
+                            credsexpire: 1h
+
+      # 기존 volumes/env/volumeMounts를 덮어쓰지 않도록 JSON Patch(append)로 추가 — merge patch는 배열을
+      # 통째로 교체해버려서 업스트림 매니페스트가 이미 갖고 있는 값을 지울 위험이 있어 피함.
+      # kubectl set env는 이름 기준 upsert라 멱등함(있으면 값 갱신, 없으면 추가) — 이전에 썼던 JSON Patch
+      # append 방식은 env var 이름 중복을 K8s가 검증 안 해서 재실행 시 중복 항목이 쌓이는 버그가 있었음
+      # (2026-08-14 발견, ACR_NAME이 실제로 2개 쌓인 걸 확인함 — 값은 동일해서 기능상 무해하나 정리 필요시
+      # `kubectl edit deployment argocd-image-updater-controller -n argocd`로 수동 정리).
+      - name: Image Updater Deployment에 ACR_NAME env var 설정 (이름 기준 upsert, 멱등)
+        command: >-
+            kubectl set env deployment/argocd-image-updater-controller -n {{ argocd_namespace }}
+            ACR_NAME={{ acr_login_server }}
+        changed_when: true
+
+      - name: 기존 auth-script 볼륨 존재 확인 (재실행 시 중복 patch 방지)
+        command: >-
+            kubectl get deployment argocd-image-updater-controller -n {{ argocd_namespace }}
+            -o jsonpath='{.spec.template.spec.volumes[?(@.name=="auth-script")].name}'
+        register: existing_auth_volume
+        changed_when: false
+
+      - name: Image Updater Deployment에 인증 스크립트 볼륨 마운트 추가
+        command: >-
+            kubectl patch deployment argocd-image-updater-controller -n {{ argocd_namespace }} --type json -p
+            '[{"op":"add","path":"/spec/template/spec/volumes/-","value":{"name":"auth-script","configMap":{"name":"argocd-image-updater-auth","defaultMode":493}}},
+              {"op":"add","path":"/spec/template/spec/containers/0/volumeMounts/-","value":{"name":"auth-script","mountPath":"/app/auth"}}]'
+        changed_when: true
+        when: existing_auth_volume.stdout | length == 0
+
+      - name: argocd-image-updater 재시작 (identity 라벨/어노테이션/ACR 인증 설정 반영)
+        command: kubectl rollout restart deployment argocd-image-updater-controller -n {{ argocd_namespace }}
+        changed_when: true
+
+      # ---------- app-of-apps ----------
+      - name: root-app.yaml 적용 (backend/rag-cronjob staging·production Application 4개 등록)
+        kubernetes.core.k8s:
+            state: present
+            src: ../../k8s/root-app.yaml
+
+      # ---------- 검증 (배포된 컴포넌트/리소스 상태 확인) ----------
+      - name: Helm 릴리스 목록 확인 (ingress-nginx/cert-manager)
+        command: helm list -A
+        register: helm_releases
+        changed_when: false
+
+      - name: "네임스페이스별 비정상 Pod 확인 (Running이 아닌 것)"
+        command: kubectl get pods -n {{ item }} --field-selector=status.phase!=Running --no-headers
+        loop:
+            - "{{ ingress_namespace }}"
+            - "{{ cert_manager_namespace }}"
+            - "{{ argocd_namespace }}"
+        register: pod_health_checks
+        changed_when: false
+        failed_when: false
+
+      - name: Image Updater Deployment의 ACR_NAME env 반영 확인
+        command: >-
+            kubectl get deployment {{ image_updater_sa_name }} -n {{ argocd_namespace }}
+            -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="ACR_NAME")].value}'
+        register: image_updater_acr_env
+        changed_when: false
+        failed_when: false
+
+      - name: Image Updater Deployment의 auth-script 볼륨 마운트 반영 확인
+        command: >-
+            kubectl get deployment {{ image_updater_sa_name }} -n {{ argocd_namespace }}
+            -o jsonpath='{.spec.template.spec.volumes[?(@.name=="auth-script")].name}'
+        register: image_updater_auth_volume
+        changed_when: false
+        failed_when: false
+
+      - name: Image Updater Deployment 준비 대기 (로그 확인 전 Running 확보)
+        kubernetes.core.k8s_info:
+            kind: Deployment
+            name: "{{ image_updater_sa_name }}"
+            namespace: "{{ argocd_namespace }}"
+        register: image_updater_ready
+        until: >-
+            image_updater_ready.resources | length > 0 and
+            (image_updater_ready.resources[0].status.readyReplicas | default(0)) > 0
+        retries: 18
+        delay: 10
+        failed_when: false
+
+      - name: ArgoCD Image Updater 로그에서 ACR 인증 스크립트(auth.sh) 에러 확인
+        command: kubectl logs -n {{ argocd_namespace }} deployment/{{ image_updater_sa_name }} --tail=300
+        register: image_updater_logs
+        changed_when: false
+        failed_when: false
+
+      - name: ACR 인증 에러 패턴 검사 (python3/wget 없음, permission denied, exec format error 등)
+        set_fact:
+            image_updater_auth_error: >-
+                {{
+                  (image_updater_logs.stdout | default('') is search('(?i)(python3: (not found|no such file)|wget: (not found|no such file)|no such file or directory|permission denied|exec format error|auth\.sh.*error)'))
+                }}
+
+      - name: ArgoCD Application 등록 개수 확인 (root-app이 만든 자식 4개)
+        command: kubectl get applications.argoproj.io -n {{ argocd_namespace }} --no-headers
+        register: argocd_apps
+        changed_when: false
+        failed_when: false
+
+      - name: ClusterIssuer(letsencrypt-nginx) Ready 상태 확인
+        command: >-
+            kubectl get clusterissuer letsencrypt-nginx
+            -o jsonpath='{.status.conditions[0].status}'
+        register: cluster_issuer_ready
+        changed_when: false
+        failed_when: false
+
+      - name: 네임스페이스별 비정상 Pod — 결과 출력
+        debug:
+            msg: "[{{ item.item }}] 비정상 Pod: {{ item.stdout if item.stdout | length > 0 else '없음 (전부 Running)' }}"
+        loop: "{{ pod_health_checks.results }}"
+        loop_control:
+            label: "{{ item.item }}"
+
+      - debug:
+            msg: >-
+                === 검증 요약 ===
+                Helm 릴리스: {{ helm_releases.stdout_lines }} /
+                Image Updater ACR_NAME env: {{ image_updater_acr_env.stdout | default('(확인 실패)', true) }} /
+                Image Updater auth-script 볼륨: {{ image_updater_auth_volume.stdout | default('(확인 실패)', true) }} /
+                ArgoCD Application 등록: {{ (argocd_apps.stdout_lines | reject('match', 'root-app') | list) | length }}/4개(자식) + root-app 1개 — {{ argocd_apps.stdout_lines }} /
+                ClusterIssuer Ready: {{ cluster_issuer_ready.stdout | default('Unknown', true) }} /
+                ACR 인증 스크립트 에러 감지: {{ 'YES — kubectl logs -n argocd deployment/' + image_updater_sa_name + ' 확인 필요' if image_updater_auth_error else 'No' }}
+                (Application이 4개 미만이거나 ClusterIssuer가 True가 아니면 아직 sync/발급 중일 수 있음 — 잠시 후
+                `kubectl get applications -n argocd`, `kubectl get certificate -n staging -n production`로 재확인할 것)
+
+      - debug:
+            msg: >-
+                부트스트랩 완료. 남은 수동 단계(PR 필요 — path-guard/코드오너 리뷰 흐름 유지):
+                위 staging nip.io 호스트를 backend-staging/ingress.yaml에 반영. 
+                이후 `kubectl get certificate -n staging` / `-n production`으로 TLS 발급(READY: True) 확인할 것. ACR 인증 스크립트 상태는 위 검증 요약 참고.
