@@ -44,9 +44,9 @@ patches:
         path: /spec/template/spec/containers/0/env/-
         value:
           name: OAUTH_BACKEND_BASE_URL
-          value: https://merrymap-production.koreacentral.cloudapp.azure.com
+          value: https://marrymap-production.koreacentral.cloudapp.azure.com
       - op: add
         path: /spec/template/spec/containers/0/env/-
         value:
           name: FRONTEND_BASE_URL
-          value: https://merrymap-production.koreacentral.cloudapp.azure.com
+          value: https://marrymap-production.koreacentral.cloudapp.azure.com
