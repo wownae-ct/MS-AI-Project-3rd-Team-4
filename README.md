@@ -1,88 +1,74 @@
-# 메리맵 (MarryMap)
+# 메리맵 (MarryMap) — frontend
 
-SeSAC MS AI 엔지니어 4기 3차 프로젝트 (2인 팀). 예식장·스드메(드레스/스튜디오/메이크업) 중심으로
-예산·타임라인·계약전 체크리스트를 관리하고, 실제 사례(좋은예/나쁜예)와 공식 통계에 근거한 RAG
-상담을 받는 웨딩 준비 앱. "크로스핏 폼 코치"(웹캠 운동 코칭) → "브리프코치"(AI 화법 트레이너)에
-이은 **2차 주제 전환**(2026-08-20)으로, 인프라·협업 구조는 그대로 두고 주제만 다시 바꿨다. 현재
-설계 문서는 `docs/wedding/plan/*.md` 10종(`00_BASELINE.md`가 SSOT, 로컬 전용, git 미추적).
+SeSAC MS AI 엔지니어 4기 3차 프로젝트 (2인 팀)의 프론트엔드. 예식장·스드메(드레스/스튜디오/
+메이크업) 중심 예산·타임라인·계약전 체크리스트 관리와 RAG 기반 AI상담을 제공하는 React 앱.
+이 브랜치는 `frontend/`를 소유한다. 전체 프로젝트 개요·백엔드는 [`main` 브랜치
+README](../../tree/main/README.md) 참고.
 
-## 아키텍처 개요 (routers → services → models/rag)
+## 스택
 
-실시간 판정이나 다단계 에이전트 파이프라인이 필요 없는, CRUD API + RAG 상담 1개 엔드포인트 위주의
-비교적 단순한 구조다.
+React 19 + TypeScript + Vite 8 + Tailwind CSS v4 + Base UI, Vitest, oxlint. Feature-Sliced
+Design(FSD) 구조.
 
-| 레이어 | 위치 | 역할 |
-|---|---|---|
-| Routers | `backend/app/routers/` | 23개 REST 엔드포인트(health/wedding/category/budget/vendor_case/chat/dashboard) |
-| Services | `backend/app/services/` | 비즈니스 로직 |
-| Models | `backend/app/models/` | SQLAlchemy 2.0 async, 14개 테이블 |
-| RAG | `backend/app/rag/` | indexing(오프라인 색인) / retrieval(하이브리드 검색+RRF) / graph(LangGraph 3노드: retrieve→generate→verify) |
+## 화면
 
-**무인증 MVP** — 로그인 없음, 시드된 단일 `weddings` 행 하나로 데모(BASELINE §0). 실서비스 전환
-시에만 인증을 재도입한다.
+| 화면 | 내용 |
+|---|---|
+| S0 | 로그인 — 이메일+비밀번호, 소셜 로그인(구글·네이버 라이브, 카카오·애플 노출) |
+| S1 | 온보딩 — 9단계(지역/예산 → 취향 → 카테고리 on/off → 우선순위 → 진행상황 → 자유서술 → 리뷰), `POST /weddings` SSE 스트림 소비, 카테고리/예산을 한 번에 전송(개인화 LLM 호출 1회로 통합) |
+| S2 | 대시보드 — 요약, 예산 벤치마크 카드, 카테고리별 체크리스트 진행률 |
+| S3 | 카테고리 상세 — 체크리스트(citation 배지, 클릭 시 근거 확장) + 시세비교 |
+| S4 | 타임라인 — D-day 기준 항목, 준비기간 스케일링 반영 |
+| S5 | 리포트 — 카테고리별 진행률(타임라인 기준) |
+| S6 | 예산 — 4분류(지불완료/지불예정/배정/미배정), 결제 등록·수정(환불/취소 포함)·영수증 OCR 자동입력 |
+| 설정(⚙️) | 로그아웃, 비밀번호 변경/온보딩 다시하기(준비 중 placeholder) |
+
+AI상담(챗)은 별도 화면 — SSE(`fetch` + `ReadableStream`, POST라 `EventSource` 사용 불가)로
+스트리밍, flex-fill 레이아웃. WebSocket 없음.
+
+## 시작하기
+
+```bash
+cd frontend
+npm install
+npm run dev        # 개발 서버
+```
+
+## 명령
+npm run dev	            Vite 개발 서버
+npm run lint	oxlint .
+npm run test	vitest run
+npm run build	tsc -b && vite build (산출물 dist/)
+npm run depcruise	FSD 레이어 경계 검사(dependency-cruiser)
+검증 게이트: typecheck → lint → test → build. 커밋 전 전부 돌리며, CI(frontend-ci.yml)도 같은 순서로 실행한다.
 
 ## 폴더 구조
+src/
+  app/          App.tsx(RouterProvider) · router/router.tsx(코드 기반 라우트 트리, lazy 분할)
+                · ui/AppShell.tsx(탭바↔사이드바)
+  pages/        dashboard(S2) · category(S3) · timeline(S4) · report(S5) · budget(S6) ·
+                onboarding(S1) · settings
+  entities/     도메인 타입 + API 클라이언트 — wedding · payment · chat · dashboard ·
+                vendor-case · personalization · checklist · timeline
+  shared/
+    api/        REST 클라이언트 — backend/app/routers/* 와 1:1 대응하는 유일한 출처
+    ui/         디자인 시스템(Page · Card · Button · Badge · Money · Progress · Tabs ·
+                ErrorBoundary · icons), styles.css/theme.css
 
-```
-backend/    FastAPI(app/main.py) + SQLAlchemy 2.0 async 모델(app/models/) + Alembic(alembic/)
-            + routers/services/rag. backend/old/에 브리프코치 시절 구현 아카이브(lint/test 제외)
-frontend/   React + SSE 상담 클라이언트 (Vite+React+TS) — 2026-08-20 기준 아직 브리프코치 화면
-            그대로, frontend 브랜치에서 별도 재구성 필요
-data/       RAG 코퍼스(DS1_PRICE~DS8_UGC — 참가격/소비자원 사례/표준계약서/정부정책/설문/
-            체크리스트/타임라인/UGC). data/old/에 브리프코치 화법 코퍼스 아카이브
-db/         콘텐츠 시드(seed/) + 브리프코치 시절 raw-SQL 마이그레이션 아카이브(old/) — 스키마
-            자체는 backend/app/models/ + backend/alembic/에 있음
-infra/      Bicep(Azure 리소스) + AKS 매니페스트 + ArgoCD — 이전 주제 빌드 그대로 재사용
-docs/       docs/wedding/plan/이 현재 설계 문서. 이전 주제들 설계 문서는 docs/old/에 보존(로컬 전용)
-```
+frontend/old/에 이전 주제(크로스핏 폼 코치 — MediaPipe 파이프라인, WS 8-state machine, 24B
+바이너리 프로토콜) 구현 아카이브 — tsconfig/.oxlintrc.json/vite.config.ts에서 전부
+제외. 손대지 말 것, 필요하면 조각만 복사해서 src/로 이식.
 
-> **커스텀 모델 학습 없음**: RAG는 학습이 아니라 서비스가 매 요청 호출하는 라이브 컴포넌트라 이
-> 레포(`backend/app/rag/`, `data/`)에 있다. Azure OpenAI가 chat/embedding 배포를 분리 제공한다.
+## 빌드 게이트
+npm run build 마지막 단계에서 scripts/check-bundle-budget.mjs가 산출물을 디스크에서 읽어
+검사한다 — JS/CSS gzip 예산, 최대 청크, 폰트 raw 크기, 그리고 디자인 규범(팔레트 밖 색,
+토큰 밖 라운드, 다크모드, 소스 내 색 임의값/ring-*/그림자 토큰 사용 여부). 위반이면 exit 1이고
+우회 플래그가 없다.
 
-## 브랜치 전략 & 폴더 소유권
+## 배포
+- 같은 AKS Ingress 아래 /로 서빙(same-origin, /api는 backend) — frontend push가 staging, main push가 production 트리거(2026-08-26, 서드파티 쿠키 차단 우회를 위해 same-origin으로 전환)
+- Azure Static Web Apps: PR 프리뷰 + 로컬 크로스오리진 개발/테스트용으로 병행 운영 (frontend-ci.yml, VITE_API_BASE를 빌드 타임에 굽기 때문에 staging/production 이미지가 별도 태그로 빌드됨)
 
-```
-feature/backend-*  ─┐
-feature/infra-*     ├─ PR → backend  ─┐
-feature/rag-*       ┘                 │
-                                       ├─ PR → main (배포 릴리스)
-feature/frontend-*  ─── PR → frontend ┘
-```
-
-| 브랜치 | 용도 | 소유 폴더 | 직접 push |
-|---|---|---|---|
-| `main` | 배포 릴리스. `backend`/`frontend`의 PR만 받음 | 전체(머지 결과) | **금지** |
-| `backend` | 백엔드 통합 브랜치 | `backend/`, `data/`, `db/`, `infra/`, 루트 설정 | 금지 (feature 브랜치 PR만) |
-| `frontend` | 프론트 통합 브랜치 | `frontend/` | 금지 (feature 브랜치 PR만) |
-| `feature/*` | 실제 작업 브랜치 | 위 소유 폴더 내 | 자유 (본인 브랜치) |
-
-각 브랜치는 자신이 소유하지 않은 폴더를 건드리지 않는다. 이는 다음 두 가지로 강제된다:
-1. **[CODEOWNERS](.github/CODEOWNERS)** — 폴더별 필수 리뷰어 지정
-2. **[path-guard 워크플로우](.github/workflows/path-guard.yml)** — PR이 대상 브랜치의 소유 폴더 밖 파일을 건드리면 CI 실패
-
-로컬 작업 시 자신의 폴더만 체크아웃하려면 [`scripts/setup-sparse-checkout.sh`](scripts/setup-sparse-checkout.sh) 참고.
-
-### main 보호 설정 (GitHub에서 수동 설정 필요)
-
-리포 코드만으로는 push 차단이 강제되지 않는다 — GitHub Settings에서 브랜치 보호 규칙을 켜야 실제로 막힌다.
-
-**Settings → Branches → Add branch ruleset (또는 Add rule) → Branch name pattern: `main`**
-
-- [x] Require a pull request before merging
-  - Require approvals: 1
-- [x] Require status checks to pass before merging
-  - `gitleaks` 체크 추가
-  - Require branches to be up to date before merging
-- [x] Do not allow bypassing the above settings (관리자 포함 — 1인이라도 실수 방지)
-- [x] Restrict deletions / Block force pushes
-
-같은 방식으로 `backend`, `frontend` 브랜치에도 규칙 추가하고, 여기엔 **`path-guard` 체크를 required로 반드시 추가**할 것 —
-안 그러면 path-guard가 실패해도 그냥 머지가 가능해서 폴더 소유권 강제가 무력화된다.
-
-## 보안
-
-모든 push/PR에서 [gitleaks](.github/workflows/gitleaks.yml)로 시크릿 유출을 스캔한다. 설정은 [`.gitleaks.toml`](.gitleaks.toml).
-
-## 인프라
-
-Azure AKS + ArgoCD(GitOps) + Bicep(IaC). 자세한 내용은 [`infra/README.md`](infra/README.md) 참고.
+## 브랜치 전략
+feature/frontend-* → PR → frontend → PR → main.
+전체 브랜치 전략·폴더 소유권은 main README 참고.
