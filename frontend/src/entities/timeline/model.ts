@@ -3,7 +3,9 @@
 // default_dday_offset_days 대신 target_date/D-day 로 구간을 계산해야 하지만, 이 응답엔
 // 그 원본 offset 이 없으므로 여기서는 target_date/d_day 기반 표시만 지원한다.
 
-export type TimelineItemOrigin = "LLM" | "USER";
+// "CATALOG_FALLBACK"은 2026-08-28 신규 — checklist/model.ts와 동일 이유(backend origin='LLM'
+// mislabel 수정).
+export type TimelineItemOrigin = "LLM" | "USER" | "CATALOG_FALLBACK";
 export type TimelineItemStatus = "TODO" | "DONE";
 
 export interface TimelineItem {
