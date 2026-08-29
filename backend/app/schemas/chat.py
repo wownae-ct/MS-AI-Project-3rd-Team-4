@@ -28,6 +28,21 @@ class ChatSessionOut(BaseModel):
     created_at: datetime
 
 
+class ChatSessionSummaryOut(BaseModel):
+    """GET /chat/sessions(목록) 전용 — ChatSessionOut과 별도 스키마인 이유는 목록 항목에만
+    필요한 last_message_at을 더해서다(단건 생성 응답 시점엔 아직 메시지가 없어 의미가 없음)."""
+
+    id: UUID
+    category_code: CategoryCode | None
+    title: str | None
+    last_message_at: datetime | None
+    created_at: datetime
+
+
+class ChatSessionListOut(BaseModel):
+    sessions: list[ChatSessionSummaryOut]
+
+
 class CitationOut(BaseModel):
     chunk_id: int
     title: str

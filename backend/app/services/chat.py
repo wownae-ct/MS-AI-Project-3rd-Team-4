@@ -24,6 +24,7 @@ get_session_factory()로 세션을 연다 — FastAPI는 StreamingResponse를 �
 import logging
 import time
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from uuid import UUID
 
 from openai import RateLimitError
@@ -55,6 +56,30 @@ from app.schemas.chat import (
 logger = logging.getLogger(__name__)
 
 _GRAPH = build_graph()
+
+# GET /chat/sessions(목록) 대응 — chat_sessions.title은 세션 생성 시점(create_chat_session)엔
+# 아직 대화 내용이 없어 채울 수 없고, 실제 내용을 보는 유일한 지점인 stream_chat_response의 첫
+# user 메시지에서만 채운다(18_backend_api_db_reference_and_e2e_scenarios.md:885-887이 지적한
+# "항상 NULL" 갭의 실제 수정). 목록 한 줄에 들어갈 미리보기라 전체 본문 대신 앞부분만 자른다.
+_SESSION_TITLE_MAX_LENGTH = 40
+
+
+def _derive_session_title(content: str) -> str:
+    stripped = content.strip()
+    if len(stripped) <= _SESSION_TITLE_MAX_LENGTH:
+        return stripped
+    return stripped[:_SESSION_TITLE_MAX_LENGTH].rstrip() + "…"
+
+
+def _touch_session_activity(
+    chat_session: ChatSession, *, first_message_content: str | None
+) -> None:
+    """세션에 메시지가 실제로 저장될 때마다 호출 — last_message_at을 항상 갱신하고, 이 세션의
+    첫 메시지일 때만(title이 아직 None일 때만) 그 메시지 내용으로 title을 채운다. 두 번째
+    메시지부터는 title을 덮어쓰지 않는다(첫 질문이 그대로 목록의 "제목" 역할을 하도록)."""
+    if first_message_content is not None and chat_session.title is None:
+        chat_session.title = _derive_session_title(first_message_content)
+    chat_session.last_message_at = datetime.now(UTC)
 
 
 async def create_chat_session(
@@ -149,6 +174,20 @@ async def list_chat_messages(
     return list(result.scalars().all())
 
 
+async def list_chat_sessions(session: AsyncSession, wedding_id: UUID) -> list[ChatSession]:
+    """GET /chat/sessions(목록) — 아직 메시지가 하나도 없는 세션(last_message_at이 NULL, title도
+    NULL)은 목록 최상단으로 밀리지 않도록 last_message_at을 우선, 없으면 created_at을 대체
+    정렬키로 써서 최신순 정렬한다. wedding_id로만 필터하므로 category_code 유무와 무관하게 이
+    웨딩의 모든 세션(전역 탭 + 과거 카테고리별 세션)이 함께 나온다 — 프론트 쪽 필터링은 이번
+    스코프 밖(red-bug.md #17 참고)."""
+    result = await session.execute(
+        select(ChatSession)
+        .where(ChatSession.wedding_id == wedding_id)
+        .order_by(ChatSession.last_message_at.desc().nulls_last(), ChatSession.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
 def _build_citations(context: list) -> list[CitationOut]:
     return [
         CitationOut(
@@ -209,6 +248,7 @@ async def _finish_after_upstream_failure(
             trace_ref=trace.trace_id,
         )
         session.add(assistant_message)
+        _touch_session_activity(chat_session, first_message_content=None)
         await session.commit()
         yield _sse("citations", CitationsEventData(citations=citations))
         yield _sse("verification", VerificationEventData(verdict=verdict, reason=reason))
@@ -230,6 +270,7 @@ async def stream_chat_response(
         chat_session = await get_chat_session(session, wedding_id, chat_session_id)
 
         session.add(ChatMessage(session_id=chat_session.id, role="user", content=payload.content))
+        _touch_session_activity(chat_session, first_message_content=payload.content)
         await session.commit()
 
         settings = get_settings()
@@ -391,6 +432,7 @@ async def stream_chat_response(
             trace_ref=trace.trace_id,
         )
         session.add(assistant_message)
+        _touch_session_activity(chat_session, first_message_content=None)
         await session.commit()
         await session.refresh(assistant_message)
 
