@@ -9,6 +9,7 @@ from sqlalchemy import (
     BigInteger,
     CheckConstraint,
     Date,
+    DateTime,
     Integer,
     SmallInteger,
     Text,
@@ -87,4 +88,4 @@ class VendorCaseExample(Base):
     source_tier: Mapped[str] = mapped_column(Text, nullable=False)
     source_note: Mapped[str | None] = mapped_column(Text)
     display_order: Mapped[int | None] = mapped_column(SmallInteger)
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
