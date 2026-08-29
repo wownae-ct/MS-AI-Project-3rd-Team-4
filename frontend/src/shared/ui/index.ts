@@ -25,6 +25,10 @@ export { Page, PAGE_CONTENT_ID, type PageProps } from "./Page";
 export { Progress, type ProgressProps } from "./Progress";
 export { PulseDots, type PulseDotsProps, type PulseDotsVariant } from "./PulseDots";
 export { RoutePending } from "./RoutePending";
+// 모바일 고정바 예약 높이 (D19 동반 수정, 2026-08-29) — `AppShell`(app)과 `Page`(shared)가 **같은
+// 산술**을 써야 하는데 `shared` 는 `app` 을 볼 수 없다. 값이 갈리면 노치 아이폰에서 콘텐츠가
+// 고정바 밑으로 잘린다(실제로 잘리고 있었다 — 그 파일 머리말 §산술).
+export { SHELL_BOTTOM_INSET, SHELL_FILL_HEIGHT, SHELL_TOP_INSET } from "./shell-metrics";
 export { SkeletonRows, type SkeletonRowsProps } from "./Skeleton";
 // 근거·출처 목록 (D16) — 채팅 인용 · 체크리스트 근거 · 업체사례 관련 사례가 같은 그릇을 쓴다.
 // entities 끼리는 서로를 import 할 수 없으므로 공유 지점은 여기뿐이다(safe-url·source-tier 와 같은 이유).

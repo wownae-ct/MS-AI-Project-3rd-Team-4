@@ -22,8 +22,8 @@
 // *"제품명 표기는 디자인 오너 대기"* 로 오래 비어 있었다. 로고가 도착해 그 대기가 닫혔다(decisions.md D15).
 // 모바일에도 같은 이유로 하나 더 둔다 — 상단 바 우측에 설정(⚙️) 하나뿐이라 **좌측이 통째로 비어
 // 있었다.** 브랜드가 그 자리를 쓰므로 밀려나는 요소가 없고, 바 높이는 `MobileSettingsLink` 의
-// `min-h-tap`(44px)이 계속 결정한다 — 24px 심볼은 그 안에 들어간다(= `CONTENT_TOP_INSET` 과
-// `Page.tsx` 의 `12rem` 계산이 그대로다).
+// `min-h-tap`(44px)이 계속 결정한다 — 22px 워드마크는 그 안에 들어간다(= `shared/ui/shell-metrics.ts`
+// 의 산술이 그대로다).
 //
 // 🚨 **브랜드를 `<Link to="/">` 로 만들지 않는다.** 로고 클릭 → 홈이 웹 관례이긴 하지만, TanStack 의
 // `Link` 는 활성일 때 `aria-current="page"` 를 붙이고 그건 props 로 못 덮는다(아래 `MobileSettingsLink`
@@ -39,7 +39,18 @@
 // 상단바로 제목을 옮기는 것(`showPageTitle = mobile`)은 화면 내용이 들어올 때 `Page` 와 함께 다룬다.
 // 쓸 곳이 확정되지 않은 것을 미리 만들지 않는다(ADR 0004).
 import { Link, Outlet } from "@tanstack/react-router";
-import { Brand, IconCalendar, IconChart, IconChat, IconHome, IconInfo, IconSettings, IconWallet } from "@/shared/ui";
+import {
+  Brand,
+  IconCalendar,
+  IconChart,
+  IconChat,
+  IconHome,
+  IconInfo,
+  IconSettings,
+  IconWallet,
+  SHELL_BOTTOM_INSET,
+  SHELL_TOP_INSET,
+} from "@/shared/ui";
 import { NavItem, type NavItemProps } from "./NavItem";
 
 /**
@@ -64,18 +75,19 @@ const SECONDARY_NAV: readonly NavItemProps[] = [
   { to: "/settings", label: "설정", icon: <IconSettings /> },
 ];
 
-// 모바일에서 탭바는 `fixed` 라 문서 흐름에서 빠진다 — 콘텐츠 하단에 그만큼 여백이 없으면
-// 마지막 요소가 탭바에 가린다. 탭 높이(min-h-tap 44px) + 상하 패딩 + safe-area 를 덮는 값이다.
-const CONTENT_BOTTOM_INSET = "pb-24 md:pb-0";
-
-// [2026-08-27] 모바일 상단 바(처음엔 로그아웃, 지금은 설정 진입점)가 생기며 위쪽도 같은
-// 이유로 예약이 필요해졌다 — 아래 `TOP_BAR_SAFE_AREA`/`MobileSettingsLink` 참고. 값은
-// `CONTENT_BOTTOM_INSET`과 동일하게 넉넉히
-// 잡는다(버튼 1개뿐이라 실제로는 덜 필요하지만, Dynamic Island 기종의 safe-area-inset-top이
-// 기종마다 꽤 벌어져 있어 정밀하게 깎기보다 안전 마진을 우선한다).
-// **`shared/ui/Page.tsx`의 `fill` 컨테이너 계산식도 이 값이 바뀌면 같이 바꿀 것** — `dvh`는
-// 이 padding-top을 모르므로 그쪽에서 따로 빼고 있다.
-const CONTENT_TOP_INSET = "pt-24 md:pt-0";
+// 두 고정바가 콘텐츠에서 예약해 가는 높이 — **값은 여기 없다.** `shared/ui/shell-metrics.ts` 가
+// 단일 출처이고 그 머리말에 산술이 있다.
+//
+// 🚨 [2026-08-29] 종전엔 이 자리에 **고정 96px** 짜리 패딩 상수 둘이 있었고, 주석이
+// *"Dynamic Island 기종의 safe-area-inset-top이 기종마다 꽤 벌어져 있어 정밀하게 깎기보다
+// 안전 마진을 우선한다"* 며 그 값을 정당화했다. **산술이 맞지 않았다** — 상단 바 실높이는
+// `0.5rem + env(top) + min-h-tap + 1px` 이라 노치 기종에서 100px, 다이내믹 아일랜드에서 112px 가
+// 되는데 예약은 늘 96px 이었다. 그래서 **노치 있는 아이폰에서만** 페이지 제목이 바 밑으로
+// 잘렸다(사용자 리포트 2026-08-29). 고정 상수로는 기종별 편차를 덮을 수 없다 — 예약분이
+// `env()` 를 그대로 품어야 한다.
+//
+// 같은 주석이 *"`shared/ui/Page.tsx`의 `fill` 컨테이너 계산식도 이 값이 바뀌면 같이 바꿀 것"*
+// 이라고 경고해 뒀는데 지켜지지 않아 세 값이 어긋나 있었다. 이제 셋 다 그 모듈에서 나온다.
 
 // safe-area 는 **2단계 세트**다 — `index.html` 의 `viewport-fit=cover` 가 없으면 `env()` 는 항상 0 이다
 // (layout.md §3.2). 임의값 안의 `_` 는 Tailwind 가 공백으로 바꾼다 — CSS `calc` 는 `+` 양옆 공백이 필수라
@@ -170,7 +182,7 @@ export function AppShell() {
         </nav>
       </div>
 
-      <div className={`min-w-0 flex-1 ${CONTENT_TOP_INSET} ${CONTENT_BOTTOM_INSET}`}>
+      <div className={`min-w-0 flex-1 ${SHELL_TOP_INSET} ${SHELL_BOTTOM_INSET}`}>
         <Outlet />
       </div>
     </div>

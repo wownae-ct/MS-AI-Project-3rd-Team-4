@@ -10,6 +10,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 // 배럴(./index.ts)이 아니라 파일을 직접 가리킨다 — 같은 폴더 안에서 배럴을 거치면 순환이 된다.
 import { Brand } from "./Brand";
+import { SHELL_FILL_HEIGHT } from "./shell-metrics";
 
 /**
  * 스킵 링크의 목적지. 루트 라우트가 이 값으로 링크를 만들고 여기가 그 대상을 렌더한다 —
@@ -24,17 +25,23 @@ const DEFAULT_WIDTH = "max-w-lg md:max-w-2xl lg:max-w-4xl";
 const CONTAINER = "mx-auto flex w-full flex-col gap-5 px-4 py-6 md:px-6 md:py-8";
 // `fill`용 컨테이너 — 화면을 뷰포트에 정확히 맞추고 `<main>` 하나만 늘어나게 한다(AI상담처럼
 // 내부 스크롤 영역 하나만 남기고 나머지는 고정 높이인 화면용, entities/chat/ui/ChatPanel.tsx).
-// 모바일에서 12rem을 빼는 이유 — `AppShell`의 하단 탭바 + 모바일 상단 로그아웃 바가 둘 다
-// `fixed`라 문서 흐름 밖에 있고, `AppShell`은 `pb-24`(=6rem, CONTENT_BOTTOM_INSET) +
-// `pt-24`(=6rem, CONTENT_TOP_INSET, 둘 다 app/ui/AppShell.tsx)로 콘텐츠가 안 가리게 막는다.
-// 그런데 그건 콘텐츠 높이가 내용만큼 자연스럽게 늘어날 때(document flow)만 작동하는 방식이고,
-// 여기서는 반대로 높이를 뷰포트 단위(dvh)로 먼저 고정한다 — `dvh`는 조상의 padding을 전혀
-// 모르므로 위아래 예약분을 여기서 다시 빼줘야 헤더가 상단 바에, 입력행이 하단 탭바에 가려지지
-// 않는다. **AppShell의 `CONTENT_BOTTOM_INSET`/`CONTENT_TOP_INSET` 값이 바뀌면 이 12rem도
-// 같이 바꿀 것.** 데스크톱은 둘 다 `md:hidden`/`md:static`으로 바뀌어 콘텐츠를 가리지 않으므로
-// 뺄 게 없다.
+//
+// 높이를 여기서 계산하지 않는다 — `SHELL_FILL_HEIGHT`(./shell-metrics)가 `AppShell`의 두 예약분과
+// **같은 산술**에서 낸다. `dvh`는 조상의 padding을 전혀 모르므로, 높이를 뷰포트 단위로 먼저
+// 고정하는 이 컨테이너는 두 고정바의 몫을 다시 빼야 헤더가 상단 바에, 입력행이 하단 탭바에
+// 가려지지 않는다.
+//
+// 🚨 [2026-08-29] 종전엔 이 자리에 뷰포트 높이에서 **고정 192px**을 빼는 리터럴이 박혀 있었고
+// 주석이 *"AppShell의 값이 바뀌면 이쪽도 같이 바꿀 것"*이라고 경고했다. **경고만으로는 지켜지지
+// 않았다** — 그쪽 예약분이 `env(safe-area-inset-*)`를 빠뜨린 고정값이라 노치 아이폰에서 실제 바
+// 높이와 어긋나 있었고, 이 리터럴은 그 어긋난 값을 다시 베껴 쓰고 있었다. 두 파일이 서로를
+// import할 수 없어서(`shared`는 `app`을 못 본다) 값이 갈렸던 것이므로, 공유 지점인 `shared`에
+// 상수를 두는 것으로 구조를 고친다.
+// ⚠️ 이 주석에 옛 유틸리티 이름을 평문으로 적지 않는다 — Tailwind 스캐너가 주석 속 클래스명도
+// 그대로 산출 CSS로 만든다(shell-metrics.ts 머리말의 같은 경고).
+
 const CONTAINER_FILL =
-  "mx-auto flex h-[calc(100dvh-12rem)] w-full flex-col gap-5 overflow-hidden px-4 py-6 md:h-dvh md:px-6 md:py-8";
+  `mx-auto flex w-full flex-col gap-5 overflow-hidden px-4 py-6 md:px-6 md:py-8 ${SHELL_FILL_HEIGHT}`;
 const MAIN = "flex flex-col gap-5";
 // `<main>`이 헤더를 뺀 나머지 전부를 갖게 한다 — `min-h-0`이 없으면 flex 아이템은 콘텐츠의
 // 내재 크기 밑으로 못 줄어들어(flex 기본 규칙) 자식(Card/메시지 목록)이 넘칠 때 `<main>`이
@@ -79,7 +86,7 @@ export interface PageProps {
    * 이미 브랜드를 담당하므로 여기서 또 내면 중복 노출이 된다 — 그래서 **기본값이 없다**(미지정이면
    * 렌더하지 않는다 → 기존 화면들의 출력이 바이트 단위로 그대로다).
    *
-   * ⚠️ `fill` 과 함께 쓰지 않는다 — `CONTAINER_FILL` 의 `12rem` 이 헤더 높이를 상수로 가정하고 있어
+   * ⚠️ `fill` 과 함께 쓰지 않는다 — `CONTAINER_FILL` 의 높이 계산이 헤더 높이를 상수로 가정하고 있어
    * 락업 높이만큼 어긋난다. 현재 `fill` 사용처는 셸 안의 AI상담뿐이라 실제 충돌은 없다.
    */
   brand?: number;

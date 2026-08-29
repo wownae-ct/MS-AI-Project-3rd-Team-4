@@ -52,7 +52,13 @@ import { deletePayment, patchPayment } from "../api/payment";
 import type { Payment, PaymentPatchInput } from "../model";
 import { PAYMENT_TYPE_BADGE_CLASS, PAYMENT_TYPE_LABEL } from "./payment-labels";
 
-const ROW_INPUT = "min-h-tap w-full rounded-md border border-line bg-surface px-2.5 text-sm text-ink";
+// [2026-08-29] `text-sm`(14px) 이었다 — **규범 위반이다.** docs/design/README.md · shared/ui/README.md ·
+// a11y.md §2.5 가 셋 다 「입력 필드 16px 미만 금지」를 못박아 뒀고, a11y.md §2.4 는 회피책까지
+// 봉쇄했다(`user-scalable=no` 는 WCAG 1.4.4 위반 — *"반드시 입력 필드 폰트를 16px 이상으로 올려
+// 해결한다"*). iOS Safari 는 16px 미만 입력에 포커스가 가면 화면을 자동 확대하고 **되돌리지
+// 않는다** — 이후 모든 화면이 확대·가로 스크롤 상태로 남는다(사용자 리포트 2026-08-29
+// "모바일 특히 아이폰에서 UI 가 망가진다"). 이 행은 `type="date"` 까지 포함해 그 대상이 셋이다.
+const ROW_INPUT = "min-h-tap w-full rounded-md border border-line bg-surface px-2.5 text-base text-ink";
 const GHOST_BUTTON = "text-xs font-bold text-ink-soft transition-colors duration-150 hover:text-primary";
 const PRIMARY_BUTTON = "min-h-tap flex-1 rounded-md bg-primary text-xs font-bold text-surface disabled:opacity-50";
 const LINE_BUTTON = "min-h-tap flex-1 rounded-md border border-line bg-surface text-xs font-bold text-ink-soft disabled:opacity-50";
@@ -226,7 +232,13 @@ export function PaymentListRow({ payment: p, categoryLabel, onChanged }: Payment
           <span className="text-xs font-bold text-primary">수정 중</span>
         </div>
         <input className={ROW_INPUT} aria-label="항목명" value={draftName} onChange={(e) => setDraftName(e.target.value)} />
-        <div className="flex gap-2">
+        {/* flex-wrap — 입력 글자가 16px 로 올라가면서(위 ROW_INPUT) 두 칸의 min-content 합이
+            좁은 폭을 넘을 수 있다. 폼 컨트롤은 `min-width: auto` 가 **내재 크기**(입력의 기본
+            size · 날짜 칸의 서식 폭)로 잡혀 그 아래로 눌리지 않으므로, 감싸 주지 않으면 카드
+            밖으로 넘쳐 가로 스크롤이 생긴다. 320px 에서 두 칸이 위아래로 갈라지는 것이 의도다.
+            날짜 칸에 `flex-1` 을 함께 주는 이유 — ROW_INPUT 의 `w-full` 만으로는 flex 기준 크기가
+            100% 로 잡혀 폭이 남아도 **항상** 다음 줄로 내려간다. `flex-1`(basis 0)이 그것을 막는다. */}
+        <div className="flex flex-wrap gap-2">
           <NumberInput
             wrapClassName="flex-1"
             className={`${ROW_INPUT} [font-variant-numeric:tabular-nums]`}
@@ -237,7 +249,7 @@ export function PaymentListRow({ payment: p, categoryLabel, onChanged }: Payment
             onValueChange={setDraftAmount}
           />
           <input
-            className={`${ROW_INPUT} [font-variant-numeric:tabular-nums]`}
+            className={`${ROW_INPUT} flex-1 [font-variant-numeric:tabular-nums]`}
             type="date"
             aria-label={dateLabel}
             value={draftDate}

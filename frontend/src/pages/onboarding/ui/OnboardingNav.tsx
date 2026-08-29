@@ -38,8 +38,13 @@ export function OnboardingNav({
   onSubmit,
 }: OnboardingNavProps) {
   return (
-    <div className="flex items-center justify-between gap-3">
-      <div className="flex items-center gap-3">
+    // flex-wrap — 세 버튼의 폭 합(이전 68 + 나중에 설정 95 + 다음 60 + 간격 24 ≈ 247px)이
+    // 320px 기기의 카드 안쪽 폭(256px)에 여유 9px 로 겨우 들어간다. 폰트가 폴백(iOS 의 Apple SD
+    // Gothic Neo)으로 먼저 그려지는 순간 그 9px 이 사라진다. 종전엔 그때 버튼 글자가 세로로
+    // 접혔고(D19 §결함 ①), 이제는 줄을 바꿔 받는다. `justify-between` 은 한 줄에 다 들어갈 때의
+    // 배치라 그대로 둔다.
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         {step > 1 && (
           <Button variant="ghost" onClick={onBack}>
             <span aria-hidden="true">←</span> 이전

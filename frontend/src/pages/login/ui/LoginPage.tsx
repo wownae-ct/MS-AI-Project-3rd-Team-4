@@ -178,11 +178,20 @@ export function LoginPage() {
 
       <Card>
         <form className="flex flex-col gap-4" onSubmit={handleSubmit} noValidate>
+          {/* 🚨 [2026-08-29] 세 입력에 `text-base` 를 **명시**한다. 종전엔 글자 크기 클래스가 아예
+              없어 16px 일 것 같지만 실제로는 **14px 이었다** — Tailwind Preflight 가 폼 컨트롤에
+              `font: inherit` 을 걸어(node_modules/tailwindcss/preflight.css, 산출 CSS 로 확인)
+              바깥 `<label className="… text-sm">` 을 상속했기 때문이다. 클래스를 안 준 것이 곧
+              기본값을 쓰는 것이 아니다.
+              그래서 이 화면은 「입력 필드 16px 미만 금지」(a11y.md §2.5)를 **조용히** 어기고
+              있었고, iOS Safari 가 첫 입력 탭에서 화면을 자동 확대한 뒤 되돌리지 않아 앱 전체가
+              망가진 것처럼 보였다(사용자 리포트 2026-08-29). 앱의 첫 화면이라 영향이 가장 컸다.
+              라벨 글자(`text-sm`)는 그대로 둔다 — 규범이 요구하는 것은 **입력 필드**의 크기다. */}
           {mode === "signup" && (
             <label className="flex flex-col gap-1 text-sm">
               닉네임
               <input
-                className="min-h-tap rounded-md border border-line px-3"
+                className="min-h-tap rounded-md border border-line px-3 text-base"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 autoComplete="name"
@@ -194,7 +203,7 @@ export function LoginPage() {
           <label className="flex flex-col gap-1 text-sm">
             이메일
             <input
-              className="min-h-tap rounded-md border border-line px-3"
+              className="min-h-tap rounded-md border border-line px-3 text-base"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -208,7 +217,7 @@ export function LoginPage() {
               비밀번호
               <input
                 ref={passwordRef}
-                className="min-h-tap rounded-md border border-line px-3"
+                className="min-h-tap rounded-md border border-line px-3 text-base"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

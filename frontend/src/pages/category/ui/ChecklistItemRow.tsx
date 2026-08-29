@@ -47,7 +47,9 @@ export function ChecklistItemRow({ item, categoryCode, onStatusChange }: Checkli
         <p className="min-w-0 text-sm font-bold text-ink">{item.title}</p>
         {item.origin === "USER" && <Badge>내가 추가</Badge>}
       </div>
-      <p className="break-words text-xs text-ink-soft">{item.body}</p>
+      {/* `break-words` 손패치를 뺐다 — D19 가 조판 규칙(`keep-all` + `break-word`)을 `styles.css`
+          의 `body` 로 올려 문서 전체가 상속한다. 호출부에서 다시 걸 이유가 없다. */}
+      <p className="text-xs text-ink-soft">{item.body}</p>
       {hasSource && (
         <SourceList
           items={[
@@ -58,7 +60,10 @@ export function ChecklistItemRow({ item, categoryCode, onStatusChange }: Checkli
           // 기본 문구가 그대로 맞아 따로 넘기지 않는다.
         />
       )}
-      <div className="mt-1 flex items-center gap-2">
+      {/* flex-wrap — 「신고」를 누르면 `ReportButton` 이 **인라인 폼 전체**(select + input + 버튼 2개)
+          로 펼쳐져 이 행의 형제 flex 아이템이 된다. 상태 select 와 나란히 두면 좁은 폭에서 넘치므로
+          폼이 자기 줄을 쓰게 한다(그 컴포넌트가 `w-full` 을 갖는다). */}
+      <div className="mt-1 flex flex-wrap items-center gap-2">
         <select
           value={item.status}
           aria-label={`${item.title} 상태`}

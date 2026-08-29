@@ -35,7 +35,11 @@ export interface CostManagementTabProps {
 const PAGE_SIZE = 5;
 const PAGE_BUTTON =
   "text-xs font-bold text-ink-soft transition-colors duration-150 enabled:hover:text-primary disabled:cursor-not-allowed disabled:opacity-50";
-const FILTER_SELECT = "min-h-tap rounded-md border border-line bg-surface px-2 text-xs text-ink";
+// [2026-08-29] `text-xs`(12px) 였다 — 「입력 필드 16px 미만 금지」 규범 위반(a11y.md §2.5).
+// iOS Safari 가 16px 미만 폼 컨트롤에 포커스 시 화면을 자동 확대하고 되돌리지 않는다.
+// 이 select 는 `Card` 의 `titleAction` 슬롯에 들어가고 그 행이 이미 `flex-wrap` 이라(Card.tsx
+// TITLE_ACTION_ROW) 글자가 커져도 제목을 밀어내지 않는다 — 좁으면 다음 줄로 내려간다.
+const FILTER_SELECT = "min-h-tap rounded-md border border-line bg-surface px-2 text-base text-ink";
 const ALL_CATEGORIES = "";
 
 export function CostManagementTab({ categoryLabelByCode, categoryOptions, onPaymentsChanged }: CostManagementTabProps) {

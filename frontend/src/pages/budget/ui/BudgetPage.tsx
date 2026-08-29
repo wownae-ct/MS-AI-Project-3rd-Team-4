@@ -336,7 +336,10 @@ export function BudgetPage() {
             여백은 그 컴포넌트 자신의 mt-4 가 낸다. */}
         <div className="flex flex-col">
           {isEditingScenario ? (
-            <div className="flex items-center gap-3">
+            // flex-wrap + basis-full — `saveErrorMessage` 는 서버 문구를 그대로 싣는다(예:
+            // "배정 합계가 예산을 3,000,000원 초과합니다."). 감싸 주지 않으면 좁은 폭에서 두
+            // 버튼을 밀어낸다. WeddingDateEdit.tsx 의 같은 형태를 따른다.
+            <div className="flex flex-wrap items-center gap-3">
               {/* 저장 진행 중엔 뒤로가기를 막는다 — 안 막으면 이미 시작된 저장 요청이 취소된 뒤에도
                   진행돼, 성공 시 취소했던 배분 결과가 그대로 되살아난다(레드팀 감사 HIGH).
                   초과 상태에서도 뒤로는 막지 않는다 — 초안을 버리는 것이라 안전하고, 배분을 더
@@ -359,7 +362,7 @@ export function BudgetPage() {
               </button>
               {/* D6 — 상태색 없이 텍스트만으로 저장 결과를 전달한다. */}
               {saveState === "error" && (
-                <span role="alert" className="text-sm text-primary">
+                <span role="alert" className="basis-full text-sm text-primary">
                   {saveErrorMessage}
                 </span>
               )}

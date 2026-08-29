@@ -42,7 +42,11 @@ export function CategoryRow({ category, hasBenchmark, benchmark }: CategoryRowPr
     >
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-1.5">
-          <span className="text-sm font-bold whitespace-nowrap text-ink">{name}</span>
+          {/* [2026-08-29] `whitespace-nowrap` 단독이었다 — 이름이 길면 줄바꿈도 말줄임도 없이
+              **컨테이너 밖으로 삐져나갔다**(부모 `min-w-0` 이 폭을 내주는 만큼 그대로 넘친다).
+              `truncate` 는 같은 nowrap 에 `overflow-hidden` + 말줄임을 더한 것이라 형태는 그대로
+              두고 넘침만 받는다. 옆 `Badge` 는 `shrink-0`(D16)이라 이 칸이 압력을 받는 쪽이다. */}
+          <span className="truncate text-sm font-bold text-ink">{name}</span>
           {focus && <Badge>FOCUS</Badge>}
         </div>
         <span aria-hidden="true" className="text-ink-soft">
