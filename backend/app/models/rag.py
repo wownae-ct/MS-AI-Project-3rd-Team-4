@@ -52,7 +52,7 @@ class RagDocument(Base):
     published_at: Mapped[datetime | None] = mapped_column(Date)
     license_note: Mapped[str | None] = mapped_column(Text)
     category_codes: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
 class RagChunk(Base):
@@ -82,3 +82,26 @@ class RagChunk(Base):
     tsv: Mapped[str] = mapped_column(
         TSVECTOR, Computed("to_tsvector('simple', content)", persisted=True)
     )
+
+
+class RagIndexState(Base):
+    """rag-reindex CronJob(매일 03시)의 스킵 가드용 단일 행 상태 테이블. 마지막으로 실제
+    반영된 코퍼스의 해시(app/rag/corpus.py::compute_corpus_hash)를 저장해두고, 다음 실행이
+    시작할 때 지금 코퍼스 해시와 비교한다 — 코퍼스 JSON이 그날 안 바뀌었으면 임베딩 API
+    호출과 rag_documents/rag_chunks 전체 재구성을 건너뛴다(app/rag/indexing.py::reindex).
+    스케줄(매일 03시) 자체는 그대로 두고, "할 일이 없는데도 돌리는 실행"만 없앤다.
+
+    id를 1로 고정하는 CHECK로 항상 한 행만 존재하게 강제한다 — 하루 한 번, 몇 분 안에 끝나는
+    배치라 두 실행이 실제로 겹칠 가능성은 거의 없고(concurrencyPolicy는 K8s 기본값인 Allow라
+    이론적으로는 겹칠 수 있음), 설령 겹쳐도 이 테이블은 매 실행이 자기 결과로 덮어쓰는
+    단일행이라 최악의 경우 마지막으로 커밋된 실행의 값만 남는다(레이스가 나도 스킵 여부
+    판단이 다음 실행에서 또 재확인되므로 데이터 정합성엔 영향 없음)."""
+
+    __tablename__ = "rag_index_state"
+    __table_args__ = (CheckConstraint("id = 1", name="ck_rag_index_state_singleton"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    corpus_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    document_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    chunk_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    indexed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
