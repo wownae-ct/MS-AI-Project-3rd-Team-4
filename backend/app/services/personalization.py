@@ -12,6 +12,12 @@ protected_clause), 새로 만든 행이 살아남은 보호 행과 겹치면 삽
 (_drop_rows_colliding_with_protected). 두 축이 각각 별개의 중복 발생 경로였다 — 자세한 근거는
 두 함수의 docstring 참고.
 
+**2026-08-29 체크리스트 재생성이 안 되는 버그 수정(2차)** — 위 1차 수정은 타임라인만 좁히고
+체크리스트는 예전 기준(user_edited_at 단독)을 그대로 뒀는데, 같은 결함이 체크리스트에서는
+"중복이 쌓인다"가 아니라 "재생성해도 아무것도 안 바뀐다"로 나타났다(사용자 리포트). 이제
+체크리스트도 _checklist_protected_clause()로 보호 대상을 좁힌다 — 자세한 근거는 그 함수의
+docstring 참고.
+
 이 모듈이 커밋하지 않는다 — 호출자(app/services/wedding.py)의 더 큰 트랜잭션 일부로 flush만
 하고, 최종 commit은 호출자가 한다(온보딩 시 wedding_categories 등 다른 행들과 원자적으로 함께
 커밋되어야 하므로)."""
@@ -32,7 +38,12 @@ from app.models import AiInvocation, ChecklistItem, TimelineItem, Wedding, Weddi
 from app.personalization.graph import build_graph
 from app.personalization.state import PersonalizationState
 from app.personalization.validation import title_key
-from app.services.checklist import default_status_for_category
+from app.services.checklist import (
+    GENERAL_DEFAULT_STATUS,
+    HOMEWARE_CATEGORY_CODE,
+    HOMEWARE_DEFAULT_STATUS,
+    default_status_for_category,
+)
 from app.services.timeline import (
     compute_prep_scale_factor,
     generate_timeline_items,
@@ -42,6 +53,47 @@ from app.services.timeline import (
 logger = logging.getLogger(__name__)
 
 _GRAPH = build_graph()
+
+
+def _checklist_protected_clause() -> ColumnElement[bool]:
+    """체크리스트 재생성에서 살아남는 행의 조건 — **2026-08-29 사용자 결정(2차)**: "진행 흔적을
+    남겼거나(status가 기본값이 아님) 메모를 썼거나 직접 추가한 항목만 남기고 나머지는 초기화".
+
+    예전 기준은 `user_edited_at IS NOT NULL` 단독이었다. 그런데 app/services/checklist.py::
+    update_checklist_item은 PATCH가 오면 내용과 무관하게(상태를 다시 TODO로 되돌리는 경우까지
+    포함) user_edited_at을 찍고, 프론트 체크리스트 탭은 상태 드롭다운을 건드리기만 해도 PATCH를
+    보낸다 — 그래서 한 번이라도 만진 행은 지금 그냥 TODO여도 영구히 보호됐다. 보호된 행은
+    (1) 삭제 대상에서 빠지고 (2) protected_items로 프롬프트에 "이 제목은 다시 만들지 말 것"으로
+    들어가고 (3) _drop_rows_colliding_with_protected가 같은 제목의 새 행을 버리므로, 체크리스트를
+    쓰면 쓸수록 재생성이 할 일이 없어졌다 — 사용자 눈에는 "다시 생성을 눌러도 아무것도 안
+    바뀐다"로 보인다(사용자 리포트). 타임라인에서 같은 결함이 "중복이 쌓인다"로 나타났던 것과
+    같은 축이다(_timeline_protected_clause).
+
+    타임라인의 status='DONE'/date_overridden에 해당하는 "실제로 지켜야 할 상태"가 체크리스트에선
+    다음 셋이다:
+    - status가 기본값(TODO, HOMEWARE는 LISTED)이 아님 — DOING/SKIP/DONE 등 진행 흔적.
+      HOMEWARE만 상태값 체계가 달라(04_DB_schema.sql CHECK) 기본값도 다르므로 분기한다.
+    - memo가 있음 — 체크리스트에만 있는 편집 축이라 타임라인 조건에는 대응물이 없다.
+      빈 문자열은 "메모 없음"과 같이 본다(memo를 지운 PATCH가 ""로 올 수 있음).
+    - origin='USER' — 사용자가 직접 추가한 항목은 애초에 AI 생성물이 아니라 "재생성" 대상이
+      아닌데, user_edited_at이 NULL이라 예전엔 재생성 때마다 조용히 지워졌다(타임라인은 1차
+      수정에서 고쳤으나 체크리스트는 그대로 남아 있던 결함).
+
+    NULL 삼치 논리 주의: nullable은 memo뿐인데 `memo IS NOT NULL AND memo <> ''`은 memo가
+    NULL이면 FALSE AND NULL = FALSE라 절 전체가 NULL이 되지 않는다 — `not_()`로 뒤집어도
+    안전하다(_timeline_protected_clause와 같은 이유)."""
+    return or_(
+        ChecklistItem.origin == "USER",
+        and_(ChecklistItem.memo.is_not(None), ChecklistItem.memo != ""),
+        and_(
+            ChecklistItem.category_code == HOMEWARE_CATEGORY_CODE,
+            ChecklistItem.status != HOMEWARE_DEFAULT_STATUS,
+        ),
+        and_(
+            ChecklistItem.category_code != HOMEWARE_CATEGORY_CODE,
+            ChecklistItem.status != GENERAL_DEFAULT_STATUS,
+        ),
+    )
 
 
 def _timeline_protected_clause() -> ColumnElement[bool]:
@@ -58,8 +110,9 @@ def _timeline_protected_clause() -> ColumnElement[bool]:
     origin='USER'(사용자가 직접 추가한 항목)도 함께 보호한다: 애초에 AI 생성물이 아니라
     "재생성" 대상이 아닌데, user_edited_at이 NULL이라 예전엔 재생성 때마다 조용히 지워졌다.
 
-    체크리스트는 이 규칙의 대상이 아니다 — 날짜 개념이 없고 memo 등 다른 편집 축이 있어
-    기존 `user_edited_at IS NOT NULL` 기준을 그대로 둔다.
+    체크리스트는 날짜 개념이 없고 memo 등 다른 편집 축이 있어 조건식 자체는 공유하지 않는다 —
+    같은 취지를 도메인 어휘로 옮긴 것이 _checklist_protected_clause()다(2026-08-29 2차 수정,
+    처음엔 체크리스트만 예전 기준으로 남겨뒀다가 같은 결함이 "재생성이 안 된다"로 재현됐다).
 
     NULL 삼치 논리 주의: user_edited_at만 nullable인데 `is_not(None)`은 항상 true/false라
     이 절 전체가 NULL이 되지 않는다 — `not_()`로 뒤집어도 안전하다."""
@@ -73,12 +126,11 @@ def _timeline_protected_clause() -> ColumnElement[bool]:
 
 
 async def _fetch_protected_items(session: AsyncSession, wedding_id: UUID) -> dict[str, list[dict]]:
-    """설계 문서 §1-1: protected_items = 재생성 후에도 DB에 그대로 남는 행. 체크리스트는
-    user_edited_at이 있는(=사용자가 PATCH로 한 번이라도 건드린) 행, 타임라인은
-    _timeline_protected_clause() 기준이다 — 이 조회 조건은 _delete_unprotected_items의
-    "지우지 않는 행"과 반드시 같아야 한다(어긋나면 곧 지워질 행의 제목을 LLM에게 "만들지
-    마세요"라고 알려주게 되어 그 항목이 통째로 사라진다). ONBOARDING_INITIAL은 아직 행 자체가
-    없어 항상 빈 리스트를 반환한다.
+    """설계 문서 §1-1: protected_items = 재생성 후에도 DB에 그대로 남는 행. 도메인별 기준은
+    각각 _checklist_protected_clause()/_timeline_protected_clause()다 — 이 조회 조건은
+    _delete_unprotected_items의 "지우지 않는 행"과 반드시 같아야 한다(어긋나면 곧 지워질 행의
+    제목을 LLM에게 "만들지 마세요"라고 알려주게 되어 그 항목이 통째로 사라진다).
+    ONBOARDING_INITIAL은 아직 행 자체가 없어 항상 빈 리스트를 반환한다.
 
     id뿐 아니라 category_code/title도 같이 담는다(2026-08-26 레드팀 감사 3라운드 MEDIUM #7 —
     이전엔 id만 넘겨서 "이 UUID는 다시 만들지 마라"는 프롬프트 지시를 LLM이 지킬 방법이 아예
@@ -89,7 +141,7 @@ async def _fetch_protected_items(session: AsyncSession, wedding_id: UUID) -> dic
         await session.execute(
             select(ChecklistItem.id, ChecklistItem.category_code, ChecklistItem.title).where(
                 ChecklistItem.wedding_id == wedding_id,
-                ChecklistItem.user_edited_at.is_not(None),
+                _checklist_protected_clause(),
             )
         )
     ).all()
@@ -139,15 +191,15 @@ async def _delete_unprotected_items(
     session: AsyncSession, wedding_id: UUID, affected_domains: list[str]
 ) -> None:
     """재생성 대상 도메인(affected_domains)의 기존 행 중 protected가 아닌 행만 지운다 —
-    재생성이 사용자가 직접 수정한 항목을 덮어쓰지 않게 하는 축. 보호 기준은 도메인별로 다르다:
-    체크리스트는 user_edited_at 존재 여부, 타임라인은 _timeline_protected_clause()(완료 체크·
-    날짜 변경·사용자 추가 항목만 남기고 나머지는 초기화, 2026-08-29 결정).
-    ONBOARDING_INITIAL은 애초에 기존 행이 없어 no-op이다."""
+    재생성이 사용자가 직접 수정한 항목을 덮어쓰지 않게 하는 축. 보호 기준은 도메인별로 다르다
+    (2026-08-29 결정): 체크리스트는 _checklist_protected_clause()(진행 흔적·메모·사용자 추가),
+    타임라인은 _timeline_protected_clause()(완료 체크·날짜 변경·사용자 추가). 두 도메인 모두
+    그 외의 행은 재생성으로 초기화된다. ONBOARDING_INITIAL은 애초에 기존 행이 없어 no-op이다."""
     if "CHECKLIST" in affected_domains:
         await session.execute(
             delete(ChecklistItem).where(
                 ChecklistItem.wedding_id == wedding_id,
-                ChecklistItem.user_edited_at.is_(None),
+                not_(_checklist_protected_clause()),
             )
         )
     if "TIMELINE" in affected_domains:
@@ -190,9 +242,18 @@ def _timeline_status(
     return "DONE" if category_code in done_categories and target_date < today else "TODO"
 
 
-def _checklist_row_from_draft(active_categories: set[str], item: dict) -> ChecklistItem | None:
-    """generate 노드의 LLM 출력(SUCCESS 경로) 1건 → ChecklistItem. group_label/status는 LLM
-    출력 스키마에 아예 없는 필드라(app/personalization/prompts.py) 여기서 결정론적으로 채운다."""
+def _checklist_row_from_draft(
+    active_categories: set[str], display_order: int, item: dict
+) -> ChecklistItem | None:
+    """generate 노드의 LLM 출력(SUCCESS 경로) 1건 → ChecklistItem. group_label/status/
+    display_order는 LLM 출력 스키마에 아예 없는 필드라(app/personalization/prompts.py) 여기서
+    결정론적으로 채운다.
+
+    2026-08-29 — display_order는 예전엔 아예 안 채워 SUCCESS 경로 행이 전부 NULL이었다. 조회는
+    app/services/checklist.py::list_checklist_items가 `ORDER BY display_order`로 하는데,
+    Postgres는 ASC에서 NULL을 마지막에 몰아넣고 그 안의 순서는 보장하지 않는다 — 살아남은 보호
+    행·폴백 카탈로그 행(둘 다 값이 있음)과 섞이면 재생성 결과의 순서가 요청마다 달라졌다.
+    _timeline_row_from_draft가 이미 쓰던 것과 같은 방식으로 LLM이 낸 순서를 그대로 보존한다."""
     category_code = item.get("category_code")
     if category_code not in active_categories:
         return None
@@ -217,6 +278,7 @@ def _checklist_row_from_draft(active_categories: set[str], item: dict) -> Checkl
         source_tier=item.get("source_tier"),
         source_label=item.get("source_label"),
         source_url=item.get("source_url"),
+        display_order=display_order,
     )
 
 
@@ -406,11 +468,13 @@ async def run_personalization(
             # CHECKLIST만 실패해도 이미 통과한 TIMELINE까지 폴백 카탈로그로 버려졌다).
             if "CHECKLIST" in affected_domains:
                 if domain_statuses.get("CHECKLIST") == "SUCCESS":
+                    # display_order는 비활성 카테고리 항목을 걸러내기 전의 인덱스라 중간에 번호가
+                    # 빌 수 있다 — ORDER BY에만 쓰는 값이라 연속일 필요가 없다(타임라인과 동일).
                     checklist_rows = [
                         row
                         for row in (
-                            _checklist_row_from_draft(active_categories, item)
-                            for item in result["checklist_draft"] or []
+                            _checklist_row_from_draft(active_categories, idx, item)
+                            for idx, item in enumerate(result["checklist_draft"] or [], start=1)
                         )
                         if row is not None
                     ]
@@ -495,8 +559,9 @@ async def run_personalization(
         )
 
     # affected_domains에 든 도메인은 SUCCESS/BLOCKED/FAILED 경로 어느 쪽이든 이미 새 내용으로
-    # 대체하기로 결정된 상태다 — protected(user_edited_at 있음) 행만 남기고 나머지 기존 행을
-    # 지운 뒤 아래에서 새 행을 꽂는다. ONBOARDING_INITIAL은 기존 행 자체가 없어 no-op.
+    # 대체하기로 결정된 상태다 — protected(도메인별 보호 조건, 위 두 _*_protected_clause 참고)
+    # 행만 남기고 나머지 기존 행을 지운 뒤 아래에서 새 행을 꽂는다. ONBOARDING_INITIAL은 기존
+    # 행 자체가 없어 no-op.
     #
     # 2026-08-26 레드팀 감사 4라운드 항목 13 — 이 구간(삭제→ai_invocations insert→flush→행
     # insert)이 위 try/except 밖이라, 여기서 실패하면 무로깅으로 호출자까지 그대로 전파됐다
