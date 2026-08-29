@@ -19,7 +19,8 @@
 import { useState } from "react";
 import { ChatPanel } from "@/entities/chat";
 import { ReportButton } from "@/entities/feedback";
-import { Page } from "@/shared/ui";
+import { Button, Page } from "@/shared/ui";
+import { ChatHistoryDrawer } from "./ChatHistoryDrawer";
 
 // 하단 탭 전환은 이 컴포넌트를 언마운트한다 — sessionId 를 로컬 state에만 두면 전송 중 다른
 // 탭으로 갔다 돌아왔을 때 sessionId=null 로 재마운트돼 이미 서버에 존재하는 세션이 영구히
@@ -36,17 +37,43 @@ function readStoredSessionId(): string | null {
   }
 }
 
+// 프라이빗 모드 등 sessionStorage 를 못 쓰는 환경에서도 채팅 자체는 계속 동작해야 한다 —
+// 이 경우 재마운트 시 복구만 안 될 뿐 새 세션으로 계속 대화할 수 있다.
+function storeSessionId(id: string | null): void {
+  try {
+    if (id === null) sessionStorage.removeItem(CHAT_SESSION_STORAGE_KEY);
+    else sessionStorage.setItem(CHAT_SESSION_STORAGE_KEY, id);
+  } catch {
+    // 위 머리말 참고 — 저장 실패는 대화를 막지 않는다.
+  }
+}
+
 export function ChatPage() {
   const [sessionId, setSessionId] = useState<string | null>(readStoredSessionId);
+  // 지난 대화 목록(레드팀 감사 #17) — 열림 상태만 여기 있고 조회는 드로어가 스스로 한다.
+  const [historyOpen, setHistoryOpen] = useState(false);
 
+  // 진입 시 어떤 대화를 열지는 **바꾸지 않았다** — sessionStorage 에 값이 있으면 그 대화,
+  // 없으면 새 대화. 목록은 순수하게 더해지는 기능이라 기존 동작에 회귀가 없다. 서버의 최신
+  // 세션을 자동으로 여는 안은 택하지 않았다("새 질문을 하려고 들어왔는데 옛 대화가 열려
+  // 있다"는 반대 불편이 생긴다).
   function handleSessionCreated(id: string) {
     setSessionId(id);
-    try {
-      sessionStorage.setItem(CHAT_SESSION_STORAGE_KEY, id);
-    } catch {
-      // 프라이빗 모드 등 sessionStorage 를 못 쓰는 환경에서도 채팅 자체는 계속 동작해야 한다 —
-      // 이 경우 재마운트 시 복구만 안 될 뿐 새 세션으로 계속 대화할 수 있다.
-    }
+    storeSessionId(id);
+  }
+
+  function openSession(id: string) {
+    setSessionId(id);
+    storeSessionId(id);
+    setHistoryOpen(false);
+  }
+
+  function startNewSession() {
+    // `null` 로 두면 `ChatPanel` 이 다음 첫 메시지 전송 때 새 세션을 만든다 — 탭만 열어 보고
+    // 나가는 방문마다 빈 세션이 쌓이지 않게 하는 기존 규칙 그대로다.
+    setSessionId(null);
+    storeSessionId(null);
+    setHistoryOpen(false);
   }
 
   return (
@@ -63,11 +90,25 @@ export function ChatPage() {
       subtitle="결혼 준비 중 궁금한 점을 자유롭게 물어보세요."
       width="max-w-lg md:max-w-3xl lg:max-w-4xl"
       fill
+      // `fill` 은 헤더 높이를 뺀 나머지를 대화창에 준다 — 트리거가 헤더를 두 줄로 만들면 그만큼
+      // 대화창이 줄어든다. 한 줄에 들어가는 크기(공용 Button 기본값)로 둔다.
+      actions={
+        <Button variant="secondary" onClick={() => setHistoryOpen(true)}>
+          지난 대화
+        </Button>
+      }
     >
       <ChatPanel
         sessionId={sessionId}
         onSessionCreated={handleSessionCreated}
         renderReportAction={(messageId) => <ReportButton targetType="CHAT_MESSAGE" targetId={messageId} />}
+      />
+      <ChatHistoryDrawer
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        currentSessionId={sessionId}
+        onSelect={openSession}
+        onNewSession={startNewSession}
       />
     </Page>
   );

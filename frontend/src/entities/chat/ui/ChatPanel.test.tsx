@@ -148,3 +148,87 @@ describe("CRAG 재시도 — 1차 답변 표시", () => {
     expect(screen.queryByText(/1차 답변입니다\./u)).not.toBeInTheDocument();
   });
 });
+
+// 회귀 테스트 — 레드팀 감사 #17(지난 대화 목록)이 처음으로 깨는 전제: "세션은 한 번 정해지면
+// 바뀌지 않는다".
+//
+// 목록이 생기기 전까지 이 컴포넌트의 `sessionId` prop 은 null→실제값으로 딱 한 번만 움직였다.
+// 이제는 사용자가 대화를 자유롭게 갈아탄다 — 아래 네 테스트가 그때 화면이 이전 대화를 물고
+// 있지 않다는 계약을 고정한다. 네 가지 전부 수정 전에는 실패하던 경로다.
+describe("세션 전환 — 화면 정합성", () => {
+  const A_MESSAGE = { id: "a1", role: "user" as const, content: "A 세션의 질문", created_at: "" };
+  const B_MESSAGE = { id: "b1", role: "user" as const, content: "B 세션의 질문", created_at: "" };
+
+  it("다른 세션으로 갈아타면 이전 대화가 즉시 사라지고 새 대화만 남는다", async () => {
+    getChatMessagesMock.mockImplementation((id: string) =>
+      Promise.resolve({ messages: id === "A" ? [A_MESSAGE] : [B_MESSAGE] }),
+    );
+
+    const { rerender } = render(<ChatPanel sessionId="A" onSessionCreated={() => {}} />);
+    expect(await screen.findByText("A 세션의 질문")).toBeInTheDocument();
+
+    rerender(<ChatPanel sessionId="B" onSessionCreated={() => {}} />);
+
+    // `await` 없이 곧바로 확인한다 — B 히스토리가 **도착하기 전에** 이미 비워져 있어야 한다.
+    // 이 자리가 바로 "B 대화인 척 A 대화가 보이던" 구간이다.
+    expect(screen.queryByText("A 세션의 질문")).not.toBeInTheDocument();
+    expect(await screen.findByText("B 세션의 질문")).toBeInTheDocument();
+  });
+
+  it("새 세션의 히스토리 조회가 실패해도 이전 대화가 남지 않는다", async () => {
+    getChatMessagesMock.mockImplementation((id: string) =>
+      id === "A" ? Promise.resolve({ messages: [A_MESSAGE] }) : Promise.reject(new Error("boom")),
+    );
+
+    const { rerender } = render(<ChatPanel sessionId="A" onSessionCreated={() => {}} />);
+    expect(await screen.findByText("A 세션의 질문")).toBeInTheDocument();
+
+    rerender(<ChatPanel sessionId="B" onSessionCreated={() => {}} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // 조회 실패는 조용히 넘어가는 경로다(새 대화를 막지 않는다) — 그래서 예전에는 A 대화가
+    // B 화면에 **영구히** 남았다.
+    expect(screen.queryByText("A 세션의 질문")).not.toBeInTheDocument();
+    expect(screen.getByText("무엇이 궁금하세요?")).toBeInTheDocument();
+  });
+
+  it("새 대화(sessionId=null)로 돌아가면 화면이 비고 첫 인사가 다시 보인다", async () => {
+    getChatMessagesMock.mockResolvedValue({ messages: [A_MESSAGE] });
+
+    const { rerender } = render(<ChatPanel sessionId="A" onSessionCreated={() => {}} />);
+    expect(await screen.findByText("A 세션의 질문")).toBeInTheDocument();
+
+    // 예전에는 effect 첫 줄의 `if (!sessionId) return`에 걸려 아예 돌지 않았다 — "새 대화"를
+    // 눌렀는데 옛 대화가 그대로 보였다.
+    rerender(<ChatPanel sessionId={null} onSessionCreated={() => {}} />);
+
+    expect(screen.queryByText("A 세션의 질문")).not.toBeInTheDocument();
+    expect(screen.getByText("무엇이 궁금하세요?")).toBeInTheDocument();
+  });
+
+  it("답변 스트리밍 중에 갈아타면 스트림이 끊기고 입력창이 다시 열린다", async () => {
+    const user = userEvent.setup();
+    getChatMessagesMock.mockResolvedValue({ messages: [] });
+    let capturedSignal: AbortSignal | undefined;
+    // 끝나지 않는 스트림 — 실제로 답변을 받는 도중에 전환하는 상황이다.
+    sendChatMessageMock.mockImplementation((_s: string, _c: string, _h: unknown, signal?: AbortSignal) => {
+      capturedSignal = signal;
+      return new Promise(() => {});
+    });
+
+    const { rerender } = render(<ChatPanel sessionId="A" onSessionCreated={() => {}} />);
+    const input = screen.getByPlaceholderText("메시지를 입력하세요");
+    await user.type(input, "예식장 어디가 좋아요?");
+    await user.click(screen.getByRole("button", { name: "보내기" }));
+    expect(input).toBeDisabled();
+
+    rerender(<ChatPanel sessionId="B" onSessionCreated={() => {}} />);
+
+    expect(capturedSignal?.aborted).toBe(true);
+    // ⚠️ abort 되면 sendChatMessage 는 **조용히 return** 해서 onDone/onError 가 영영 오지
+    // 않는다 — 전환 시 sending 을 직접 풀지 않으면 입력창이 영구히 잠긴다.
+    expect(screen.getByPlaceholderText("메시지를 입력하세요")).not.toBeDisabled();
+  });
+});

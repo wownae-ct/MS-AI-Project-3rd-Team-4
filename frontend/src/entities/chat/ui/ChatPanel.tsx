@@ -97,19 +97,50 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
   // 안 그러면 나중에 보낸 성공 결과를 먼저 보낸 요청의 실패 롤백이 덮어쓸 수 있다).
   const ratingSeqRef = useRef<Map<string, number>>(new Map());
 
+  // 세션 전환 → 화면 정합성. **이 컴포넌트는 원래 "세션은 한 번 정해지면 안 바뀐다"는 전제로
+  // 쓰여 있었다** — 호출자가 하나뿐(ChatPage)이고 그쪽도 sessionStorage에 담긴 세션 하나만
+  // 들고 있었기 때문이다. 지난 대화 목록(레드팀 #17, 2026-08-29)이 그 전제를 처음으로 깬다.
+  // 아래 리셋이 없으면 목록에서 대화를 갈아탈 때 네 가지가 한꺼번에 어긋난다:
+  //   ① A→B 전환 중 B 히스토리가 도착하기 전까지 A 대화가 B의 내용인 척 보이고, 그 조회가
+  //      실패하면(아래 catch가 아무것도 안 한다) A 대화가 B 화면에 **영구히** 남는다.
+  //   ② A→null("새 대화")은 옛 `if (!sessionId) return`에 걸려 아예 돌지 않았다 — 새 대화를
+  //      눌렀는데 옛 대화가 그대로 보인다.
+  //   ③ 진행 중이던 SSE 스트림이 안 끊겨 **다른 세션 화면에 토큰이 흘러든다.**
+  //   ④ draft·error·stage·retrying·평가 일련번호도 전부 세션에 종속된 상태다.
   useEffect(() => {
-    if (!sessionId) return;
+    // ⚠️ 이 조기 반환은 반드시 아래 리셋보다 **위**에 있어야 한다. 이 경로는 "방금 이
+    // 컴포넌트가 첫 메시지를 보내며 스스로 만든 세션"이라, 낙관적 user 말풍선과 진행 중인
+    // 스트림이 그대로 살아 있어야 한다 — 여기서 리셋하면 2026-08-26에 이미 한 번 고쳤던
+    // "유저의 질문이 사라져" 버그가 그대로 재발한다.
     if (skipNextHistoryFetchRef.current) {
       skipNextHistoryFetchRef.current = false;
       return;
     }
+
+    abortControllerRef.current?.abort();
+    // ⚠️ abort 되면 `sendChatMessage`는 **조용히 return** 한다(그 함수의 catch가 그렇게
+    // 설계돼 있다 — 언마운트용 계약). 그래서 handleSend의 상위 catch도, onError/onDone도
+    // 돌지 않는다. 여기서 직접 풀어 주지 않으면 입력창이 영구히 잠긴 채로 남는다.
+    sendingRef.current = false;
+    setSending(false);
+    setMessages([]);
+    setDraft(null);
+    draftRef.current = null;
+    setError(null);
+    setStage(null);
+    setRetrying(false);
+    replaceOnNextTokenRef.current = false;
+    ratingSeqRef.current.clear();
+
+    if (!sessionId) return; // 새 대화 — 비우기만 하고 조회할 히스토리가 없다.
+
     let cancelled = false;
     getChatMessages(sessionId)
       .then((res) => {
         if (!cancelled) setMessages(res.messages);
       })
       .catch(() => {
-        // 히스토리 복원 실패는 새 대화를 막지 않는다 — 조용히 빈 목록으로 둔다.
+        // 히스토리 복원 실패는 새 대화를 막지 않는다 — 위에서 이미 비웠으므로 빈 목록으로 남는다.
       });
     return () => {
       cancelled = true;
@@ -317,6 +348,24 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
         </p>
       )}
 
+      {/* 🚨 [2026-08-29] `min-w-0` + `shrink-0` 이 이 행의 계약이다. 320px 급 기기에서 입력창과
+          「보내기」가 화면 밖으로 잘려 나갔다(사용자 리포트).
+
+          원인은 **폼 컨트롤의 자동 최소 크기**다. `<input>` 은 `size` 속성(기본 20)에서 오는
+          내재 폭을 갖고, flex 아이템의 `min-width: auto` 가 그 값으로 잡힌다 — `flex-1` 을 줘도
+          약 200px 아래로는 **줄지 않는다.** 여기에 안 눌리는 버튼(약 76px)과 gap 8px 을 더하면
+          최소 폭이 약 284px 인데, 카드 안쪽 폭은 320px 기기에서 254px 뿐이다. 부모(`Page fill`)가
+          `overflow-hidden` 이라 넘친 만큼이 스크롤되지 않고 그냥 **잘렸다.**
+
+          `min-w-0` 은 그 자동 최소 크기를 0 으로 되돌려 입력이 남는 폭을 받게 하고, `shrink-0` 은
+          그 대가로 버튼이 눌리지 않게 한다. 둘은 **짝이다** — 한쪽만 주면 반대쪽이 뭉개진다.
+          같은 짝을 `shared/ui/DateField.tsx`(INPUT_BASE)와 `TotalBudgetField` 가 이미 쓴다.
+
+          ⚠️ D19(조판 규칙) 직후 이 자리가 더 나빠졌다. 종전엔 `overflow-wrap: anywhere` 가
+          버튼의 최소 폭을 1글자로 만들어 「보/내/기」로 접히면서 넘침을 약 5px 로 **가리고**
+          있었다. D19 가 그 붕괴를 막자 남아 있던 진짜 결함(입력의 최소 폭)이 그대로 드러났다.
+          그때 훑은 flex 행 6곳에 이 행이 빠져 있었다 — 「버튼이 안 눌리는 만큼 압력은 옆 요소가
+          받는다」는 D16 의 짝 규칙이 폼 컨트롤에도 그대로 적용된다는 것이 이 건의 교훈이다. */}
       <div className="flex gap-2">
         <input
           type="text"
@@ -327,14 +376,14 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
           }}
           placeholder="메시지를 입력하세요"
           disabled={sending}
-          className="min-h-tap flex-1 rounded-md border border-line bg-surface px-3 text-base text-ink disabled:opacity-50"
+          className="min-h-tap min-w-0 flex-1 rounded-md border border-line bg-surface px-3 text-base text-ink disabled:opacity-50"
         />
         {/* [2026-08-27] 이전엔 raw <button>이라 shared/ui/Button.tsx의 `inline-flex items-center
             justify-center` 컨벤션이 빠져 있었다 — min-h-tap이 박스를 텍스트 줄높이보다 키울 때
             콘텐츠를 수직 중앙 정렬하는 이 프로젝트의 표준 방식인데, 여기만 누락돼 입력창과
             글자 위치가 안 맞아 보였다(사용자 리포트, 아이폰 실기기). 직접 유틸리티를 추가하는
             대신 공용 Button으로 교체 — 새 위치에서 같은 버그가 재발할 여지 자체를 없앤다. */}
-        <Button onClick={() => void handleSend()} disabled={sending || !input.trim()}>
+        <Button className="shrink-0" onClick={() => void handleSend()} disabled={sending || !input.trim()}>
           보내기
         </Button>
       </div>
