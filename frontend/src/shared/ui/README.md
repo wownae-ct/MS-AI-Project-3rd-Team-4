@@ -30,6 +30,7 @@ CSS 는 사이드이펙트라 `index.ts` 로 재수출할 수 없다 — 그래�
 | 라운드 sm / md / lg / pill | `8` / `10` / `16` / `999px` | `rounded-sm` `rounded-md` `rounded-lg` `rounded-pill` | **4단계가 전부다** — `--radius-*: initial` 로 Tailwind 기본 8단계를 폐기했다(D1). `rounded-2xl` 류는 생성되지 않는다. ⚠️ `rounded-full`(∞px)·`rounded-none`(0)은 폐기와 무관하게 살아남는다 — `full` 은 게이트가 잡고, 원형은 `rounded-pill` 로. 이 저장소에서 `rounded-md` 는 10px, `rounded-lg` 는 16px(카드) |
 | spacing xs~xl | `4/8/16/20/24px` | Tailwind 기본 `--spacing`(4px) 배수 | 정확히 표현된다 → **별도 토큰을 만들지 않았다**. ⚠️ 이 칸에 유틸리티명을 나열하지 않는다 — 스캐너가 읽어 유틸리티를 만든다(아래 「산문이 유틸리티를 만든다」) |
 | 터치 타겟 44px | — | `min-h-tap` `min-w-tap` | **WCAG AAA 2.5.5 + Apple HIG 44pt + KRDS 터치 44px 의 수렴.** WCAG **AA** 최저선은 24px(2.5.8). 근거 등급은 [a11y.md](../../../docs/design/a11y.md) §1. ⚠️ **44px 는 두 변 모두다** — 라벨 없는 아이콘 버튼은 높이만 잡으면 가로가 글리프 폭까지 줄어든다(AI 답변 평가 버튼이 실제로 28px 였다, D18) |
+| 밀도 낮춘 버튼 (시각 36px / 터치 44px) | — | `Button` 의 `size="sm"` | **44px 계약의 예외가 아니라 구현이다** — 상자를 36px 로 그리고 `::after` 가 위아래 4px 씩 넘쳐 히트 영역을 44px 로 되돌린다. 세로 공간이 곧 콘텐츠 면적인 화면용(AI상담 — `Page fill` 이라 컨트롤이 낮아진 만큼 대화창이 커진다). ⚠️ **짝이다**: `h-9` 만 남고 `after:*` 가 빠지면 타겟이 **조용히** 36px 이 된다(화면상 변화가 없어 눈으로 못 잡는다) — `Button.test.tsx` 가 고정한다. 폼 컨트롤은 같은 수법을 못 쓴다(`<input>` 에 의사요소가 없다) → `<label min-h-tap>` 안에 `h-9` 입력을 넣는다(`entities/chat/ui/ChatPanel.tsx`) |
 | 주 본문 (읽는 글) | — | `text-base`(16px) + `text-ink` | **원 디자인 문서의 공백을 메운 단계.** KRDS "본문 최소 16px" 권고와 일치 |
 | 보조 문구 | `~0.86rem` | `text-sm`(14px) + `text-ink-soft` | 원 디자인 문서의 Body("설명 텍스트, 보조 문구")가 이 자리다 |
 | 캡션·라벨 | — | `text-xs`(12px) + `text-ink-soft` | 짧은 것만 |

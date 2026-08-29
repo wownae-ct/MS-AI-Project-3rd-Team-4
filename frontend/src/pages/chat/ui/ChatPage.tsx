@@ -91,9 +91,13 @@ export function ChatPage() {
       width="max-w-lg md:max-w-3xl lg:max-w-4xl"
       fill
       // `fill` 은 헤더 높이를 뺀 나머지를 대화창에 준다 — 트리거가 헤더를 두 줄로 만들면 그만큼
-      // 대화창이 줄어든다. 한 줄에 들어가는 크기(공용 Button 기본값)로 둔다.
+      // 대화창이 줄어든다. 한 줄에 들어가는 크기로 둔다.
+      //
+      // [2026-08-29] `size="sm"` — 컨트롤이 세로로 무겁다는 사용자 요청. `fill` 화면이라 이 8px 은
+      // 그대로 **대화창이 8px 커지는 것**으로 돌아온다. 터치 타겟은 44px 그대로다(Button.tsx `SIZE`
+      // 주석 — 의사요소로 히트 영역만 되살린다). 같은 이유로 `ChatPanel` 의 입력행도 함께 낮췄다.
       actions={
-        <Button variant="secondary" onClick={() => setHistoryOpen(true)}>
+        <Button variant="secondary" size="sm" onClick={() => setHistoryOpen(true)}>
           지난 대화
         </Button>
       }
