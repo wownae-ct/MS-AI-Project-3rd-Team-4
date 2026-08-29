@@ -40,8 +40,14 @@
 //
 // 포커스는 **트리거에 머문다.** 활성 항목은 `aria-activedescendant` 로 가리킨다 — 포커스를
 // 목록으로 옮기는 변형보다 단순하고, 포커스 트랩이 필요 없다.
-// 선택 표시는 색만으로 하지 않는다 — `IconCheck` 를 함께 붙인다(`Tabs.tsx` 가 같은 이유로
-// 활성 탭을 보더 유무로 가른다, WCAG 1.4.1).
+//
+// 선택 표시는 색만으로 하지 않는다(WCAG 1.4.1) — **글자 굵기**가 그 채널이다. 초판은 여기에
+// 체크 아이콘을 붙였고 D22 가 그것을 「덤으로 얻은 것」으로 기록했는데, 사용자 요청(D26)으로
+// 걷어냈다. 굵기는 아이콘과 같은 일을 한다 — 비선택 항목은 굵지 않고 선택 항목만 굵으므로
+// 색을 구분하지 못해도 지각된다. 보조로 `aria-selected` 가 그대로 있다.
+// ⚠️ `Tabs.tsx` 는 굵기를 단서로 **쓸 수 없어서** 보더 유무로 갈랐다(a11y.md §4) — 그쪽은
+// 모든 탭이 굵어 차이가 나지 않기 때문이고, 여기는 사정이 반대다. 두 파일을 같은 규칙으로
+// 읽지 않는다. **선택 항목의 굵기를 빼면 이 컴포넌트는 색만으로 전달하게 된다.**
 //
 // ⚠️ **iOS 16px 계약이 이 컴포넌트에서는 적용 대상이 아니다.** 트리거가 `<button>` 이라 텍스트
 // 입력 포커스가 아니고, iOS Safari 의 자동 확대 조건에 애초에 걸리지 않는다(a11y.md §2.5 는
@@ -76,15 +82,35 @@
 // 뒤 둘은 해당 요소 앞에서만 끈다 — 파일 전체로 넓히면 진짜 위험을 놓친다.
 /* eslint-disable jsx-a11y/prefer-tag-over-role */
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
-import { IconCheck, IconChevronDown } from "./icons";
+import { IconChevronDown } from "./icons";
 
 // ⚠️ 완성된 리터럴만 쓴다 — 조각을 이어 붙이면 스캐너가 못 찾고 빌드는 성공한 채 스타일만
 // 사라진다(`Card.tsx` 의 TITLE 짝과 같은 처리).
 // 폭(`w-full`/`w-fit`/auto)은 호출부마다 달라 여기 넣지 않고 `className` 으로 받는다.
 const TRIGGER_FIELD =
   "flex min-h-tap cursor-pointer items-center justify-between gap-1 rounded-md border border-line bg-surface px-2.5 text-base text-ink";
+
+// 🚨 `compact` 의 높이 조각 셋은 **짝이다** — `Button.tsx` 의 `sm` 이 쓰는 그 수법을 그대로 옮겼다.
+//
+// 44px 은 이 저장소가 a11y.md §1.5 에서 「WCAG AAA 2.5.5 + Apple HIG 44pt + KRDS 44px 세 근거의
+// 수렴」으로 못박은 계약이다. 사용자 요청(2026-08-30, 「접힌 상자가 높다」)은 **보이는 높이**에
+// 관한 것이므로 계약을 낮추는 대신 **시각과 터치 타겟을 분리한다** — 상자는 36px 로 그리고,
+// 의사요소가 위아래로 4px 씩 넘쳐 히트 영역을 44px 로 되돌린다. 의사요소는 버튼 자신의 자식이라
+// 그 위의 포인터 이벤트가 그대로 버튼에 잡힌다. `Button` 의 `sm` 이 같은 종류의 리포트
+// (「컨트롤이 세로로 무겁다」)에 같은 답을 냈고, 새 유틸리티가 하나도 생기지 않는다.
+//
+// ⚠️ `field` 는 44px 그대로다 — 그쪽은 바로 옆·위아래 형제가 전부 44px 인 `<input>` 이라
+// (`AddPaymentRow` · `AddChecklistItemRow` · `AddTimelineItemRow` · 온보딩) 여기만 낮추면
+// 폼의 세로 리듬이 드롭다운에서만 어긋난다. 위계 문제는 콘텐츠 안에 홀로 놓인 쪽에서 난다.
+//
+// ⚠️ 고정 높이를 쓸 수 있는 이유는 트리거가 **한 줄 + 말줄임**이기 때문이다(머리말 §글자가 한 줄에).
+// 그 규칙을 되돌리면 여기도 함께 되돌린다.
+//
+// ⚠️ 높이 조각만 남고 의사요소가 빠지면 **화면에는 아무 변화가 없이** 타겟만 36px 이 된다 —
+// 눈으로는 못 잡는다. `Select.test.tsx` 가 이 짝을 계약으로 고정한다.
 const TRIGGER_COMPACT =
-  "flex min-h-tap cursor-pointer items-center justify-between gap-1 rounded-md border border-line bg-surface px-2 text-sm text-ink";
+  "relative flex h-9 cursor-pointer items-center justify-between gap-1 rounded-md border border-line " +
+  "bg-surface px-2.5 text-sm text-ink after:absolute after:inset-x-0 after:-inset-y-1";
 
 // `w-max` + `min-w-full` 이 「트리거 폭이 하한, 내용까지 늘어남」을 만든다. 클램프는
 // `ConfirmDialog`·`ChatHistoryDrawer` 가 쓰는 `min(고정, 화면-여백)` 관례 그대로다.
@@ -97,19 +123,40 @@ const POPUP_END =
   "absolute top-full right-0 z-10 mt-1 flex max-h-64 w-max min-w-full max-w-[min(18rem,calc(100vw-2rem))] " +
   "flex-col overflow-y-auto rounded-md border border-line bg-surface p-1";
 
+// 목록의 글자 크기 — **팝업이 소유한다**(항목은 여기서 상속한다). D26.
+//
+// 초판은 트리거에만 크기를 주고 팝업에는 아무것도 주지 않았다. 그래서 목록이 **호출부 조상의
+// 값을 물려받았다** — `Card` 제목 행(크기 없음 → 16px) 안의 `compact` 는 트리거 14px 인데 목록이
+// 16px 였고, 캡션 라벨(12px) 안의 `field` 는 트리거 16px 인데 목록이 12px 였다. 자리마다 다르게
+// 뜨므로 호출부에서는 고칠 수 없다. D22 가 「닫힌 상자와 열린 목록의 이질감」을 없애겠다고 만든
+// 컴포넌트인데 크기 통일을 트리거에서만 했던 것이다(사용자 리포트 2026-08-30).
+//
+// ⚠️ 이것은 a11y.md §2.5 의 「입력 필드 16px」 계약과 무관하다 — 그 규범의 대상은 텍스트 입력이고
+// 여기는 `<div role="option">` 이다(머리말 §iOS 16px 계약). 목록은 **트리거를 따라간다**.
+//
+// 두 조각을 따로 두는 이유는 위 팝업 리터럴이 크기와 무관하기 때문이다. 조립은 `className` 을
+// 이어 붙이는 자리와 같은 방식이고, 스캐너는 아래 두 리터럴을 평문 그대로 본다.
+const POPUP_TEXT_FIELD = "text-base";
+const POPUP_TEXT_COMPACT = "text-sm";
+
 // 네 리터럴 — 「선택됨」과 「활성(키보드/포인터가 지금 가리키는 항목)」은 **다른 축**이다.
 // 선택됨은 `MessageBubble` 의 평가 버튼과 같은 조합(primary-soft + primary), 활성은 배경 톤만.
 // ⚠️ `truncate` 를 쓰지 않는다 — 여기가 「감추지 않는 자리」다. 넘치면 어절 단위로 접힌다(D19).
-const ITEM = "flex min-h-tap cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-left text-ink";
-const ITEM_ACTIVE = "flex min-h-tap cursor-pointer items-center gap-2 rounded-sm bg-bg px-2 py-1.5 text-left text-ink";
+//
+// ⚠️ 선택 항목의 **굵기를 빼지 않는다** — 체크 아이콘을 걷어낸 뒤(D26) 이것이 색 아닌 유일한
+// 시각 채널이다(머리말 §접근성). 나머지 셋에는 굵기가 없어야 차이가 성립한다.
+//
+// 가로 여백은 「트리거 라벨과 목록 라벨이 **한 세로선**에 선다」에서 역산한 값이다. 팝업 왼쪽이
+// 트리거 왼쪽과 같으므로(`left-0`) 보더 1 + 팝업 안쪽 4 + 여기 6 = 11px 이고, 트리거 쪽도
+// 보더 1 + 안쪽 10 = 11px 다(두 변이 모두 — `compact` 의 안쪽 여백을 이 계산에 맞춰 올렸다).
+// 체크 아이콘이 있을 땐 이 자리가 아이콘 폭만큼 밀려 있었고, 걷어낸 지금 맞춰 두지 않으면
+// 열고 닫을 때 글자가 가로로 튄다. 값을 하나 고치면 나머지도 함께 고친다.
+const ITEM = "flex min-h-tap cursor-pointer items-center rounded-sm px-1.5 py-1.5 text-left text-ink";
+const ITEM_ACTIVE = "flex min-h-tap cursor-pointer items-center rounded-sm bg-bg px-1.5 py-1.5 text-left text-ink";
 const ITEM_SELECTED =
-  "flex min-h-tap cursor-pointer items-center gap-2 rounded-sm bg-primary-soft px-2 py-1.5 text-left font-bold text-primary";
+  "flex min-h-tap cursor-pointer items-center rounded-sm bg-primary-soft px-1.5 py-1.5 text-left font-bold text-primary";
 const ITEM_SELECTED_ACTIVE =
-  "flex min-h-tap cursor-pointer items-center gap-2 rounded-sm bg-primary-soft px-2 py-1.5 text-left font-bold text-primary outline-1 outline-primary";
-
-/** 선택 표시는 색만으로 하지 않는다(WCAG 1.4.1) — 자리는 항상 차지하고 선택된 행에서만 보인다. */
-const CHECK_SLOT = "flex-none text-primary";
-const CHECK_SLOT_EMPTY = "flex-none opacity-0";
+  "flex min-h-tap cursor-pointer items-center rounded-sm bg-primary-soft px-1.5 py-1.5 text-left font-bold text-primary outline-1 outline-primary";
 
 /** 타이핑 점프의 버퍼 유효 시간. 네이티브 select 의 감각을 옮긴 값이다. */
 const TYPEAHEAD_RESET_MS = 800;
@@ -271,6 +318,9 @@ export function Select({
   }
 
   const trigger = size === "compact" ? TRIGGER_COMPACT : TRIGGER_FIELD;
+  const popup = align === "end" ? POPUP_END : POPUP_START;
+  // 목록 글자 크기는 트리거를 따라간다 — 조상에서 상속하지 않는다(위 두 리터럴 주석).
+  const popupText = size === "compact" ? POPUP_TEXT_COMPACT : POPUP_TEXT_FIELD;
 
   return (
     <span ref={rootRef} className="relative flex">
@@ -302,7 +352,7 @@ export function Select({
           id={listId}
           role="listbox"
           aria-label={ariaLabel}
-          className={align === "end" ? POPUP_END : POPUP_START}
+          className={`${popup} ${popupText}`}
           // 포커스는 트리거에 머물러야 한다(APG select-only). 목록을 눌러도 트리거가 포커스를
           // 잃지 않도록 기본 동작을 막는다 — 이게 없으면 누르는 순간 포커스가 body 로 떨어진다.
           // ⚠️ 이 주석에 그 이벤트의 영어 이름을 평문으로 적지 않는다 — 그 단어는 진짜 Tailwind
@@ -333,9 +383,6 @@ export function Select({
                 onClick={() => commit(index)}
                 onMouseMove={() => setActiveIndex(index)}
               >
-                <span className={isSelected ? CHECK_SLOT : CHECK_SLOT_EMPTY}>
-                  <IconCheck size={14} />
-                </span>
                 {option.label}
               </div>
             );

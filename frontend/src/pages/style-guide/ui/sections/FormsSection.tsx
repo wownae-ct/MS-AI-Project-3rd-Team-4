@@ -26,7 +26,7 @@ export function SelectSection() {
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-bold text-ink" htmlFor={fieldId}>
-            field — 전용 입력 폼 안 (보이는 라벨 16px)
+            field — 전용 입력 폼 안 (보이는 라벨 16px · 상자 44px)
           </label>
           <Select
             id={fieldId}
@@ -38,7 +38,7 @@ export function SelectSection() {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <span className="text-sm font-bold text-ink">compact — 콘텐츠 안 컨트롤 (보이는 라벨 14px)</span>
+          <span className="text-sm font-bold text-ink">compact — 콘텐츠 안 컨트롤 (보이는 라벨 14px · 상자 36px)</span>
           <div className="flex items-center gap-2">
             <span className="text-sm font-bold text-ink">카드 제목처럼 14px 인 이웃</span>
             <Select
@@ -59,6 +59,10 @@ export function SelectSection() {
         <Rule>
           <span className="font-bold">compact 는 콘텐츠 안에 홀로 놓인 컨트롤 전용</span>입니다. 옆에
           입력칸이 함께 서는 폼에서는 field 를 씁니다 — 한 줄에 두 크기가 섞이는 편이 더 나쁩니다.
+        </Rule>
+        <Rule>
+          <span className="font-bold">목록은 트리거를 따라갑니다</span> — 바깥 문맥과 무관하게 글자
+          크기가 같고, 선택은 색과 굵기로 갈립니다. compact 는 상자만 36px 이고 터치 타겟은 44px 입니다.
         </Rule>
         <Rule>
           <span className="font-bold">고르는 자리에서는 감추지 않습니다.</span> 팝업은 트리거 폭을
