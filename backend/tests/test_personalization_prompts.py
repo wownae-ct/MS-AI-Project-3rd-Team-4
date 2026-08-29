@@ -9,8 +9,10 @@ import json
 
 from app.core.timeline_catalog import TIMELINE_CATALOG
 from app.personalization.prompts import (
+    _CHECKLIST_RULES,
     _MOCKUP_CATEGORY_CODES,
     _MOCKUP_FEW_SHOT_SAMPLE_SIZE,
+    _TIMELINE_RULES,
     _build_checklist_few_shot,
     _build_timeline_few_shot,
     build_contract_citation_menu,
@@ -329,3 +331,47 @@ class TestCustomRequestNote:
 
         prompt = build_route_prompt(["custom_request"], "요약")
         assert "custom_request" in prompt
+
+
+class TestProfileLeakFix:
+    """red-bug.md #20 — 개인화 체크리스트/타임라인 문구에 내부 필드명·ENUM 원본 값이 그대로
+    노출되던 유출("venue_priority가 FOOD이므로...") 수정. (a) 프로필 덤프를 한글 문장으로
+    렌더링 + (b) 규칙 텍스트 자체의 필드명 언급 제거, 둘 다 확인한다(§20-2에서 실측 A/B 없이
+    코드 리뷰 근거로 병행 확정)."""
+
+    def test_venue_priority_value_and_field_name_do_not_leak(self):
+        prompt = build_generate_prompt(["CHECKLIST"], {"venue_priority": "FOOD"}, {})
+        assert "FOOD" not in prompt
+        assert "venue_priority" not in prompt
+        assert "맛있는 식사" in prompt
+
+    def test_taste_preference_value_and_field_name_do_not_leak(self):
+        prompt = build_generate_prompt(["CHECKLIST"], {"taste_preference": "BALANCED"}, {})
+        assert "BALANCED" not in prompt
+        assert "taste_preference" not in prompt
+        assert "균형 잡힘" in prompt
+
+    def test_sdm_priority_value_and_field_name_do_not_leak(self):
+        prompt = build_generate_prompt(["CHECKLIST"], {"sdm_priority": "MAKEUP"}, {})
+        assert "MAKEUP" not in prompt
+        assert "sdm_priority" not in prompt
+        assert "그날은 내가 공주(메이크업)" in prompt
+
+    def test_unselected_priority_fields_render_as_not_selected_without_crashing(self):
+        # profile에 세 필드가 아예 없거나 None이어도(온보딩에서 전부 스킵한 웨딩) 크래시 없이
+        # "선택 안 함"으로 처리돼야 한다 — 취향/예식장 우선순위/스드메 우선순위 3곳 전부.
+        prompt = build_generate_prompt(["CHECKLIST"], {}, {})
+        assert prompt.count("선택 안 함") == 3
+
+    def test_active_categories_render_as_korean_category_names(self):
+        prompt = build_generate_prompt(["CHECKLIST"], {"active_categories": ["VENUE", "SDM"]}, {})
+        assert "active_categories" not in prompt
+        assert "예식장" in prompt
+        assert "스드메" in prompt
+
+    def test_rule_text_itself_has_no_snake_case_profile_field_name_literals(self):
+        # 향후 규칙 문구를 고치다가 실수로 필드명을 다시 적어 넣는 걸 잡아낸다 — 이번 사고의
+        # 재발 방지용으로 가장 값어치가 큰 회귀 테스트(§20-1).
+        for token in ("taste_preference", "venue_priority", "sdm_priority", "primary_goals"):
+            assert token not in _CHECKLIST_RULES
+            assert token not in _TIMELINE_RULES
