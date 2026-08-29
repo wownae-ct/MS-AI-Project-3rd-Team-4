@@ -12,16 +12,20 @@
 // 현황」 행 + 「총 예산 현황」 도넛), 예산 미배정 상태에서는 정보 없는 안내 문구만 행마다
 // 쌓였다. 홈은 카테고리별 진행 상황만 본다. 조회 훅(dashboard/ui/use-category-benchmarks.ts)도
 // 함께 지웠다 — 예산 페이지의 같은 이름 사본은 그 화면 것이라 그대로 있다.
+// **FOCUS 배지도 없다(2026-08-29, 사용자 지시).** `tier === "FOCUS"`(예식장·스드메)를 이름 옆
+// 배지로 알리던 자리다(목업 s2:230,242). 이 카드가 전달할 것은 카테고리별 진행률 하나로 좁혔다 —
+// 티어 구분은 카테고리 상세가 여전히 드러낸다(FOCUS 에만 업체사례 카드·시세 위젯이 붙는다).
+// `CategoryBudget.focus` 필드 자체는 남는다(entities 타입이라 이 화면만의 것이 아니다).
 import { Link } from "@tanstack/react-router";
 import type { CategoryBudget } from "@/entities/wedding";
-import { Badge, Progress } from "@/shared/ui";
+import { Progress } from "@/shared/ui";
 
 export interface CategoryRowProps {
   category: CategoryBudget;
 }
 
 export function CategoryRow({ category }: CategoryRowProps) {
-  const { id, name, focus, checklistProgress } = category;
+  const { id, name, checklistProgress } = category;
 
   // 12_final_prototype_mockup.html의 renderHome()은 이 행 전체를 카테고리 상세로 가는 진입점으로
   // 쓴다(대시보드에서 카테고리 상세로 갈 유일한 경로). 문구/디자인 토큰은 그대로 두고 클릭 가능하다는
@@ -41,9 +45,9 @@ export function CategoryRow({ category }: CategoryRowProps) {
           {/* [2026-08-29] `whitespace-nowrap` 단독이었다 — 이름이 길면 줄바꿈도 말줄임도 없이
               **컨테이너 밖으로 삐져나갔다**(부모 `min-w-0` 이 폭을 내주는 만큼 그대로 넘친다).
               `truncate` 는 같은 nowrap 에 `overflow-hidden` + 말줄임을 더한 것이라 형태는 그대로
-              두고 넘침만 받는다. 옆 `Badge` 는 `shrink-0`(D16)이라 이 칸이 압력을 받는 쪽이다. */}
+              두고 넘침만 받는다. FOCUS 배지가 빠진 뒤로는 이 칸이 줄 전체를 쓰지만, 오른쪽
+              화살표(`flex` 형제)와 나눠 쓰는 것은 그대로라 말줄임은 계속 필요하다. */}
           <span className="truncate text-sm font-bold text-ink">{name}</span>
-          {focus && <Badge>FOCUS</Badge>}
         </div>
         <span aria-hidden="true" className="text-ink-soft">
           ›
