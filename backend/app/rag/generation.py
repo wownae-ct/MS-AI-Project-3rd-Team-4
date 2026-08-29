@@ -131,7 +131,7 @@ async def verify_answer(
     내용에 스스로 속지 않고 어느 정도 걸러낼 수 있게 한다. response_format으로 JSON만 답하게
     강제해서("SUPPORTED"/"WEAK"/"GENERAL" + 이유) 파싱이 항상 안전하다."""
     response = await client.chat.completions.create(
-        model=settings.azure_openai_chat_deployment,
+        model=settings.chat_rag_deployment,
         response_format={"type": "json_object"},
         messages=[
             {
@@ -154,7 +154,7 @@ async def reformulate_query(
     response_format으로 JSON을 강제하지 않는다 — 자유 텍스트 검색어 한 줄이면 충분해서
     JSON 강제는 과설계."""
     response = await client.chat.completions.create(
-        model=settings.azure_openai_chat_deployment,
+        model=settings.chat_rag_deployment,
         messages=[
             {
                 "role": "user",
