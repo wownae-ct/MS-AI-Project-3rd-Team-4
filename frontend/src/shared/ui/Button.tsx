@@ -14,6 +14,7 @@
 import type { ButtonHTMLAttributes, ReactNode, Ref } from "react";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost";
+export type ButtonSize = "md" | "sm";
 
 const VARIANT: Record<ButtonVariant, string> = {
   primary: "border-transparent bg-primary text-surface enabled:hover:bg-primary-hover enabled:active:bg-primary-hover",
@@ -26,17 +27,49 @@ const SHAPE: Record<ButtonVariant, string> = {
   primary: "rounded-md px-4",
   secondary: "rounded-md px-4",
   // 11px 는 원 디자인 문서가 명시한 값이라 4px 그리드를 벗어나더라도 그대로 옮긴다.
-  // 세로 padding(5px)은 min-h-tap 이 대신한다 — ghost 는 배경이 투명이라 hit area 를 키워도 보이지 않는다.
+  // 세로 padding(5px)은 아래 `SIZE` 가 대신한다 — ghost 는 배경이 투명이라 hit area 를 키워도 보이지 않는다.
   ghost: "rounded-sm px-[11px]",
 };
 
+// 높이는 BASE 가 아니라 이 룩업이 정한다 — `md` 는 종전 `min-h-tap` 그대로다(기본값이라 기존
+// 호출부의 렌더 결과가 바뀌지 않는다).
+//
+// 🚨 `sm` 의 두 조각은 **짝이다.**
+//
+// 44px 은 이 저장소가 docs/design/a11y.md §1.5 에서 「WCAG AAA 2.5.5 + Apple HIG 44pt + KRDS
+// 44px 세 근거의 수렴」으로 못박은 계약이다. 사용자 요청(2026-08-29, AI상담 컨트롤이 세로로
+// 무겁다)은 **보이는 높이**에 관한 것이므로, 계약을 낮추는 대신 **시각과 터치 타겟을 분리**한다 —
+// 버튼 상자는 36px(`h-9`)로 그리고, 의사요소가 위아래로 4px 씩 넘쳐 히트 영역을 44px 로 되돌린다.
+// `::after` 는 버튼 자신의 자식이라 그 위의 포인터 이벤트가 그대로 버튼에 잡힌다.
+//
+// `after:*` 변이는 `content: var(--tw-content)`(초기값 `""`)를 자동으로 얹으므로 `content-['']`
+// 를 따로 적지 않는다 — 실제 theme.css 로 컴파일해 확인했다(scripts/lib/__tests__/tailwind-probe.mjs
+// 와 같은 방식).
+//
+// ⚠️ `h-9` 만 남고 `after:*` 가 빠지면 터치 타겟이 **조용히 36px 이 된다** — 화면상 아무 변화가
+// 없어 눈으로는 못 잡는다. Button.test.tsx 가 이 짝을 계약으로 고정한다(Badge 의 D16 짝과 같은 처리).
+const SIZE: Record<ButtonSize, string> = {
+  md: "min-h-tap",
+  sm: "relative h-9 after:absolute after:inset-x-0 after:-inset-y-1",
+};
+
 const BASE =
-  "inline-flex min-h-tap cursor-pointer items-center justify-center gap-2 border text-sm font-bold " +
+  "inline-flex cursor-pointer items-center justify-center gap-2 border text-sm font-bold " +
   "transition-[background-color,border-color] duration-150 " +
   "disabled:cursor-not-allowed disabled:opacity-50";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
+  /**
+   * 버튼의 **보이는 높이**. `md`(기본) 44px · `sm` 36px.
+   *
+   * **터치 타겟은 둘 다 44px 이다** — `sm` 은 의사요소로 히트 영역을 되돌린다(위 `SIZE` 주석).
+   * 그러므로 이 prop 은 접근성 트레이드오프가 아니라 순수한 밀도 조절이다.
+   *
+   * 용처: 세로 공간이 곧 콘텐츠 면적인 화면(AI상담 — `Page fill` 이라 컨트롤이 낮아진 만큼
+   * 대화창이 커진다). 나머지는 `md` 를 그대로 쓴다.
+   */
+  size?: ButtonSize;
   /** 가로를 꽉 채운다. 모바일 주요 행동 버튼의 기본 형태. */
   block?: boolean;
   /**
@@ -66,6 +99,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 export function Button({
   variant = "primary",
+  size = "md",
   block = false,
   pending = false,
   pendingLabel,
@@ -75,7 +109,7 @@ export function Button({
   disabled,
   ...rest
 }: ButtonProps) {
-  const classes = [BASE, VARIANT[variant], SHAPE[variant], block ? "w-full" : "", className]
+  const classes = [BASE, SIZE[size], VARIANT[variant], SHAPE[variant], block ? "w-full" : "", className]
     .filter(Boolean)
     .join(" ");
   return (

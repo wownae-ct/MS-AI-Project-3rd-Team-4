@@ -75,3 +75,36 @@ describe("Button — pending", () => {
     expect(button).not.toHaveAttribute("aria-busy");
   });
 });
+
+// size 계약 — docs/design/a11y.md §1.5 의 44px 터치 타겟은 `sm` 에서도 유지된다.
+//
+// **왜 클래스 문자열을 단언하는가.** 이 저장소가 일반적으로 하지 않는 일이지만(구현 세부에
+// 테스트를 묶는다), 여기서는 그것이 정확히 필요한 것이다 — jsdom 은 레이아웃을 계산하지 않아
+// 「이 버튼의 히트 영역이 44px 인가」를 실제 크기로 물을 수단이 없고, 짝이 깨져도 **화면에는
+// 아무 변화가 없다**(36px 상자는 그대로 보인다). Badge.test.tsx 가 D16 의
+// `shrink-0`/`whitespace-nowrap` 짝을 같은 이유로 같은 방식으로 고정한다.
+describe("Button — size", () => {
+  it("sm 은 36px 상자와 44px 히트 영역을 **함께** 갖는다", () => {
+    render(
+      <Button size="sm" variant="secondary">
+        지난 대화
+      </Button>,
+    );
+
+    const button = screen.getByRole("button", { name: "지난 대화" });
+    // 보이는 높이 36px
+    expect(button.className).toContain("h-9");
+    // 위아래 4px 씩 넘치는 의사요소 — 이 셋이 함께 있어야 44px 가 된다.
+    expect(button.className).toContain("relative");
+    expect(button.className).toContain("after:absolute");
+    expect(button.className).toContain("after:-inset-y-1");
+  });
+
+  it("기본값은 md 다 — size 를 모르는 기존 호출부는 44px 상자를 그대로 쓴다", () => {
+    render(<Button>저장</Button>);
+
+    const button = screen.getByRole("button", { name: "저장" });
+    expect(button.className).toContain("min-h-tap");
+    expect(button.className).not.toContain("h-9");
+  });
+});

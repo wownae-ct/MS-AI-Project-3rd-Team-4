@@ -348,42 +348,56 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
         </p>
       )}
 
-      {/* 🚨 [2026-08-29] `min-w-0` + `shrink-0` 이 이 행의 계약이다. 320px 급 기기에서 입력창과
-          「보내기」가 화면 밖으로 잘려 나갔다(사용자 리포트).
+      {/* 🚨 [2026-08-29 개정] `min-w-0` + `shrink-0` 은 여전히 이 행의 계약이고, **계약 지점이
+          하나 늘었다** — 아래 `<label>` 이 새 flex 아이템이라 `min-w-0` 을 label 과 input **양쪽**
+          에 줘야 한다(label 만 주면 input 이, input 만 주면 label 이 안 줄어든다).
 
+          [2026-08-29 높이 개편] 컨트롤이 세로로 무겁다는 사용자 요청으로 **보이는 높이를 36px 로
+          낮추되 터치 타겟 44px 은 그대로 둔다**(docs/design/a11y.md §1.5 계약).
+            · 입력  — `<label>` 이 44px, 그 안의 `<input>` 이 36px. 라벨 클릭은 그 컨트롤에 포커스를
+                      주므로 위아래 4px 띠를 눌러도 입력이 잡힌다. 의사요소 없이 히트 영역이 남는다.
+            · 보내기 — 공용 `Button` 의 `size="sm"`(그 파일 `SIZE` 주석에 산술이 있다).
+          `text-base`(16px)는 **유지한다** — a11y.md §2.5 「입력 필드 16px 미만 금지」. 16px × 행간
+          1.6 = 25.6px 이라 36px 상자에 들어간다.
+
+          `<label>` 은 접근명도 함께 고친다 — 종전에 이 입력의 이름은 `placeholder` 뿐이었다.
+          placeholder 는 값이 입력되면 사라지므로 이름의 자리가 아니다.
+
+          ── 아래는 이 행이 원래 왜 이 계약을 갖게 됐는지 (2026-08-29) ──
+          320px 급 기기에서 입력창과 「보내기」가 화면 밖으로 잘려 나갔다(사용자 리포트).
           원인은 **폼 컨트롤의 자동 최소 크기**다. `<input>` 은 `size` 속성(기본 20)에서 오는
           내재 폭을 갖고, flex 아이템의 `min-width: auto` 가 그 값으로 잡힌다 — `flex-1` 을 줘도
           약 200px 아래로는 **줄지 않는다.** 여기에 안 눌리는 버튼(약 76px)과 gap 8px 을 더하면
           최소 폭이 약 284px 인데, 카드 안쪽 폭은 320px 기기에서 254px 뿐이다. 부모(`Page fill`)가
           `overflow-hidden` 이라 넘친 만큼이 스크롤되지 않고 그냥 **잘렸다.**
-
-          `min-w-0` 은 그 자동 최소 크기를 0 으로 되돌려 입력이 남는 폭을 받게 하고, `shrink-0` 은
-          그 대가로 버튼이 눌리지 않게 한다. 둘은 **짝이다** — 한쪽만 주면 반대쪽이 뭉개진다.
-          같은 짝을 `shared/ui/DateField.tsx`(INPUT_BASE)와 `TotalBudgetField` 가 이미 쓴다.
+          `min-w-0` 은 그 자동 최소 크기를 0 으로 되돌리고, `shrink-0` 은 그 대가로 버튼이 눌리지
+          않게 한다. 둘은 **짝이다.** 같은 짝을 `shared/ui/DateField.tsx`(INPUT_BASE)와
+          `TotalBudgetField` 가 이미 쓴다.
 
           ⚠️ D19(조판 규칙) 직후 이 자리가 더 나빠졌다. 종전엔 `overflow-wrap: anywhere` 가
           버튼의 최소 폭을 1글자로 만들어 「보/내/기」로 접히면서 넘침을 약 5px 로 **가리고**
-          있었다. D19 가 그 붕괴를 막자 남아 있던 진짜 결함(입력의 최소 폭)이 그대로 드러났다.
-          그때 훑은 flex 행 6곳에 이 행이 빠져 있었다 — 「버튼이 안 눌리는 만큼 압력은 옆 요소가
-          받는다」는 D16 의 짝 규칙이 폼 컨트롤에도 그대로 적용된다는 것이 이 건의 교훈이다. */}
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.nativeEvent.isComposing) void handleSend();
-          }}
-          placeholder="메시지를 입력하세요"
-          disabled={sending}
-          className="min-h-tap min-w-0 flex-1 rounded-md border border-line bg-surface px-3 text-base text-ink disabled:opacity-50"
-        />
+          있었다. D19 가 그 붕괴를 막자 남아 있던 진짜 결함(입력의 최소 폭)이 그대로 드러났다. */}
+      <div className="flex items-center gap-2">
+        <label className="flex min-h-tap min-w-0 flex-1 items-center">
+          <span className="sr-only">메시지</span>
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.nativeEvent.isComposing) void handleSend();
+            }}
+            placeholder="메시지를 입력하세요"
+            disabled={sending}
+            className="h-9 w-full min-w-0 rounded-md border border-line bg-surface px-3 text-base text-ink disabled:opacity-50"
+          />
+        </label>
         {/* [2026-08-27] 이전엔 raw <button>이라 shared/ui/Button.tsx의 `inline-flex items-center
-            justify-center` 컨벤션이 빠져 있었다 — min-h-tap이 박스를 텍스트 줄높이보다 키울 때
-            콘텐츠를 수직 중앙 정렬하는 이 프로젝트의 표준 방식인데, 여기만 누락돼 입력창과
-            글자 위치가 안 맞아 보였다(사용자 리포트, 아이폰 실기기). 직접 유틸리티를 추가하는
-            대신 공용 Button으로 교체 — 새 위치에서 같은 버그가 재발할 여지 자체를 없앤다. */}
-        <Button className="shrink-0" onClick={() => void handleSend()} disabled={sending || !input.trim()}>
+            justify-center` 컨벤션이 빠져 있었다 — 상자가 텍스트 줄높이보다 클 때 콘텐츠를 수직
+            중앙 정렬하는 이 프로젝트의 표준 방식인데, 여기만 누락돼 입력창과 글자 위치가 안 맞아
+            보였다(사용자 리포트, 아이폰 실기기). 직접 유틸리티를 추가하는 대신 공용 Button으로
+            교체 — 새 위치에서 같은 버그가 재발할 여지 자체를 없앤다. */}
+        <Button size="sm" className="shrink-0" onClick={() => void handleSend()} disabled={sending || !input.trim()}>
           보내기
         </Button>
       </div>
