@@ -26,7 +26,9 @@ from app.schemas.chat import (
     ChatMessageRatingCreate,
     ChatMessageRatingOut,
     ChatSessionCreate,
+    ChatSessionListOut,
     ChatSessionOut,
+    ChatSessionSummaryOut,
     CitationOut,
     VerificationOut,
 )
@@ -36,6 +38,7 @@ from app.services.chat import (
 from app.services.chat import (
     get_chat_session,
     list_chat_messages,
+    list_chat_sessions,
     rate_chat_message,
     stream_chat_response,
 )
@@ -67,6 +70,26 @@ async def create_chat_session(
         category_code=chat_session.category_code,
         title=chat_session.title,
         created_at=chat_session.created_at,
+    )
+
+
+@router.get("/chat/sessions", response_model=ChatSessionListOut)
+async def list_chat_sessions_route(
+    wedding: Wedding = Depends(get_current_wedding),  # noqa: B008
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> ChatSessionListOut:
+    sessions = await list_chat_sessions(session, wedding.id)
+    return ChatSessionListOut(
+        sessions=[
+            ChatSessionSummaryOut(
+                id=s.id,
+                category_code=s.category_code,
+                title=s.title,
+                last_message_at=s.last_message_at,
+                created_at=s.created_at,
+            )
+            for s in sessions
+        ]
     )
 
 
