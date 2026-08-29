@@ -86,12 +86,19 @@ class Settings(BaseSettings):
     # (chat-mini/chat) 모두 이미 있어 새 배포·RBAC 변경 없이 전환 가능.
     azure_openai_receipt_vision_deployment: str | None = None
 
-    # AI상담(챗) 그래프 전용 배포 — 기본은 azure_openai_chat_deployment(개인화·영수증OCR과 공유하는
-    # "chat-mini"/gpt-5.4-mini)를 그대로 재사용한다. 챗만 별도 모델(gpt-5.4, 배포 이름 "chat")로
-    # A/B하고 싶을 때 이 값만 바꾸면 개인화/영수증OCR엔 영향이 없다 — receipt_vision_deployment와
-    # 동일한 fallback 패턴(infra/bicep/modules/openai.bicep에 두 배포 모두 이미 있어 새 배포·RBAC
-    # 변경 없이 전환 가능).
-    azure_openai_chat_rag_deployment: str | None = None
+    # AI상담(챗) 그래프 전용 배포 — 2026-08-29 A/B 비교(21개 골든 질문, docs/wedding/ing/
+    # gpt54-vs-mini-comparison-2026-08-29.md) 결과로 gpt-5.4(배포 이름 "chat")를 실제 기본값으로
+    # 전환했다: 검증 통과율은 개인화·영수증OCR이 쓰는 gpt-5.4-mini와 동일(21/21 SUPPORTED)했지만
+    # gpt-5.4가 출처 경계를 더 엄격히 지키고 근거 자료를 더 폭넓게 활용했다(속도는 약 1.7배
+    # 느림, 평균 8.7s vs 5.0s — 감내 가능하다고 판단). `reasoning_effort` 파라미터로 속도-품질을
+    # 조절하는 대안은 검토 후 기각 — gpt-5.4/gpt-5.4-mini 둘 다 minimal 이상에서 추론 토큰이
+    # 예산을 전부 먹어 답변이 빈 문자열로 나오는 경우가 잦았고(안전한 값은 사실상 minimal뿐이라
+    # 조절 폭이 없음), 추론 토큰은 스트리밍되지 않아 사용자에게 응답 시작 전 수십 초의 "침묵
+    # 구간"이 생기는 문제도 있었다(실시간 스트리밍 챗 UX와 근본적으로 안 맞음). 개인화·영수증
+    # OCR엔 영향 없이 챗만 이 값을 오버라이드하려면(예: 다시 mini로 되돌리거나 다른 모델로
+    # A/B하려면) 이 값만 바꾸면 된다 — receipt_vision_deployment와 동일한 fallback 패턴
+    # (infra/bicep/modules/openai.bicep에 두 배포 모두 이미 있어 새 배포·RBAC 변경 없이 전환 가능).
+    azure_openai_chat_rag_deployment: str | None = "chat"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
