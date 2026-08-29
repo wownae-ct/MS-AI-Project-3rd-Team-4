@@ -17,6 +17,7 @@ from sqlalchemy import (
     CheckConstraint,
     Computed,
     Date,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -51,7 +52,7 @@ class RagDocument(Base):
     published_at: Mapped[datetime | None] = mapped_column(Date)
     license_note: Mapped[str | None] = mapped_column(Text)
     category_codes: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class RagChunk(Base):
