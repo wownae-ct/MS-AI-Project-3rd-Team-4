@@ -277,13 +277,15 @@ describe("예산 재배분 — 비활성 카테고리는 결제 선택지에서 
   const ROWS = [
     category({ planned_budget: 1_000_000 }),
     category({ category_code: "SDM", name_ko: "스드메", display_order: 2, is_active: false }),
-    category({ category_code: "MEETING", name_ko: "상견례", display_order: 3 }),
+    category({ category_code: "ETC", name_ko: "기타", display_order: 3 }),
   ];
   const CONSTANTS = [
     constant(),
     constant({ code: "SDM", name_ko: "스드메", display_order: 2 }),
-    // 비용 개념이 없는 카테고리 — 활성이어도 결제를 만들 수 없다(기존 규칙, 회귀 없음 확인).
-    constant({ code: "MEETING", name_ko: "상견례", display_order: 3, has_cost: false }),
+    // `has_cost=false` 카테고리 — 활성이어도 결제를 만들 수 없다(기존 규칙, 회귀 없음 확인).
+    // 상견례로 쓰던 자리다: 2026-08-29에 상견례가 유상이 되면서 지금 9개 중엔 해당하는 것이
+    // 없어져, 계약상 false 를 받는 경우를 가정해 카테고리 하나를 빌려 쓴다.
+    constant({ code: "ETC", name_ko: "기타", display_order: 3, has_cost: false }),
   ];
 
   it("카테고리 필터 드롭다운에 활성·유상 카테고리만 낸다", async () => {

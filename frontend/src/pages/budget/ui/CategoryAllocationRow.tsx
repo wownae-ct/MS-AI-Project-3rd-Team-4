@@ -38,10 +38,10 @@ export function CategoryAllocationRow({
   originalAmount,
   onDraftChange,
 }: CategoryAllocationRowProps) {
-  // 비활성 카테고리도, 비용을 다루지 않는 카테고리(`has_cost=false`, 지금은 상견례)도 여기까지
-  // 오지 않는다 — 호출부(CategoryAllocationList)가 목록에서 미리 거른다(2026-08-29, 사용자
-  // 결정). 이 컴포넌트는 예산을 다루는 활성 카테고리 한 행만 그리면 된다. 예전의 "비용 없음"
-  // 분기는 그래서 사라졌다(도달할 수 없는 코드였다).
+  // 비활성 카테고리도, 비용을 다루지 않는 카테고리(`has_cost=false`)도 여기까지 오지 않는다 —
+  // 호출부(CategoryAllocationList)가 목록에서 미리 거른다(2026-08-29, 사용자 결정). 이
+  // 컴포넌트는 예산을 다루는 활성 카테고리 한 행만 그리면 된다. 예전의 "비용 없음" 분기는
+  // 그래서 사라졌다(도달할 수 없는 코드였다).
   if (!isEditingScenario) {
     // Progress는 값을 [0,1]로 클램프한다 — 초과지출(paid_amount>planned_budget, 비율>100%)이
     // "정확히 다 씀"과 시각적으로 구분되지 않는다(레드팀 감사). 편집 모드를 열어야만 초과 여부를
