@@ -5,15 +5,27 @@ checklist.py·wedding.py 테스트와 같은 이 레포의 기존 컨벤션). OR
 
 from datetime import date, timedelta
 
-from app.models import Wedding
+from sqlalchemy.dialects import postgresql
+
+from app.models import ChecklistItem, TimelineItem, Wedding
 from app.services.personalization import (
     _build_profile,
     _checklist_fallback_rows,
     _checklist_row_from_draft,
+    _drop_rows_colliding_with_protected,
     _timeline_fallback_rows,
+    _timeline_protected_clause,
     _timeline_row_from_draft,
     _timeline_status,
 )
+
+
+def _compiled_timeline_protected_sql() -> str:
+    return str(
+        _timeline_protected_clause().compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+        )
+    )
 
 
 def _make_wedding(**overrides) -> Wedding:
@@ -252,3 +264,107 @@ class TestTimelineFallbackRows:
         rows = _timeline_fallback_rows(date(2027, 5, 15), {"VENUE"}, None, date(2026, 8, 24))
         assert rows
         assert all(r.origin == "CATALOG_FALLBACK" for r in rows)
+
+
+class TestTimelineProtectedClause:
+    """2026-08-29 재생성 중복 항목 버그 — 타임라인 보호 기준이 "사용자가 완료를 체크했거나
+    날짜를 바꾼 항목(+사용자가 직접 추가한 항목)"인지 SQL 수준에서 고정한다. 실제 행 필터링은
+    라이브 DB에서 확인하는 이 레포 컨벤션대로(모듈 docstring), 여기서는 조건식이 조용히
+    예전 기준(user_edited_at 단독)으로 되돌아가지 않는지를 회귀 방지로 잡는다."""
+
+    def test_requires_done_or_date_overridden_not_just_user_edited_at(self):
+        sql = _compiled_timeline_protected_sql()
+
+        assert "user_edited_at IS NOT NULL" in sql
+        assert "status = 'DONE'" in sql
+        assert "date_overridden" in sql
+
+    def test_user_added_rows_are_protected(self):
+        # origin='USER' 행은 AI 생성물이 아니라 재생성 대상 자체가 아니다 — 예전 기준
+        # (user_edited_at IS NULL)에서는 재생성 때마다 조용히 지워졌다.
+        assert "origin = 'USER'" in _compiled_timeline_protected_sql()
+
+
+class TestDropRowsCollidingWithProtected:
+    """2026-08-29 재생성 중복 항목 버그의 두 번째 축 — 살아남는 보호 행과 같은 항목을 새로
+    꽂지 않는다. 특히 BLOCKED/FAILED 카탈로그 폴백은 그래프의 dedup 단계를 안 거치므로
+    이 지점이 유일한 방어선이다."""
+
+    def _timeline_row(self, category_code: str | None, title: str) -> TimelineItem:
+        return TimelineItem(
+            category_code=category_code,
+            origin="CATALOG_FALLBACK",
+            status="TODO",
+            title=title,
+            target_date=date(2027, 5, 15),
+        )
+
+    def test_row_with_same_title_as_protected_is_dropped(self):
+        protected = [{"id": "x", "category_code": "VENUE", "title": "예식장 계약금 입금"}]
+        rows = [
+            self._timeline_row("VENUE", "예식장 계약금 입금"),
+            self._timeline_row("VENUE", "본식 리허설"),
+        ]
+
+        kept = _drop_rows_colliding_with_protected("TIMELINE", rows, protected)
+
+        assert [r.title for r in kept] == ["본식 리허설"]
+
+    def test_whitespace_and_punctuation_variants_count_as_duplicates(self):
+        # 사용자 눈에는 같은 항목인데 원문 완전 일치가 아니라 예전엔 그대로 두 행이 됐다.
+        protected = [{"id": "x", "category_code": "VENUE", "title": "예식장 계약금 입금"}]
+        rows = [self._timeline_row("VENUE", "예식장계약금 입금!")]
+
+        kept = _drop_rows_colliding_with_protected("TIMELINE", rows, protected)
+
+        assert kept == []
+
+    def test_same_title_in_other_category_is_kept(self):
+        protected = [{"id": "x", "category_code": "VENUE", "title": "계약 확인"}]
+        rows = [self._timeline_row("SDM", "계약 확인")]
+
+        kept = _drop_rows_colliding_with_protected("TIMELINE", rows, protected)
+
+        assert len(kept) == 1
+
+    def test_universal_rows_with_null_category_are_compared_among_themselves(self):
+        # category_code=null(혼인신고 등 범용 일정)도 보호 대상이 될 수 있다 — None끼리 비교된다.
+        protected = [{"id": "x", "category_code": None, "title": "혼인신고"}]
+        rows = [self._timeline_row(None, "혼인신고"), self._timeline_row(None, "본식")]
+
+        kept = _drop_rows_colliding_with_protected("TIMELINE", rows, protected)
+
+        assert [r.title for r in kept] == ["본식"]
+
+    def test_no_protected_items_keeps_everything(self):
+        rows = [self._timeline_row("VENUE", "A"), self._timeline_row("VENUE", "B")]
+
+        kept = _drop_rows_colliding_with_protected("TIMELINE", rows, [])
+
+        assert kept == rows
+
+    def test_duplicates_within_the_same_batch_are_also_dropped(self):
+        rows = [self._timeline_row("VENUE", "A"), self._timeline_row("VENUE", "A")]
+
+        kept = _drop_rows_colliding_with_protected("TIMELINE", rows, [])
+
+        assert len(kept) == 1
+
+    def test_works_for_checklist_rows_too(self):
+        # 폴백 카탈로그 중복은 체크리스트도 같은 결함이었다(사용자가 체크한 항목이 보호되고,
+        # 폴백이 같은 카탈로그 항목을 한 번 더 꽂음).
+        protected = [{"id": "x", "category_code": "VENUE", "title": "계약금 상한 확인"}]
+        rows = [
+            ChecklistItem(
+                category_code="VENUE",
+                origin="CATALOG_FALLBACK",
+                status="LISTED",
+                item_type="CONTRACT_TERM",
+                group_label="계약 조건 확인",
+                title="계약금 상한 확인",
+            )
+        ]
+
+        kept = _drop_rows_colliding_with_protected("CHECKLIST", rows, protected)
+
+        assert kept == []

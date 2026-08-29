@@ -62,8 +62,9 @@ _CHECKLIST_RULES = """웨딩 프로필(활성 카테고리·우선순위·스타
 
 - FOCUS 카테고리(VENUE/SDM)는 CONTRACT_TERM 비중을 40~60% 정도로 하세요(F9_CONTRACT_FOCUS) —
   EXTRA_COST/PREP도 반드시 섞으세요, CONTRACT_TERM 단일 구성은 이 기준을 어긴 것입니다.
-- protected_items에 있는 항목은 다시 만들지 마세요(사용자가 이미 직접 수정함) — 중복 방지용
-  참고만 하세요.
+- protected_items에 있는 항목은 재생성 후에도 화면에 그대로 남습니다(사용자가 이미 직접
+  수정함) — **표현만 바꿔서 같은 내용을 다시 만들지도 마세요**(예: "계약금 상한 확인" ↔
+  "계약금 한도 체크"). 중복 방지용 참고로만 쓰세요.
 - 같은 카테고리 안에서 title이 겹치는 항목을 두 개 이상 만들지 마세요. 여러 항목이 필요하면
   각 title을 서로 다르게(구체적인 시기·대상·내용 등으로 구분) 쓰세요.
 - 활성 카테고리마다 최소 2개 이상 항목을 만드세요.
@@ -85,7 +86,10 @@ _TIMELINE_RULES = """아래 표준 카탈로그(few-shot)를 참고해 이 커�
   값을 쓰면 ENUM에 없는 값이라 오류가 납니다 — 아래 few-shot의 JSON 예시를 그대로 참고하세요.
 - default_dday_offset_days는 본식 기준 며칠 전(음수)/후(양수)인지 정수로, -400~60 범위
   안에서만 쓰세요.
-- protected_items는 다시 만들지 마세요.
+- protected_items는 재생성 후에도 화면에 그대로 남아 있는 항목입니다. **표현만 바꿔서 같은
+  일정을 다시 만들지 마세요** — 예를 들어 protected_items에 "예식장 계약"이 있으면
+  "예식장 계약하기"·"웨딩홀 계약 체결" 같은 항목도 만들면 안 됩니다(사용자 화면에는 같은
+  일정이 두 개로 보입니다). 그 일정은 이미 끝난 것으로 보고 다른 일정에 집중하세요.
 - 같은 카테고리 안에서 title이 겹치는 항목을 두 개 이상 만들지 마세요. 여러 항목이 필요하면
   각 title을 서로 다르게(구체적인 시기·대상·내용 등으로 구분) 쓰세요.
 - 프로필의 selected_options는 카테고리 안에서도 사용자가 일부 옵션만 선택했다는 뜻입니다
@@ -244,7 +248,10 @@ def _protected_items_note(protected_items: dict) -> str:
     if not checklist_items and not timeline_items:
         return "protected_items: 없음(사용자가 직접 수정한 기존 항목이 아직 없습니다)."
     parts = [
-        "protected_items(사용자가 이미 직접 수정한 기존 항목 — 같은 제목으로 다시 만들지 마세요):"
+        (
+            "protected_items(사용자가 이미 직접 수정해 재생성 후에도 남는 기존 항목 — 같은 "
+            "제목은 물론, 표현만 다른 같은 내용의 항목도 만들지 마세요):"
+        )
     ]
     if checklist_items:
         parts.append(f"- CHECKLIST: {_format_protected_items(checklist_items)}")
