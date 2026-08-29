@@ -12,18 +12,20 @@
 //
 // **UX 개편(2026-08-26)** — 예산 도넛 카드를 예산 페이지로 옮겨서(BudgetDonut.test.tsx가 그
 // 화면에서 따로 고정한다) 여기선 더 안 본다. "카테고리별 예산" 카드는 "카테고리별 체크리스트
-// 진행률 · 시세비교"(2026-08-27, "시세비교"만 남아 체크리스트 진행률 카드라는 게 제목만 봐선
-// 안 드러나던 문제 수정)로 바뀌어 `getCategories()`(has_benchmark 판정)와
-// `getBenchmarkCompare()`도 목으로 배선해야 한다.
+// 진행률"이 됐다.
 //
 // **삭제한 테스트**: "비용이 없는 카테고리는 진행률 바를 그리지 않는다"(구 sample-data의
 // `budget: null` 분기) — 체크리스트 진행률은 예산 유무와 무관하게 항상 뜨므로 더 이상 해당하는
 // 개념이 아니다(CategoryRow.tsx 머리말).
+//
+// **삭제한 테스트(2026-08-29, 사용자 지시)**: 시세비교 4건("결과가 뜨면 중앙값·배율을 함께
+// 보여준다" / "has_benchmark이 아니면 호출도 문구도 없다" / "조회 실패해도 카드가 안 죽는다" /
+// "예산 0원이면 호출하지 않는다"). 이 화면은 시세비교를 아예 그리지 않는다 —
+// `getCategories()`·`getBenchmarkCompare()` 목도 함께 걷어냈다(DashboardPage.tsx 머리말 9번).
+// 같은 계약은 예산 페이지 쪽 테스트가 계속 지킨다.
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
-import type { BenchmarkComparison } from "@/entities/payment";
-import type { CategoriesResponse } from "@/entities/wedding";
+import { render, screen } from "@testing-library/react";
 import type { DashboardSummary } from "@/entities/dashboard";
 import { DashboardPage } from "./DashboardPage";
 
@@ -42,19 +44,11 @@ vi.mock("@/entities/dashboard", async (orig) => ({
   getDashboardSummary: () => getDashboardSummaryMock(),
 }));
 
-const getCategoriesMock = vi.fn();
-vi.mock("@/entities/wedding", async (orig) => ({
-  ...(await orig<typeof import("@/entities/wedding")>()),
-  getCategories: () => getCategoriesMock(),
-}));
-
-const getBenchmarkCompareMock = vi.fn();
 // 이전엔 getUpcomingPayments()가 목킹 안 돼 있어 "다가오는 결제" 카드가 이 파일의 테스트에서
 // 실제로 한 번도 렌더된 적이 없었다(네트워크 실패 → 조용히 null) — 2026-08-27에 메움.
 const getUpcomingPaymentsMock = vi.fn();
 vi.mock("@/entities/payment", async (orig) => ({
   ...(await orig<typeof import("@/entities/payment")>()),
-  getBenchmarkCompare: (params: unknown) => getBenchmarkCompareMock(params),
   getUpcomingPayments: (days: number) => getUpcomingPaymentsMock(days),
 }));
 
@@ -86,39 +80,9 @@ const SUMMARY: DashboardSummary = {
   budget_benchmark: null,
 };
 
-// has_benchmark은 VENUE만 true — 실제 배포 상태(backend/app/core/categories.py)와 같은 모양.
-// MEETING은 planned_budget=0이기도 해서, "0원은 애초에 비교 호출을 안 한다" 분기와 겹치지 않게
-// has_benchmark 자체를 false로 둬 두 조건을 분리해서 검증한다.
-const CATEGORIES_RESPONSE: CategoriesResponse = {
-  categories: [
-    { code: "MEETING", name_ko: "상견례", display_order: 1, tier: "MOCKUP", has_cost: true, has_benchmark: false, has_vendor_cases: false, allows_custom_tag: false },
-    { code: "VENUE", name_ko: "예식장", display_order: 2, tier: "FOCUS", has_cost: true, has_benchmark: true, has_vendor_cases: true, allows_custom_tag: false },
-  ],
-};
-
-const VENUE_BENCHMARK: BenchmarkComparison = {
-  category_code: "VENUE",
-  item_code: "TOTAL",
-  region_code: "SEOUL_OTHER",
-  survey_month: "2026-07",
-  your_amount: 12_000_000,
-  median_price: 11_000_000,
-  min_price: 8_000_000,
-  max_price: 15_000_000,
-  sample_count: 42,
-  percentile_label: "평균",
-  ratio_to_median: 1.09,
-  source_url: "https://example.com",
-  source_note: null,
-};
-
 beforeEach(() => {
   getDashboardSummaryMock.mockReset();
   getDashboardSummaryMock.mockResolvedValue(SUMMARY);
-  getCategoriesMock.mockReset();
-  getCategoriesMock.mockResolvedValue(CATEGORIES_RESPONSE);
-  getBenchmarkCompareMock.mockReset();
-  getBenchmarkCompareMock.mockResolvedValue(VENUE_BENCHMARK);
   getUpcomingPaymentsMock.mockReset();
   getUpcomingPaymentsMock.mockResolvedValue({
     days: 30,
@@ -130,8 +94,8 @@ beforeEach(() => {
 
 async function renderDashboard() {
   const view = render(<DashboardPage />);
-  // 실 fetch(mock)를 기다려야 한다 — 첫 렌더는 자리표시(스켈레톤 + "불러오는 중…")다. 도넛이 없어진 뒤로는
-  // "다가오는 할 일"이 항상 첫 카드다(시세비교 조회가 늦게 끝나도 이 카드는 즉시 뜬다).
+  // 실 fetch(mock)를 기다려야 한다 — 첫 렌더는 자리표시(스켈레톤 + "불러오는 중…")다.
+  // 도넛이 없어진 뒤로는 "다가오는 할 일"이 항상 첫 카드다.
   await screen.findByRole("heading", { level: 2, name: "다가오는 할 일" });
   return view;
 }
@@ -146,7 +110,7 @@ describe("카드 구조", () => {
     await screen.findByRole("heading", { level: 2, name: "다가오는 결제 · 30일 이내" });
 
     const titles = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
-    expect(titles).toEqual(["다가오는 할 일", "다가오는 결제 · 30일 이내", "카테고리별 체크리스트 진행률 · 시세비교"]);
+    expect(titles).toEqual(["다가오는 할 일", "다가오는 결제 · 30일 이내", "카테고리별 체크리스트 진행률"]);
   });
 });
 
@@ -161,7 +125,7 @@ describe("다가오는 할 일 — 금액 없이 D-Day/상태만 보여준다", 
   });
 });
 
-describe("카테고리별 체크리스트 진행률 · 시세비교", () => {
+describe("카테고리별 체크리스트 진행률", () => {
   it("진행률 바마다 어느 카테고리인지 말한다 — 접근명이 서로 다르고, 예산 지불률이 아니라 체크리스트 진행률이다", async () => {
     await renderDashboard();
 
@@ -186,43 +150,12 @@ describe("카테고리별 체크리스트 진행률 · 시세비교", () => {
     expect(screen.getByText("체크리스트 40%")).toBeInTheDocument();
   });
 
-  it("has_benchmark 카테고리는 시세비교 결과가 뜨면 중앙값·배율을 함께 보여준다", async () => {
+  it("시세 관련 문구를 어느 행에도 내지 않는다 — 시세비교는 예산 페이지 소관이다", async () => {
     await renderDashboard();
 
-    await waitFor(() => {
-      expect(getBenchmarkCompareMock).toHaveBeenCalledWith({ categoryCode: "VENUE", itemCode: "TOTAL", amount: 12_000_000 });
-    });
-    expect(await screen.findByText("11,000,000원")).toBeInTheDocument();
-    expect(screen.getByText("1.09배")).toBeInTheDocument();
-    expect(screen.getByText(/시세 대비 평균/u)).toBeInTheDocument();
-  });
-
-  it("has_benchmark이 아닌 카테고리는 시세비교를 아예 호출하지 않고 문구도 안 낸다", async () => {
-    await renderDashboard();
-    await waitFor(() => expect(getCategoriesMock).toHaveBeenCalled());
-
-    expect(getBenchmarkCompareMock).not.toHaveBeenCalledWith(expect.objectContaining({ categoryCode: "MEETING" }));
-  });
-
-  it("시세비교 조회가 실패해도(404 등) 카드 전체가 죽지 않고 체크리스트는 그대로 보인다", async () => {
-    getBenchmarkCompareMock.mockRejectedValue(new Error("BENCHMARK_NOT_AVAILABLE"));
-    await renderDashboard();
-
-    await waitFor(() => expect(getBenchmarkCompareMock).toHaveBeenCalled());
-    expect(screen.getByText("체크리스트 40%")).toBeInTheDocument();
-    expect(screen.queryByText(/시세 대비/u)).not.toBeInTheDocument();
-  });
-
-  it("예산이 배정되지 않은(0원) 카테고리는 시세비교 호출 자체를 하지 않는다", async () => {
-    getDashboardSummaryMock.mockResolvedValue({
-      ...SUMMARY,
-      categories: [{ category_code: "VENUE", name_ko: "예식장", tier: "FOCUS", is_active: true, planned_budget: 0, paid_amount: 0, progress_rate: 0 }],
-    });
-    await renderDashboard();
-    await waitFor(() => expect(getCategoriesMock).toHaveBeenCalled());
-
-    expect(getBenchmarkCompareMock).not.toHaveBeenCalled();
-    expect(await screen.findByText("예산을 배정하면 시세와 비교할 수 있어요.")).toBeInTheDocument();
+    expect(screen.queryByText(/시세/u)).not.toBeInTheDocument();
+    // 예산 미배정(planned_budget=0)인 상견례 행에도 안내 문구가 붙지 않는다.
+    expect(screen.queryByText("예산을 배정하면 시세와 비교할 수 있어요.")).not.toBeInTheDocument();
   });
 });
 

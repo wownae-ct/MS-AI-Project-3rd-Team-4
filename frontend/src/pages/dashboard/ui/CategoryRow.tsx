@@ -1,30 +1,26 @@
-// 카테고리별 체크리스트 진행률 + 시세비교 한 줄 (UX 개편, 2026-08-26 — 예산 지불률 표시를
-// 이 자리에서 걷어내고 체크리스트 진행률+시세비교로 바꿨다. 예산 상세는 이제 예산 페이지가
-// 전담한다). 원래 시각 스펙: docs/mockups/s2-dashboard.html:219-284 — 그 목업이 그리던 "예산
-// 지불률" 축을 이 화면에서는 더 이상 쓰지 않는다(ADR 0006 — 규범/요구사항 변경이 목업을 이긴다).
+// 카테고리별 체크리스트 진행률 한 줄 (UX 개편, 2026-08-26 — 예산 지불률 표시를 이 자리에서
+// 걷어냈다. 예산 상세는 이제 예산 페이지가 전담한다). 원래 시각 스펙:
+// docs/mockups/s2-dashboard.html:219-284 — 그 목업이 그리던 "예산 지불률" 축을 이 화면에서는
+// 더 이상 쓰지 않는다(ADR 0006 — 규범/요구사항 변경이 목업을 이긴다).
 //
 // **체크리스트 진행률은 모든 카테고리에 있다** — 예산 유무(has_cost)와 무관하다. 그래서 예전
 // `budget === null` 분기(비용 없는 카테고리는 바를 안 그림)가 없다 — 진행률 바가 항상 뜬다.
 //
-// **시세비교는 `hasBenchmark`(카테고리 상수의 has_benchmark, use-category-benchmarks.ts)가
-// true인 카테고리에서만 그 자리가 생긴다.** `benchmark`가 undefined면 "아직 비교할 수 없다"는
-// 뜻(예산 미배정 또는 조회 실패) — 숫자를 지어내지 않고 안내 문구만 낸다.
-//
-// **D6 — 상태색을 쓰지 않는다.** "높음/평균/낮음"(percentile_label)을 색으로 구분하지 않고
-// 텍스트+배지로만 전달한다(D8 팔레트 게이트가 임의 색 추가를 어차피 막는다).
+// **시세비교 줄은 없다(2026-08-29, 사용자 지시).** 한때 이 자리에 `has_benchmark` 카테고리의
+// "시세 대비 …" 결과와, 비교할 수 없을 때의 "예산을 배정하면 시세와 비교할 수 있어요." 안내가
+// 있었다. 둘 다 걷어냈다 — 같은 시세비교를 예산 페이지가 이미 전담하고(「카테고리별 예산
+// 현황」 행 + 「총 예산 현황」 도넛), 예산 미배정 상태에서는 정보 없는 안내 문구만 행마다
+// 쌓였다. 홈은 카테고리별 진행 상황만 본다. 조회 훅(dashboard/ui/use-category-benchmarks.ts)도
+// 함께 지웠다 — 예산 페이지의 같은 이름 사본은 그 화면 것이라 그대로 있다.
 import { Link } from "@tanstack/react-router";
-import type { BenchmarkComparison } from "@/entities/payment";
 import type { CategoryBudget } from "@/entities/wedding";
-import { Badge, Money, Progress } from "@/shared/ui";
+import { Badge, Progress } from "@/shared/ui";
 
 export interface CategoryRowProps {
   category: CategoryBudget;
-  hasBenchmark: boolean;
-  /** undefined = 이 카테고리에 대해 아직 비교 결과가 없다(예산 미배정 또는 조회 실패/데이터 없음). */
-  benchmark: BenchmarkComparison | undefined;
 }
 
-export function CategoryRow({ category, hasBenchmark, benchmark }: CategoryRowProps) {
+export function CategoryRow({ category }: CategoryRowProps) {
   const { id, name, focus, checklistProgress } = category;
 
   // 12_final_prototype_mockup.html의 renderHome()은 이 행 전체를 카테고리 상세로 가는 진입점으로
@@ -59,19 +55,6 @@ export function CategoryRow({ category, hasBenchmark, benchmark }: CategoryRowPr
         <Progress value={checklistProgress} label={`${name} 체크리스트 진행률`} />
       </div>
       <p className="text-xs text-ink-soft">체크리스트 {Math.round(checklistProgress * 100)}%</p>
-
-      {hasBenchmark &&
-        (benchmark ? (
-          // flex-wrap — 배지가 이제 안 눌리므로(D16) 좁은 폭에서는 배지가 다음 줄로 내려가야
-          // 한다. 없으면 앞의 문구가 세로로 접히면서 줄 높이만 늘어난다(BudgetDonut 은 이미 켜져
-          // 있었다 — 같은 줄 구성인데 여기와 CategoryAllocationRow 만 빠져 있었다).
-          <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-ink-soft">
-            시세 대비 {benchmark.percentile_label} · 중앙값 <Money value={benchmark.median_price} className="text-xs" />
-            <Badge>{benchmark.ratio_to_median.toFixed(2)}배</Badge>
-          </p>
-        ) : (
-          <p className="mt-1 text-xs text-ink-soft">예산을 배정하면 시세와 비교할 수 있어요.</p>
-        ))}
     </Link>
   );
 }
