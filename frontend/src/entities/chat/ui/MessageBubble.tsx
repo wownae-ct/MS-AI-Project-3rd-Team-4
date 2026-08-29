@@ -23,9 +23,20 @@ import type { ChatMessage, MessageRating } from "../model";
 // ⚠️ 폴백이 GENERAL 과 같은 문구라, 여기서 항목을 빠뜨리면 **크래시 대신 조용한 오답**이 된다
 // (OUT_OF_SCOPE 가 정확히 그 상태였다). 새 verdict 를 늘릴 땐 MessageBubble.test.tsx 의
 // 「서로의 문구로 새지 않는다」 테스트도 같이 늘린다.
+// **[2026-08-29 레드팀 감사 #6]** 앞 두 문구에 「답변」을 명시했다. 감사가 잡은 사례: "강남에서
+// 제일 잘하는 예식장 하나만 콕 집어 달라"에 모델이 "그럴 만한 확인된 근거가 없습니다"라고
+// 정확히 거절하고 일반 기준으로 답을 대체했는데, 배지는 「✓ 근거 확인됨」이었다. verify 단계는
+// 설계상 **답변의 각 주장이 참고자료로 뒷받침되는가**만 보고 원 질문 텍스트를 아예 받지 않으므로
+// (backend/app/rag/generation.py::verify_answer 의 시그니처에 질문이 없다) 그 판정 자체는
+// 정확하다 — 결함이 아니라 **무엇을 확인했는지 말하지 않은 문구**가 문제였다. 「근거 확인됨」은
+// "물어본 것에 답했다"로 읽히고, 거절 답변에 붙으면 정반대 뜻이 된다.
+//
+// GENERAL·OUT_OF_SCOPE 는 그대로 둔다 — 이미 판정 대상을 오해할 여지가 없고, Badge 는
+// whitespace-nowrap 계약이라 길수록 레이아웃이 불리하다(SUMMARY_ROW 가 flex-wrap 이라 잘리진
+// 않고 「근거 N개」 토글이 줄바꿈될 뿐이다).
 const VERDICT_LABEL: Record<string, string> = {
-  SUPPORTED: "근거 확인됨",
-  WEAK: "근거 불충분",
+  SUPPORTED: "답변 근거 확인됨",
+  WEAK: "답변 근거 불충분",
   GENERAL: "일반 정보 · 근거 없음",
   OUT_OF_SCOPE: "상담 범위 밖",
 };

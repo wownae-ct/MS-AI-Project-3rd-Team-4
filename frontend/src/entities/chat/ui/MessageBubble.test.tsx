@@ -32,12 +32,14 @@ const MESSAGE: ChatMessage = {
 };
 
 describe("AI 답변 — 검증 배지", () => {
-  it("verdict 4종을 목업 문구 그대로 낸다", () => {
+  // 앞 두 문구의 「답변」은 레드팀 감사 #6 이 붙였다 — 배지가 판정한 대상이 **답변**이지 원
+  // 질문 충족 여부가 아님을 밝힌다(MessageBubble.tsx 의 VERDICT_LABEL 머리말).
+  it("verdict 4종을 서로 다른 문구로 낸다", () => {
     const { rerender } = render(<MessageBubble message={MESSAGE} />);
-    expect(screen.getByText("근거 확인됨")).toBeInTheDocument();
+    expect(screen.getByText("답변 근거 확인됨")).toBeInTheDocument();
 
     rerender(<MessageBubble message={{ ...MESSAGE, verification: { verdict: "WEAK", reason: "" } }} />);
-    expect(screen.getByText("근거 불충분")).toBeInTheDocument();
+    expect(screen.getByText("답변 근거 불충분")).toBeInTheDocument();
 
     rerender(<MessageBubble message={{ ...MESSAGE, verification: { verdict: "GENERAL", reason: "" } }} />);
     expect(screen.getByText("일반 정보 · 근거 없음")).toBeInTheDocument();
@@ -64,7 +66,7 @@ describe("AI 답변 — 검증 배지", () => {
     render(<MessageBubble message={{ ...MESSAGE, verification: undefined }} />);
 
     // 이 시점엔 "근거 없음"조차 확정된 사실이 아니다.
-    expect(screen.queryByText("근거 확인됨")).not.toBeInTheDocument();
+    expect(screen.queryByText("답변 근거 확인됨")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /근거/u })).not.toBeInTheDocument();
   });
 
