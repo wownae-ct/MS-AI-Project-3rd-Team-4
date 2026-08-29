@@ -167,7 +167,7 @@ async def generate_node(state: ChatState, config: RunnableConfig) -> dict:
 
         client = get_azure_openai_client(settings)
         stream = await client.chat.completions.create(
-            model=settings.azure_openai_chat_deployment,
+            model=settings.chat_rag_deployment,
             messages=build_chat_messages(state["category_code"], state["context"], state["query"]),
             stream=True,  # 완성된 답변을 한 번에 안 받고, 글자 조각(delta) 단위로 하나씩 받는다
         )

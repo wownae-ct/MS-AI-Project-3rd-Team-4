@@ -86,11 +86,22 @@ class Settings(BaseSettings):
     # (chat-mini/chat) 모두 이미 있어 새 배포·RBAC 변경 없이 전환 가능.
     azure_openai_receipt_vision_deployment: str | None = None
 
+    # AI상담(챗) 그래프 전용 배포 — 기본은 azure_openai_chat_deployment(개인화·영수증OCR과 공유하는
+    # "chat-mini"/gpt-5.4-mini)를 그대로 재사용한다. 챗만 별도 모델(gpt-5.4, 배포 이름 "chat")로
+    # A/B하고 싶을 때 이 값만 바꾸면 개인화/영수증OCR엔 영향이 없다 — receipt_vision_deployment와
+    # 동일한 fallback 패턴(infra/bicep/modules/openai.bicep에 두 배포 모두 이미 있어 새 배포·RBAC
+    # 변경 없이 전환 가능).
+    azure_openai_chat_rag_deployment: str | None = None
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property
     def receipt_vision_deployment(self) -> str:
         return self.azure_openai_receipt_vision_deployment or self.azure_openai_chat_deployment
+
+    @property
+    def chat_rag_deployment(self) -> str:
+        return self.azure_openai_chat_rag_deployment or self.azure_openai_chat_deployment
 
 
 @lru_cache
