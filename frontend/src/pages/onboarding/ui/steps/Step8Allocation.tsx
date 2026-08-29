@@ -125,7 +125,18 @@ export function Step8Allocation({
   return (
     <div className="flex flex-col gap-4">
       <div ref={cardRef} className="rounded-md border border-line bg-surface p-4">
-        <div className="mb-2 flex items-baseline justify-between">
+        {/* 🚨 [2026-08-29, 320px 전수 검사] `flex-wrap gap-x-2` 를 더했다 — 종전엔 둘 다 없어서
+            좁은 폭에서 **왼쪽 문구가 두 줄로 접혔다.**
+              320px 기기 → 온보딩 열 288 → 이 상자(`p-4` + 보더) 안쪽 **254px**
+              왼쪽 「50,000,000원 배분됨」(`text-base` 16px) ≈ 165px
+              오른쪽 「/ 40,000,000원 ⌄」(`text-xs` 12px)  ≈ 112px   → 합 277px
+            실제 예산이 5천만~1.5억이라 자릿수가 늘 8~9자리다 — 즉 **거의 항상** 넘쳤다.
+            `keep-all`(D19) 덕에 「배/분/됨」으로 붕괴하진 않았지만, 대신 「50,000,000원」과
+            「배분됨」이 어절 단위로 갈라져 두 줄이 됐다.
+            `flex-wrap` 은 그 압력을 **오른쪽 버튼**이 받게 한다 — flex 는 아이템의 가정 크기 합이
+            줄을 넘으면 아이템 단위로 줄을 나누므로, 버튼이 다음 줄로 내려가고 왼쪽 문구는 한 줄에
+            남는다. `gap-x-2` 는 한 줄에 들어갈 때 둘이 맞닿지 않게 하는 몫(종전엔 gap 이 아예 없었다). */}
+        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-2">
           <span className="text-base font-bold text-ink [font-variant-numeric:tabular-nums]">
             {allocatedBudget.toLocaleString("ko-KR")}원 배분됨
           </span>

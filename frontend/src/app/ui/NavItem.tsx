@@ -31,9 +31,32 @@ export interface NavItemProps {
   alsoActiveFor?: readonly string[];
 }
 
+// 🚨 [2026-08-29, 320px 전수 검사] 모바일 가로 패딩이 `px-2` 였다 — **여유가 정확히 0px 이었다.**
+//
+// 하단 탭바는 화면 폭을 5칸으로 나눈다. 320px 기기에서 한 칸은 64px 이고, 그 칸이 더 줄 수 없는
+// 하한(`min-width: auto` = min-content)은 이렇게 나온다:
+//
+//   라벨 「타임라인」 = 4음절 × `text-xs`(12px) = 48px  +  `px-2` 16px  =  **64px**
+//   → 5 × 64 = 320px = 뷰포트와 **동일**
+//
+// 라벨이 이보다 더 못 줄어드는 이유는 조판 규칙이다 — `keep-all`(D19)이 음절 사이 줄바꿈을 막고,
+// 짝인 `overflow-wrap: break-word` 는 **min-content 계산에 들어가지 않는다**(CSS Text L3). 즉
+// 「타/임/라/인」으로 접혀서 폭을 내주는 일은 (다행히) 일어나지 않고, 대신 **한 칸이라도 넘치면
+// 5번째 탭(AI상담)이 뷰포트 밖으로 밀려 잘린다.** 고정 요소라 가로 스크롤도 생기지 않는다 —
+// 조용히 사라진다.
+//
+// 「정확히 맞으니 괜찮다」로 두지 않는 이유: 이 산술은 **한글 자간이 정확히 1em 이라는 한 폰트의
+// 메트릭**에 기대고 있고, iOS 는 Wanted Sans 가 도착하기 전 폴백(Apple SD Gothic Neo)으로 먼저
+// 레이아웃한다(`font-display: swap`). 같은 함정을 `pages/report/ui/CompletionRow.tsx` 가 이미 한 번
+// 밟았다(그 파일 주석 — 「3.4px 여유」에 기대던 `w-20`).
+//
+// `px-1` 로 낮추면 칸당 하한이 56px 이 되어 5 × 56 = 280px, **40px 여유**가 생긴다. 잃는 것은 없다 —
+// 이 패딩은 배경이 없는 항목의 좌우 여백이라 시각적으로 하는 일이 없고, 항목은 어차피
+// `items-center` 로 가운데 정렬된다. 터치 타겟도 그대로다(칸 폭 64px 은 `flex-1` 이 정하고
+// 세로는 `min-h-tap`). 데스크톱 사이드바는 `md:px-3` 이 이미 덮으므로 영향받지 않는다.
 const BASE =
   "flex min-h-tap flex-1 cursor-pointer flex-col items-center justify-center gap-1 rounded-sm " +
-  "px-2 py-1 text-xs font-bold text-ink-soft transition-[background-color,color] duration-150 " +
+  "px-1 py-1 text-xs font-bold text-ink-soft transition-[background-color,color] duration-150 " +
   "hover:bg-bg md:w-full md:flex-none md:flex-row md:justify-start md:gap-3 md:px-3 md:py-2 md:text-sm";
 
 /** 활성 — 배경 없이 색으로만. The One Accent Rule: 넓은 면을 primary 로 채우지 않는다. */

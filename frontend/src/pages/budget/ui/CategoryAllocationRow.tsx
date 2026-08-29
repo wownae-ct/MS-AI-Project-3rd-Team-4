@@ -113,7 +113,18 @@ export function CategoryAllocationRow({
 
   return (
     <div className={ROW}>
-      <div className="flex items-baseline justify-between gap-2">
+      {/* 🚨 [2026-08-29, 320px 전수 검사] `flex-wrap` — 이 행은 편집 중에만 금액을 **두 개**
+          (취소선 원본 + 새 값) 싣는데, 둘 다 `flex-none` 안에 있어 눌리지 않고 카테고리명도
+          `keep-all`(D19) 때문에 어절 아래로 못 줄어든다. 즉 양쪽 다 안 줄어드는 행이다.
+            320px 기기 → 카드 안쪽 254px
+            이름 「청첩장·답례품」(가운뎃점은 UAX #14 상 낱말 안의 문자라 7자가 한 덩어리) ≈ 98px
+            금액 「30,000만원 30,000만원」(`text-sm`) ≈ 160px  → gap 8 을 더해 **266px**
+          보기 모드(금액 하나)는 184px 이라 안전하지만 편집 모드에서만 12px 넘쳤다 — 3억대
+          신혼집처럼 만원 표기가 6자리가 되는 카테고리에서 실제로 걸린다.
+          `flex-wrap` 이면 금액 덩어리가 다음 줄로 내려가고 이름은 한 줄에 남는다. 나머지 세
+          분기(비용 없음 · 보기 모드 · 하단 잠김 표시)는 값이 하나뿐이라 그대로 둔다 — 재보고
+          안전해서 두는 것이지 빠뜨린 것이 아니다. */}
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
         <span className="text-sm font-bold text-ink">{category.name_ko}</span>
         <span className="flex-none text-sm font-bold text-ink [font-variant-numeric:tabular-nums]">
           {changed && <span className="mr-1 font-normal text-ink-soft line-through">{formatManwon(originalAmount)}만원</span>}
