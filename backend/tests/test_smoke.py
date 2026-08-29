@@ -14,12 +14,16 @@ GET /categories는 03_API_spec.md §5 인증 필수 목록(`/weddings*` 등)에 
 엔드포인트라 401 케이스가 없다 — 세션 쿠키 없이도 항상 200이어야 하는 게 맞는 동작이다."""
 
 from datetime import date, timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from conftest import parse_sse_frames
+from sqlalchemy import select
 
 from app.core.categories import CATEGORY_META
+from app.core.db import get_session_factory
 from app.core.timezone import today_kst
+from app.models import ChatSession
+from app.services.chat import _touch_session_activity
 
 
 class TestCategoriesSmoke:
@@ -159,6 +163,59 @@ class TestChatSessionsSmoke:
         assert by_event["verification"]["verdict"] == "OUT_OF_SCOPE"
         assert by_event["citations"]["citations"] == []
         assert events[-1][0] == "done"
+
+    async def test_list_sessions_returns_200_with_created_session(self, wedding_client):
+        created = await wedding_client.post("/chat/sessions", json={"category_code": "VENUE"})
+        session_id = created.json()["id"]
+
+        response = await wedding_client.get("/chat/sessions")
+
+        assert response.status_code == 200
+        listed = next(s for s in response.json()["sessions"] if s["id"] == session_id)
+        assert listed["category_code"] == "VENUE"
+        assert listed["title"] is None
+        assert listed["last_message_at"] is None
+
+    async def test_list_sessions_without_cookie_returns_401(self, client):
+        response = await client.get("/chat/sessions")
+
+        assert response.status_code == 401
+
+    async def test_list_sessions_only_returns_own_wedding_sessions(
+        self, wedding_client, make_wedding_client
+    ):
+        created = await wedding_client.post("/chat/sessions", json={"category_code": "VENUE"})
+        session_id = created.json()["id"]
+
+        other_client = await make_wedding_client()
+        response = await other_client.get("/chat/sessions")
+
+        assert response.status_code == 200
+        assert all(s["id"] != session_id for s in response.json()["sessions"])
+
+    async def test_list_sessions_reflects_title_and_last_message_at_after_activity(
+        self, wedding_client
+    ):
+        """#29 실LLM 스트리밍은 자동 스모크 대상이 아니라(클래스 docstring) stream_chat_response
+        전체를 여기서 태울 순 없다 — 그 함수가 메시지 저장 때마다 남기는 부작용(제목/최근활동시각
+        갱신)만 담당하는 _touch_session_activity를 직접 호출해 흉내내고, GET /chat/sessions가
+        그 결과를 정확히 직렬화해 돌려주는지만 검증한다. _touch_session_activity 자체의 단위
+        동작(제목은 최초 1회만 설정)은 test_chat_service.py에서 별도로 검증한다."""
+        created = await wedding_client.post("/chat/sessions", json={"category_code": "VENUE"})
+        session_id = created.json()["id"]
+
+        async with get_session_factory()() as session:
+            stmt = select(ChatSession).where(ChatSession.id == UUID(session_id))
+            chat_session = (await session.execute(stmt)).scalar_one()
+            _touch_session_activity(chat_session, first_message_content="위약금 조건이 궁금해요")
+            await session.commit()
+
+        response = await wedding_client.get("/chat/sessions")
+
+        assert response.status_code == 200
+        listed = next(s for s in response.json()["sessions"] if s["id"] == session_id)
+        assert listed["title"] == "위약금 조건이 궁금해요"
+        assert listed["last_message_at"] is not None
 
 
 class TestChatMessageRatingSmoke:
