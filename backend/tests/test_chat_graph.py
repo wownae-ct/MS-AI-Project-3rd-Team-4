@@ -5,6 +5,7 @@ app.rag.generation에서 import해 자기 네임스페이스에 바인딩한 이
 
 import asyncio
 from types import SimpleNamespace
+from typing import Self
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.core.config import Settings
@@ -45,6 +46,32 @@ def _stream_client(*answer_texts: str) -> MagicMock:
     client = MagicMock()
     client.chat.completions.create = AsyncMock(side_effect=[_stream(t) for t in answer_texts])
     return client
+
+
+# Phase 7 감사(Low) 회귀 방지용 — 이 파일의 다른 테스트는 _TEST_SETTINGS에 Langfuse 키가 없어
+# traced_span이 항상 no-op이라 span에 실제로 뭐가 기록되는지 검증하지 못한다. app.rag.graph.
+# traced_span 자체를 이 가짜로 교체해 trace.update(output=...) 호출 내용을 직접 들여다본다.
+class _RecordedSpan:
+    def __init__(self, name: str, calls: list[dict]):
+        self._name = name
+        self._calls = calls
+        self.trace_id = None
+
+    def update(self, **kwargs: object) -> None:
+        self._calls.append({"span_name": self._name, **kwargs})
+
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> bool:
+        return False
+
+
+def _recording_traced_span(calls: list[dict]):
+    def _factory(name: str, **_kwargs: object) -> _RecordedSpan:
+        return _RecordedSpan(name, calls)
+
+    return _factory
 
 
 def _initial_state() -> dict:
@@ -203,3 +230,88 @@ class TestReformulateHeartbeat:
                     heartbeats.append(chunk)
 
         assert len(heartbeats) >= 1
+
+
+# red-bug.md #18 — retrieve_node의 Langfuse span에 검색된 chunk_id가 output으로 안 남던 문제의
+# 회귀 테스트. app.rag.graph.traced_span을 _recording_traced_span으로 교체해 실제로 무엇이
+# trace.update()에 실리는지 검증한다(다른 클래스들은 트레이싱이 항상 꺼져 있어 이 부분을 못 본다).
+class TestRetrieveSpanRecordsChunkIds:
+    async def test_records_chunk_ids_on_first_retrieve(self):
+        client = _stream_client("1차 답변")
+        span_calls: list[dict] = []
+        graph = build_graph()
+        config = {"configurable": {"session": object(), "settings": _TEST_SETTINGS}}
+        with (
+            patch("app.rag.graph.get_azure_openai_client", return_value=client),
+            patch("app.rag.graph.retrieve", AsyncMock(return_value=[_chunk(1), _chunk(2)])),
+            patch(
+                "app.rag.graph.verify_answer",
+                AsyncMock(return_value=("SUPPORTED", "근거 충분")),
+            ),
+            patch("app.rag.graph.traced_span", _recording_traced_span(span_calls)),
+        ):
+            async for _ in graph.astream(_initial_state(), config, stream_mode="values"):
+                pass
+
+        retrieve_calls = [c for c in span_calls if c["span_name"] == "chat.retrieve"]
+        assert len(retrieve_calls) == 1
+        assert retrieve_calls[0]["output"] == [1, 2]
+
+    async def test_records_empty_list_when_no_chunks_found(self):
+        """0건 검색(RAG_NO_CONTEXT)도 output=[]로 명시적으로 남아야 한다 — 필드 자체가
+        빠지면 "0건"과 "기록 안 됨"을 Langfuse UI에서 구분할 수 없다(§18 사이드이펙트 3번).
+
+        graph.py 모듈 독스트링("0건 검색 → GENERAL → 재구성된 질의로 1회 재검색을 시도한다")
+        대로, context가 비어 있으면 verify_node가 무조건 GENERAL을 반환해 그 자체로 재시도
+        조건(_route_after_verify)을 충족한다 — 즉 검색이 0건이어도 chat.retrieve span 하나로
+        끝나지 않고 chat.retrieve_retry까지 자동으로 한 번 더 돈다(reformulate_query 목이
+        필요한 이유). generate_node는 두 번 다 context가 비어 있어 LLM을 안 부르므로 client는
+        실제로 호출되지 않는다 — 인자 없이 만들어 그 사실을 드러낸다."""
+        client = _stream_client()
+        span_calls: list[dict] = []
+        graph = build_graph()
+        config = {"configurable": {"session": object(), "settings": _TEST_SETTINGS}}
+        with (
+            patch("app.rag.graph.get_azure_openai_client", return_value=client),
+            patch("app.rag.graph.retrieve", AsyncMock(return_value=[])),
+            patch("app.rag.graph.reformulate_query", AsyncMock(return_value="재구성된 질의")),
+            patch("app.rag.graph.traced_span", _recording_traced_span(span_calls)),
+        ):
+            async for _ in graph.astream(_initial_state(), config, stream_mode="values"):
+                pass
+
+        retrieve_calls = [c for c in span_calls if c["span_name"] == "chat.retrieve"]
+        assert len(retrieve_calls) == 1
+        assert retrieve_calls[0]["output"] == []
+        # 위 독스트링대로 재시도 span도 자동으로 도는지, 거기서도 output=[]가 명시적으로
+        # 남는지까지 같이 확인한다.
+        retry_calls = [c for c in span_calls if c["span_name"] == "chat.retrieve_retry"]
+        assert len(retry_calls) == 1
+        assert retry_calls[0]["output"] == []
+
+    async def test_records_chunk_ids_on_retry_span_too(self):
+        """chat.retrieve_retry span도 같은 함수 본문을 타므로 별도 처리 없이 자동으로
+        커버돼야 한다(§18 설계 — "재시도 경로도 자동으로 같이 좋아진다")."""
+        client = _stream_client("1차 답변", "2차 답변")
+        span_calls: list[dict] = []
+        graph = build_graph()
+        config = {"configurable": {"session": object(), "settings": _TEST_SETTINGS}}
+        with (
+            patch("app.rag.graph.get_azure_openai_client", return_value=client),
+            patch(
+                "app.rag.graph.retrieve",
+                AsyncMock(side_effect=[[_chunk(1)], [_chunk(2), _chunk(3)]]),
+            ),
+            patch(
+                "app.rag.graph.verify_answer",
+                AsyncMock(side_effect=[("WEAK", "이유1"), ("SUPPORTED", "이유2")]),
+            ),
+            patch("app.rag.graph.reformulate_query", AsyncMock(return_value="재구성된 질의")),
+            patch("app.rag.graph.traced_span", _recording_traced_span(span_calls)),
+        ):
+            async for _ in graph.astream(_initial_state(), config, stream_mode="values"):
+                pass
+
+        retry_calls = [c for c in span_calls if c["span_name"] == "chat.retrieve_retry"]
+        assert len(retry_calls) == 1
+        assert retry_calls[0]["output"] == [2, 3]

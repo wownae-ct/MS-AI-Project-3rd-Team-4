@@ -24,6 +24,7 @@ get_session_factory()로 세션을 연다 — FastAPI는 StreamingResponse를 �
 import logging
 import time
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from uuid import UUID
 
 from openai import RateLimitError
@@ -39,6 +40,7 @@ from app.core.tracing import score_trace, traced_span
 from app.models import ChatMessage, ChatSession, Wedding
 from app.rag.graph import ChatState, build_graph
 from app.rag.query_profile import profile_query
+from app.rag.scope_check import OUT_OF_SCOPE_ANSWER, OUT_OF_SCOPE_REASON, looks_out_of_scope
 from app.schemas.chat import (
     ChatMessageCreate,
     CitationOut,
@@ -54,6 +56,30 @@ from app.schemas.chat import (
 logger = logging.getLogger(__name__)
 
 _GRAPH = build_graph()
+
+# GET /chat/sessions(목록) 대응 — chat_sessions.title은 세션 생성 시점(create_chat_session)엔
+# 아직 대화 내용이 없어 채울 수 없고, 실제 내용을 보는 유일한 지점인 stream_chat_response의 첫
+# user 메시지에서만 채운다(18_backend_api_db_reference_and_e2e_scenarios.md:885-887이 지적한
+# "항상 NULL" 갭의 실제 수정). 목록 한 줄에 들어갈 미리보기라 전체 본문 대신 앞부분만 자른다.
+_SESSION_TITLE_MAX_LENGTH = 40
+
+
+def _derive_session_title(content: str) -> str:
+    stripped = content.strip()
+    if len(stripped) <= _SESSION_TITLE_MAX_LENGTH:
+        return stripped
+    return stripped[:_SESSION_TITLE_MAX_LENGTH].rstrip() + "…"
+
+
+def _touch_session_activity(
+    chat_session: ChatSession, *, first_message_content: str | None
+) -> None:
+    """세션에 메시지가 실제로 저장될 때마다 호출 — last_message_at을 항상 갱신하고, 이 세션의
+    첫 메시지일 때만(title이 아직 None일 때만) 그 메시지 내용으로 title을 채운다. 두 번째
+    메시지부터는 title을 덮어쓰지 않는다(첫 질문이 그대로 목록의 "제목" 역할을 하도록)."""
+    if first_message_content is not None and chat_session.title is None:
+        chat_session.title = _derive_session_title(first_message_content)
+    chat_session.last_message_at = datetime.now(UTC)
 
 
 async def create_chat_session(
@@ -148,6 +174,20 @@ async def list_chat_messages(
     return list(result.scalars().all())
 
 
+async def list_chat_sessions(session: AsyncSession, wedding_id: UUID) -> list[ChatSession]:
+    """GET /chat/sessions(목록) — 아직 메시지가 하나도 없는 세션(last_message_at이 NULL, title도
+    NULL)은 목록 최상단으로 밀리지 않도록 last_message_at을 우선, 없으면 created_at을 대체
+    정렬키로 써서 최신순 정렬한다. wedding_id로만 필터하므로 category_code 유무와 무관하게 이
+    웨딩의 모든 세션(전역 탭 + 과거 카테고리별 세션)이 함께 나온다 — 프론트 쪽 필터링은 이번
+    스코프 밖(red-bug.md #17 참고)."""
+    result = await session.execute(
+        select(ChatSession)
+        .where(ChatSession.wedding_id == wedding_id)
+        .order_by(ChatSession.last_message_at.desc().nulls_last(), ChatSession.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
 def _build_citations(context: list) -> list[CitationOut]:
     return [
         CitationOut(
@@ -208,6 +248,7 @@ async def _finish_after_upstream_failure(
             trace_ref=trace.trace_id,
         )
         session.add(assistant_message)
+        _touch_session_activity(chat_session, first_message_content=None)
         await session.commit()
         yield _sse("citations", CitationsEventData(citations=citations))
         yield _sse("verification", VerificationEventData(verdict=verdict, reason=reason))
@@ -229,6 +270,7 @@ async def stream_chat_response(
         chat_session = await get_chat_session(session, wedding_id, chat_session_id)
 
         session.add(ChatMessage(session_id=chat_session.id, role="user", content=payload.content))
+        _touch_session_activity(chat_session, first_message_content=payload.content)
         await session.commit()
 
         settings = get_settings()
@@ -254,6 +296,13 @@ async def stream_chat_response(
             "category_code": chat_session.category_code or "ALL",
             **query_profile.as_metadata(),
         }
+        # 2026-08-29 — 스코프 이탈 차단(app/rag/scope_check.py). 결혼 준비와 무관한 요청이면
+        # retrieve/generate/verify(임베딩 API 1회+DB 왕복+LLM 2회)를 아예 안 태우고 즉시
+        # 고정 거절 답변으로 끝낸다. RAG 근거검증 가드레일(verify_node)과 별개 레이어라 그래프
+        # 자체는 안 건드리고, 그래프 호출 직전 서비스 레이어에서만 분기한다 — 실측 결과 기존
+        # "검색 결과 0건 → 거절" 경로가 벡터 검색에 유사도 임계값이 없어 사실상 거의 발동하지
+        # 않았고, 프롬프트 규칙만으로는 태스크성 무관 요청("소설 써줘")이 새는 게 확인됐다.
+        out_of_scope = looks_out_of_scope(payload.content)
         async with traced_span(
             "chat",
             settings=settings,
@@ -265,66 +314,80 @@ async def stream_chat_response(
             ),  # 이메일 등 PII 대신 UUID만 전달(personalization.py와 동일 원칙)
             tags=list(query_profile.tags),
         ) as trace:
-            try:
-                # 그래프(retrieve→generate→verify, verify→retrieve 조건부 재검색 포함)를
-                # 실시간으로 순회한다. 두 종류의 조각이 섞여서 나온다:
-                #   - "custom": 노드가 writer()로 흘려보낸 것 — type="token"이면 델타 하나
-                #     (진짜 실시간), type="stage"면 노드 진입 알림(3부: 검색/생성/검증 중),
-                #     type="retry"면 재검색 시작 알림(최대 1회, retrieve_node가 재시도
-                #     감지 시 stage보다 먼저 emit)
-                #   - "values": 노드가 하나 끝날 때마다의 "전체 상태 스냅샷" → 계속 덮어써서
-                #     마지막 것만 남김(재검색이 일어나도 마지막 시도 결과만 자동으로 남음)
-                async for mode, chunk in _GRAPH.astream(
-                    initial_state, config, stream_mode=["custom", "values"]
-                ):
-                    if mode == "custom":
-                        if chunk["type"] == "token":
-                            yield _sse("token", TokenEventData(delta=chunk["delta"]))
-                        elif chunk["type"] == "stage":
-                            yield _sse("stage", StageEventData(stage=chunk["stage"]))
-                        elif chunk["type"] == "retry":
-                            yield _sse("retry", RetryEventData(reason=chunk["reason"]))
-                        elif chunk["type"] == "heartbeat":
-                            yield _sse_comment("heartbeat")
-                    else:
-                        final_state = chunk
-            except RateLimitError as exc:
-                # 03_API_spec.md #29 "에러 시" / 05_RAG_design.md §10 — 스트림이 이미 200으로
-                # 시작해서 HTTP 상태코드를 더 못 바꾸므로 event: error로만 알린다. 사용자
-                # 메시지는 이미 커밋됐으니 그대로 두고(재시도 시 새 어시스턴트 메시지만
-                # 추가됨), 그래프 실패로 죽은 세션이 계속 열려 있지 않도록 여기서 스트림을
-                # 끝낸다. generate까지 성공해 답변이 이미 스트리밍됐다면 그 답변은 최선을 다해
-                # 저장한다(HIGH #2/MEDIUM #11 — _finish_after_upstream_failure 참고).
-                # 2026-08-26 레드팀 감사 4라운드 항목 10 — 이 지점이 RAG 그래프(retrieve/
-                # generate/verify) 전체 예외의 유일한 포집 지점인데 클라이언트 SSE 응답만
-                # 만들고 서버엔 무로깅이었다.
-                logger.warning("Chat RAG graph rate-limited for session_id=%s", chat_session.id)
-                async for evt in _finish_after_upstream_failure(
-                    session,
-                    chat_session,
-                    final_state,
-                    trace,
-                    span_metadata,
-                    start,
-                    "RATE_LIMITED",
-                    str(exc),
-                ):
-                    yield evt
-                return
-            except Exception as exc:
-                logger.exception("Chat RAG graph failed for session_id=%s", chat_session.id)
-                async for evt in _finish_after_upstream_failure(
-                    session,
-                    chat_session,
-                    final_state,
-                    trace,
-                    span_metadata,
-                    start,
-                    "UPSTREAM_LLM_ERROR",
-                    str(exc),
-                ):
-                    yield evt
-                return
+            if out_of_scope:
+                # 2026-08-29 — 처음엔 "검색 결과 0건"(app/rag/generation.py::NO_CONTEXT_ANSWER)
+                # 경로와 같은 모양(context=[], verdict=GENERAL)의 final_state로 GENERAL을
+                # 재사용했으나(red-bug.md #15 "프론트 후속 작업"), "근거가 없다"와 "질문 자체를
+                # 거절했다"는 서로 다른 상황이라 배지 문구가 부정확했다 — 전용 verdict
+                # "OUT_OF_SCOPE"를 신설(app/schemas/common.py의 Verdict Literal)해 구분한다.
+                final_state = {
+                    **initial_state,
+                    "answer": OUT_OF_SCOPE_ANSWER,
+                    "verdict": "OUT_OF_SCOPE",
+                    "verification_reason": OUT_OF_SCOPE_REASON,
+                }
+                yield _sse("token", TokenEventData(delta=OUT_OF_SCOPE_ANSWER))
+            else:
+                try:
+                    # 그래프(retrieve→generate→verify, verify→retrieve 조건부 재검색 포함)를
+                    # 실시간으로 순회한다. 두 종류의 조각이 섞여서 나온다:
+                    #   - "custom": 노드가 writer()로 흘려보낸 것 — type="token"이면 델타 하나
+                    #     (진짜 실시간), type="stage"면 노드 진입 알림(3부: 검색/생성/검증 중),
+                    #     type="retry"면 재검색 시작 알림(최대 1회, retrieve_node가 재시도
+                    #     감지 시 stage보다 먼저 emit)
+                    #   - "values": 노드가 하나 끝날 때마다의 "전체 상태 스냅샷" → 계속 덮어써서
+                    #     마지막 것만 남김(재검색이 일어나도 마지막 시도 결과만 자동으로 남음)
+                    async for mode, chunk in _GRAPH.astream(
+                        initial_state, config, stream_mode=["custom", "values"]
+                    ):
+                        if mode == "custom":
+                            if chunk["type"] == "token":
+                                yield _sse("token", TokenEventData(delta=chunk["delta"]))
+                            elif chunk["type"] == "stage":
+                                yield _sse("stage", StageEventData(stage=chunk["stage"]))
+                            elif chunk["type"] == "retry":
+                                yield _sse("retry", RetryEventData(reason=chunk["reason"]))
+                            elif chunk["type"] == "heartbeat":
+                                yield _sse_comment("heartbeat")
+                        else:
+                            final_state = chunk
+                except RateLimitError as exc:
+                    # 03_API_spec.md #29 "에러 시" / 05_RAG_design.md §10 — 스트림이 이미
+                    # 200으로 시작해서 HTTP 상태코드를 더 못 바꾸므로 event: error로만 알린다.
+                    # 사용자 메시지는 이미 커밋됐으니 그대로 두고(재시도 시 새 어시스턴트
+                    # 메시지만 추가됨), 그래프 실패로 죽은 세션이 계속 열려 있지 않도록 여기서
+                    # 스트림을 끝낸다. generate까지 성공해 답변이 이미 스트리밍됐다면 그 답변은
+                    # 최선을 다해 저장한다(HIGH #2/MEDIUM #11 — _finish_after_upstream_failure
+                    # 참고). 2026-08-26 레드팀 감사 4라운드 항목 10 — 이 지점이 RAG 그래프
+                    # (retrieve/generate/verify) 전체 예외의 유일한 포집 지점인데 클라이언트
+                    # SSE 응답만 만들고 서버엔 무로깅이었다.
+                    logger.warning("Chat RAG graph rate-limited for session_id=%s", chat_session.id)
+                    async for evt in _finish_after_upstream_failure(
+                        session,
+                        chat_session,
+                        final_state,
+                        trace,
+                        span_metadata,
+                        start,
+                        "RATE_LIMITED",
+                        str(exc),
+                    ):
+                        yield evt
+                    return
+                except Exception as exc:
+                    logger.exception("Chat RAG graph failed for session_id=%s", chat_session.id)
+                    async for evt in _finish_after_upstream_failure(
+                        session,
+                        chat_session,
+                        final_state,
+                        trace,
+                        span_metadata,
+                        start,
+                        "UPSTREAM_LLM_ERROR",
+                        str(exc),
+                    ):
+                        yield evt
+                    return
             trace.update(
                 output=final_state["answer"],
                 metadata={
@@ -332,6 +395,7 @@ async def stream_chat_response(
                     "verdict": final_state["verdict"],
                     "retry_count": final_state["retry_count"],
                     "retried": final_state["retry_count"] > 0,
+                    "out_of_scope": out_of_scope,
                 },
             )
 
@@ -368,6 +432,7 @@ async def stream_chat_response(
             trace_ref=trace.trace_id,
         )
         session.add(assistant_message)
+        _touch_session_activity(chat_session, first_message_content=None)
         await session.commit()
         await session.refresh(assistant_message)
 

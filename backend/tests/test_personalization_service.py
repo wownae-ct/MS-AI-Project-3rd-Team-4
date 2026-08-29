@@ -5,15 +5,32 @@ checklist.py·wedding.py 테스트와 같은 이 레포의 기존 컨벤션). OR
 
 from datetime import date, timedelta
 
-from app.models import Wedding
+from sqlalchemy.dialects import postgresql
+
+from app.models import ChecklistItem, TimelineItem, Wedding
 from app.services.personalization import (
     _build_profile,
     _checklist_fallback_rows,
+    _checklist_protected_clause,
     _checklist_row_from_draft,
+    _drop_rows_colliding_with_protected,
     _timeline_fallback_rows,
+    _timeline_protected_clause,
     _timeline_row_from_draft,
     _timeline_status,
 )
+
+
+def _compiled_sql(clause) -> str:
+    return str(clause.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+
+
+def _compiled_timeline_protected_sql() -> str:
+    return _compiled_sql(_timeline_protected_clause())
+
+
+def _compiled_checklist_protected_sql() -> str:
+    return _compiled_sql(_checklist_protected_clause())
 
 
 def _make_wedding(**overrides) -> Wedding:
@@ -114,28 +131,34 @@ class TestChecklistRowFromDraft:
     def test_category_not_active_returns_none(self):
         # 사용자가 지적한 버그 축: SUCCESS 경로에서도 활성 카테고리 밖 항목은 버려야 한다.
         item = {"category_code": "SDM", "title": "제목"}
-        row = _checklist_row_from_draft({"VENUE"}, item)
+        row = _checklist_row_from_draft({"VENUE"}, 1, item)
         assert row is None
 
     def test_group_label_derived_from_item_type(self):
         item = {"category_code": "VENUE", "title": "제목", "item_type": "EXTRA_COST"}
-        row = _checklist_row_from_draft({"VENUE"}, item)
+        row = _checklist_row_from_draft({"VENUE"}, 1, item)
         assert row.group_label == "추가 비용 확인"
 
     def test_status_set_deterministically_not_from_llm(self):
         # 출력 스키마 자체가 status를 요청하지 않으므로 항상 default_status_for_category 결과다.
         item = {"category_code": "HOMEWARE", "title": "제목", "item_type": "PREP"}
-        row = _checklist_row_from_draft({"HOMEWARE"}, item)
+        row = _checklist_row_from_draft({"HOMEWARE"}, 1, item)
         assert row.status == "LISTED"
 
     def test_origin_is_always_llm(self):
         item = {"category_code": "VENUE", "title": "제목"}
-        row = _checklist_row_from_draft({"VENUE"}, item)
+        row = _checklist_row_from_draft({"VENUE"}, 1, item)
         assert row.origin == "LLM"
+
+    def test_display_order_preserves_llm_order(self):
+        # 2026-08-29 — 예전엔 이 필드를 안 채워 SUCCESS 경로 행이 전부 NULL이었고,
+        # list_checklist_items의 ORDER BY display_order에서 순서가 요청마다 달라졌다.
+        item = {"category_code": "VENUE", "title": "제목"}
+        assert _checklist_row_from_draft({"VENUE"}, 7, item).display_order == 7
 
     def test_source_tier_is_none_for_llm_generated_items(self):
         item = {"category_code": "VENUE", "title": "제목"}
-        row = _checklist_row_from_draft({"VENUE"}, item)
+        row = _checklist_row_from_draft({"VENUE"}, 1, item)
         assert row.source_tier is None
 
     def test_source_fields_pass_through_when_resolved_by_generate_node(self):
@@ -150,7 +173,7 @@ class TestChecklistRowFromDraft:
             "source_label": "공정위 예식장이용 표준약관(제10030호)",
             "source_url": "https://example.com/venue-terms",
         }
-        row = _checklist_row_from_draft({"VENUE"}, item)
+        row = _checklist_row_from_draft({"VENUE"}, 1, item)
         assert row.source_tier == "OFFICIAL"
         assert row.source_label == "공정위 예식장이용 표준약관(제10030호)"
         assert row.source_url == "https://example.com/venue-terms"
@@ -252,3 +275,142 @@ class TestTimelineFallbackRows:
         rows = _timeline_fallback_rows(date(2027, 5, 15), {"VENUE"}, None, date(2026, 8, 24))
         assert rows
         assert all(r.origin == "CATALOG_FALLBACK" for r in rows)
+
+
+class TestTimelineProtectedClause:
+    """2026-08-29 재생성 중복 항목 버그 — 타임라인 보호 기준이 "사용자가 완료를 체크했거나
+    날짜를 바꾼 항목(+사용자가 직접 추가한 항목)"인지 SQL 수준에서 고정한다. 실제 행 필터링은
+    라이브 DB에서 확인하는 이 레포 컨벤션대로(모듈 docstring), 여기서는 조건식이 조용히
+    예전 기준(user_edited_at 단독)으로 되돌아가지 않는지를 회귀 방지로 잡는다."""
+
+    def test_requires_done_or_date_overridden_not_just_user_edited_at(self):
+        sql = _compiled_timeline_protected_sql()
+
+        assert "user_edited_at IS NOT NULL" in sql
+        assert "status = 'DONE'" in sql
+        assert "date_overridden" in sql
+
+    def test_user_added_rows_are_protected(self):
+        # origin='USER' 행은 AI 생성물이 아니라 재생성 대상 자체가 아니다 — 예전 기준
+        # (user_edited_at IS NULL)에서는 재생성 때마다 조용히 지워졌다.
+        assert "origin = 'USER'" in _compiled_timeline_protected_sql()
+
+
+class TestChecklistProtectedClause:
+    """2026-08-29 2차 수정 — 체크리스트 재생성이 사실상 아무것도 안 바꾸던 버그. 보호 기준이
+    "진행 흔적(status가 기본값이 아님)·메모·사용자 추가"인지 SQL 수준에서 고정한다. 타임라인
+    클래스와 같은 이유로 실제 행 필터링은 라이브 DB에서 확인하고(모듈 docstring), 여기서는
+    조건식이 조용히 예전 기준(user_edited_at 단독)으로 되돌아가지 않는지를 회귀 방지로 잡는다."""
+
+    def test_does_not_protect_on_user_edited_at_alone(self):
+        # 이게 이 버그의 핵심 — update_checklist_item이 PATCH 내용과 무관하게 찍는 컬럼이라
+        # 상태를 다시 TODO로 되돌린 항목까지 영구 보호됐다.
+        assert "user_edited_at" not in _compiled_checklist_protected_sql()
+
+    def test_protects_rows_with_non_default_status_per_category(self):
+        # HOMEWARE만 상태값 체계가 달라(04_DB_schema.sql CHECK) 기본값도 다르다 — 한쪽 기준으로
+        # 뭉뚱그리면 HOMEWARE의 LISTED 행이 "진행 흔적 있음"으로 잘못 보호된다.
+        sql = _compiled_checklist_protected_sql()
+
+        assert "category_code = 'HOMEWARE'" in sql
+        assert "status != 'LISTED'" in sql
+        assert "category_code != 'HOMEWARE'" in sql
+        assert "status != 'TODO'" in sql
+
+    def test_protects_rows_with_memo(self):
+        # 메모는 체크리스트에만 있는 편집 축(타임라인 조건에는 대응물이 없다). 빈 문자열은
+        # "메모 없음"과 같이 본다 — 메모를 지운 PATCH가 ""로 올 수 있다.
+        sql = _compiled_checklist_protected_sql()
+
+        assert "memo IS NOT NULL" in sql
+        assert "memo != ''" in sql
+
+    def test_user_added_rows_are_protected(self):
+        # 타임라인은 1차 수정에서 고쳤지만 체크리스트는 그대로였다 — create_checklist_item이
+        # origin='USER'로 만들면서 user_edited_at은 NULL로 두므로 재생성 때마다 지워졌다.
+        assert "origin = 'USER'" in _compiled_checklist_protected_sql()
+
+
+class TestDropRowsCollidingWithProtected:
+    """2026-08-29 재생성 중복 항목 버그의 두 번째 축 — 살아남는 보호 행과 같은 항목을 새로
+    꽂지 않는다. 특히 BLOCKED/FAILED 카탈로그 폴백은 그래프의 dedup 단계를 안 거치므로
+    이 지점이 유일한 방어선이다."""
+
+    def _timeline_row(self, category_code: str | None, title: str) -> TimelineItem:
+        return TimelineItem(
+            category_code=category_code,
+            origin="CATALOG_FALLBACK",
+            status="TODO",
+            title=title,
+            target_date=date(2027, 5, 15),
+        )
+
+    def test_row_with_same_title_as_protected_is_dropped(self):
+        protected = [{"id": "x", "category_code": "VENUE", "title": "예식장 계약금 입금"}]
+        rows = [
+            self._timeline_row("VENUE", "예식장 계약금 입금"),
+            self._timeline_row("VENUE", "본식 리허설"),
+        ]
+
+        kept = _drop_rows_colliding_with_protected("TIMELINE", rows, protected)
+
+        assert [r.title for r in kept] == ["본식 리허설"]
+
+    def test_whitespace_and_punctuation_variants_count_as_duplicates(self):
+        # 사용자 눈에는 같은 항목인데 원문 완전 일치가 아니라 예전엔 그대로 두 행이 됐다.
+        protected = [{"id": "x", "category_code": "VENUE", "title": "예식장 계약금 입금"}]
+        rows = [self._timeline_row("VENUE", "예식장계약금 입금!")]
+
+        kept = _drop_rows_colliding_with_protected("TIMELINE", rows, protected)
+
+        assert kept == []
+
+    def test_same_title_in_other_category_is_kept(self):
+        protected = [{"id": "x", "category_code": "VENUE", "title": "계약 확인"}]
+        rows = [self._timeline_row("SDM", "계약 확인")]
+
+        kept = _drop_rows_colliding_with_protected("TIMELINE", rows, protected)
+
+        assert len(kept) == 1
+
+    def test_universal_rows_with_null_category_are_compared_among_themselves(self):
+        # category_code=null(혼인신고 등 범용 일정)도 보호 대상이 될 수 있다 — None끼리 비교된다.
+        protected = [{"id": "x", "category_code": None, "title": "혼인신고"}]
+        rows = [self._timeline_row(None, "혼인신고"), self._timeline_row(None, "본식")]
+
+        kept = _drop_rows_colliding_with_protected("TIMELINE", rows, protected)
+
+        assert [r.title for r in kept] == ["본식"]
+
+    def test_no_protected_items_keeps_everything(self):
+        rows = [self._timeline_row("VENUE", "A"), self._timeline_row("VENUE", "B")]
+
+        kept = _drop_rows_colliding_with_protected("TIMELINE", rows, [])
+
+        assert kept == rows
+
+    def test_duplicates_within_the_same_batch_are_also_dropped(self):
+        rows = [self._timeline_row("VENUE", "A"), self._timeline_row("VENUE", "A")]
+
+        kept = _drop_rows_colliding_with_protected("TIMELINE", rows, [])
+
+        assert len(kept) == 1
+
+    def test_works_for_checklist_rows_too(self):
+        # 폴백 카탈로그 중복은 체크리스트도 같은 결함이었다(사용자가 체크한 항목이 보호되고,
+        # 폴백이 같은 카탈로그 항목을 한 번 더 꽂음).
+        protected = [{"id": "x", "category_code": "VENUE", "title": "계약금 상한 확인"}]
+        rows = [
+            ChecklistItem(
+                category_code="VENUE",
+                origin="CATALOG_FALLBACK",
+                status="LISTED",
+                item_type="CONTRACT_TERM",
+                group_label="계약 조건 확인",
+                title="계약금 상한 확인",
+            )
+        ]
+
+        kept = _drop_rows_colliding_with_protected("CHECKLIST", rows, protected)
+
+        assert kept == []

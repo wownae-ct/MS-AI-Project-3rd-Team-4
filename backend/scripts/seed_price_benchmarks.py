@@ -69,7 +69,37 @@ RAG 사실(citation)로 큐레이션했다 — 이 파일이 다루는 대상이
 source_note에 그 사실을 명시해 혼동을 막는다.
 
 멱등성: (survey_month, region_code, category_code, item_code) UNIQUE 기준 ON CONFLICT UPDATE —
-재실행해도 안전하다."""
+재실행해도 안전하다.
+
+## 2026년 TOTAL 월별 갱신 (2026-08-28 추가)
+
+정부 참가격 사이트(price.go.kr)가 2026년 1~6월 조사분을 이미 공개했는데(온보딩 화면과 원본
+사이트를 직접 대조하다 발견 — 제주 총계약금액이 2025-08 기준 1,284만원 vs 사이트 실측
+1,823만원으로 달랐음), 이 저장소의 원본 파일이 2025년 4/6/8월에서 멈춰 있었다. 사이트에서 받은
+`지역별 결혼서비스 계약 금액(2026년 M월).xls` 6개(1~6월)를 추가로 반영한다 — 단, 이번에 받은
+파일은 TOTAL(결혼식장+스드메 합산) 한 종류뿐이라(VENUE/SDM 개별 항목, 선택품목 파일은 미제공)
+`category_code='TOTAL', item_code='TOTAL'` 행만 갱신한다. VENUE/SDM 개별 항목 벤치마크(#23
+`/benchmarks/compare`가 쓰는 데이터)는 여전히 2025-08 기준에 머물러 있다 — 해당 파일들이 새로
+확보되면 별도로 갱신.
+
+**포맷이 기존 3개월분과 다르다**: 확장자가 `.xlsx`가 아니라 구버전 `.xls`라 `openpyxl`이 못 열고
+`xlrd`가 필요하다. 시트 안 레이아웃도 기존 파일 대비 왼쪽에 빈 열이 2개 더 있어(구분 열이 0번이
+아니라 2번) 전용 파싱 함수(`_build_2026_total_rows`)로 따로 처리한다. 숫자 셀도 기존처럼 순수
+숫자 타입이 아니라 "1,823" 같은 콤마 포함 텍스트라 `_parse_number`가 콤마를 벗겨내도록 확장했다
+(기존 숫자 타입 셀엔 영향 없음). 단위 라벨("(단위 : 만원, 건, %)")이 시트 안에 없어 기존처럼
+`_parse_unit_multiplier`로 자동 판별할 수 없는데, 정부 사이트 원 페이지(같은 표 바로 위
+`기준 : 평균값 / 단위 : 만원` 문구, 직접 크롤링해 확인)와 이 표의 절대값 스케일이 기존 3개월분과
+일치하는 걸로 볼 때 "만원" 단위가 확실해 배율(×10000)을 하드코딩했다.
+
+**지역 구분이 기존과 다르다(사용자 확인 결정)**: 기존 17개 지역 코드는 `광주`(GWANGJU 단독)와
+`전라도`(JEOLLA, 전북+전남 통합)로 나뉘었는데, 2026년 파일은 `전남광주`(전남+광주 결합)와
+`전북`(전북 단독)으로 구분이 바뀌었다. 정확한 대응 코드가 없어(스키마에 JEONNAM_GWANGJU/JEONBUK
+같은 신규 코드가 없음) 새 코드를 추가하는 대신, 사용자 확인 하에 근사 매핑했다: `전남광주`→
+`GWANGJU`, `전북`→`JEOLLA`. **결과적으로 2026-01 이후로는 GWANGJU 코드가 "광주 단독"이 아니라
+"전남+광주 결합" 값을, JEOLLA 코드가 "전라도 전체"가 아니라 "전북 단독" 값을 의미하게 된다** —
+지리적 의미가 조사 회차 사이에 바뀌었다는 뜻이라, 이 두 코드를 표시하는 화면(지역 select 등)을
+건드릴 일이 있으면 이 사실을 염두에 둘 것. 제주는 `제주도`→`JEJU`로 이 문제와 무관하게 그대로
+매핑된다."""
 
 import asyncio
 import re
@@ -77,6 +107,7 @@ from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
 
+import xlrd
 from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -99,6 +130,14 @@ _MONTH_TO_SURVEY_MONTH: dict[str, date] = {
     "8월": date(2025, 8, 1),
 }
 
+# 2026년 TOTAL 월별 갱신 전용 (모듈 docstring 참고) — 파일명 자체에 연도가 명시돼 있어(구버전
+# 3개월분과 달리 "4월"처럼 연도 없는 라벨이 아니다) 파일 메타데이터 조사 없이 연/월을 그대로
+# survey_month로 쓴다.
+_2026_TOTAL_MONTH_FILES: dict[date, str] = {
+    date(2026, month, 1): f"지역별 결혼서비스 계약 금액(2026년 {month}월).xls"
+    for month in range(1, 7)
+}
+
 _REGION_LABEL_TO_CODE: dict[str, str] = {
     "전국": "NATIONWIDE",
     "수도권": "METRO",
@@ -117,6 +156,16 @@ _REGION_LABEL_TO_CODE: dict[str, str] = {
     "경상도": "GYEONGSANG",
     "강원도": "GANGWON",
     "제주도": "JEJU",
+    # 2026년 파일 전용 별칭 — 모듈 docstring "2026년 TOTAL 월별 갱신" §지역 구분 참고. 정부
+    # 사이트가 2026년부터 광주/전라도를 전남광주/전북으로 재구분해서 발행해, 기존 코드로 근사
+    # 매핑한다(전남광주→GWANGJU, 전북→JEOLLA, 사용자 확인 결정) — 위 "광주"/"전라도" 항목과
+    # 공존하며 기존 2025년 파일 파싱에는 영향 없다.
+    "전남광주": "GWANGJU",
+    "전북": "JEOLLA",
+    # 같은 2026년 파일이 "서울(강남 외)"를 띄어쓰기 없이 "서울(강남외)"로 표기한다(직접 확인 —
+    # 처음엔 이 별칭이 없어 SEOUL_OTHER 행 전체가 조용히 누락됐었다). 라벨 표기 흔들림일 뿐
+    # 동일 지역이라 별도 코드 없이 별칭만 추가.
+    "서울(강남외)": "SEOUL_OTHER",
 }
 
 # 시트 이름 → item_code. 파일 안 시트 순서는 월마다 다르지만(예: "식대"/"1인당 식대" 위치가
@@ -210,9 +259,11 @@ def _parse_unit_multiplier(unit_row_text: object) -> int:
 
 def _parse_number(value: object) -> int | None:
     """'-'(표본 부족으로 산출 불가, 트레일링 공백이 섞인 '- ' 형태도 실제 원본에 있음)나 빈
-    셀은 None, 그 외엔 정수로 반올림."""
+    셀은 None, 그 외엔 정수로 반올림. 콤마 제거는 2026년 파일(xlrd로 읽으면 "1,823"처럼
+    천단위 콤마가 섞인 텍스트 셀로 들어온다, 기존 openpyxl 숫자 셀엔 콤마가 없어 영향 없음)
+    지원을 위해 추가."""
     if isinstance(value, str):
-        value = value.strip()
+        value = value.strip().replace(",", "")
         if not value or value == "-":
             return None
     if value is None:
@@ -294,6 +345,58 @@ def _build_total_rows(ws: Worksheet, survey_month: date) -> list[BenchmarkRow]:
                 source_note=source_note,
             )
         )
+    return rows
+
+
+_2026_TOTAL_DATA_START_ROW = 6  # xlrd 0-based row index (기존 파일의 6번째 행과 동일한 위치)
+_2026_TOTAL_REGION_COL = 2  # 구분(지역명) 열 — 기존 파일보다 2열 오른쪽(모듈 docstring 참고)
+_2026_TOTAL_AMOUNT_COL = 11  # "총 계약금액" 금액 열
+_2026_TOTAL_SAMPLE_COL = 13  # 표본수 건수 열
+
+
+def _build_2026_total_rows(ws: "xlrd.sheet.Sheet", survey_month: date) -> list[BenchmarkRow]:
+    """2026년 `지역별 결혼서비스 계약 금액(YYYY년 M월).xls`용 파서 — 모듈 docstring "2026년 TOTAL
+    월별 갱신" 참고. `_build_total_rows`(openpyxl, 기존 3개월분)와 컬럼 의미는 같지만 열 위치가
+    다르고 xlrd API(0-based row/col, 콤마 포함 텍스트 셀)를 쓰므로 별도 함수로 둔다."""
+    source_note = (
+        f"한국소비자원 참가격, {survey_month:%Y-%m} 기준 (지역별 평균 계약금액, 중간값 아님)"
+    )
+
+    rows: list[BenchmarkRow] = []
+    for r in range(_2026_TOTAL_DATA_START_ROW, ws.nrows):
+        label = ws.cell_value(r, _2026_TOTAL_REGION_COL)
+        region_code = _REGION_LABEL_TO_CODE.get(label)
+        if region_code is None:
+            continue  # 각주 등 지역 목록 밖의 행
+        total_amount = _scaled(ws.cell_value(r, _2026_TOTAL_AMOUNT_COL), 10_000)
+        if total_amount is None:
+            continue
+        rows.append(
+            BenchmarkRow(
+                survey_month=survey_month,
+                region_code=region_code,
+                category_code="TOTAL",
+                item_code="TOTAL",
+                median_price=total_amount,
+                min_price=None,
+                max_price=None,
+                sample_count=_parse_number(ws.cell_value(r, _2026_TOTAL_SAMPLE_COL)),
+                source_url=_SOURCE_URL,
+                source_note=source_note,
+            )
+        )
+    return rows
+
+
+def collect_2026_total_rows() -> list[BenchmarkRow]:
+    """`_2026_TOTAL_MONTH_FILES`(1~6월) 전부를 읽어 TOTAL/TOTAL 행으로 변환한다. `collect_rows()`
+    (2025년 4/6/8월, 4종 전체)와 별도 함수로 둔 이유는 모듈 docstring 참고 — 이번엔 TOTAL 한
+    종류뿐이라 함께 묶으면 그 비대칭이 안 드러난다."""
+    rows: list[BenchmarkRow] = []
+    for survey_month, filename in _2026_TOTAL_MONTH_FILES.items():
+        wb = xlrd.open_workbook(str(_SOURCE_DIR / filename))
+        ws = wb.sheet_by_index(0)
+        rows += _build_2026_total_rows(ws, survey_month)
     return rows
 
 
@@ -410,7 +513,7 @@ async def _upsert_rows(session: AsyncSession, rows: list[BenchmarkRow]) -> int:
 
 
 async def seed() -> None:
-    rows = collect_rows()
+    rows = collect_rows() + collect_2026_total_rows()
     async with get_session_factory()() as session:
         count = await _upsert_rows(session, rows)
     print(f"upserted {count} price_benchmarks rows")

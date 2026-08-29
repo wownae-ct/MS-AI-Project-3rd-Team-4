@@ -5,13 +5,11 @@
 
 import json
 import logging
-from typing import get_args
 
 from openai import AsyncAzureOpenAI
 
 from app.core.config import Settings
 from app.rag.retrieval import RetrievedChunk
-from app.schemas.common import Verdict
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +18,13 @@ logger = logging.getLogger(__name__)
 # VerificationEventData(Verdict Literal)를 만들다 pydantic ValidationError로 죽는데, 그 시점엔
 # 이미 답변 전체가 SSE token으로 스트리밍된 뒤라 사용자는 답을 봤는데 DB엔 저장 안 되는 버그로
 # 이어진다. 파싱 경계에서 미리 정상화해 그 상황 자체가 생기지 않게 한다.
-_VALID_VERDICTS: frozenset[str] = frozenset(get_args(Verdict))
+#
+# 2026-08-29 — app/schemas/common.py의 Verdict Literal 전체(frozenset(get_args(Verdict)))가
+# 아니라 이 3종만 고정으로 든다. Verdict에 "OUT_OF_SCOPE"가 추가된 뒤에도 verify_node가 실제로
+# 낼 수 있는 값은 여전히 이 3종뿐이다 — get_args(Verdict)를 그대로 썼다면 LLM이 (드물게라도)
+# "OUT_OF_SCOPE" 문자열을 그대로 흉내 내 냈을 때 정상화 없이 통과해버렸을 것이다. OUT_OF_SCOPE는
+# app/rag/scope_check.py가 그래프 호출 전에 결정하는 값이라 이 함수의 관할이 아니다.
+_VALID_VERDICTS: frozenset[str] = frozenset({"SUPPORTED", "WEAK", "GENERAL"})
 
 
 def _normalize_verdict(raw: str | None) -> str:
@@ -127,7 +131,7 @@ async def verify_answer(
     내용에 스스로 속지 않고 어느 정도 걸러낼 수 있게 한다. response_format으로 JSON만 답하게
     강제해서("SUPPORTED"/"WEAK"/"GENERAL" + 이유) 파싱이 항상 안전하다."""
     response = await client.chat.completions.create(
-        model=settings.azure_openai_chat_deployment,
+        model=settings.chat_rag_deployment,
         response_format={"type": "json_object"},
         messages=[
             {
@@ -150,7 +154,7 @@ async def reformulate_query(
     response_format으로 JSON을 강제하지 않는다 — 자유 텍스트 검색어 한 줄이면 충분해서
     JSON 강제는 과설계."""
     response = await client.chat.completions.create(
-        model=settings.azure_openai_chat_deployment,
+        model=settings.chat_rag_deployment,
         messages=[
             {
                 "role": "user",
