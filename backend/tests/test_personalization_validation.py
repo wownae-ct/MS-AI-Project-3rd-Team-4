@@ -127,6 +127,18 @@ class TestNoDuplicateTitles:
 
         assert not errors
 
+    def test_error_message_shows_original_title_not_normalized_key(self):
+        # 이 문구는 retry_feedback으로 LLM에게 되돌아간다(prompts.py::_retry_feedback_note) —
+        # 정규화 키("계약확인")를 보여주면 실제로 만든 제목과 글자가 달라 교정 지시가 어긋난다.
+        items = [
+            {"category_code": "VENUE", "title": "계약 확인"},
+            {"category_code": "VENUE", "title": "계약  확인"},
+        ]
+
+        errors = validate_checklist_items({"VENUE"}, items)
+
+        assert any("'계약  확인'" in e for e in errors)
+
 
 class TestDeduplicateTitles:
     """2026-08-28 결정(red-bug.md #9-2) — 제목 중복은 도메인 전체를 BLOCKED시키지 않고,
@@ -171,6 +183,34 @@ class TestDeduplicateTitles:
 
         assert kept == []
         assert dropped == [item]
+
+    def test_title_differing_only_in_spacing_or_punctuation_is_a_duplicate(self):
+        # 2026-08-29 재생성 중복 항목 버그 — 예전엔 원문 완전 일치만 중복으로 봐서 표기 차이
+        # 하나로 사실상 같은 항목이 두 개 남았다(normalize_title 도입).
+        first = {"category_code": "VENUE", "title": "예식장 계약금 입금"}
+        variant = {"category_code": "VENUE", "title": "예식장계약금  입금!"}
+
+        kept, dropped = deduplicate_titles([first, variant])
+
+        assert kept == [first]
+        assert dropped == [variant]
+
+    def test_protected_title_matching_only_after_normalization_is_dropped(self):
+        item = {"category_code": "VENUE", "title": "예식장 계약금  입금"}
+        protected_titles = {("VENUE", "예식장계약금 입금")}
+
+        kept, dropped = deduplicate_titles([item], protected_titles)
+
+        assert kept == []
+        assert dropped == [item]
+
+    def test_kept_items_keep_their_original_titles(self):
+        # 정규화는 판정 키에만 쓰고 저장/표시용 제목은 원문 그대로여야 한다.
+        items = [{"category_code": "VENUE", "title": "예식장 계약금 입금"}]
+
+        kept, _ = deduplicate_titles(items)
+
+        assert kept[0]["title"] == "예식장 계약금 입금"
 
     def test_deduped_output_passes_no_duplicate_titles_rule(self):
         # dedup 결과를 그대로 validate에 넘기면 규칙(4) 위반이 더 이상 안 걸려야 한다 —

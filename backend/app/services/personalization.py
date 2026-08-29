@@ -2,9 +2,15 @@
 ai_invocations 감사로그 기록. 13_personalization_router_agent_design.md §1-4/§2.
 
 FIELD_UPDATED 재트리거(app/services/wedding.py의 update_wedding/update_wedding_categories)에서
-protected_items(user_edited_at 있는 행)는 DB에서 직접 조회해 그래프 few-shot에 참고로만
-넘기고, affected_domains에 든 도메인의 기존 행 중 protected가 아닌 것만 지운 뒤 새로 생성한
-행으로 교체한다 — 사용자가 이미 체크하거나 메모를 남긴 항목은 재생성으로 사라지지 않는다.
+protected_items는 DB에서 직접 조회해 그래프 few-shot에 참고로만 넘기고, affected_domains에 든
+도메인의 기존 행 중 protected가 아닌 것만 지운 뒤 새로 생성한 행으로 교체한다 — 사용자가 이미
+체크하거나 메모를 남긴 항목은 재생성으로 사라지지 않는다.
+
+**2026-08-29 재생성 중복 항목 버그 수정** — 타임라인 재생성의 보호 기준을 사용자가 말한 개념
+("완료를 체크했거나 날짜를 바꾼 항목만 남기고 나머지는 초기화")에 맞춰 좁히고(_timeline_
+protected_clause), 새로 만든 행이 살아남은 보호 행과 겹치면 삽입 전에 드롭한다
+(_drop_rows_colliding_with_protected). 두 축이 각각 별개의 중복 발생 경로였다 — 자세한 근거는
+두 함수의 docstring 참고.
 
 이 모듈이 커밋하지 않는다 — 호출자(app/services/wedding.py)의 더 큰 트랜잭션 일부로 flush만
 하고, 최종 commit은 호출자가 한다(온보딩 시 wedding_categories 등 다른 행들과 원자적으로 함께
@@ -14,8 +20,9 @@ import logging
 from datetime import date, timedelta
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import and_, delete, not_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.checklist_catalog import CHECKLIST_FALLBACK_CATALOG, GROUP_LABEL_BY_ITEM_TYPE
 from app.core.config import Settings
@@ -24,6 +31,7 @@ from app.core.tracing import traced_span
 from app.models import AiInvocation, ChecklistItem, TimelineItem, Wedding, WeddingCategory
 from app.personalization.graph import build_graph
 from app.personalization.state import PersonalizationState
+from app.personalization.validation import title_key
 from app.services.checklist import default_status_for_category
 from app.services.timeline import (
     compute_prep_scale_factor,
@@ -36,9 +44,41 @@ logger = logging.getLogger(__name__)
 _GRAPH = build_graph()
 
 
+def _timeline_protected_clause() -> ColumnElement[bool]:
+    """타임라인 재생성에서 살아남는 행의 조건 — **2026-08-29 사용자 결정**: "재생성은 사용자가
+    완료를 체크했거나 날짜를 직접 바꾼 항목만 남기고 나머지 타임라인 항목은 초기화한다".
+
+    예전엔 두 도메인 모두 `user_edited_at IS NOT NULL` 하나로 보호 여부를 판단했다. 그런데
+    app/services/timeline.py::update_timeline_item은 PATCH가 오면 내용과 무관하게(완료 체크를
+    다시 해제하는 status=TODO 되돌리기까지 포함) user_edited_at을 찍는다 — 그래서 한 번이라도
+    건드린 행은 지금 상태가 그냥 TODO여도 영구히 보호됐고, 재생성마다 그 행이 남은 채 사실상
+    같은 내용의 새 행이 추가로 꽂혀 중복이 쌓였다(이번 버그의 첫 번째 축). 이제는 실제로
+    지켜야 할 상태 — 완료 체크(status='DONE')와 날짜 변경(date_overridden) — 만 보호한다.
+
+    origin='USER'(사용자가 직접 추가한 항목)도 함께 보호한다: 애초에 AI 생성물이 아니라
+    "재생성" 대상이 아닌데, user_edited_at이 NULL이라 예전엔 재생성 때마다 조용히 지워졌다.
+
+    체크리스트는 이 규칙의 대상이 아니다 — 날짜 개념이 없고 memo 등 다른 편집 축이 있어
+    기존 `user_edited_at IS NOT NULL` 기준을 그대로 둔다.
+
+    NULL 삼치 논리 주의: user_edited_at만 nullable인데 `is_not(None)`은 항상 true/false라
+    이 절 전체가 NULL이 되지 않는다 — `not_()`로 뒤집어도 안전하다."""
+    return or_(
+        TimelineItem.origin == "USER",
+        and_(
+            TimelineItem.user_edited_at.is_not(None),
+            or_(TimelineItem.status == "DONE", TimelineItem.date_overridden.is_(True)),
+        ),
+    )
+
+
 async def _fetch_protected_items(session: AsyncSession, wedding_id: UUID) -> dict[str, list[dict]]:
-    """설계 문서 §1-1: protected_items = user_edited_at이 있는(=사용자가 PATCH로 한 번이라도
-    건드린) 행. ONBOARDING_INITIAL은 아직 행 자체가 없어 항상 빈 리스트를 반환한다.
+    """설계 문서 §1-1: protected_items = 재생성 후에도 DB에 그대로 남는 행. 체크리스트는
+    user_edited_at이 있는(=사용자가 PATCH로 한 번이라도 건드린) 행, 타임라인은
+    _timeline_protected_clause() 기준이다 — 이 조회 조건은 _delete_unprotected_items의
+    "지우지 않는 행"과 반드시 같아야 한다(어긋나면 곧 지워질 행의 제목을 LLM에게 "만들지
+    마세요"라고 알려주게 되어 그 항목이 통째로 사라진다). ONBOARDING_INITIAL은 아직 행 자체가
+    없어 항상 빈 리스트를 반환한다.
 
     id뿐 아니라 category_code/title도 같이 담는다(2026-08-26 레드팀 감사 3라운드 MEDIUM #7 —
     이전엔 id만 넘겨서 "이 UUID는 다시 만들지 마라"는 프롬프트 지시를 LLM이 지킬 방법이 아예
@@ -57,7 +97,7 @@ async def _fetch_protected_items(session: AsyncSession, wedding_id: UUID) -> dic
         await session.execute(
             select(TimelineItem.id, TimelineItem.category_code, TimelineItem.title).where(
                 TimelineItem.wedding_id == wedding_id,
-                TimelineItem.user_edited_at.is_not(None),
+                _timeline_protected_clause(),
             )
         )
     ).all()
@@ -78,13 +118,16 @@ async def _fetch_done_timeline_categories(session: AsyncSession, wedding_id: UUI
     (그 시점엔 과거 온보딩 답변이 DB 어디에도 원본 형태로 안 남아있고, 오직 "타임라인 행의
     현재 status"로만 남아있다). done_so_far가 아예 안 넘어온 경우에만 호출되며, 현재
     status="DONE"인 미보호 TIMELINE 행의 category_code를 모아 done_so_far와 동일한 의미로
-    재사용한다 — 재생성 후에도 "이미 완료로 답한 카테고리"가 다시 TODO로 되돌아가지 않는다."""
+    재사용한다 — 재생성 후에도 "이미 완료로 답한 카테고리"가 다시 TODO로 되돌아가지 않는다.
+
+    미보호 판정은 _timeline_protected_clause()의 반대다(2026-08-29) — 이 함수의 대상은 곧
+    지워질 행이고, 살아남는 보호 행은 그 자체로 DONE 상태를 유지하므로 여기서 셀 필요가 없다."""
     rows = (
         await session.execute(
             select(TimelineItem.category_code).where(
                 TimelineItem.wedding_id == wedding_id,
                 TimelineItem.status == "DONE",
-                TimelineItem.user_edited_at.is_(None),
+                not_(_timeline_protected_clause()),
                 TimelineItem.category_code.is_not(None),
             )
         )
@@ -95,8 +138,10 @@ async def _fetch_done_timeline_categories(session: AsyncSession, wedding_id: UUI
 async def _delete_unprotected_items(
     session: AsyncSession, wedding_id: UUID, affected_domains: list[str]
 ) -> None:
-    """재생성 대상 도메인(affected_domains)의 기존 행 중 protected(user_edited_at 있음)가 아닌
-    행만 지운다 — FIELD_UPDATED 재생성이 사용자가 직접 수정한 항목을 덮어쓰지 않게 하는 축.
+    """재생성 대상 도메인(affected_domains)의 기존 행 중 protected가 아닌 행만 지운다 —
+    재생성이 사용자가 직접 수정한 항목을 덮어쓰지 않게 하는 축. 보호 기준은 도메인별로 다르다:
+    체크리스트는 user_edited_at 존재 여부, 타임라인은 _timeline_protected_clause()(완료 체크·
+    날짜 변경·사용자 추가 항목만 남기고 나머지는 초기화, 2026-08-29 결정).
     ONBOARDING_INITIAL은 애초에 기존 행이 없어 no-op이다."""
     if "CHECKLIST" in affected_domains:
         await session.execute(
@@ -109,7 +154,7 @@ async def _delete_unprotected_items(
         await session.execute(
             delete(TimelineItem).where(
                 TimelineItem.wedding_id == wedding_id,
-                TimelineItem.user_edited_at.is_(None),
+                not_(_timeline_protected_clause()),
             )
         )
 
@@ -243,6 +288,45 @@ def _timeline_fallback_rows(
         TimelineItem(**row)
         for row in generate_timeline_items(wedding_date, active_categories, done_so_far, today)
     ]
+
+
+def _drop_rows_colliding_with_protected(
+    domain_label: str,
+    rows: list,
+    protected: list[dict],
+) -> list:
+    """새로 꽂을 행 중, 재생성 후에도 살아남는 보호 행과 같은 항목(카테고리+정규화 제목)을
+    버린다 — **2026-08-29 재생성 중복 항목 버그의 두 번째 축**.
+
+    그래프의 validate 단계(app/personalization/graph.py::_dedup_domain_draft)가 LLM 초안을
+    protected_items 기준으로 이미 걸러주지만, **BLOCKED/FAILED 카탈로그 폴백 경로**
+    (_timeline_fallback_rows/_checklist_fallback_rows)는 그 단계를 아예 거치지 않는다 —
+    사용자가 완료 체크해서 보호된 카탈로그 항목이 폴백 카탈로그에 그대로 다시 들어 있어
+    제목까지 완전히 동일한 행이 한 번 더 꽂혔다(재생성 BLOCKED 비율이 낮지 않은 만큼 실제로
+    가장 자주 재현되는 경로다). SUCCESS/BLOCKED/FAILED 세 경로가 합류하는 이 지점 한 곳에서
+    다시 거르면 어느 경로로 들어와도 같은 보장을 받는다.
+
+    같은 배치 안의 중복도 함께 흡수한다(seen에 계속 쌓으므로) — 카탈로그는 원래 유일하지만,
+    앞으로 다른 생성 경로가 붙어도 이 지점을 통과하면 중복 없이 저장된다."""
+    seen = {title_key(item["category_code"], item["title"]) for item in protected}
+    kept, dropped = [], []
+    for row in rows:
+        key = title_key(row.category_code, row.title)
+        if key in seen:
+            dropped.append(row)
+            continue
+        seen.add(key)
+        kept.append(row)
+    if dropped:
+        # 자동 교정은 반드시 로그를 남긴다(_dedup_domain_draft와 같은 이유 — 무로깅 자동
+        # 교정이 재발 빈도를 못 보게 만들었던 전례).
+        logger.warning(
+            "Dropped %d %s row(s) duplicating protected items: %r",
+            len(dropped),
+            domain_label,
+            [(row.category_code, row.title) for row in dropped],
+        )
+    return kept
 
 
 async def run_personalization(
@@ -418,6 +502,15 @@ async def run_personalization(
     # insert)이 위 try/except 밖이라, 여기서 실패하면 무로깅으로 호출자까지 그대로 전파됐다
     # (app/main.py의 catch-all 핸들러가 결국 500으로 받아내긴 하지만, "개인화 DB 반영 단계에서
     # 실패했다"는 구체적 맥락은 안 남는다). 동작은 그대로(재전파) 두고 그 맥락만 남긴다.
+    # 삭제 직전, 살아남을 보호 행과 겹치는 새 행을 버린다 — SUCCESS/BLOCKED/FAILED 세 경로가
+    # 모두 이 지점을 지나므로 카탈로그 폴백도 같은 보장을 받는다(2026-08-29 중복 항목 버그).
+    checklist_rows = _drop_rows_colliding_with_protected(
+        "CHECKLIST", checklist_rows, protected_items["CHECKLIST"]
+    )
+    timeline_rows = _drop_rows_colliding_with_protected(
+        "TIMELINE", timeline_rows, protected_items["TIMELINE"]
+    )
+
     try:
         await _delete_unprotected_items(session, wedding.id, affected_domains)
 

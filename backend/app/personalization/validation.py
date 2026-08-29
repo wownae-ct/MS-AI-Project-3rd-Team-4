@@ -7,6 +7,7 @@
 보지 않는다. 체크리스트엔 활성 카테고리 A 항목이 있고 타임라인엔 A 항목이 없으면 타임라인
 쪽만 실패한다."""
 
+import re
 from typing import get_args
 
 from app.schemas.common import CategoryCode
@@ -15,6 +16,27 @@ MIN_DDAY_OFFSET_DAYS = -400
 MAX_DDAY_OFFSET_DAYS = 60
 
 _VALID_CATEGORY_CODES: frozenset[str] = frozenset(get_args(CategoryCode))
+
+# 제목 중복 판정에서 무시할 문자(공백·구두점·괄호류). 2026-08-29 중복 항목 버그 —
+# 예전엔 (category_code, title) 원문 완전 일치만 중복으로 봐서, "예식장 계약"과 "예식장계약",
+# "본식 D-30 리허설"과 "본식 D-30 리허설 " 같은 표기 차이가 그대로 두 행이 됐다. 특히
+# 재생성은 보호 행(살아남는 행)과 새 행을 나란히 남기므로 이 정도 표기 차이만으로도 사용자
+# 눈에는 같은 항목이 두 개 보인다.
+_TITLE_NOISE_PATTERN = re.compile(r"""[\s\-–—_·・:;,.!?~()\[\]{}'"“”‘’]+""")
+
+
+def normalize_title(title: str | None) -> str:
+    """제목 중복 판정 전용 정규화 키 — 표시용 문자열은 절대 이 값으로 바꾸지 않는다(DB에
+    저장되는 title은 언제나 원문 그대로다). 공백·구두점을 지우고 casefold만 한다: 의미가
+    다른 항목을 같다고 볼 위험이 거의 없는 최소한의 정규화만 하고, 어미 차이("계약" vs
+    "계약하기") 같은 의미 수준 유사도는 프롬프트(app/personalization/prompts.py의
+    protected_items 지시)에 맡긴다."""
+    return _TITLE_NOISE_PATTERN.sub("", title or "").casefold()
+
+
+def title_key(category_code: str | None, title: str | None) -> tuple[str | None, str]:
+    """중복 판정 키 — 카테고리가 다르면 같은 제목이어도 중복이 아니라는 기존 규칙은 그대로다."""
+    return (category_code, normalize_title(title))
 
 
 def _validate_category_membership(
@@ -81,11 +103,17 @@ def _validate_no_duplicate_titles(
     안전망이 되도록, (b) dedup 로직 자체에 버그가 있어 중복이 새어 들어온 경우를 여전히
     잡아내도록 하기 위함이다."""
     errors = []
-    seen: set[tuple] = set(protected_titles or ())
+    seen: set[tuple] = {title_key(code, title) for code, title in (protected_titles or ())}
     for item in items:
-        key = (item.get("category_code"), item.get("title"))
+        key = title_key(item.get("category_code"), item.get("title"))
         if key in seen:
-            errors.append(f"{domain_label}: category_code={key[0]!r}에 제목 중복 {key[1]!r}")
+            # 에러 문구에는 정규화 키가 아니라 원문 제목을 그대로 보여준다 — 이 문자열이
+            # retry_feedback으로 LLM에게 되돌아가므로(prompts.py::_retry_feedback_note)
+            # 실제로 만든 제목과 글자가 달라지면 교정 지시가 무의미해진다.
+            errors.append(
+                f"{domain_label}: category_code={item.get('category_code')!r}에 "
+                f"제목 중복 {item.get('title')!r}"
+            )
         seen.add(key)
     return errors
 
@@ -103,14 +131,19 @@ def deduplicate_titles(
     (13_personalization_router_agent_design.md §1-4)이 "일부 자동 교정"으로 성격이 바뀐다 —
     의도된 변경이며 그 문서에도 함께 기록돼 있다.
 
+    2026-08-29부터 비교 키는 원문이 아니라 `title_key()`(공백·구두점 제거 + casefold)다 —
+    표기만 다른 사실상 같은 항목이 중복 판정을 빠져나가던 구멍을 막는다. protected_titles는
+    호출부가 원문 튜플 그대로 넘기면 되고(정규화는 이 함수가 한다), 반환되는 항목 dict의
+    title은 언제나 원문 그대로다.
+
     반환값 (kept, dropped) — kept는 validate에 그대로 넘길 정제된 목록, dropped는 호출부가
     관측성(로그)을 위해서만 쓴다(2026-08-24 "null-string category_code" 버그가 무로깅으로
     3번 재발했던 전례를 따라, 이 자동 교정도 발동 시 반드시 로그를 남기도록 호출부에 위임)."""
     kept: list[dict] = []
     dropped: list[dict] = []
-    seen: set[tuple] = set(protected_titles or ())
+    seen: set[tuple] = {title_key(code, title) for code, title in (protected_titles or ())}
     for item in items:
-        key = (item.get("category_code"), item.get("title"))
+        key = title_key(item.get("category_code"), item.get("title"))
         if key in seen:
             dropped.append(item)
             continue
