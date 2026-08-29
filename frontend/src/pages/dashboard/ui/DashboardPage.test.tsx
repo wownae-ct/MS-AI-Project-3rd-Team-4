@@ -150,6 +150,13 @@ describe("카테고리별 체크리스트 진행률", () => {
     expect(screen.getByText("체크리스트 40%")).toBeInTheDocument();
   });
 
+  it("FOCUS 배지를 내지 않는다 — 티어 구분은 카테고리 상세가 드러낸다", async () => {
+    await renderDashboard();
+
+    // 픽스처의 예식장은 tier: "FOCUS"다 — 배지를 그리던 시절이면 여기서 잡혔다.
+    expect(screen.queryByText("FOCUS")).not.toBeInTheDocument();
+  });
+
   it("시세 관련 문구를 어느 행에도 내지 않는다 — 시세비교는 예산 페이지 소관이다", async () => {
     await renderDashboard();
 
