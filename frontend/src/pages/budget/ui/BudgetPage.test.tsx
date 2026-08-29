@@ -333,11 +333,15 @@ describe("예산 재배분 — 두 편집 모드는 서로를 막는다", () => 
     expect(settingsButton()).toBeDisabled();
   });
 
-  it("사용 여부 편집 중에는 '예산 조정하기'가 잠긴다", async () => {
+  // 설정 버튼은 토글이 아니라 **들어가는 문**이다(2026-08-30, 사용자 지시) — 나가는 문은 패널
+  // 안의 「저장」·「취소」뿐이다. 같은 자리에 되돌리기 버튼을 남기면 확인 없이 초안이 버려진다.
+  it("사용 여부 편집 중에는 설정 버튼이 사라지고 '예산 조정하기'도 잠긴다", async () => {
     await renderBudget(10_000_000, [category({ planned_budget: 1_000_000 })]);
 
     await userEvent.click(settingsButton());
-    expect(settingsButton()).toHaveAttribute("aria-expanded", "true");
+
+    expect(screen.queryByRole("button", { name: "카테고리 사용 여부 설정" })).not.toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "예식장 카테고리 사용 여부" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "예산 조정하기" })).toBeDisabled();
   });
 });
