@@ -46,8 +46,8 @@ export function GeneratingOverlay() {
         {/* 점 3개 마크업의 정의는 shared/ui/PulseDots.tsx 하나뿐이다 — 예전엔 이 파일과
             entities/chat/ui/TypingIndicator.tsx 에 거의 같은 내용이 중복돼 있었다(D14). */}
         <PulseDots />
-        <p className="text-sm font-bold text-ink">입력하신 정보를 바탕으로 맞춤 콘텐츠를 만들고 있어요</p>
-        <p className="text-xs text-ink-soft">체크리스트와 타임라인을 준비하는 중이에요. 잠시만 기다려 주세요.</p>
+        <p className="text-sm font-bold text-ink">입력하신 정보를 바탕으로<br/>맞춤 콘텐츠를 만들고 있어요</p>
+        <p className="text-xs text-ink-soft">체크리스트와 타임라인을 준비하는 중이에요.<br/>잠시만 기다려 주세요.</p>
       </Card>
     </output>
   );
