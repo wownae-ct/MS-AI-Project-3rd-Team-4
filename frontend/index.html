@@ -6,8 +6,12 @@
          user-scalable=no · maximum-scale 은 넣지 않는다 — WCAG 가 최소 2배 확대를 요구한다 (docs/design/a11y.md §2.4). -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <!-- 브랜드 아이콘 (docs/design/decisions.md D15) — 원본 `logos/favicon.png`.
-         그림의 알파 bbox 가 451×448 = 1.007:1 로 **사실상 정사각**이라 아이콘 슬롯에 그대로 들어간다
-         (사이드바·로그인에 쓰는 심볼은 1024×951 이라 이 자리에 못 쓴다 — 다른 자산이다).
+         그림의 알파 bbox 가 451×448 = 1.007:1 로 **사실상 정사각**이라 아이콘 슬롯에 그대로 들어간다.
+         2026-08-29 부터 생성 오버레이의 심볼(`src/shared/assets/merrymap-symbol-256.png`)도 **같은
+         원본에서 나온다.** 그래도 **파일은 합치지 않는다** — 여기는 96×96 무여백이고 저기는
+         256×254 에 12px 여백을 둘러 굽는다(호출부 `size` 를 안 건드리려는 치수다). 무엇보다 이 자리는
+         번들러가 해시를 붙이지 않는 `public/` 이어야 하고, 심볼은 `immutable` 캐시를 받으려고
+         `src/` 에서 import 한다. 자산을 갈아 끼울 땐 **두 파일을 같이** 다시 구울 것.
          예전 자리표시(플럼 사각형 + 흰 원)의 favicon.svg 는 **지웠다.** 남겨 두면 SVG 파비콘을
          지원하는 브라우저가 그쪽을 우선해 로고가 안 보인다.
          apple-touch-icon 이 따로인 이유 — iOS 는 투명 PNG 를 홈 화면에서 **검정으로 합성**하므로
