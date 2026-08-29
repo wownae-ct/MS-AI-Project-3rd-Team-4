@@ -54,7 +54,7 @@ import { getDashboardSummary, type BudgetBenchmarkSummary } from "@/entities/das
 import { getUpcomingPayments, UpcomingPaymentsCard, type UpcomingPaymentEntry } from "@/entities/payment";
 import { deriveBudgetSummary, getCategories, getMyWedding, getWeddingCategories, putWeddingCategories, type WeddingCategory } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
-import { Page, StatusCallout } from "@/shared/ui";
+import { Money, Page, StatusCallout } from "@/shared/ui";
 import { BudgetDonut } from "./BudgetDonut";
 import { CategoryAllocationList } from "./CategoryAllocationList";
 import { CostManagementTab } from "./CostManagementTab";
@@ -289,6 +289,17 @@ export function BudgetPage() {
   const plannedTotal = rows.reduce((sum, category) => sum + category.planned_budget, 0);
   const isOverAllocated = plannedTotal > data.totalBudget;
 
+  // 초과 안내가 가리킬 **원인**. 비활성 카테고리는 `CategoryAllocationList` 가 화면에서 걸러
+  // 내지만(레드팀 감사 #21) 위 `plannedTotal` 에는 그대로 들어간다 — 서버의 BUDGET_EXCEEDED
+  // 판정 집합과 같아야 하기 때문이다. 그래서 "초과했어요"만 뜨고 **그 원인이 되는 행은 화면
+  // 어디에도 없는** 상태가 만들어진다. 온보딩 7단계 말고는 카테고리를 다시 켤 UI 가 없어
+  // 그 금액을 0 으로 되돌릴 수단도 없으므로, 최소한 무엇이 남아 있는지는 말해 준다
+  // (그래야 사용자가 총예산 인상이 유일한 길임을 납득할 수 있다).
+  const inactiveAllocated = rows.reduce(
+    (sum, category) => (category.is_active ? sum : sum + category.planned_budget),
+    0,
+  );
+
   return (
     <Page title="예산 재배분" subtitle="카테고리 사이로 예산을 옮겨 봅니다.">
       <div className="flex flex-col gap-5">
@@ -378,6 +389,13 @@ export function BudgetPage() {
               들어온 사용자에게도 고치는 길을 준다. */}
           <StatusCallout shown={isOverAllocated}>
             <p className="text-sm font-bold text-primary">설정한 예산이 총예산을 초과했어요.</p>
+            {/* 원인이 화면 밖에 있을 때만 낸다 — 보이는 행들만으로 설명되는 초과에까지 이
+                문장을 붙이면 "0원이 남아 있어요" 같은 무의미한 안내가 된다. */}
+            {inactiveAllocated > 0 && (
+              <p className="text-sm text-ink-soft">
+                사용 안 함 카테고리에 <Money value={inactiveAllocated} />이 남아 있어요 — 이 금액도 함께 계산돼요.
+              </p>
+            )}
             <button type="button" className={OVER_CTA} onClick={openTotalBudgetEditor}>
               총예산 금액을 조정할까요?
             </button>
