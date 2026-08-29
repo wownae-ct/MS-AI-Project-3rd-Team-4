@@ -9,10 +9,19 @@ app/services/personalization.py의 몫이다.
 조건부 재검색 루프와 동일 패턴 — 새 노드가 아니라 조건부 엣지 하나만 추가, 노드는 여전히 3개).
 간헐적 few-shot 커버리지 누락·category_code 오염 등 "LLM이 한 번 잘못 만듦 → 바로 카탈로그
 폴백"으로 끝나던 버그들을 완화하려는 목적(docs/AI-Sessions/wiki/decisions/
-2026-08-25-personalization-validate-generate-retry-decision.md). generate는 결합 호출
-구조(§1-3)를 그대로 유지해 재시도 시에도 affected_domains 전체를 다시 만든다 — 도메인별
-부분 재시도는 스코프 밖(단순함 유지, 결정 문서 참고)."""
+2026-08-25-personalization-validate-generate-retry-decision.md).
 
+**2026-08-29 결정(red-bug.md #9, §9-6~§9-10)**: 위 문단의 "generate는 결합 호출 구조(§1-3)를
+그대로 유지" 부분은 번복됐다 — 실측(§9-6~§9-9, 5차례 A/B 라이브 LLM 실험)으로 결합 호출(두
+도메인을 한 응답에 같이 요청) 자체가 BLOCKED 급증의 근본 원인임이 확인됐다. 이제 두 도메인이
+모두 대상이면 `asyncio.gather`로 도메인별 독립 LLM 호출을 동시에 보낸다(§1-3 문서도 갱신
+대상). 재시도도 도메인 단위로 독립 적용한다 — 이미 SUCCESS인 도메인은 재시도 패스에서 다시
+안 만들고 그대로 carry-forward, BLOCKED인 도메인만 다시 호출한다. `retry_count`는 여전히
+단일 int(스키마 변경 없음) — `_MAX_RETRIES=1` 상한 안에서는 "도메인별 dict로 나누는" 설계와
+행동이 동일하기 때문(도메인 단위로 나눠도 안 나눠도 "이미 성공한 도메인은 안 건드린다"는
+결과가 같음). 자세한 실험/설계 근거는 `docs/wedding/refactor/red-bug.md` §9-6~§9-10 참고."""
+
+import asyncio
 import json
 import logging
 
@@ -29,7 +38,11 @@ from app.personalization.prompts import (
     build_route_prompt,
 )
 from app.personalization.state import PersonalizationState
-from app.personalization.validation import validate_personalization_draft
+from app.personalization.validation import (
+    deduplicate_titles,
+    protected_titles_for_domain,
+    validate_personalization_draft,
+)
 from app.rag.retrieval import RetrievedChunk, retrieve
 
 logger = logging.getLogger(__name__)
@@ -120,44 +133,91 @@ def _resolve_checklist_citations(
     return resolved
 
 
-# ② generate: affected_domains가 둘 다면 단일 결합 LLM 호출로 두 도메인을 한 번에 만든다(§1-3
-# "결합 호출" 명시 — 특히 온보딩은 항상 양쪽 다라 이 경로가 상시 경로). retry_count > 0(=validate
-# 재시도로 다시 들어온 경우, 2026-08-25 결정)면 이전 validation_errors를 프롬프트에 피드백으로
-# 얹는다 — 단순 재시도가 아니라 CRAG처럼 실패 사유 기반 교정.
+async def _generate_domain_draft(
+    domain: str,
+    profile: dict,
+    protected_items: dict,
+    retry_feedback: dict[str, list[str]] | None,
+    contract_citations: list[RetrievedChunk],
+    client,
+    settings: Settings,
+) -> dict:
+    """단일 도메인(CHECKLIST 또는 TIMELINE)만 요청하는 독립 LLM 호출 1건 — generate_node가
+    두 도메인이 모두 대상일 때 이 코루틴 2개를 asyncio.gather로 동시에 돌린다(red-bug.md #9
+    §9-6~§9-9 실측: 결합 호출이 BLOCKED 급증의 근본 원인으로 확인됨)."""
+    prompt = build_generate_prompt(
+        [domain],
+        profile,
+        protected_items,
+        retry_feedback,
+        contract_citations if domain == "CHECKLIST" else None,
+    )
+    response = await client.chat.completions.create(
+        model=settings.azure_openai_chat_deployment,
+        response_format={"type": "json_object"},
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return json.loads(response.choices[0].message.content)
+
+
+# ② generate: affected_domains의 각 도메인을 독립 LLM 호출로 asyncio.gather 동시 요청한다
+# (2026-08-29 결정, red-bug.md #9 §9-6~§9-10 — 예전엔 단일 결합 호출이었으나 그게 BLOCKED
+# 급증의 근본 원인으로 실측 확인됨). retry_count > 0(=validate 재시도로 다시 들어온 경우,
+# 2026-08-25 결정)이면 이번 패스에서 실제로 BLOCKED였던 도메인만 다시 호출하고, 이미 SUCCESS인
+# 도메인은 state의 기존 draft를 그대로 carry-forward한다(다시 안 만듦 — 낭비 방지 + 이미 성공한
+# 결과를 재시도가 덮어쓰지 않도록). DS3 RAG 근거(contract_citations)는 CHECKLIST가 이번 패스에
+# 실제로 재생성 대상일 때만, gather로 병렬 호출을 보내기 전에 순차로 먼저 fetch한다 —
+# AsyncSession은 동시 사용이 안전하지 않으므로 DB 접근은 반드시 gather 이전에 끝낸다.
 async def generate_node(state: PersonalizationState, config: RunnableConfig) -> dict:
     settings: Settings = config["configurable"].get("settings") or get_settings()
     async with traced_span(
         "personalization.generate", settings=settings, input=state["affected_domains"]
     ):
-        if not state["affected_domains"]:
+        affected_domains = state["affected_domains"]
+        if not affected_domains:
             return {"checklist_draft": None, "timeline_draft": None}
 
-        contract_citations = await _fetch_contract_citations(state, settings, config)
+        is_retry = state.get("retry_count", 0) > 0
+        validation_errors = state.get("validation_errors") or {}
+        domains_to_regenerate = [
+            domain for domain in affected_domains if not is_retry or validation_errors.get(domain)
+        ]
+        retry_feedback = validation_errors if is_retry else None
+
+        contract_citations = (
+            await _fetch_contract_citations(state, settings, config)
+            if "CHECKLIST" in domains_to_regenerate
+            else []
+        )
 
         client = get_azure_openai_client(settings)
-        retry_feedback = state["validation_errors"] if state.get("retry_count", 0) > 0 else None
-        prompt = build_generate_prompt(
-            state["affected_domains"],
-            state["profile"],
-            state["protected_items"],
-            retry_feedback,
-            contract_citations,
+        responses = await asyncio.gather(
+            *(
+                _generate_domain_draft(
+                    domain,
+                    state["profile"],
+                    state["protected_items"],
+                    retry_feedback,
+                    contract_citations,
+                    client,
+                    settings,
+                )
+                for domain in domains_to_regenerate
+            )
         )
-        response = await client.chat.completions.create(
-            model=settings.azure_openai_chat_deployment,
-            response_format={"type": "json_object"},
-            messages=[{"role": "user", "content": prompt}],
-        )
-        parsed = json.loads(response.choices[0].message.content)
-        checklist_draft = (
-            parsed.get("checklist_items") if "CHECKLIST" in state["affected_domains"] else None
-        )
-        checklist_draft = _resolve_checklist_citations(checklist_draft, contract_citations)
-        timeline_draft = (
-            parsed.get("timeline_items") if "TIMELINE" in state["affected_domains"] else None
-        )
-        if timeline_draft:
-            timeline_draft = [_normalize_timeline_category_code(item) for item in timeline_draft]
+        parsed_by_domain = dict(zip(domains_to_regenerate, responses))
+
+        checklist_draft = state["checklist_draft"]
+        if "CHECKLIST" in domains_to_regenerate:
+            checklist_draft = _resolve_checklist_citations(
+                parsed_by_domain["CHECKLIST"].get("checklist_items"), contract_citations
+            )
+        timeline_draft = state["timeline_draft"]
+        if "TIMELINE" in domains_to_regenerate:
+            timeline_draft = [
+                _normalize_timeline_category_code(item)
+                for item in parsed_by_domain["TIMELINE"].get("timeline_items") or []
+            ]
         return {"checklist_draft": checklist_draft, "timeline_draft": timeline_draft}
 
 
@@ -186,18 +246,51 @@ def _normalize_timeline_category_code(item: dict) -> dict:
     return item
 
 
+def _dedup_domain_draft(
+    domain_label: str, draft: list[dict] | None, protected_items: dict
+) -> list[dict] | None:
+    """2026-08-28 결정(red-bug.md #9-2) — validate가 "제목 중복"을 잡아 도메인 전체를
+    BLOCKED시키기 전에, 뒤에 나온 중복 항목만 먼저 드롭해 나머지는 그대로 살린다. draft가
+    None이면(이 도메인이 affected_domains에 없어 generate가 아예 안 만든 경우) 그대로 None을
+    돌려준다 — validate_personalization_draft도 이 경우를 동일하게 처리한다."""
+    if draft is None:
+        return None
+    protected_titles = protected_titles_for_domain(protected_items, domain_label)
+    kept, dropped = deduplicate_titles(draft, protected_titles)
+    if dropped:
+        # 2026-08-26 레드팀 감사 4라운드 항목 23의 교훈과 동일 — 자동 교정이 발동할 때마다
+        # 로그를 남겨야 재발 빈도를 조기에 파악할 수 있다(null-string category_code 버그가
+        # 무로깅으로 3번 재발했던 전례).
+        logger.warning(
+            "Deduplicated %d %s item(s) with repeated (category_code, title): %r",
+            len(dropped),
+            domain_label,
+            [(item.get("category_code"), item.get("title")) for item in dropped],
+        )
+    return kept
+
+
 # ③ validate: 순수 코드, LLM 호출 없음(§1-4) — app/personalization/validation.py의 4규칙을
 # 도메인별 독립 적용한다. validation_status/validation_errors는 도메인별 딕셔너리다
 # (2026-08-24 버그 수정 — 이전엔 단일 status라 한쪽 도메인만 실패해도 둘 다 BLOCKED
 # 폴백됐다. app/services/personalization.py가 이 딕셔너리를 도메인별로 독립 적용한다).
+#
+# 2026-08-28 결정(red-bug.md #9-2) — 실제 규칙 검증 전에 _dedup_domain_draft로 제목 중복부터
+# 먼저 걸러낸다(원래 validate는 순수 검증만 했다는 §1-4 설계 원칙에서 "일부 자동 교정"으로
+# 성격이 바뀌는 의도된 변경). 걸러진 checklist_draft/timeline_draft를 그대로 반환해 state에
+# 반영하므로, app/services/personalization.py가 이후 result["checklist_draft"]/
+# ["timeline_draft"]를 읽을 때 이미 정제된 목록을 받는다.
 async def validate_node(state: PersonalizationState, config: RunnableConfig) -> dict:
     active_categories = set(state["profile"].get("active_categories", []))
+    protected_items = state["protected_items"]
+    checklist_draft = _dedup_domain_draft("CHECKLIST", state["checklist_draft"], protected_items)
+    timeline_draft = _dedup_domain_draft("TIMELINE", state["timeline_draft"], protected_items)
     domain_errors = validate_personalization_draft(
         active_categories,
         state["affected_domains"],
-        state["checklist_draft"],
-        state["timeline_draft"],
-        state["protected_items"],
+        checklist_draft,
+        timeline_draft,
+        protected_items,
     )
     validation_status = {
         domain: "BLOCKED" if errors else "SUCCESS" for domain, errors in domain_errors.items()
@@ -208,6 +301,8 @@ async def validate_node(state: PersonalizationState, config: RunnableConfig) -> 
     if any(status == "BLOCKED" for status in validation_status.values()):
         retry_count += 1
     return {
+        "checklist_draft": checklist_draft,
+        "timeline_draft": timeline_draft,
         "validation_status": validation_status,
         "validation_errors": domain_errors,
         "retry_count": retry_count,

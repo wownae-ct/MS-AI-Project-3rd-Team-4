@@ -17,7 +17,12 @@ from pydantic import ValidationError
 
 from app.core.categories import CATEGORY_META
 from app.core.errors import api_error
-from app.schemas.wedding import CUSTOM_REQUEST_MAX_LENGTH, PRIMARY_GOAL_OPTIONS, WeddingCreate
+from app.schemas.wedding import (
+    CUSTOM_REQUEST_MAX_LENGTH,
+    PRIMARY_GOAL_OPTIONS,
+    WeddingCreate,
+    WeddingUpdate,
+)
 from app.services.wedding import (
     approximate_wedding_date,
     find_budget_below_paid_violation,
@@ -188,6 +193,43 @@ class TestWeddingCreatePrimaryGoalsValidation:
         }
         with pytest.raises(ValidationError, match="primary_goals"):
             WeddingCreate(**payload)
+
+
+class TestWeddingRegionCodeValidation:
+    """2026-08-28 신규(레드팀 감사 #10) — region_code가 캐노니컬 17개 값(RegionCode Literal,
+    app/schemas/common.py)만 허용하는지 검증한다. 기존엔 str에 아무 제약이 없어 "서울"처럼
+    유효값(SEOUL_GANGNAM/SEOUL_OTHER)이 아닌 문자열도 검증 없이 통과했고, 이후 모든 참가격
+    비교가 조용히 NON_METRO로 폴백됐다(app/services/benchmark.py::resolve_region_fallback_chain)
+    — primary_goals와 같은 성격의 API 경계 검증 구멍."""
+
+    _base: ClassVar[dict] = {
+        "user_role": "BRIDE",
+        "wedding_date_precision": "EXACT",
+        "wedding_date": "2027-05-15",
+        "total_budget": 45_000_000,
+        "categories": _ALL_ACTIVE_ZERO_BUDGET_CATEGORIES,
+    }
+
+    def test_canonical_region_code_passes(self):
+        payload = {**self._base, "region_code": "JEJU"}
+        WeddingCreate(**payload)  # 예외 없이 통과해야 함
+
+    def test_non_canonical_region_label_is_rejected(self):
+        # "서울"은 실제 유효값이 아니다 — SEOUL_GANGNAM/SEOUL_OTHER로 갈린다.
+        payload = {**self._base, "region_code": "서울"}
+        with pytest.raises(ValidationError, match="region_code"):
+            WeddingCreate(**payload)
+
+    def test_wedding_update_accepts_canonical_region_code(self):
+        WeddingUpdate(region_code="SEOUL_OTHER")  # 예외 없이 통과해야 함
+
+    def test_wedding_update_rejects_non_canonical_region_code(self):
+        with pytest.raises(ValidationError, match="region_code"):
+            WeddingUpdate(region_code="서울")
+
+    def test_wedding_update_omitting_region_code_still_passes(self):
+        # 부분 수정이라 region_code를 아예 안 보내는 게 정상 경로(03_API_spec.md #8).
+        WeddingUpdate(total_budget=10_000_000)  # 예외 없이 통과해야 함
 
 
 class TestWeddingCreateCustomRequestValidation:

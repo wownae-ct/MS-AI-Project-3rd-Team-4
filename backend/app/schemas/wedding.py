@@ -9,7 +9,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.categories import CATEGORY_META
-from app.schemas.common import CategoryCode, CategoryTier
+from app.schemas.common import CategoryCode, CategoryTier, RegionCode
 
 DatePrecision = Literal[
     "EXACT",
@@ -80,7 +80,12 @@ class WeddingCreate(BaseModel):
     wedding_date_precision: DatePrecision
     total_budget: int | None = Field(default=None, gt=0)
     total_budget_unsure: bool = False
-    region_code: str
+    # 2026-08-28(레드팀 감사 #10) — 기존엔 str이라 캐노니컬 17개 값(RegionCode) 밖의 문자열도
+    # 검증 없이 통과해 이후 모든 참가격 비교가 조용히 NON_METRO로 폴백됐다
+    # (app/services/benchmark.py::resolve_region_fallback_chain). 프론트(Step2RegionBudget.tsx)는
+    # 이미 REGION_CODES 파생 고정 <select>만 보내므로 실사용 흐름엔 영향 없음 — primary_goals와
+    # 같은 성격의 API 경계 검증 구멍을 닫는 하드닝.
+    region_code: RegionCode
     guest_count: int | None = Field(default=None, ge=0)
     guest_count_unsure: bool = False
     taste_preference: TastePreference | None = None
@@ -131,7 +136,7 @@ class WeddingUpdate(BaseModel):
     wedding_date_precision: DatePrecision | None = None
     total_budget: int | None = Field(default=None, gt=0)
     total_budget_unsure: bool | None = None
-    region_code: str | None = None
+    region_code: RegionCode | None = None  # 2026-08-28(레드팀 감사 #10) — WeddingCreate와 동일
     guest_count: int | None = Field(default=None, ge=0)
     guest_count_unsure: bool | None = None
     taste_preference: TastePreference | None = None
