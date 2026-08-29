@@ -11,6 +11,7 @@ from app.models import ChecklistItem, TimelineItem, Wedding
 from app.services.personalization import (
     _build_profile,
     _checklist_fallback_rows,
+    _checklist_protected_clause,
     _checklist_row_from_draft,
     _drop_rows_colliding_with_protected,
     _timeline_fallback_rows,
@@ -20,12 +21,16 @@ from app.services.personalization import (
 )
 
 
+def _compiled_sql(clause) -> str:
+    return str(clause.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+
+
 def _compiled_timeline_protected_sql() -> str:
-    return str(
-        _timeline_protected_clause().compile(
-            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
-        )
-    )
+    return _compiled_sql(_timeline_protected_clause())
+
+
+def _compiled_checklist_protected_sql() -> str:
+    return _compiled_sql(_checklist_protected_clause())
 
 
 def _make_wedding(**overrides) -> Wedding:
@@ -126,28 +131,34 @@ class TestChecklistRowFromDraft:
     def test_category_not_active_returns_none(self):
         # 사용자가 지적한 버그 축: SUCCESS 경로에서도 활성 카테고리 밖 항목은 버려야 한다.
         item = {"category_code": "SDM", "title": "제목"}
-        row = _checklist_row_from_draft({"VENUE"}, item)
+        row = _checklist_row_from_draft({"VENUE"}, 1, item)
         assert row is None
 
     def test_group_label_derived_from_item_type(self):
         item = {"category_code": "VENUE", "title": "제목", "item_type": "EXTRA_COST"}
-        row = _checklist_row_from_draft({"VENUE"}, item)
+        row = _checklist_row_from_draft({"VENUE"}, 1, item)
         assert row.group_label == "추가 비용 확인"
 
     def test_status_set_deterministically_not_from_llm(self):
         # 출력 스키마 자체가 status를 요청하지 않으므로 항상 default_status_for_category 결과다.
         item = {"category_code": "HOMEWARE", "title": "제목", "item_type": "PREP"}
-        row = _checklist_row_from_draft({"HOMEWARE"}, item)
+        row = _checklist_row_from_draft({"HOMEWARE"}, 1, item)
         assert row.status == "LISTED"
 
     def test_origin_is_always_llm(self):
         item = {"category_code": "VENUE", "title": "제목"}
-        row = _checklist_row_from_draft({"VENUE"}, item)
+        row = _checklist_row_from_draft({"VENUE"}, 1, item)
         assert row.origin == "LLM"
+
+    def test_display_order_preserves_llm_order(self):
+        # 2026-08-29 — 예전엔 이 필드를 안 채워 SUCCESS 경로 행이 전부 NULL이었고,
+        # list_checklist_items의 ORDER BY display_order에서 순서가 요청마다 달라졌다.
+        item = {"category_code": "VENUE", "title": "제목"}
+        assert _checklist_row_from_draft({"VENUE"}, 7, item).display_order == 7
 
     def test_source_tier_is_none_for_llm_generated_items(self):
         item = {"category_code": "VENUE", "title": "제목"}
-        row = _checklist_row_from_draft({"VENUE"}, item)
+        row = _checklist_row_from_draft({"VENUE"}, 1, item)
         assert row.source_tier is None
 
     def test_source_fields_pass_through_when_resolved_by_generate_node(self):
@@ -162,7 +173,7 @@ class TestChecklistRowFromDraft:
             "source_label": "공정위 예식장이용 표준약관(제10030호)",
             "source_url": "https://example.com/venue-terms",
         }
-        row = _checklist_row_from_draft({"VENUE"}, item)
+        row = _checklist_row_from_draft({"VENUE"}, 1, item)
         assert row.source_tier == "OFFICIAL"
         assert row.source_label == "공정위 예식장이용 표준약관(제10030호)"
         assert row.source_url == "https://example.com/venue-terms"
@@ -283,6 +294,41 @@ class TestTimelineProtectedClause:
         # origin='USER' 행은 AI 생성물이 아니라 재생성 대상 자체가 아니다 — 예전 기준
         # (user_edited_at IS NULL)에서는 재생성 때마다 조용히 지워졌다.
         assert "origin = 'USER'" in _compiled_timeline_protected_sql()
+
+
+class TestChecklistProtectedClause:
+    """2026-08-29 2차 수정 — 체크리스트 재생성이 사실상 아무것도 안 바꾸던 버그. 보호 기준이
+    "진행 흔적(status가 기본값이 아님)·메모·사용자 추가"인지 SQL 수준에서 고정한다. 타임라인
+    클래스와 같은 이유로 실제 행 필터링은 라이브 DB에서 확인하고(모듈 docstring), 여기서는
+    조건식이 조용히 예전 기준(user_edited_at 단독)으로 되돌아가지 않는지를 회귀 방지로 잡는다."""
+
+    def test_does_not_protect_on_user_edited_at_alone(self):
+        # 이게 이 버그의 핵심 — update_checklist_item이 PATCH 내용과 무관하게 찍는 컬럼이라
+        # 상태를 다시 TODO로 되돌린 항목까지 영구 보호됐다.
+        assert "user_edited_at" not in _compiled_checklist_protected_sql()
+
+    def test_protects_rows_with_non_default_status_per_category(self):
+        # HOMEWARE만 상태값 체계가 달라(04_DB_schema.sql CHECK) 기본값도 다르다 — 한쪽 기준으로
+        # 뭉뚱그리면 HOMEWARE의 LISTED 행이 "진행 흔적 있음"으로 잘못 보호된다.
+        sql = _compiled_checklist_protected_sql()
+
+        assert "category_code = 'HOMEWARE'" in sql
+        assert "status != 'LISTED'" in sql
+        assert "category_code != 'HOMEWARE'" in sql
+        assert "status != 'TODO'" in sql
+
+    def test_protects_rows_with_memo(self):
+        # 메모는 체크리스트에만 있는 편집 축(타임라인 조건에는 대응물이 없다). 빈 문자열은
+        # "메모 없음"과 같이 본다 — 메모를 지운 PATCH가 ""로 올 수 있다.
+        sql = _compiled_checklist_protected_sql()
+
+        assert "memo IS NOT NULL" in sql
+        assert "memo != ''" in sql
+
+    def test_user_added_rows_are_protected(self):
+        # 타임라인은 1차 수정에서 고쳤지만 체크리스트는 그대로였다 — create_checklist_item이
+        # origin='USER'로 만들면서 user_edited_at은 NULL로 두므로 재생성 때마다 지워졌다.
+        assert "origin = 'USER'" in _compiled_checklist_protected_sql()
 
 
 class TestDropRowsCollidingWithProtected:
