@@ -98,6 +98,7 @@
 | `button` primary / secondary | primary 면 + surface 글자 / surface 면 + line 보더 + ink 글자 · `rounded-md` | `Button` — 호버 **적용 완료**([D4](decisions.md#d4-호버-색을-77354f로-확정한다)): `enabled:hover:bg-primary-hover`. `enabled:` 를 붙여 비활성 상태에서 호버가 살아나지 않게 한다 |
 | 진행률 | 트랙 `line` · 채움 `primary` · `rounded-pill` · 높이 8px | `Progress` — 불확정 표현은 [D11](decisions.md#d11-불확정-진행률의-시각-표현) |
 | 카드 | `surface` 면 · 1px `line` 보더 · **`rounded-lg`(16px)** · padding 16px | `Card` — 라운드 16px **전환 완료**([D1](decisions.md#d1-라운드를-4단계로-고정한다)). 슬롯 2개: `title`(→ `<h2>`) · `subtitle`(→ `<p>` · `text-xs ink-soft`) |
+| 날짜 입력 | ISO 마스크 입력(16px) + 44px 달력 버튼 · 아래 힌트 한 줄(`2027년 5월 15일 (토) · 259일 뒤`) · 펼침 캘린더는 6주 고정 42칸, 셀 44px · 선택 = primary 알약 · 오늘 = primary 테두리 · 주말 = **글자 무게** | `DateField` — `<input type="date">` 를 대체한다([D20](decisions.md#d20-날짜-입력을-네이티브-typedate-에서-자체-컴포넌트로-옮긴다)). 값은 언제나 ISO 문자열. 그리드(`DateCalendar`)는 첫 열림 때 받는 **별도 청크** |
 
 ### 브랜드 자산 (현행 — [D15](decisions.md#d15-브랜드-마크를-색-규범의-예외로-둔다))
 

@@ -11,6 +11,10 @@ export { Card, type CardProps } from "./Card";
 // 되돌릴 수 없는 행동의 확인 다이얼로그 — 지금은 "AI 다시 생성"(entities/personalization)이
 // 유일한 호출부지만, 삭제류 행동이 늘면 같은 자리로 온다.
 export { ConfirmDialog, type ConfirmDialogProps } from "./ConfirmDialog";
+// 날짜 입력 (D20) — `<input type="date">` 를 대체한다. 그리드(`DateCalendar`)는 이 컴포넌트가
+// `React.lazy` 로 감싼 별도 청크라 여기서 함께 내보내지 않는다 — 내보내면 정적 참조가 생겨
+// 초기 청크로 끌려온다(그 파일 머리말 §번들).
+export { DateField, type DateFieldProps } from "./DateField";
 // 온보딩 8단계에서 뽑아 올린 두 장치(2026-08-29, 아래 StatusCallout 과 짝) — 예산 재배분 화면이
 // 같은 것을 써야 하는데 pages 슬라이스끼리는 서로 import 할 수 없다. 각 파일 머리말에 "왜
 // 마크업을 복사하면 안 되는지"(실제로 깨졌던 불변식들)를 적어 뒀다.
@@ -29,7 +33,7 @@ export { RoutePending } from "./RoutePending";
 // 산술**을 써야 하는데 `shared` 는 `app` 을 볼 수 없다. 값이 갈리면 노치 아이폰에서 콘텐츠가
 // 고정바 밑으로 잘린다(실제로 잘리고 있었다 — 그 파일 머리말 §산술).
 export { SHELL_BOTTOM_INSET, SHELL_FILL_HEIGHT, SHELL_TOP_INSET } from "./shell-metrics";
-export { SkeletonRows, type SkeletonRowsProps } from "./Skeleton";
+export { SkeletonRows, type SkeletonRowsProps, type SkeletonRowsVariant } from "./Skeleton";
 // 근거·출처 목록 (D16) — 채팅 인용 · 체크리스트 근거 · 업체사례 관련 사례가 같은 그릇을 쓴다.
 // entities 끼리는 서로를 import 할 수 없으므로 공유 지점은 여기뿐이다(safe-url·source-tier 와 같은 이유).
 export { SourceList, type SourceListItem, type SourceListProps } from "./SourceList";

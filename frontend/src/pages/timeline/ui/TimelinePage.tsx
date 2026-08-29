@@ -12,11 +12,11 @@
 // 활성/비활성 전체 9개를 돌려주므로(비활성 카테고리 소속 잔존 항목도 라벨이 있어야 함) 활성만
 // 거르지 않고 그대로 맵으로 쓴다.
 import { useEffect, useRef, useState } from "react";
-import { getTimelineItems, type TimelineItem } from "@/entities/timeline";
+import { getTimelineItems, isTimelineItemKept, type TimelineItem } from "@/entities/timeline";
 import { getCategories, getMyWedding } from "@/entities/wedding";
 import { RegenerateButton, type RegenerateImpact } from "@/entities/personalization";
 import { ApiError } from "@/shared/api";
-import { Card, Loading, Page, SkeletonRows } from "@/shared/ui";
+import { Card, Loading, Page, SkeletonRows, StatusCallout } from "@/shared/ui";
 import { AddTimelineItemRow } from "./AddTimelineItemRow";
 import { groupTimelineItemsByPhase, type TimelinePhaseGroup } from "./group-by-phase";
 import { TimelineItemRow } from "./TimelineItemRow";
@@ -46,24 +46,19 @@ export function resolveCategoryLabel(categoryCode: string | null, categoryLabelB
   return categoryLabelByCode.get(categoryCode) ?? categoryCode;
 }
 
-/** 재생성 확인 다이얼로그에 보여줄 개수.
- *
- * 서버의 실제 보존 기준은 "사용자가 손댄 적 있는 행"(PATCH 를 한 번이라도 받은 행)이고, 그 값은
- * 응답에 없다. 화면이 아는 것 중 그 기준과 1:1로 대응하는 것은 **완료 체크(status=DONE)** 와
- * **날짜 직접 변경(date_overridden)** 둘뿐이라 이 둘로 센다.
- *
- * 어긋나는 경우가 하나 있다 — 완료를 체크했다가 **해제**한 항목은 서버에선 보존되는데 여기선
- * 초기화 쪽으로 세어진다. 방향은 이쪽이 맞다: 실제보다 **덜 남는다고** 말하는 오차라, 사용자가
- * 예상보다 많이 잃는 일은 생기지 않는다. 정확한 수를 보여 주려면 응답에 보존 여부 플래그가
- * 필요하다(백엔드 변경 사안이라 지금은 하지 않는다). */
+/** 재생성 확인 다이얼로그에 보여줄 개수. 판정 기준과 그 한계는 `isTimelineItemKept`
+ * (entities/timeline/model.ts) 머리말에 있다 — 확인창의 개수와 재생성 중 스켈레톤의 자리가
+ * **같은 술어**를 써야 해서 그쪽으로 옮겼다. */
 export function timelineRegenerateImpact(items: TimelineItem[]): RegenerateImpact {
-  const keptCount = items.filter((item) => item.status === "DONE" || item.date_overridden).length;
+  const keptCount = items.filter((item) => isTimelineItemKept(item)).length;
   return { keptCount, resetCount: items.length - keptCount };
 }
 
 export function TimelinePage() {
   const [data, setData] = useState<TimelineData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // 재생성 진행 여부 — 이 값이 참인 동안 **지워질 항목 자리에만** 스켈레톤이 선다(D21).
+  const [regenerating, setRegenerating] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,9 +97,11 @@ export function TimelinePage() {
   // 최근에 보낸 재조회"일 때만 결과를 반영해, 늦게 도착한 예전 응답이 최신 타임라인을 덮어쓰지
   // 않게 막는다(레드팀 감사).
   const refetchSeqRef = useRef(0);
-  function refetchItems() {
+  // **Promise 를 돌려준다(D21).** `RegenerateButton` 이 이것까지 기다린 뒤에야 진행 상태를
+  // 내리므로, 재생성 응답과 재조회 사이의 빈틈에 옛 목록이 완성본인 양 되살아나지 않는다.
+  function refetchItems(): Promise<void> {
     const seq = ++refetchSeqRef.current;
-    getTimelineItems()
+    return getTimelineItems()
       .then((res) => {
         if (refetchSeqRef.current !== seq) return;
         setData((prev) => (prev ? { ...prev, items: res.items } : prev));
@@ -143,35 +140,65 @@ export function TimelinePage() {
     <Page title="타임라인" subtitle={timelineSubtitle(groups)}>
       <output className="sr-only">{announcement}</output>
       <div className="flex flex-col gap-5">
-        <div className="flex justify-end">
-          {/* 개수는 화면이 센다 — entities/personalization 은 타임라인 항목을 알지 못한다(레이어 규약).
-              모수는 `groups` 가 아니라 `data.items` 다: 그룹 분류는 표시 방식이고, 재생성은 항목 전체가 대상이다. */}
-          <RegenerateButton
-            domain="TIMELINE"
-            label="AI 타임라인 다시 생성"
-            impact={timelineRegenerateImpact(data.items)}
-            onRegenerated={refetchItems}
-          />
+        {/* 버튼과 안내를 **gap 없는** 상자로 묶는다 — `StatusCallout` 은 숨어도 부모의 flex
+            아이템으로 남아, gap 이 있는 컨테이너에 직접 놓으면 평소에도 빈 줄이 생긴다
+            (그 컴포넌트 머리말 §여백). */}
+        <div className="flex flex-col">
+          <div className="flex justify-end">
+            {/* 개수는 화면이 센다 — entities/personalization 은 타임라인 항목을 알지 못한다(레이어 규약).
+                모수는 `groups` 가 아니라 `data.items` 다: 그룹 분류는 표시 방식이고, 재생성은 항목 전체가 대상이다. */}
+            <RegenerateButton
+              domain="TIMELINE"
+              label="AI 타임라인 다시 생성"
+              impact={timelineRegenerateImpact(data.items)}
+              onRegenerated={refetchItems}
+              onPendingChange={setRegenerating}
+            />
+          </div>
+          {/* D14 L3 의 **문구 계층**(해요체 2줄 — 무엇을 / 왜 걸리는지)은 지키되 **표현은
+              전체화면 오버레이가 아니다**(D21). 오버레이는 "무엇이 남는지"를 가려 버려 이
+              화면의 목적과 정면으로 충돌한다. */}
+          <StatusCallout shown={regenerating}>
+            <p className="text-sm font-bold text-ink">AI가 타임라인을 다시 만들고 있어요.</p>
+            <p className="text-xs text-ink-soft">
+              체크했거나 날짜를 바꾼 항목은 그대로 남아요. 30초 정도 걸릴 수 있어요.
+            </p>
+          </StatusCallout>
         </div>
         {/* 목업(s4-timeline.html:80)은 구간 헤더에 라벨과 날짜를 함께 보여준다 — 라벨만으로는
             "12개월 전이 정확히 언제인지" 알 수 없다. 날짜가 없는 유일한 경우("일정 미정" 그룹)는
             그냥 라벨만 낸다. */}
-        {groups.map((group) => (
-          <Card key={group.label} title={group.date ? `${group.label} · ${group.date}` : group.label}>
-            <div className="flex flex-col">
-              {group.items.map((item) => (
-                <TimelineItemRow
-                  key={item.id}
-                  item={item}
-                  categoryLabel={resolveCategoryLabel(item.category_code, data.categoryLabelByCode)}
-                  onStatusChange={handleItemChange}
-                />
-              ))}
-            </div>
-          </Card>
-        ))}
+        {groups.map((group) => {
+          // 재생성 중에는 **남을 항목만** 그대로 그리고, 지워질 항목 수만큼 자리표시를 세운다(D21).
+          // 구간 카드 자체는 유지한다 — 카드가 사라졌다 다시 생기면 기다리는 동안 화면 구조가
+          // 통째로 무너져 "무엇이 남는지"를 볼 수 없다.
+          const visibleItems = regenerating ? group.items.filter((item) => isTimelineItemKept(item)) : group.items;
+          const replacedCount = group.items.length - visibleItems.length;
+          return (
+            <Card key={group.label} title={group.date ? `${group.label} · ${group.date}` : group.label}>
+              <div className="flex flex-col">
+                {visibleItems.map((item) => (
+                  <TimelineItemRow
+                    key={item.id}
+                    item={item}
+                    categoryLabel={resolveCategoryLabel(item.category_code, data.categoryLabelByCode)}
+                    onStatusChange={handleItemChange}
+                  />
+                ))}
+              </div>
+              {replacedCount > 0 && (
+                <div className={visibleItems.length > 0 ? "pt-3" : undefined}>
+                  <SkeletonRows count={replacedCount} variant="row" />
+                </div>
+              )}
+            </Card>
+          );
+        })}
 
-        <AddTimelineItemRow onAdded={refetchItems} />
+        {/* 재생성 중에는 추가 폼을 감춘다 — 서버는 재생성 시작 시점에 보호되지 않은 항목을
+            (직접 추가한 것까지) 지운다. 그 사이에 추가한 항목은 방금 만들었는데 조용히
+            사라지거나, 늦게 도착한 재조회에 덮여 없어진 것처럼 보인다. */}
+        {!regenerating && <AddTimelineItemRow weddingDate={data.weddingDate} onAdded={refetchItems} />}
       </div>
     </Page>
   );
