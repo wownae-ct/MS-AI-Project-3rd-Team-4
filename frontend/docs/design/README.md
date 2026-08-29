@@ -104,13 +104,13 @@
 | 항목 | 값 |
 |---|---|
 | 워드마크 | `src/shared/assets/merrymap-wordmark-96.png` (461×96 = **4.803:1**) — `logos/logo-text-3.png` 를 알파 bbox 로 크롭 후 축소한 파생본 |
-| 심볼 | `src/shared/assets/merrymap-symbol-256.png` (1024×951 = **1.0768:1**) — `logo/` 원본 그대로 |
+| 심볼 | `src/shared/assets/merrymap-symbol-256.png` (256×254 = **1.0079:1**) — **파비콘과 같은 원본** `logos/favicon.png` 를 알파 bbox 로 크롭 → 232×230 축소 → **12px 균일 여백**을 둘러 구운 파생본 (2026-08-29 교체). 여백은 치수다 — 그림 높이 비중(90.55%)이 앞선 자산과 같아야 오버레이 마크 크기가 유지된다 |
 | **함께 쓰지 않는다** | 워드마크가 이미 반지·하트 핀 모티프를 품고 있어 심볼을 곁들이면 모티프가 중복된다. **자리마다 하나만** |
 | 구현 | `shared/ui/Brand.tsx` 하나(`variant="wordmark" \| "symbol"`). 셸은 `AppShell`, 셸 밖 화면은 `Page` 의 `brand` prop |
 | 크기 | 사이드바 26 · 모바일 상단 바 22 · 로그인 32 · 온보딩 22 (전부 워드마크) / 생성 오버레이 56 (심볼) |
 | 최소 크기 | **워드마크 18 · 심볼 24.** 벡터 원본이 없어 렌더러가 보정하지 못한다 |
 | 접근성 | 워드마크 `alt="메리맵"`(유일한 브랜드 표기) · 심볼 `alt=""`(장식) · `width`/`height` 둘 다 명시(CLS) · **링크로 만들지 않는다**(`aria-current` 계약) |
-| 파비콘 | `public/favicon.png`(96, 투명) · `public/apple-touch-icon.png`(180, **흰 배경 평탄화** + 여백 10%) — 전용 원본 `logos/favicon.png`(1.007:1, 사실상 정사각). 자리표시 `favicon.svg` 는 **삭제**했다 |
+| 파비콘 | `public/favicon.png`(96, 투명) · `public/apple-touch-icon.png`(180, **흰 배경 평탄화** + 여백 10%) — 원본 `logos/favicon.png`(1.007:1, 사실상 정사각). **심볼과 원본을 공유하지만 파일은 따로다**(굽는 여백·배치 경로가 다르다 — 자산 교체 시 **셋을 같이** 다시 구울 것). 자리표시 `favicon.svg` 는 **삭제**했다 |
 
 ### 범위 밖 (현행)
 

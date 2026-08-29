@@ -38,12 +38,23 @@ describe("Brand", () => {
     expect(img).toHaveAttribute("width", "125");
   });
 
-  // 심볼 원본 1024×951 = 1.0768:1. 56 → round(56 × 1024/951) = 60.
-  // 두 변이의 비율이 4배 넘게 다르다 — 하나의 상수로 뭉뚱그리면 한쪽이 찌그러진다.
-  it("심볼은 자기 비율(1.0768:1)로 계산한다 — 워드마크와 다르다", () => {
+  // 심볼 원본 256×254 = 1.0079:1. 유일한 사용처(생성 오버레이)의 실크기 56 을 그대로 못 박는다.
+  // 56 → round(56 × 256/254) = 56.
+  it("심볼도 width 를 함께 낸다 — 유일한 사용처 크기 56", () => {
     render(<Brand size={56} variant="symbol" />);
     const img = document.querySelector("img");
     expect(img).toHaveAttribute("height", "56");
-    expect(img).toHaveAttribute("width", "60");
+    expect(img).toHaveAttribute("width", "56");
+  });
+
+  // ⚠️ 위 케이스만으로는 **부족하다** — 56 에서는 반올림이 2px 의 차이를 삼켜 `width={size}` 로
+  // 뭉뚱그린 구현도 그대로 통과한다(2026-08-29 심볼 자산이 1.0768:1 → 1.0079:1 로 바뀌며 생긴
+  // 사각지대다). 비율이 실제로 갈리는 크기를 하나 더 고정한다 — round(64 × 256/254) = 65.
+  // 워드마크는 같은 64 에서 round(64 × 461/96) = 307 이다. 상수를 하나로 합치면 한쪽이 찌그러진다.
+  it("심볼은 자기 비율(1.0079:1)로 계산한다 — 정사각이 아니다", () => {
+    render(<Brand size={64} variant="symbol" />);
+    const img = document.querySelector("img");
+    expect(img).toHaveAttribute("height", "64");
+    expect(img).toHaveAttribute("width", "65");
   });
 });
