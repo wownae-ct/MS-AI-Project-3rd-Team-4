@@ -19,20 +19,19 @@
 //
 // 그래서 토글은 로컬 draft 로만 쌓고 「저장」에서 한 번만 보낸다 — 토글마다 PUT 을 보내면
 // 46초짜리 재생성이 클릭 수만큼 겹친다. **「취소」는 서버에 아무 것도 보내지 않는다.**
+// **끄는 카테고리의 예산 처리**를 포함한 저장 규칙 일체는 `activation-draft.ts` 에 있다.
 //
-// ## 끄는 카테고리의 예산
+// ## 이 패널은 이제 저장을 **소유하지 않는다**(2026-08-29 개편)
 //
-// 서버의 초과 검증은 `is_active` 무관 9개 전체 합이라(`services/wedding.py:444-447`) 끄면서
-// 금액을 남기면 "화면엔 그 행이 없는데 초과" 상태가 만들어진다 — 온보딩이
-// `allocationRowsToCategoryUpdates` 에서 0 으로 미는 것과 같은 이유로 여기서도 0 으로 민다.
-// **단, 이미 지불한 금액이 있으면 못 민다** — `planned_budget < paid_amount` 는 400
-// BUDGET_BELOW_PAID 다(`services/wedding.py:449-467`). 그 경우엔 원래 값을 그대로 두고 행에
-// 이유를 적는다(금액이 남는 것을 조용히 넘기지 않는다 — `BudgetPage` 의 초과 안내가 그 금액을
-// 다시 설명한다).
+// 확인을 통과하면 `onSave(draft)` 를 부르고 곧바로 접힌다 — 46초의 진행 표시는 카드 본문
+// (「카테고리별 예산 현황」 목록)의 제자리 자리표시가 대신 진다(D21). PUT 은
+// `use-activation-save.ts` 가 든다. 그래서 여기엔 `saving` 도 진행 안내도 없다.
+// 실패했을 때만 이 패널이 다시 열리고, 그때 `error`(서버 문구)와 `initialDraft`(사용자가
+// 만졌던 토글)를 되받아 **아무 것도 잃지 않은 채** 재시도할 수 있게 한다.
 import { useState } from "react";
-import { putWeddingCategories, type WeddingCategory } from "@/entities/wedding";
-import { ApiError } from "@/shared/api";
-import { Button, ConfirmDialog, Money, StatusCallout, Switch } from "@/shared/ui";
+import type { WeddingCategory } from "@/entities/wedding";
+import { Button, ConfirmDialog, Money, Switch } from "@/shared/ui";
+import { hasActivationChanges, isActiveInDraft, type ActivationDraft } from "./activation-draft";
 
 const ROW = "flex flex-col gap-1 border-b border-line py-3 last:border-b-0 last:pb-0 first:pt-0";
 const TOP_ROW = "flex items-center gap-2.5";
@@ -43,63 +42,49 @@ const ROW_NOTE = "pl-[42px] text-xs text-ink-soft";
 export interface CategoryActivationPanelProps {
   /** 원본 9개 전체(draft 아님). 꺼진 카테고리를 다시 켜려면 비활성 행도 있어야 한다. */
   rows: readonly WeddingCategory[];
-  /** 저장 성공 시 서버가 돌려준 최신 목록. 호출부가 자기 state 를 갈아 끼우고 패널을 닫는다. */
-  onSaved: (categories: WeddingCategory[]) => void;
+  /** 확인을 통과한 초안. 호출부가 PUT 을 보내고 이 패널을 접는다. */
+  onSave: (draft: ActivationDraft) => void;
   onCancel: () => void;
+  /** 직전 저장이 실패했을 때 서버가 준 사유. 없으면 아무 것도 그리지 않는다. */
+  error?: string | null;
+  /** 실패한 초안 — 이 값이 있으면 그 토글 상태로 다시 시작한다(사용자가 만진 것을 잃지 않는다). */
+  initialDraft?: ActivationDraft | null;
 }
 
-/** 끄는 카테고리의 저장할 예산 — 이미 지불한 금액이 있으면 못 내린다(머리말 §끄는 카테고리의 예산). */
-function plannedBudgetForInactive(category: WeddingCategory): number {
-  return category.paid_amount > 0 ? category.planned_budget : 0;
+/** 저장된 값 그대로의 초안 — 아무 것도 만지지 않은 상태. */
+function baselineDraft(rows: readonly WeddingCategory[]): ActivationDraft {
+  return Object.fromEntries(rows.map((row) => [row.category_code, row.is_active]));
 }
 
-export function CategoryActivationPanel({ rows, onSaved, onCancel }: CategoryActivationPanelProps) {
-  // code → 활성 여부. 배열 사본 대신 이 맵만 두는 이유는 이 패널이 `is_active` 하나만
-  // 만지기 때문이다 — 나머지 필드는 저장할 때 `rows` 에서 그대로 읽어 되돌려 보낸다.
-  const [draft, setDraft] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(rows.map((row) => [row.category_code, row.is_active])),
-  );
+export function CategoryActivationPanel({
+  rows,
+  onSave,
+  onCancel,
+  error = null,
+  initialDraft = null,
+}: CategoryActivationPanelProps) {
+  const [draft, setDraft] = useState<ActivationDraft>(() => initialDraft ?? baselineDraft(rows));
   const [confirming, setConfirming] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const isActiveInDraft = (row: WeddingCategory) => draft[row.category_code] ?? row.is_active;
-  const activeCount = rows.filter((row) => isActiveInDraft(row)).length;
-  // 활성 집합이 그대로면 저장할 것이 없다 — 재생성만 헛돌게 하지 않는다(확인창도 안 띄운다).
-  const hasChanges = rows.some((row) => isActiveInDraft(row) !== row.is_active);
-
-  async function handleSave() {
-    setSaving(true);
-    setError(null);
-    setConfirming(false);
-    try {
-      // PUT 은 부분 갱신이 아니다 — 9개 전체를 보내되 이 패널이 만지지 않는 필드
-      // (`selected_options`/`display_order`)는 조회값 그대로 되돌려 보낸다.
-      const response = await putWeddingCategories(
-        rows.map((row) => {
-          const isActive = isActiveInDraft(row);
-          return {
-            category_code: row.category_code,
-            is_active: isActive,
-            planned_budget: isActive ? row.planned_budget : plannedBudgetForInactive(row),
-            selected_options: row.selected_options,
-            display_order: row.display_order,
-          };
-        }),
-      );
-      onSaved(response.categories);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "저장하지 못했어요. 다시 시도해 주세요.");
-    } finally {
-      setSaving(false);
-    }
+  // 🚨 **「취소」는 초안까지 되돌린다**(2026-08-30, 사용자 신고). 이 패널은 접혀도 마운트를
+  // 유지하므로(DisclosurePanel — 닫히는 전환이 돌아야 한다) 닫기만 하면 state 가 그대로 남는다.
+  // 그래서 다시 열면 **저장하지도 않은 토글이 켜진 채**로 보였다 — 취소했는데 취소가 안 된 것처럼
+  // 읽힌다. 저장 성공 시에는 호출부의 `key` 가 바뀌어 새 원본으로 다시 세워지므로 여기서 할
+  // 일이 없고, 저장 **실패** 시에는 되돌리면 안 된다(`initialDraft` 로 되살려 재시도하게 한다).
+  function handleCancel() {
+    setDraft(baselineDraft(rows));
+    onCancel();
   }
+
+  const activeCount = rows.filter((row) => isActiveInDraft(row, draft)).length;
+  // 활성 집합이 그대로면 저장할 것이 없다 — 재생성만 헛돌게 하지 않는다(확인창도 안 띄운다).
+  const hasChanges = hasActivationChanges(rows, draft);
 
   return (
     <div className="flex flex-col gap-3">
       <div>
         {rows.map((row) => {
-          const isActive = isActiveInDraft(row);
+          const isActive = isActiveInDraft(row, draft);
           // 켜져 있던 것을 끄는데 이미 지불액이 있는 경우에만 알린다 — 처음부터 꺼져 있던
           // 카테고리에까지 이 문장을 붙이면 사용자가 방금 한 일과 무관한 안내가 된다.
           const keepsBudget = !isActive && row.is_active && row.paid_amount > 0;
@@ -110,7 +95,6 @@ export function CategoryActivationPanel({ rows, onSaved, onCancel }: CategoryAct
                 <Switch
                   checked={isActive}
                   label={`${row.name_ko} 카테고리 사용 여부`}
-                  disabled={saving}
                   onCheckedChange={(next) => setDraft((prev) => ({ ...prev, [row.category_code]: next }))}
                 />
               </div>
@@ -125,57 +109,39 @@ export function CategoryActivationPanel({ rows, onSaved, onCancel }: CategoryAct
       </div>
 
       <p className={FIELD_NOTE}>
-        사용 중인 카테고리 <b className="text-ink">{activeCount}개</b> / 총 {rows.length}개 — 끈 카테고리는
+        사용 중인 카테고리 <b className="text-ink">{activeCount}개</b> / 총 {rows.length}개<br/>끈 카테고리는
         예산·타임라인·체크리스트에서 보이지 않아요.
       </p>
 
-      {/* 버튼 줄과 진행 안내를 **gap 없는** 상자로 묶는다 — `StatusCallout` 은 숨어도 부모의
-          flex 아이템으로 남아, gap 이 있는 컨테이너에 직접 놓으면 평소에도 빈 줄이 생긴다
-          (그 컴포넌트 머리말 §여백). 여백은 그 컴포넌트 자신의 mt-4 가 낸다. */}
-      <div className="flex flex-col">
-        {/* flex-wrap + basis-full — `error` 는 서버 문구를 그대로 싣는다(예: "배정 합계가 예산을
-            3,000,000원 초과합니다."). 감싸 주지 않으면 좁은 폭에서 두 버튼을 밀어낸다.
-            `BudgetPage` 의 저장 줄과 같은 형태다. */}
-        <div className="flex flex-wrap items-center gap-3">
-          {/* 저장 중엔 취소를 막는다 — 안 막으면 이미 시작된 PUT 이 취소 뒤에도 진행돼, 성공 시
-              되돌린 줄 알았던 변경이 그대로 반영된다(`BudgetPage` 의 시나리오 저장과 같은 이유). */}
-          <Button variant="secondary" onClick={onCancel} disabled={saving}>
-            취소
-          </Button>
-          {/* 바뀐 게 없으면 확인창 없이 그냥 닫는다 — 46초짜리 재생성을 헛돌게 하지 않는다. */}
-          <Button
-            onClick={() => (hasChanges ? setConfirming(true) : onCancel())}
-            pending={saving}
-            pendingLabel="저장 중…"
-          >
-            저장
-          </Button>
-          {error !== null && (
-            <span role="alert" className="basis-full text-sm text-primary">
-              {error}
-            </span>
-          )}
-        </div>
-
-        {/* 확인창은 먼저 닫으므로(handleSave) 그 뒤 수십 초의 진행을 말해 줄 자리가 필요하다 —
-            버튼 라벨("저장 중…")만으로는 **얼마나** 걸리는지 알 수 없어 멈춘 것처럼 읽힌다.
-            타임라인·체크리스트 재생성 안내와 같은 장치·같은 문구 계층이다(D14 L3 / D21). */}
-        <StatusCallout shown={saving}>
-          <p className="text-sm font-bold text-ink">AI가 체크리스트와 타임라인을 다시 만들고 있어요.</p>
-          <p className="text-xs text-ink-soft">손댄 항목은 그대로 남아요. 1분 정도 걸릴 수 있어요.</p>
-        </StatusCallout>
+      {/* flex-wrap + basis-full — `error` 는 서버 문구를 그대로 싣는다(예: "배정 합계가 예산을
+          3,000,000원 초과합니다."). 감싸 주지 않으면 좁은 폭에서 두 버튼을 밀어낸다.
+          `BudgetPage` 의 저장 줄과 같은 형태다. */}
+      <div className="flex flex-wrap items-center gap-3">
+        <Button variant="secondary" onClick={handleCancel}>
+          취소
+        </Button>
+        {/* 바뀐 게 없으면 확인창 없이 그냥 닫는다 — 46초짜리 재생성을 헛돌게 하지 않는다. */}
+        <Button onClick={() => (hasChanges ? setConfirming(true) : handleCancel())}>저장</Button>
+        {error !== null && (
+          <span role="alert" className="basis-full text-sm text-primary">
+            {error}
+          </span>
+        )}
       </div>
 
       {/* 문구는 `RegenerateButton` 의 3줄 구조 그대로 — 무엇이 다시 만들어지는가 / 무엇이 남고
-          무엇이 지워지는가 / 얼마나 걸리는가. 그 셋이 "저장할까 말까"를 가르는 전부다. */}
+          무엇이 지워지는가 / 얼마나 걸리는가. 그 셋이 "저장할까 말까"를 가르는 전부다.
+          확인 즉시 닫는다(D21 결정 ②) — 진행 표시가 목록 쪽으로 옮겨 갔으므로 이 창이 그
+          목록을 가린 채 수십 초를 버틸 이유가 없다. */}
       <ConfirmDialog
         open={confirming}
         onOpenChange={setConfirming}
         title="카테고리를 바꿀까요?"
         confirmLabel="저장"
-        pendingLabel="저장 중…"
-        pending={saving}
-        onConfirm={() => void handleSave()}
+        onConfirm={() => {
+          setConfirming(false);
+          onSave(draft);
+        }}
       >
         <p className="font-bold text-ink">체크리스트와 타임라인을 다시 만들어요.</p>
         <p>상태를 바꾸거나 메모·날짜를 손댄 항목은 그대로 남아요. 나머지는 직접 추가한 것까지 지워져요.</p>

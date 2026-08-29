@@ -44,11 +44,33 @@
 // styles.css 의 전역 규칙이 이미 처리한다.
 // 알려진 한계(수용): 두 본문의 높이 차가 크면 전환 중 순간적으로 높이가 살짝 부푼다. 절대 위치
 // 크로스페이드 대안은 카드 높이를 잡아 줄 기준이 없어 더 불안정하다.
+//
+// ## 저장 대기는 이 카드 안에서 일어난다(2026-08-29 개편, 사용자 지시)
+//
+// 사용 여부 저장 한 번은 서버에서 체크리스트·타임라인 재생성을 **동기로** 돌린다(p95 약 46초).
+// 예전엔 그 46초 내내 토글 패널이 열려 있었다 — 정작 궁금한 「내 예산 목록이 어떻게 바뀌나」를
+// 못 본 채 기다리다 어느 순간 목록이 통째로 갈렸다. D21 이 타임라인·체크리스트에서 기각한 그
+// 상황이라 같은 처방을 쓴다:
+//
+//   · **확인 즉시 패널을 접고** 목록 본문으로 돌아온다.
+//   · **켜는 카테고리 자리에만** 자리표시를 세운다(`display_order` 덕에 저절로 제자리에 선다).
+//     그 결과는 서버만 안다 — 지어내지 않는다.
+//   · **끄는 카테고리는 기다리지 않는다.** 결과("행이 사라지고 예산이 0")를 프론트가 정확히
+//     계산할 수 있어(`applyDeactivations`) 즉시 반영한다. 자리표시가 0개인 이유다.
+//   · 그 동안 설정 버튼은 **자리를 남긴 채** 사라진다 — 제목 줄 높이가 안 튀고, 탭 순서와
+//     접근성 트리에서도 빠진다. 완료되면 같은 자리로 돌아온다.
+//
+// `isManagingActivation` 은 저장 중에도 **참으로 유지된다**(패널의 `open` 만 `saving` 으로 끈다).
+// 그래야 BudgetPage 의 "예산 조정하기" 잠금이 별도 state 없이 그대로 걸려, 46초짜리 재생성을
+// 유발하는 PUT 둘이 겹치지 않는다.
+import { useState } from "react";
 import type { BenchmarkComparison } from "@/entities/payment";
 import type { WeddingCategory } from "@/entities/wedding";
-import { Card, DisclosurePanel, IconSettings } from "@/shared/ui";
+import { Card, DisclosurePanel, IconSettings, StatusCallout } from "@/shared/ui";
+import type { ActivationDraft } from "./activation-draft";
 import { CategoryActivationPanel } from "./CategoryActivationPanel";
-import { CategoryAllocationRow } from "./CategoryAllocationRow";
+import { CategoryAllocationRow, CategoryAllocationRowSkeleton } from "./CategoryAllocationRow";
+import { useActivationSave } from "./use-activation-save";
 
 // 아이콘 단독 버튼 — 보이는 라벨이 없어 아이콘 자체(20px)가 타겟 크기의 전부가 될 뻔했다.
 // `min-h-tap`/`min-w-tap`(44px)으로 상자를 키운다(`entities/chat/ui/MessageBubble.tsx` 의 아이콘
@@ -56,9 +78,13 @@ import { CategoryAllocationRow } from "./CategoryAllocationRow";
 const SETTINGS_BUTTON =
   "min-h-tap inline-flex min-w-tap items-center justify-center rounded-md text-ink-soft " +
   "transition-colors duration-150 enabled:hover:text-primary disabled:cursor-not-allowed disabled:opacity-50";
+// 저장 중 그 버튼이 비운 자리. 같은 크기의 빈 상자라 카드 제목 줄 높이가 그대로다.
+const SETTINGS_PLACEHOLDER = "block min-h-tap min-w-tap";
 
 const AMOUNTS_PANEL_ID = "budget-category-amounts";
 const ACTIVATION_PANEL_ID = "budget-category-activation";
+
+const SAVED_ANNOUNCEMENT = "카테고리 설정을 저장했어요.";
 
 export interface CategoryAllocationListProps {
   /** 보기 모드면 원본, 시나리오 편집 중이면 draft — BudgetPage가 이미 이 둘을 합쳐서 내려준다.
@@ -78,8 +104,9 @@ export interface CategoryAllocationListProps {
       같은 값으로 막아야 해서(두 편집 모드의 상호 배제) 한 곳에서 들고 있어야 한다. */
   isManagingActivation: boolean;
   onManagingActivationChange: (next: boolean) => void;
-  /** 사용 여부 저장 성공 — 서버가 돌려준 최신 9개. */
-  onCategoriesSaved: (categories: WeddingCategory[]) => void;
+  /** 사용 여부 저장 경로의 유일한 갱신 통로. `keepPanelOpen` 은 아직 끝나지 않은 갱신
+      (낙관적 반영·실패 원복)이라는 뜻 — 그때는 패널 상태를 닫지 않아야 잠금이 유지된다. */
+  onCategoriesSaved: (categories: WeddingCategory[], options?: { keepPanelOpen?: boolean }) => void;
 }
 
 export function CategoryAllocationList({
@@ -95,6 +122,22 @@ export function CategoryAllocationList({
   onManagingActivationChange,
   onCategoriesSaved,
 }: CategoryAllocationListProps) {
+  // 저장 완료 낭독. 빈 문자열로 시작해야 첫 렌더에서 "저장했어요"가 새어 나가지 않는다.
+  const [announcement, setAnnouncement] = useState("");
+  const { pendingActivations, saving, error, failedDraft, save, reset } = useActivationSave({
+    onOptimistic: (categories) => onCategoriesSaved(categories, { keepPanelOpen: true }),
+    onSaved: (categories) => {
+      onCategoriesSaved(categories);
+      setAnnouncement(SAVED_ANNOUNCEMENT);
+    },
+    onFailed: (categories) => onCategoriesSaved(categories, { keepPanelOpen: true }),
+  });
+
+  function handleSave(draft: ActivationDraft) {
+    setAnnouncement("");
+    save(originalCategories, draft);
+  }
+
   // 화면에서만 거른다 — `rows` 자체는 그대로 두어야 BudgetPage 의 `plannedTotal`(서버와 같은
   // 9개 전체 합)이 어긋나지 않는다(머리말).
   //
@@ -103,13 +146,29 @@ export function CategoryAllocationList({
   // 슬라이더를 그리지 않고(Step8Allocation.tsx), 결제 선택지에서도 빠지며(BudgetPage.tsx
   // `costEligibleCategoryOptions`), PUT 은 조회값을 그대로 되돌려 보내므로 planned_budget 이
   // 0 이외가 될 경로가 UI 에 없다.
+  //
+  // 켜는 중인 카테고리는 `rows` 상 아직 비활성이지만(서버 확인 전이라 지어내지 않는다) 자리는
+  // 미리 잡아야 하므로 여기서만 통과시킨다.
   const visibleRows = rows.filter(
-    (category) => category.is_active && (hasCostByCode.get(category.category_code) ?? true),
+    (category) =>
+      (category.is_active || pendingActivations.has(category.category_code)) &&
+      (hasCostByCode.get(category.category_code) ?? true),
   );
 
   // 한 카드에 편집 모드 둘이 동시에 열리면 초안이 어느 쪽 것인지 알 수 없고, 전환하는 순간
   // 배분 초안이 조용히 버려진다. 반대 방향(사용 여부 편집 중 "예산 조정하기" 막기)은 BudgetPage 가 건다.
-  const settingsButton = (
+  //
+  // **패널이 열려 있는 동안에도 버튼을 감춘다**(2026-08-30, 사용자 지시) — 이 버튼은 토글이
+  // 아니라 **들어가는 문**이다. 나가는 문은 패널 안의 「저장」·「취소」뿐이라, 같은 자리에
+  // 되돌리기 버튼을 남겨 두면 그 셋이 서로 다른 뜻으로 같은 일을 하는 것처럼 보인다
+  // (⚙ 로 되돌리면 만지던 초안이 아무 예고 없이 버려진다 — 취소와 결과는 같은데 확인이 없다).
+  //
+  // 저장 중에도 같은 이유로 감춘다. 둘 다 버튼 대신 같은 크기의 빈 상자를 낸다 — 비활성
+  // 버튼으로 남기면 `aria-controls`/`aria-expanded` 가 그대로 남아 상태를 잘못 말하고,
+  // 아예 렌더하지 않으면 카드 제목 줄 높이가 44px ↔ 20px 로 튄다.
+  const settingsButton = saving || isManagingActivation ? (
+    <span className={SETTINGS_PLACEHOLDER} aria-hidden="true" />
+  ) : (
     <button
       type="button"
       className={SETTINGS_BUTTON}
@@ -128,10 +187,19 @@ export function CategoryAllocationList({
       {/* `divider={false}` — 이 둘은 트리거 아래로 펼치는 패널이 아니라 카드 **본문 교체**라
           위에 가를 것이 없다. `focusOnOpen={false}` — 이 패널의 첫 컨트롤은 입력칸이 아니고
           (슬라이더/스위치), 사용자가 방금 누른 설정 버튼에 포커스를 남기는 편이 다시 눌러
-          되돌리기에 자연스럽다. */}
-      <DisclosurePanel id={AMOUNTS_PANEL_ID} open={!isManagingActivation} focusOnOpen={false} divider={false}>
+          되돌리기에 자연스럽다.
+          `|| saving` / `&& !saving` — 저장을 시작하는 순간 목록 본문으로 되돌아온다(머리말). */}
+      <DisclosurePanel id={AMOUNTS_PANEL_ID} open={!isManagingActivation || saving} focusOnOpen={false} divider={false}>
         <div>
           {visibleRows.map((category) => {
+            if (pendingActivations.has(category.category_code)) {
+              return (
+                <CategoryAllocationRowSkeleton
+                  key={category.category_code}
+                  hasBenchmark={hasBenchmarkByCode.get(category.category_code) ?? false}
+                />
+              );
+            }
             const original = originalCategories.find((c) => c.category_code === category.category_code);
             const originalAmount = original?.planned_budget ?? category.planned_budget;
             return (
@@ -153,15 +221,35 @@ export function CategoryAllocationList({
       {/* 원본(`originalCategories`)을 넘긴다 — 이 패널은 저장 안 한 배분 초안이 아니라 **서버에
           저장된 값**을 그대로 되돌려 보내야 한다(PUT 은 부분 갱신이 아니다). 설정 버튼이
           시나리오 편집 중엔 잠겨 있어 둘이 겹칠 일은 없지만, 소스를 명시해 둔다.
-          `key` — 저장 후 새 목록이 오면 패널 안 draft 를 새 원본으로 다시 세운다. */}
-      <DisclosurePanel id={ACTIVATION_PANEL_ID} open={isManagingActivation} focusOnOpen={false} divider={false}>
+          `key` — 저장 후 새 목록이 오면 패널 안 draft 를 새 원본으로 다시 세운다.
+          실패해 다시 열릴 때는 `initialDraft` 가 그 재설정을 덮어 사용자의 토글을 되살린다. */}
+      <DisclosurePanel id={ACTIVATION_PANEL_ID} open={isManagingActivation && !saving} focusOnOpen={false} divider={false}>
         <CategoryActivationPanel
           key={originalCategories.map((c) => `${c.category_code}:${String(c.is_active)}`).join()}
           rows={originalCategories}
-          onSaved={onCategoriesSaved}
-          onCancel={() => onManagingActivationChange(false)}
+          onSave={handleSave}
+          onCancel={() => {
+            reset();
+            onManagingActivationChange(false);
+          }}
+          error={error}
+          initialDraft={failedDraft}
         />
       </DisclosurePanel>
+
+      {/* D14 L3 의 **문구 계층**(해요체 2줄 — 무엇을 / 왜 걸리는지)은 지키되 표현은 오버레이가
+          아니다(D21) — 오버레이는 "무엇이 남는지"를 가려 이 화면의 목적과 정면으로 충돌한다.
+          `StatusCallout` 은 숨어도 부모의 flex 아이템으로 남으므로 gap 있는 컨테이너에 직접
+          두지 않는다. 여기 부모(Card 본문)는 gap 이 없고, 위 여백은 그 컴포넌트의 mt-4 가 낸다. */}
+      <StatusCallout shown={saving}>
+        <p className="text-sm font-bold text-ink">AI가 체크리스트와 타임라인을 다시 만들고 있어요.</p>
+        <p className="text-xs text-ink-soft">손댄 항목은 그대로 남아요. 1분 정도 걸릴 수 있어요.</p>
+      </StatusCallout>
+
+      {/* 46초를 기다린 끝이 무표시로 끝나지 않게 — 화면에서는 자리표시가 실제 행으로 바뀌는 것이
+          신호지만, 그 변화는 낭독되지 않는다(자리표시가 접근성 트리 밖이라). TimelinePage 의
+          같은 패턴. 실패는 패널 안 `role="alert"` 가 따로 낸다. */}
+      <output className="sr-only">{announcement}</output>
     </Card>
   );
 }

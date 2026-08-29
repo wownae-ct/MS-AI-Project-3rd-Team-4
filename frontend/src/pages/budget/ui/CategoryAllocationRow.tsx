@@ -23,6 +23,21 @@ export interface CategoryAllocationRowProps {
 }
 
 const ROW = "flex flex-col gap-1.5 border-b border-line py-3 last:border-b-0 last:pb-0 first:pt-0";
+// 켜는 중인 카테고리의 자리표시(D21) — `ROW` 를 그대로 쓴다. 구분선·세로 여백·첫/끝 행 예외가
+// 실제 행과 어긋나면 목록 리듬이 자리표시 구간에서만 깨진다.
+//
+// 안쪽 세 조각의 크기는 **실제 보기 모드 행의 세 줄과 같은 값**이다(이름/금액 줄의 본문 줄상자,
+// 진행률 트랙, 시세비교 보조 줄). `shared/ui` 의 공용 목록 자리표시를 쓰지 않는 이유는 그 파일
+// 머리말이 이미 적어 둔 원칙 때문이다 — 자리표시가 실제 행과 다른 부피를 잡으면 결과가 도착할 때
+// 목록이 늘었다 줄어, 자리표시의 존재 이유가 무너진다.
+//
+// 팔레트 안 line 색 + 기본 pulse 만 쓴다(새 색·토큰 0개, D14). 블록 자체는 장식이라
+// 접근성 트리에서 완전히 뺀다 — 낭독은 카드의 진행 안내가 한 번만 낸다.
+const SKELETON_NAME = "h-5.5 w-20 animate-pulse rounded-sm bg-line";
+const SKELETON_AMOUNT = "h-5.5 w-24 animate-pulse rounded-sm bg-line";
+const SKELETON_BAR = "h-2 w-full animate-pulse rounded-pill bg-line";
+const SKELETON_NOTE = "h-4.5 w-2/5 animate-pulse rounded-sm bg-line";
+
 // 10만원 단위(2026-08-26 사용자 지시) — 단위가 "만원"이라 여기선 10. 온보딩 Step8Allocation의
 // 같은 지시(BUDGET_STEP_WON = 100_000원)와 값 자체는 동일하다, 단위만 다르다.
 // 2026-08-28: 손으로 적어 둔 10을 shared 상수로 바꿨다 — 같은 값이 세 파일에 흩어져 있으면
@@ -169,6 +184,25 @@ export function CategoryAllocationRow({
           </span>
         )}
       </div>
+    </div>
+  );
+}
+
+export interface CategoryAllocationRowSkeletonProps {
+  /** 시세비교 대상이면 실제 행에 보조 줄이 한 줄 더 붙는다 — 자리표시도 그만큼 잡아야 한다. */
+  hasBenchmark: boolean;
+}
+
+/** 켜기 저장이 서버 응답을 기다리는 동안 그 카테고리가 설 자리(위 SKELETON_* 머리말 참고). */
+export function CategoryAllocationRowSkeleton({ hasBenchmark }: CategoryAllocationRowSkeletonProps) {
+  return (
+    <div className={ROW} aria-hidden="true">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className={SKELETON_NAME} />
+        <span className={SKELETON_AMOUNT} />
+      </div>
+      <span className={SKELETON_BAR} />
+      {hasBenchmark && <span className={SKELETON_NOTE} />}
     </div>
   );
 }

@@ -201,10 +201,14 @@ export function BudgetPage() {
   // 순서가 달라진다). 재조회를 따로 걸지 않는 이유 — PUT 응답이 이미 최신 목록이다.
   // 체크리스트·타임라인도 서버에서 함께 다시 만들어졌지만 그건 다른 화면이고, 그 화면들은
   // 마운트마다 조회하므로 여기서 손댈 것이 없다.
-  function handleCategoriesSaved(categories: WeddingCategory[]) {
+  //
+  // `keepPanelOpen` — 아직 끝나지 않은 갱신(끄기의 낙관적 반영 · 실패 원복)이라는 뜻이다.
+  // 그때 `isManagingCategories` 를 내리면 저장이 도는 46초 동안 "예산 조정하기" 가 풀려
+  // 재생성을 유발하는 PUT 둘이 겹친다(CategoryAllocationList.tsx 머리말).
+  function handleCategoriesSaved(categories: WeddingCategory[], options?: { keepPanelOpen?: boolean }) {
     const sorted = categories.toSorted((a, b) => a.display_order - b.display_order);
     setData((prev) => (prev ? { ...prev, categories: sorted } : prev));
-    setIsManagingCategories(false);
+    if (options?.keepPanelOpen !== true) setIsManagingCategories(false);
   }
 
   function refetchCategories() {
