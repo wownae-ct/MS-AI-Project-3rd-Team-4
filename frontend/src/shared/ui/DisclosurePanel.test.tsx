@@ -90,4 +90,22 @@ describe("DisclosurePanel", () => {
     );
     expect(screen.getByLabelText("금액")).not.toHaveFocus();
   });
+
+  // `divider={false}`(2026-08-29) — 카드 **본문 교체** 용도. 두 패널을 겹쳐 쓰면 접힌 쪽의
+  // 구분선까지 세로 여백으로 남아 카드가 어긋난다(pages/budget/ui/CategoryAllocationList.tsx).
+  //
+  // 🚨 뺄 수 있는 것은 선과 그 여백뿐이다. `mx-4`(클리퍼 되돌림)와 `pb-1.5`(포커스 링 하단
+  // 여유)는 위 §짝 테스트가 지키는 잘림 방지 장치라 이 판에도 그대로 있어야 한다 — 완성된
+  // 리터럴을 하나 더 두는 방식이라 한쪽만 고쳐도 조용히 갈릴 수 있다.
+  it("divider=false 면 구분선만 빠지고 잘림 방지 짝은 그대로 남는다", () => {
+    render(
+      <DisclosurePanel id={PANEL_ID} open divider={false}>
+        <input aria-label="금액" />
+      </DisclosurePanel>,
+    );
+
+    expect(content()).not.toHaveClass("border-t");
+    expect(content()).toHaveClass("mx-4", "pb-1.5");
+    expect(panel()).toHaveClass("-mx-4");
+  });
 });

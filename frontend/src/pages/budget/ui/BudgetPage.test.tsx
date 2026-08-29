@@ -91,6 +91,8 @@ async function renderBudget(totalBudget: number, categories: WeddingCategory[], 
 }
 
 const TOTAL_PANEL_ID = "budget-total-edit";
+// 「카테고리별 예산 현황」 카드의 사용 여부 편집 패널(CategoryAllocationList 의 ACTIVATION_PANEL_ID).
+const ACTIVATION_PANEL_ID = "budget-category-activation";
 const OVER_MESSAGE = "설정한 예산이 총예산을 초과했어요.";
 const CTA = "총예산 금액을 조정할까요?";
 
@@ -106,15 +108,18 @@ function expectOverBlock(shown: boolean) {
 }
 
 /**
- * 시나리오 "저장" — 총예산 패널에도 같은 이름의 버튼이 있고, 그 패널은 **접혀 있어도 마운트를
- * 유지한다**(닫히는 애니메이션이 돌아야 해서. DisclosurePanel 머리말). `inert` 는 걸려 있지만
- * testing-library 의 접근성 필터가 그걸 보지 않아 이름만으로는 둘을 못 가른다 — 패널 밖의
- * 것으로 좁힌다.
+ * 시나리오 "저장" — 같은 이름의 버튼이 이 화면에 셋 있다: 총예산 패널 · 카테고리 사용 여부
+ * 패널 · 시나리오 편집. **앞의 둘은 접혀 있어도 마운트를 유지한다**(닫히는 애니메이션이
+ * 돌아야 해서. DisclosurePanel 머리말). `inert` 는 걸려 있지만 testing-library 의 접근성
+ * 필터가 그걸 보지 않아 이름만으로는 셋을 못 가른다 — 두 패널 밖의 것으로 좁힌다.
+ *
+ * (실사용자에겐 모호하지 않다: 두 패널은 열려 있을 때만 닿을 수 있고, 사용 여부 패널이 열린
+ * 동안엔 "예산 조정하기" 가 잠겨 시나리오 저장 자체가 존재하지 않는다.)
  */
 function scenarioSaveButton() {
   const button = screen
     .getAllByRole("button", { name: "저장" })
-    .find((el) => el.closest(`#${TOTAL_PANEL_ID}`) === null);
+    .find((el) => el.closest(`#${TOTAL_PANEL_ID}`) === null && el.closest(`#${ACTIVATION_PANEL_ID}`) === null);
   expect(button).toBeDefined();
   return button as HTMLElement;
 }
@@ -231,10 +236,15 @@ describe("예산 재배분 — 배분이 총예산을 넘을 때", () => {
     );
 
     // 스드메 행 자체는 목록에 없다 — 그래서 이 문장이 아니면 1,300만이 어디서 왔는지 알 길이
-    // 없다. (전역으로 찾으면 비용 관리 탭의 카테고리 `<option>`이 걸리므로 이 카드로 좁힌다.)
-    const allocationCard = screen.getByRole("heading", { level: 2, name: "카테고리별 예산 현황" }).parentElement;
-    expect(allocationCard).not.toBeNull();
-    expect(within(allocationCard as HTMLElement).queryByText("스드메")).not.toBeInTheDocument();
+    // 없다.
+    //
+    // **질의를 예산 목록 패널로 좁힌다.** 전역으로 찾으면 비용 관리 탭의 카테고리 `<option>`이
+    // 걸리고, 같은 카드의 「사용 여부」 패널도 (접힌 채로) 비활성 카테고리를 **일부러** 보여준다
+    // (다시 켜는 곳이니까). 카드 전체(heading 의 조상)로 좁히는 것으로도 부족하다 — 그 패널이
+    // 카드 안에 있다.
+    const amountsPanel = document.querySelector("#budget-category-amounts");
+    expect(amountsPanel).not.toBeNull();
+    expect(within(amountsPanel as HTMLElement).queryByText("스드메")).not.toBeInTheDocument();
     expect(screen.getByText(/사용 안 함 카테고리에/u)).toHaveTextContent("5,000,000원");
   });
 
@@ -251,5 +261,80 @@ describe("예산 재배분 — 배분이 총예산을 넘을 때", () => {
     // 초과는 맞지만 원인이 전부 화면 안에 있다 — "0원이 남아 있어요"는 안내가 아니라 소음이다.
     expectOverBlock(true);
     expect(screen.queryByText(/사용 안 함 카테고리에/u)).not.toBeInTheDocument();
+  });
+});
+
+// 온보딩에서 끈 카테고리가 **선택지로 남아 있던** 구멍(2026-08-29).
+//
+// `costEligibleCategoryOptions` 는 예전에 `GET /categories`(전역 상수)만 보고 `has_cost` 로 한 번
+// 걸러 초기 로드 때 state 에 넣어 뒀다. `is_active` 를 안 봐서 끈 카테고리로 결제를 새로 만들 수
+// 있었고, 그 금액은 대시보드 `total_paid`(서버가 활성만 합산)에도 「카테고리별 예산 현황」
+// (비활성 제외)에도 안 잡힌 채 남았다.
+//
+// **다만 이미 등록된 결제는 목록에서 숨기지 않는다**(2026-08-29 사용자 결정) — 기록된 돈이
+// 조회·수정 불가 상태로 사라지면 되돌릴 화면이 없다. 그래서 라벨 맵은 9개 전체를 유지한다.
+describe("예산 재배분 — 비활성 카테고리는 결제 선택지에서 뺀다", () => {
+  const ROWS = [
+    category({ planned_budget: 1_000_000 }),
+    category({ category_code: "SDM", name_ko: "스드메", display_order: 2, is_active: false }),
+    category({ category_code: "MEETING", name_ko: "상견례", display_order: 3 }),
+  ];
+  const CONSTANTS = [
+    constant(),
+    constant({ code: "SDM", name_ko: "스드메", display_order: 2 }),
+    // 비용 개념이 없는 카테고리 — 활성이어도 결제를 만들 수 없다(기존 규칙, 회귀 없음 확인).
+    constant({ code: "MEETING", name_ko: "상견례", display_order: 3, has_cost: false }),
+  ];
+
+  it("카테고리 필터 드롭다운에 활성·유상 카테고리만 낸다", async () => {
+    await renderBudget(10_000_000, ROWS, CONSTANTS);
+
+    // 🚨 지역변수 이름은 **반드시 두 낱말 이상**으로 짓는다(여기서는 `categoryFilter`).
+    // Tailwind 스캐너는 소스를 **평문으로** 훑으므로, 유틸리티와 이름이 겹치는 한 낱말짜리
+    // 식별자는 그대로 후보가 되어 산출 CSS 에 쓰지도 않는 규칙을 만든다
+    // (scripts/lib/__tests__/ghost-candidates.test.mjs 가 잡는다 — `Card.test.tsx` 가 RTL 렌더
+    // 루트를 구조 분해하다 같은 사고를 냈다).
+    //
+    // ⚠️ [2026-08-29 정정] **이 주석이 바로 그 함정에 빠져 있었다.** 경고하려던 두 낱말을
+    // 백틱에 넣어 평문으로 적어 두었는데, 스캐너에게 백틱은 아무 의미가 없어 그대로 후보가 됐고
+    // 게이트가 **두 개**를 잡았다(320px 전수 검사 중 발견). 그래서 지금은 그 낱말들을 아예
+    // 적지 않는다 — 같은 규칙이 `shell-metrics.ts`·`onboarding-styles.ts` 머리말에도 있다.
+    const categoryFilter = screen.getByRole("combobox", { name: "카테고리 필터" });
+    expect(within(categoryFilter).getAllByRole("option").map((el) => el.textContent)).toEqual([
+      "전체 카테고리",
+      "예식장",
+    ]);
+  });
+
+  it("새 결제 추가 폼의 카테고리 선택지도 같은 집합이다", async () => {
+    await renderBudget(10_000_000, ROWS, CONSTANTS);
+    await userEvent.click(screen.getByRole("button", { name: "+ 납부 항목 추가" }));
+
+    const select = screen.getByRole("combobox", { name: "카테고리" });
+    expect(within(select).getAllByRole("option").map((el) => el.textContent)).toEqual(["예식장"]);
+  });
+});
+
+// 한 카드에 편집 모드 둘(예산 배분 초안 · 사용 여부 초안)이 동시에 열리면 어느 초안을 저장하는지
+// 알 수 없고, 전환하는 순간 배분 초안이 조용히 버려진다. 양방향으로 막는다.
+function settingsButton() {
+  return screen.getByRole("button", { name: "카테고리 사용 여부 설정" });
+}
+
+describe("예산 재배분 — 두 편집 모드는 서로를 막는다", () => {
+  it("예산 조정 중에는 사용 여부 설정 버튼이 잠긴다", async () => {
+    await renderBudget(10_000_000, [category({ planned_budget: 1_000_000 })]);
+    expect(settingsButton()).toBeEnabled();
+
+    await userEvent.click(screen.getByRole("button", { name: "예산 조정하기" }));
+    expect(settingsButton()).toBeDisabled();
+  });
+
+  it("사용 여부 편집 중에는 '예산 조정하기'가 잠긴다", async () => {
+    await renderBudget(10_000_000, [category({ planned_budget: 1_000_000 })]);
+
+    await userEvent.click(settingsButton());
+    expect(settingsButton()).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "예산 조정하기" })).toBeDisabled();
   });
 });

@@ -53,6 +53,16 @@ const PANEL_OPEN = "-mx-4 grid grid-rows-[1fr] transition-[grid-template-rows] d
 const PANEL_CLOSED = "-mx-4 grid grid-rows-[0fr] transition-[grid-template-rows] duration-200";
 /** 흘려보낸 만큼 되돌려 넣는 짝(`mx-4` ↔ `-mx-4`) + 포커스 링 하단 여유(`pb-1.5`). */
 const PANEL_CONTENT = "mx-4 mt-3 border-t border-line pt-3 pb-1.5";
+/**
+ * `divider={false}` 판(2026-08-29) — 위 리터럴에서 구분선과 그 위아래 여백만 뺀 것.
+ *
+ * **조각을 이어 붙이지 않고 완성된 리터럴을 하나 더 둔다** — Tailwind 스캐너는 소스를 평문으로
+ * 읽어 런타임 조립을 찾지 못하고, 빌드는 성공한 채 스타일만 사라진다(Card.tsx 의 TITLE 짝과 같은 처리).
+ *
+ * `mx-4`(클리퍼 되돌림)와 `pb-1.5`(포커스 링 하단 여유)는 **뺄 수 없다** — 이 둘은 장식이 아니라
+ * 위 §4 의 잘림을 막는 짝이다.
+ */
+const PANEL_CONTENT_BARE = "mx-4 pb-1.5";
 
 export interface DisclosurePanelProps {
   /** 트리거의 `aria-controls` 가 가리킬 값. 화면 안에서 유일해야 한다. */
@@ -65,10 +75,19 @@ export interface DisclosurePanelProps {
    * 스크롤은 하지 않는다 — 스크롤 목적지(카드 전체)가 이 패널 **바깥**이라 호출부만 알 수 있다.
    */
   focusOnOpen?: boolean;
+  /**
+   * 콘텐츠 위에 구분선과 여백을 둘지(기본 true).
+   *
+   * 기본값은 "트리거 **아래로** 펼치는" 원래 용도에 맞다 — 그 선이 트리거와 펼쳐진 내용을
+   * 가른다. `false` 는 **카드 본문 자체를 갈아 끼우는** 용도다(예산 재배분의 「카테고리별
+   * 예산 현황」 ↔ 「카테고리 사용 여부」): 그 자리엔 위에 가를 것이 없어 선만 떠 보이고,
+   * 두 패널을 겹쳐 쓰면 접힌 쪽의 선까지 세로 여백으로 남는다.
+   */
+  divider?: boolean;
   children: ReactNode;
 }
 
-export function DisclosurePanel({ id, open, focusOnOpen = true, children }: DisclosurePanelProps) {
+export function DisclosurePanel({ id, open, focusOnOpen = true, divider = true, children }: DisclosurePanelProps) {
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -81,7 +100,7 @@ export function DisclosurePanel({ id, open, focusOnOpen = true, children }: Disc
       <div className="overflow-hidden" inert={!open}>
         {/* 여백·구분선을 바깥이 아니라 여기 두는 이유 — overflow-hidden 안쪽이라야 접혔을 때
             같이 잘린다. 바깥에 두면 접힌 상태에서도 빈 줄과 선이 남는다. */}
-        <div ref={contentRef} className={PANEL_CONTENT}>
+        <div ref={contentRef} className={divider ? PANEL_CONTENT : PANEL_CONTENT_BARE}>
           {children}
         </div>
       </div>

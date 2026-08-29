@@ -25,14 +25,21 @@ vi.mock("@/entities/session", async (orig) => ({
 
 // 이 파일은 라우팅 조립(경로 → 화면 · 가드 · 셸 소재)만 본다 — 화면이 실제로 그리는 데이터는
 // 관심사가 아니다(그건 DashboardPage.test.tsx 등 각 화면 계약 테스트의 몫이다). 그런데
-// CategoryPage(getCategories)와 OnboardingPage(getCategories/getTotalAverageBenchmark)가 실API
-// 배선 이후 진짜 네트워크 호출을 시도하면, `VITE_API_BASE=https://api.test`(존재하지 않는
-// 도메인)로의 DNS 실패가 전체 스위트를 병렬로 돌릴 때 간헐적으로 findBy* 기본 타임아웃을
-// 넘겨 테스트를 깨뜨린다(고립 실행에선 통과, 전체 스위트에선 가끔 실패 — 재현됨). 라우팅
-// 조립과 무관한 네트워크 의존을 없애기 위해 여기서 즉시 응답하는 목으로 바꾼다.
+// CategoryPage(getCategories/getWeddingCategories)와 OnboardingPage(getCategories/
+// getTotalAverageBenchmark)가 실API 배선 이후 진짜 네트워크 호출을 시도하면,
+// `VITE_API_BASE=https://api.test`(존재하지 않는 도메인)로의 DNS 실패가 전체 스위트를 병렬로
+// 돌릴 때 간헐적으로 findBy* 기본 타임아웃을 넘겨 테스트를 깨뜨린다(고립 실행에선 통과, 전체
+// 스위트에선 가끔 실패 — 재현됨). 라우팅 조립과 무관한 네트워크 의존을 없애기 위해 여기서
+// 즉시 응답하는 목으로 바꾼다.
+//
+// `getWeddingCategories` 는 2026-08-29 에 추가됐다 — `TimelinePage`(라벨+활성 판정)와
+// `CategoryPage`(「사용 안 함」 안내 분기)가 쓴다. **빈 목록으로 성공**시키면 두 화면 다
+// 기존 경로를 그대로 탄다: 타임라인은 라벨 없이 렌더하고, 카테고리 상세는 "행이 있고 그
+// is_active 가 false" 가 아니므로 안내로 새지 않는다(그 파일의 fail-open 규칙).
 vi.mock("@/entities/wedding", async (orig) => ({
   ...(await orig<typeof import("@/entities/wedding")>()),
   getCategories: () => Promise.resolve({ categories: [] }),
+  getWeddingCategories: () => Promise.resolve({ categories: [] }),
   getTotalAverageBenchmark: () =>
     Promise.reject(new ApiError({ code: "TOTAL_BUDGET_UNAVAILABLE", message: "x", status: 404, extra: {} })),
 }));

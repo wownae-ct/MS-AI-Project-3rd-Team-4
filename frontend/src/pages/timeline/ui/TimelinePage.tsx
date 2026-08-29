@@ -5,15 +5,22 @@
 // 머리말 참고. 비활성 카테고리 항목은 서버가 이미 응답에서 뺀다(`03_API_spec.md` #15 — 이
 // 화면에서 따로 필터링하지 않는다).
 //
-// `GET /timeline-items`·`GET /weddings/me`·`GET /categories`를 병렬로 불러온다 — 웨딩은 phase
-// 계산의 기준일(wedding_date)을 얻기 위해서고, 카테고리는 라벨(name_ko) 매핑을 위해서다.
+// `GET /timeline-items`·`GET /weddings/me`·`GET /wedding-categories`를 병렬로 불러온다 — 웨딩은
+// phase 계산의 기준일(wedding_date)을 얻기 위해서고, 카테고리는 라벨(name_ko) 매핑을 위해서다.
 // STEP 10 — 예전엔 "이름 하나 때문에 세 번째 호출을 추가하지 않는다"(YAGNI)며 item.category_code를
-// 그대로 보여줬는데, 그 결과 화면에 "VENUE" 같은 원시 ENUM 코드가 그대로 노출됐다. GET /categories는
-// 활성/비활성 전체 9개를 돌려주므로(비활성 카테고리 소속 잔존 항목도 라벨이 있어야 함) 활성만
-// 거르지 않고 그대로 맵으로 쓴다.
+// 그대로 보여줬는데, 그 결과 화면에 "VENUE" 같은 원시 ENUM 코드가 그대로 노출됐다.
+//
+// **`GET /categories`(전역 상수) → `GET /wedding-categories`(이 웨딩) 로 바꿨다(2026-08-29).**
+// 두 응답 다 9개 전부를 주고 `name_ko`·`display_order`도 똑같이 갖지만, 후자만 `is_active`를 준다 —
+// 아래 「+ 항목 추가」 폼의 카테고리 옵션에서 **끈 카테고리를 빼려면** 그 값이 필요하다. 예전엔
+// 그 폼이 스스로 `GET /categories`를 또 불러 9개를 전부 옵션으로 냈고, 비활성 카테고리를 고르면
+// POST 는 201 로 성공하는데(서버가 존재 여부만 검사) 뒤이은 `GET /timeline-items` 가 그 항목을
+// 걸러내(`03_API_spec.md` #15) **목록에 끝내 나타나지 않았다** — "추가했어요" 안내까지 뜨는
+// 조용한 유실이었다. 호출 개수는 그대로고(폼 쪽 조회가 사라져 실제로는 하나 줄었다) 라벨 맵은
+// 여전히 9개 전체다(맵을 좁히면 폴백이 원시 ENUM 으로 떨어지는 경로가 생긴다).
 import { useEffect, useRef, useState } from "react";
 import { getTimelineItems, isTimelineItemKept, type TimelineItem } from "@/entities/timeline";
-import { getCategories, getMyWedding } from "@/entities/wedding";
+import { getMyWedding, getWeddingCategories } from "@/entities/wedding";
 import { RegenerateButton, type RegenerateImpact } from "@/entities/personalization";
 import { ApiError } from "@/shared/api";
 import { Card, Loading, Page, SkeletonRows, StatusCallout } from "@/shared/ui";
@@ -24,7 +31,11 @@ import { TimelineItemRow } from "./TimelineItemRow";
 interface TimelineData {
   items: TimelineItem[];
   weddingDate: string | undefined;
+  /** 9개 전체 — 라벨은 거르지 않는다(머리말 참고). */
   categoryLabelByCode: Map<string, string>;
+  /** 「+ 항목 추가」 폼의 선택지. **활성만** 담는다 — 비활성으로 만든 항목은 서버가 목록에서
+      걸러내 화면에 영영 안 나온다. `AddPaymentRow`(entities/payment)의 같은 이름 prop 관례. */
+  categoryOptions: { code: string; name_ko: string }[];
 }
 
 // STEP 8 — "D-12개월부터"를 고정 문구로 박아뒀었는데, 실제 최상단 구간은 LLM이 생성한 카탈로그의
@@ -62,13 +73,17 @@ export function TimelinePage() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getTimelineItems(), getMyWedding(), getCategories()])
+    Promise.all([getTimelineItems(), getMyWedding(), getWeddingCategories()])
       .then(([itemsResponse, wedding, categoriesResponse]) => {
         if (cancelled) return;
         setData({
           items: itemsResponse.items,
           weddingDate: wedding.wedding_date,
-          categoryLabelByCode: new Map(categoriesResponse.categories.map((c) => [c.code, c.name_ko])),
+          categoryLabelByCode: new Map(categoriesResponse.categories.map((c) => [c.category_code, c.name_ko])),
+          categoryOptions: categoriesResponse.categories
+            .filter((c) => c.is_active)
+            .toSorted((a, b) => a.display_order - b.display_order)
+            .map((c) => ({ code: c.category_code, name_ko: c.name_ko })),
         });
       })
       .catch((err: unknown) => {
@@ -198,7 +213,13 @@ export function TimelinePage() {
         {/* 재생성 중에는 추가 폼을 감춘다 — 서버는 재생성 시작 시점에 보호되지 않은 항목을
             (직접 추가한 것까지) 지운다. 그 사이에 추가한 항목은 방금 만들었는데 조용히
             사라지거나, 늦게 도착한 재조회에 덮여 없어진 것처럼 보인다. */}
-        {!regenerating && <AddTimelineItemRow weddingDate={data.weddingDate} onAdded={refetchItems} />}
+        {!regenerating && (
+          <AddTimelineItemRow
+            weddingDate={data.weddingDate}
+            categoryOptions={data.categoryOptions}
+            onAdded={refetchItems}
+          />
+        )}
       </div>
     </Page>
   );

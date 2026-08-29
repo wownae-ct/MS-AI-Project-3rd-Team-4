@@ -12,6 +12,7 @@
 // 행 초기값으로 바꾸는 함수)가 활성 여부의 최초 소스이므로, 그 타입도 여기서 정의하고 8단계는
 // 이 파일에서 import만 한다 — 타입 정의가 두 곳에 흩어지면 필드가 갈릴 위험이 생긴다.
 import type { CategoryConstant, WeddingCategoryUpdateInput } from "@/entities/wedding";
+import { Switch } from "@/shared/ui";
 import { CHIP_SM_BASE, CHIP_SM_SELECTED, FIELD_NOTE } from "../onboarding-styles";
 
 export interface AllocationRow {
@@ -71,14 +72,9 @@ const OPTIONS_BY_CATEGORY: Record<string, readonly string[]> = {
   HOMEWARE: ["가전", "가구", "침구/소품"],
 };
 
-// h-6(24px) — WCAG 2.2 SC 2.5.8(AA, 접근성 감사 2026-08-26) 최소 타겟 크기. 이전 21px는
-// AA 최저선에도 못 미쳤다.
-const TOGGLE_ON = "relative h-6 w-9 flex-none rounded-pill bg-primary";
-const TOGGLE_OFF = "relative h-6 w-9 flex-none rounded-pill bg-line";
-// D1 — 무한 반경 유틸리티는 게이트가 잡는다(shared/ui/README.md). 원형 노브는 rounded-pill 로.
-// top-1 — 24px 트랙 안에서 16px 노브를 수직 중앙에 놓는다((24-16)/2=4px).
-const TOGGLE_KNOB = "absolute top-1 h-4 w-4 rounded-pill bg-surface transition-[right,left] duration-150";
-
+// 토글 자체는 `shared/ui/Switch` 로 올라갔다(2026-08-29) — 예산 재배분 화면의 「카테고리 사용
+// 여부」 패널이 같은 스위치를 쓰는데 pages 슬라이스끼리는 서로 import 할 수 없어서다. 크기·
+// 접근성 근거(h-6 = WCAG 2.2 SC 2.5.8)는 그 파일 머리말로 함께 옮겼다.
 const ROW = "flex flex-col gap-2 border-b border-line py-3 last:border-b-0 last:pb-0 first:pt-0";
 const TOP_ROW = "flex items-center gap-2.5";
 const OPTS_ROW = "flex flex-wrap gap-1.5 pl-[42px]"; // 토글 폭(36px)+간격만큼 들여써 하위 옵션임을 보인다.
@@ -111,16 +107,11 @@ export function Step7CategoryToggle({ rows, onRowsChange }: Step7Props) {
             <div key={row.categoryCode} className={ROW}>
               <div className={TOP_ROW}>
                 <span className="flex-1 text-sm font-bold text-ink">{row.nameKo}</span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={row.isActive}
-                  aria-label={`${row.nameKo} 카테고리 사용 여부`}
-                  className={row.isActive ? TOGGLE_ON : TOGGLE_OFF}
-                  onClick={() => updateRow(row.categoryCode, { isActive: !row.isActive })}
-                >
-                  <span className={`${TOGGLE_KNOB} ${row.isActive ? "right-0.5" : "left-0.5"}`} />
-                </button>
+                <Switch
+                  checked={row.isActive}
+                  label={`${row.nameKo} 카테고리 사용 여부`}
+                  onCheckedChange={(next) => updateRow(row.categoryCode, { isActive: next })}
+                />
               </div>
               {row.isActive && options.length > 0 && (
                 <div className={OPTS_ROW}>

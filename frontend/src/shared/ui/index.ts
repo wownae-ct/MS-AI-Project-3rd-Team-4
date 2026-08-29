@@ -38,6 +38,9 @@ export { SkeletonRows, type SkeletonRowsProps, type SkeletonRowsVariant } from "
 // entities 끼리는 서로를 import 할 수 없으므로 공유 지점은 여기뿐이다(safe-url·source-tier 와 같은 이유).
 export { SourceList, type SourceListItem, type SourceListProps } from "./SourceList";
 export { StatusCallout, type StatusCalloutProps } from "./StatusCallout";
+// 켜고 끄는 스위치 — 온보딩 7단계에서 뽑아 올렸다(2026-08-29). 예산 재배분의 「카테고리 사용
+// 여부」 패널이 같은 토글을 써야 하는데 pages 슬라이스끼리는 서로 import 할 수 없다.
+export { Switch, type SwitchProps } from "./Switch";
 export { Tabs, type TabsRootProps } from "./Tabs";
 export {
   IconCalendar,

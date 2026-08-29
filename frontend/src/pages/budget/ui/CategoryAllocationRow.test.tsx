@@ -2,7 +2,7 @@
 // (사용자 신고, 2026-08-27) — 막대가 강제로 0%, 상단 금액도 0만원으로 보여 "아무 일도
 // 안 일어난 것"처럼 보이던 버그. 이 파일 자체가 CategoryAllocationRow.tsx의 첫 테스트다.
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import type { WeddingCategory } from "@/entities/wedding";
 import { CategoryAllocationList } from "./CategoryAllocationList";
 import { CategoryAllocationRow } from "./CategoryAllocationRow";
@@ -93,6 +93,19 @@ describe("CategoryAllocationRow — 보기 모드", () => {
 // 이 화면이 쓰는 `GET /wedding-categories`는 9개 전체를 준다 — 거르는 건 프론트 몫이다.
 //
 // 거르는 주체는 `CategoryAllocationList`다(행이 아니라 목록). 그래서 이 테스트도 목록을 렌더한다.
+//
+// ⚠️ **질의를 예산 목록 패널 안으로 좁힌다(2026-08-29).** 같은 카드가 이제 「카테고리 사용 여부」
+// 패널도 함께 마운트하고(접힌 채 `inert` — 그래야 전환 애니메이션이 돈다, 그 컴포넌트 머리말),
+// 그 패널은 **비활성 카테고리를 일부러 보여준다**(다시 켜는 곳이니까). 카드 전체를 대상으로
+// `queryByText` 하면 그 접힌 패널 속 이름이 잡혀, 정작 검증하려는 "예산 목록에서 걸러졌는가"를
+// 못 본다.
+/** 예산 목록 패널(`CategoryAllocationList` 의 `AMOUNTS_PANEL_ID`)만 잘라낸다. */
+function amountsPanel() {
+  const panel = document.querySelector("#budget-category-amounts");
+  if (panel === null) throw new Error("예산 목록 패널을 찾지 못했습니다.");
+  return within(panel as HTMLElement);
+}
+
 describe("CategoryAllocationList — 비활성 카테고리 제외", () => {
   const ACTIVE = category({ category_code: "VENUE", name_ko: "예식장", planned_budget: 12_000_000 });
   const INACTIVE = category({
@@ -114,6 +127,9 @@ describe("CategoryAllocationList — 비활성 카테고리 제외", () => {
         benchmarkByCode={new Map()}
         isEditingScenario={false}
         onDraftChange={() => {}}
+        isManagingActivation={false}
+        onManagingActivationChange={() => {}}
+        onCategoriesSaved={() => {}}
       />,
     );
   }
@@ -121,10 +137,10 @@ describe("CategoryAllocationList — 비활성 카테고리 제외", () => {
   it("비활성 카테고리는 목록에 나오지 않는다", () => {
     renderList();
 
-    expect(screen.getByText("예식장")).toBeInTheDocument();
-    expect(screen.queryByText("신혼여행")).not.toBeInTheDocument();
+    expect(amountsPanel().getByText("예식장")).toBeInTheDocument();
+    expect(amountsPanel().queryByText("신혼여행")).not.toBeInTheDocument();
     // 배정액(300만원)도 함께 사라진다 — 행 전체를 걸렀다는 뜻.
-    expect(screen.queryByText("300만원")).not.toBeInTheDocument();
+    expect(amountsPanel().queryByText("300만원")).not.toBeInTheDocument();
   });
 
   it("활성 카테고리는 진행바·금액을 그대로 보여준다(회귀 없음)", () => {
