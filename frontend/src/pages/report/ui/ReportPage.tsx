@@ -109,7 +109,11 @@ export function ReportPage() {
 
   return (
     <Page title="리포트" subtitle="지금까지 준비 상황 요약이에요" width="max-w-none">
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-5">
+      {/* 하한을 `min(…,100%)` 으로 감싼다 — `auto-fit` 은 열 개수만 줄이고 트랙 하한은 고정이라,
+          하한이 컨테이너보다 커지는 순간 1열로 접힌 뒤에도 그대로 넘친다. 260px 은 320px 기기의
+          컨테이너 폭(288px) 안이라 **지금은** 안전하지만, 값이 한 번만 올라가도 대시보드가 실제로
+          당한 결함(그 파일의 🚨 주석)이 여기서 재현된다. 두 화면이 같은 형태를 쓰므로 방어도 같이 둔다. */}
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(260px,100%),1fr))] gap-5">
         <Card title="예산">
           <BudgetStats summary={budget} />
         </Card>

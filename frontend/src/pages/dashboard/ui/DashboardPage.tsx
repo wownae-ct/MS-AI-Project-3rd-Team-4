@@ -3,6 +3,9 @@
 // 콘텐츠 열은 `repeat(auto-fit, minmax(320px, 1fr))` 다(layout.md §2 라우트 표). `auto-fit` 을 쓰는
 // 이유는 브레이크포인트를 늘리지 않고 카드가 스스로 재배치되게 하기 위해서다(§7) — 그래서 `Page` 에
 // `max-w-none` 을 주어 폭 제한은 셸(최대 1160px)에 맡긴다.
+// ⚠️ 하한은 `min(320px,100%)` 으로 감싼다 — 320px 기기에서 컨테이너(288px)보다 큰 하한이 그대로
+//    넘쳤다(아래 그 자리의 🚨 주석에 산술이 있다). 같은 형태를 쓰는 `pages/report/ui/ReportPage.tsx`
+//    도 함께 감쌌다.
 //
 // **목업과 의도적으로 다른 점** (전부 규범/요구사항이 목업을 이기는 경우 — ADR 0006)
 //   1. 브랜드 블록(s2:146-149)을 그리지 않는다 — 사이드바 소관이다(layout.md §4).
@@ -136,7 +139,15 @@ export function DashboardPage() {
         onDateSaved={() => fetchSummary()}
       />
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] gap-5">
+      {/* 🚨 [2026-08-29] `minmax(320px,…)` 이 아니라 `minmax(min(320px,100%),…)` 다.
+          `auto-fit` 은 열 **개수**만 줄인다 — 트랙 하한은 고정 320px 그대로라, 1열로 접힌 뒤에도
+          트랙이 320px 을 고집한다. 320px 기기에서 이 컨테이너의 실제 폭은 `Page` 의 `px-4` 를 뺀
+          **288px** 이므로 카드가 32px 넘쳐 페이지에 가로 스크롤이 생겼다(320px 전수 검사에서 발견).
+          `min(320px,100%)` 은 「320px 을 원하되 컨테이너보다 크면 컨테이너만큼」이라 좁은 폭에서만
+          하한이 풀린다 — 넓은 폭의 다열 배치는 1px 도 바뀌지 않는다.
+          ⚠️ 완성된 리터럴로 적는다. Tailwind 스캐너는 소스를 평문으로 훑으므로 조립하면 유틸리티가
+          생성되지 않고 **빌드는 성공한 채 배치만 사라진다**(CLAUDE.md §5.1). */}
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(320px,100%),1fr))] gap-5">
         <Card title="다가오는 할 일">
           {summary.upcoming_items.length === 0 ? (
             <p className="text-sm text-ink-soft">다가오는 할 일이 없습니다.</p>

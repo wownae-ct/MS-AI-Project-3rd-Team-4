@@ -67,7 +67,25 @@ const JUMP_SELECT = "min-h-tap rounded-md border border-line bg-surface px-1.5 t
 const JUMP_GROUP = "flex flex-1 items-center justify-center gap-1";
 const WEEKDAY_CELL = "h-8 text-xs font-bold text-ink-soft";
 const WEEKDAY_CELL_WEEKEND = "h-8 text-xs font-bold text-ink";
-/** `table-fixed` 가 7열을 같은 폭으로 나눈다 — 375px 폰에서 카드 안쪽 343px ÷ 7 = 49px. */
+/** `table-fixed` 가 7열을 같은 폭으로 나눈다.
+ *
+ * 🚨 [2026-08-29 정정] 이 줄은 *"375px 폰에서 카드 안쪽 343px ÷ 7 = 49px"* 라고 적혀 있었다.
+ * **343px 은 카드가 아니라 페이지 안쪽 폭이다** — `Card` 의 `p-4`(32) + 보더(2) 와 이 패널의
+ * `p-2`(16) 가 빠져 있었다. 실제 산술은 이렇다:
+ *
+ *   375px 기기 → 페이지 343 → 카드 안쪽 309 → 패널 안쪽 291 → ÷7 = 41.6 → `td` 의 `p-0.5` 를 빼면 **37.6px**
+ *   320px 기기 → 페이지 288 → 카드 안쪽 254 → 패널 안쪽 236 → ÷7 = 33.7 → 같은 계산으로 **29.7px**
+ *
+ * 즉 셀의 **세로는 44px**(`date-cell-style.ts` 의 `min-h-tap`)이지만 **가로는 어느 폰에서도 44px 에
+ * 못 미친다.** 이건 여백을 깎아 해결할 수 있는 종류가 아니다 — 7 × 44 = **308px** 이 필요한데
+ * 320px 기기의 카드 안쪽은 254px 뿐이라 **기하학적으로 불가능**하다(카드 패딩을 전부 없애도,
+ * 뷰포트 전체를 써도 320 ÷ 7 = 45.7px 로 겨우 턱걸이다).
+ *
+ * **그래서 가로는 WCAG 2.2 SC 2.5.8 AA(24 CSS px)를 기준으로 둔다** — 29.7px 이라 통과한다
+ * (a11y.md §1.1 표: AA 최저선 24px · AAA 44px 은 권고). AAA 를 이 자리에서 지키려면 인라인
+ * 패널이 아니라 화면을 덮는 오버레이여야 하는데, 그건 이 컴포넌트의 배치 결정을 통째로 뒤집는
+ * 별건이다. **여백을 조금 깎아 34px 로 만드는 식의 절충은 하지 않는다** — AAA 도 못 넘기면서
+ * 선택 알약(rounded-pill)이 서로 붙어 보이는 비용만 치른다. */
 const GRID_TABLE = "w-full table-fixed border-collapse";
 const CHIP =
   "min-h-tap rounded-pill border border-line bg-surface px-3 text-sm font-bold text-ink-soft " +

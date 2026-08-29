@@ -211,7 +211,24 @@ export function BudgetDonut({ summary, onTotalBudgetSaved, benchmark, isEditing,
   return (
     <Card title="총 예산 현황" titleAction={editTrigger}>
       <div className="flex flex-col gap-3">
-        <div className="flex items-center gap-5">
+        {/* 🚨 [2026-08-29] 좁은 폭에서는 **세로로 쌓는다.** 종전엔 언제나 가로 한 줄이었고, 그때
+            범례 라벨이 「지/불/완/료」로 세로로 접혔다(사용자 리포트).
+
+            산술이 그대로 원인이다 — 320px 기기에서 카드 안쪽은 254px 인데
+              254 − 도넛 128(`size-32` + `shrink-0`, 안 눌린다) − `gap-5` 20 = **범례 열 106px**
+            이고, 그 106px 안에서 다시
+              점 10 + gap 8 + 라벨 + gap 8 + `Money`(`whitespace-nowrap`, 9자리면 ~106px)
+            라 **라벨 몫이 음수**가 된다. 라벨은 `min-w-0` 이라 0 까지 눌리고, 거기서
+            `overflow-wrap: break-word`(D19)가 어절보다 긴 것을 끊으므로 음절 단위로 접힌다.
+            375px 에서도 라벨 몫이 ~29px 이라 재현된다 — 320px 전용 결함이 아니었다.
+
+            **미디어 쿼리가 아니라 컨테이너 쿼리**를 쓴다. `Card` 가 이미 `@container` 라(그 파일
+            머리말: 같은 카드가 1열에 놓이든 3열에 놓이든 자기 폭만 보고 배치를 정한다) 이 카드가
+            대시보드식 다열 그리드에 들어가도 판정이 따라온다. `@sm`(24rem=384px)은 카드 자신의
+            폭 기준이라, 모바일 1열(254~309px)에서는 항상 세로 · 데스크톱 넓은 카드에서는 종전
+            가로 배치가 1px 도 안 바뀐다. 세로로 서면 범례가 254px 을 다 쓰므로 라벨 몫이 ~122px
+            이 되어 「지불 완료」가 한 줄에 들어간다. */}
+        <div className="flex flex-col items-center gap-4 @sm:flex-row @sm:items-center @sm:gap-5">
           {/* 도넛 테두리 자체는 장식이다 — 같은 정보를 옆 범례가 텍스트로 낸다. 가운데 라벨만 의미를 갖는다.
               ⚠️ 지름이 목업(112px)보다 크다. 목업의 캡션은 `.6rem`(9.6px)인데 **우리 타입 스케일의 하한은
               `text-xs`(12px)** 다 — 스케일을 지키면 같은 구멍(80px)에는 들어가지 않는다. 실제로 112px 로
@@ -227,7 +244,11 @@ export function BudgetDonut({ summary, onTotalBudgetSaved, benchmark, isEditing,
             </div>
           </div>
 
-          <div className="flex min-w-0 flex-1 flex-col gap-2">
+          {/* `w-full` 은 세로로 쌓였을 때의 몫이다 — 그때 이 칸은 `items-center` 아래의 교차축
+              아이템이라 지정이 없으면 콘텐츠 폭으로 줄어든다(라벨이 다시 눌린다). 가로 배치에서는
+              주축이 가로라 `@sm:flex-1` 의 `flex-basis: 0%` 가 이겨 아무 영향이 없다 —
+              그래서 `flex-1` 도 `@sm:` 뒤로 옮겼다(세로일 때 이 칸이 세로로 늘 이유가 없다). */}
+          <div className="flex w-full min-w-0 flex-col gap-2 @sm:flex-1">
             {SERIES.map((series) => (
               <div key={series.label} className="flex items-center gap-2 text-sm">
                 <span
