@@ -215,4 +215,41 @@ describe("예산 재배분 — 배분이 총예산을 넘을 때", () => {
     await userEvent.click(screen.getByRole("button", { name: "예산 조정하기" }));
     expect(scenarioSaveButton()).toBeDisabled();
   });
+
+  // 레드팀 감사 #21 잔여 — 비활성 카테고리는 목록에서 걸러 내면서(CategoryAllocationList) 합산엔
+  // 넣기 때문에, 초과 안내의 **원인이 되는 행이 화면 어디에도 없는** 상태가 만들어진다.
+  // 카테고리를 다시 켤 UI 도 없어(온보딩 7단계뿐) 그 금액을 0 으로 되돌릴 수단조차 없으므로,
+  // 최소한 무엇이 남아 있는지는 말해 줘야 총예산 인상이 유일한 길임을 납득할 수 있다.
+  it("초과의 원인이 화면 밖(비활성 카테고리)에 있으면 그 금액을 밝힌다", async () => {
+    await renderBudget(
+      10_000_000,
+      [
+        category({ planned_budget: 8_000_000 }),
+        category({ category_code: "SDM", name_ko: "스드메", display_order: 2, is_active: false, planned_budget: 5_000_000 }),
+      ],
+      [constant(), constant({ code: "SDM", name_ko: "스드메", display_order: 2 })],
+    );
+
+    // 스드메 행 자체는 목록에 없다 — 그래서 이 문장이 아니면 1,300만이 어디서 왔는지 알 길이
+    // 없다. (전역으로 찾으면 비용 관리 탭의 카테고리 `<option>`이 걸리므로 이 카드로 좁힌다.)
+    const allocationCard = screen.getByRole("heading", { level: 2, name: "카테고리별 예산 현황" }).parentElement;
+    expect(allocationCard).not.toBeNull();
+    expect(within(allocationCard as HTMLElement).queryByText("스드메")).not.toBeInTheDocument();
+    expect(screen.getByText(/사용 안 함 카테고리에/u)).toHaveTextContent("5,000,000원");
+  });
+
+  it("비활성 배정액이 0이면 그 문장을 내지 않는다", async () => {
+    await renderBudget(
+      10_000_000,
+      [
+        category({ planned_budget: 12_000_000 }),
+        category({ category_code: "SDM", name_ko: "스드메", display_order: 2, is_active: false, planned_budget: 0 }),
+      ],
+      [constant(), constant({ code: "SDM", name_ko: "스드메", display_order: 2 })],
+    );
+
+    // 초과는 맞지만 원인이 전부 화면 안에 있다 — "0원이 남아 있어요"는 안내가 아니라 소음이다.
+    expectOverBlock(true);
+    expect(screen.queryByText(/사용 안 함 카테고리에/u)).not.toBeInTheDocument();
+  });
 });
