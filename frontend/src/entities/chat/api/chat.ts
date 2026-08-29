@@ -4,6 +4,7 @@ import type {
   ChatCitation,
   ChatMessagesResponse,
   ChatSession,
+  ChatSessionListResponse,
   ChatStage,
   ChatVerification,
   MessageRating,
@@ -17,6 +18,16 @@ export function createChatSession(categoryCode?: string): Promise<ChatSession> {
     method: "POST",
     body: JSON.stringify({ category_code: categoryCode ?? null }),
   }) as Promise<ChatSession>;
+}
+
+// 지난 대화 목록(backend PR #131, 2026-08-29 머지) — 이 웨딩의 세션 전체를 최근 대화 순으로
+// 준다(백엔드가 `last_message_at desc nulls_last, created_at desc`로 정렬해서 보내므로
+// 프론트에서 다시 정렬하지 않는다 — 두 곳에 정렬 규칙을 두면 조용히 갈린다).
+//
+// 삭제·이름변경 엔드포인트는 없다(`backend/app/routers/ai/chat.py`는 생성/목록/메시지조회/
+// 메시지전송/피드백 5개뿐) — 그래서 목록 UI도 읽기 전용이다.
+export function listChatSessions(): Promise<ChatSessionListResponse> {
+  return apiFetch("/api/v1/chat/sessions") as Promise<ChatSessionListResponse>;
 }
 
 export function getChatMessages(sessionId: string): Promise<ChatMessagesResponse> {

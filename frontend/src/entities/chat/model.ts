@@ -27,6 +27,27 @@ export interface ChatSession {
   created_at: string;
 }
 
+// `GET /chat/sessions`(목록) 전용 — 단건 `ChatSession`과 별도 타입인 이유는 백엔드가 그렇게
+// 나눴기 때문이다(backend/app/schemas/chat.py::ChatSessionSummaryOut). 목록에만 필요한
+// `last_message_at`을 더한 모양이고, 생성 응답(`ChatSessionOut`) 시점엔 아직 메시지가 없어
+// 의미가 없는 값이라 거기엔 없다.
+//
+// ⚠️ `title`·`last_message_at`이 **둘 다 nullable**인 것은 실수가 아니다. 세션은 첫 메시지를
+// 보내기 **직전**에 만들어지고(entities/chat/ui/ChatPanel.tsx의 handleSend), 백엔드는 그 첫
+// 메시지가 실제로 저장되는 순간에야 title(첫 질문에서 유도)과 last_message_at을 채운다. 즉
+// 전송이 실패하면 **둘 다 null인 빈 세션**이 서버에 실제로 남는다.
+export interface ChatSessionSummary {
+  id: string;
+  category_code: string | null;
+  title: string | null;
+  last_message_at: string | null;
+  created_at: string;
+}
+
+export interface ChatSessionListResponse {
+  sessions: ChatSessionSummary[];
+}
+
 export interface ChatCitation {
   chunk_id: number;
   title: string;
