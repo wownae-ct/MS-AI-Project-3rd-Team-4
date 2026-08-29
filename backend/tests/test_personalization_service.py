@@ -14,6 +14,7 @@ from app.services.personalization import (
     _checklist_protected_clause,
     _checklist_row_from_draft,
     _drop_rows_colliding_with_protected,
+    _merge_checklist_rows,
     _timeline_fallback_rows,
     _timeline_protected_clause,
     _timeline_row_from_draft,
@@ -221,6 +222,71 @@ class TestChecklistFallbackRows:
         assert len(rows) == 5
         assert all(r.category_code == "MEETING" for r in rows)
         assert all(r.source_tier == "CONSENSUS" for r in rows)
+
+
+class TestMergeChecklistRows:
+    """2026-08-30 결정(red-bug.md #9-11)의 핵심 수정 — 카테고리 단위 폴백 병합. staging
+    실측(CHECKLIST 80% BLOCKED, VENUE 1개만 성공해도 그 결과까지 카탈로그로 갈아엎힘)의
+    직접적인 회귀 테스트다."""
+
+    def test_all_categories_succeed_uses_llm_draft_only(self):
+        active = {"VENUE", "SDM"}
+        draft = [
+            {"category_code": "VENUE", "title": "체크1"},
+            {"category_code": "SDM", "title": "체크2"},
+        ]
+
+        rows = _merge_checklist_rows(active, set(), draft)
+
+        assert len(rows) == 2
+        assert all(r.origin == "LLM" for r in rows)
+
+    def test_one_blocked_category_falls_back_only_for_that_category(self):
+        # 이번 재발 버그의 핵심 재현 — VENUE만 성공(LLM), SDM은 BLOCKED. 예전 도메인 단위
+        # 폴백이었다면 VENUE의 LLM 결과까지 버려지고 60개(VENUE 25 + SDM 35) 전부 카탈로그가
+        # 됐을 것이다. 이제는 VENUE 1개(LLM) + SDM 35개(카탈로그)만 나와야 한다.
+        active = {"VENUE", "SDM"}
+        draft = [{"category_code": "VENUE", "title": "체크1"}]
+
+        rows = _merge_checklist_rows(active, {"SDM"}, draft)
+
+        venue_rows = [r for r in rows if r.category_code == "VENUE"]
+        sdm_rows = [r for r in rows if r.category_code == "SDM"]
+        assert len(venue_rows) == 1
+        assert venue_rows[0].origin == "LLM"
+        assert len(sdm_rows) == 35
+        assert all(r.origin == "CATALOG_FALLBACK" for r in sdm_rows)
+
+    def test_all_categories_blocked_matches_full_catalog_fallback(self):
+        active = {"VENUE"}
+
+        rows = _merge_checklist_rows(active, {"VENUE"}, [])
+
+        assert len(rows) == 25
+        assert all(r.origin == "CATALOG_FALLBACK" for r in rows)
+
+    def test_display_order_is_contiguous_and_gapless_across_origins(self):
+        # LLM 출처(원래 idx 1부터)와 카탈로그 출처(카탈로그 고정 display_order)가 그대로
+        # 섞이면 번호가 겹칠 수 있다 — 병합 후 새로 매긴 번호는 1부터 연속이어야 한다.
+        active = {"VENUE", "MEETING"}
+        draft = [{"category_code": "MEETING", "title": "체크1"}]
+
+        rows = _merge_checklist_rows(active, {"VENUE"}, draft)
+
+        orders = sorted(r.display_order for r in rows)
+        assert orders == list(range(1, len(rows) + 1))
+
+    def test_rows_are_grouped_by_category_in_sorted_order(self):
+        active = {"VENUE", "MEETING"}
+        draft = [
+            {"category_code": "MEETING", "title": "체크1"},
+            {"category_code": "VENUE", "title": "체크2"},
+        ]
+
+        rows = _merge_checklist_rows(active, set(), draft)
+
+        # sorted(active_categories) == ["MEETING", "VENUE"] — MEETING 항목이 먼저 나와야 한다.
+        assert [r.category_code for r in rows] == ["MEETING", "VENUE"]
 
 
 class TestTimelineRowFromDraft:

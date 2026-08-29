@@ -3,6 +3,8 @@
 
 from app.personalization.validation import (
     deduplicate_titles,
+    group_checklist_by_category,
+    validate_checklist_by_category,
     validate_checklist_items,
     validate_personalization_draft,
     validate_timeline_items,
@@ -258,3 +260,93 @@ class TestValidatePersonalizationDraft:
         )
 
         assert result == {"CHECKLIST": [], "TIMELINE": []}
+
+
+class TestGroupChecklistByCategory:
+    def test_groups_items_by_category_code(self):
+        items = [
+            {"category_code": "VENUE", "title": "A"},
+            {"category_code": "SDM", "title": "B"},
+            {"category_code": "VENUE", "title": "C"},
+        ]
+
+        grouped = group_checklist_by_category(items)
+
+        assert grouped == {
+            "VENUE": [
+                {"category_code": "VENUE", "title": "A"},
+                {"category_code": "VENUE", "title": "C"},
+            ],
+            "SDM": [{"category_code": "SDM", "title": "B"}],
+        }
+
+    def test_empty_list_returns_empty_dict(self):
+        assert group_checklist_by_category([]) == {}
+
+
+class TestValidateChecklistByCategory:
+    """2026-08-30 결정(red-bug.md #9-11) — CHECKLIST만 카테고리별 독립 SUCCESS/BLOCKED를
+    낸다. #129 배포 이후에도 CHECKLIST가 활성 카테고리 일부만 커버하고 나머지를 스스로
+    '다 했다'고 판단해 스킵하는 실패가 재발했다 — 그 실패를 도메인 전체가 아니라 카테고리
+    단위로 국소화하는 게 이 함수의 존재 이유다."""
+
+    def test_all_categories_covered_are_all_success(self):
+        active = {"VENUE", "SDM"}
+        items = [
+            {"category_code": "VENUE", "title": "체크1"},
+            {"category_code": "SDM", "title": "체크2"},
+        ]
+
+        status, errors = validate_checklist_by_category(active, items)
+
+        assert status == {"VENUE": "SUCCESS", "SDM": "SUCCESS"}
+        assert errors == {"VENUE": [], "SDM": []}
+
+    def test_one_missing_category_only_blocks_that_category(self):
+        # 이번 재발 버그의 핵심 재현 — VENUE만 만들고 SDM을 스스로 스킵한 LLM 응답.
+        active = {"VENUE", "SDM"}
+        items = [{"category_code": "VENUE", "title": "체크1"}]
+
+        status, errors = validate_checklist_by_category(active, items)
+
+        assert status == {"VENUE": "SUCCESS", "SDM": "BLOCKED"}
+        assert errors["VENUE"] == []
+        assert any("SDM" in e for e in errors["SDM"])
+
+    def test_no_items_at_all_blocks_every_active_category(self):
+        active = {"VENUE", "SDM", "GIFT"}
+
+        status, _errors = validate_checklist_by_category(active, [])
+
+        assert status == {"VENUE": "BLOCKED", "SDM": "BLOCKED", "GIFT": "BLOCKED"}
+
+    def test_duplicate_title_only_blocks_its_own_category(self):
+        # 규칙 (4)는 카테고리 내부에서만 성립하므로, 카테고리별로 나눠 검사해도 VENUE의
+        # 중복이 SDM 판정에 새지 않아야 한다.
+        active = {"VENUE", "SDM"}
+        items = [
+            {"category_code": "VENUE", "title": "계약 확인"},
+            {"category_code": "VENUE", "title": "계약 확인"},
+            {"category_code": "SDM", "title": "체크2"},
+        ]
+
+        status, _ = validate_checklist_by_category(active, items)
+
+        assert status["VENUE"] == "BLOCKED"
+        assert status["SDM"] == "SUCCESS"
+
+    def test_item_with_invalid_category_code_does_not_affect_other_categories(self):
+        # 오탈자("VENUe" 같은) 항목이 하나 섞여도, 그 항목은 어느 활성 카테고리에도 안
+        # 묶이므로(group_checklist_by_category가 원문 그대로 키로 씀) VENUE/SDM 판정에는
+        # 영향이 없다 — 이 항목 자체의 존재는 validate_checklist_items의 멤버십 규칙이
+        # 별도로 잡아낸다(여기서는 카테고리별 커버리지만 확인).
+        active = {"VENUE", "SDM"}
+        items = [
+            {"category_code": "VENUe", "title": "오탈자 항목"},
+            {"category_code": "VENUE", "title": "체크1"},
+            {"category_code": "SDM", "title": "체크2"},
+        ]
+
+        status, _ = validate_checklist_by_category(active, items)
+
+        assert status == {"VENUE": "SUCCESS", "SDM": "SUCCESS"}

@@ -37,7 +37,7 @@ from app.core.tracing import traced_span
 from app.models import AiInvocation, ChecklistItem, TimelineItem, Wedding, WeddingCategory
 from app.personalization.graph import build_graph
 from app.personalization.state import PersonalizationState
-from app.personalization.validation import title_key
+from app.personalization.validation import group_checklist_by_category, title_key
 from app.services.checklist import (
     GENERAL_DEFAULT_STATUS,
     HOMEWARE_CATEGORY_CODE,
@@ -307,6 +307,43 @@ def _checklist_fallback_rows(active_categories: set[str]) -> list[ChecklistItem]
     ]
 
 
+def _merge_checklist_rows(
+    active_categories: set[str],
+    blocked_categories: set[str],
+    checklist_draft: list[dict],
+) -> list[ChecklistItem]:
+    """카테고리 단위 폴백 병합의 핵심 로직(2026-08-30 결정, red-bug.md #9-11) — DB 세션도
+    다른 서비스 호출도 필요 없는 순수 함수라 라이브 DB 없이 유닛 테스트할 수 있다(이 파일
+    docstring이 명시한 "run_personalization 자체는 라이브 DB로만 확인" 원칙에서 이 부분만
+    예외로 뺀 이유).
+
+    예전엔 CHECKLIST 도메인이 BLOCKED면 활성 카테고리 전체를 카탈로그로 갈아엎었다 — 카테고리
+    9개 중 1개만 실패해도 이미 잘 만들어진 나머지 8개까지 버려지는 게 실제 staging 재발
+    사례(VENUE 1개만 성공)로 확인됐다. 이제는 `blocked_categories`에 든 것만 카탈로그로
+    채우고, 나머지는 `checklist_draft`(카테고리별로 이미 SUCCESS 판정된 LLM 결과만 담겨
+    있다고 호출부가 보장)를 그대로 쓴다.
+
+    display_order는 카테고리(정렬 고정 순서)별로 이어붙여 새로 매긴다 — LLM 출처(원래
+    idx 1부터)와 카탈로그 출처(카탈로그 고정 display_order)가 그대로 섞이면 서로 다른
+    카테고리의 행끼리 번호가 겹쳐 정렬 순서가 뒤섞일 수 있다."""
+    draft_by_category = group_checklist_by_category(checklist_draft)
+    rows: list[ChecklistItem] = []
+    display_order = 0
+    for category in sorted(active_categories):
+        if category in blocked_categories:
+            for row in _checklist_fallback_rows({category}):
+                display_order += 1
+                row.display_order = display_order
+                rows.append(row)
+        else:
+            for item in draft_by_category.get(category, []):
+                display_order += 1
+                row = _checklist_row_from_draft(active_categories, display_order, item)
+                if row is not None:
+                    rows.append(row)
+    return rows
+
+
 def _timeline_row_from_draft(
     wedding_date: date,
     done_categories: set[str],
@@ -467,30 +504,26 @@ async def run_personalization(
             # 않는다(2026-08-24 버그 수정: 이전엔 result["validation_status"]가 단일 값이라
             # CHECKLIST만 실패해도 이미 통과한 TIMELINE까지 폴백 카탈로그로 버려졌다).
             if "CHECKLIST" in affected_domains:
-                if domain_statuses.get("CHECKLIST") == "SUCCESS":
-                    # display_order는 비활성 카테고리 항목을 걸러내기 전의 인덱스라 중간에 번호가
-                    # 빌 수 있다 — ORDER BY에만 쓰는 값이라 연속일 필요가 없다(타임라인과 동일).
-                    checklist_rows = [
-                        row
-                        for row in (
-                            _checklist_row_from_draft(active_categories, idx, item)
-                            for idx, item in enumerate(result["checklist_draft"] or [], start=1)
-                        )
-                        if row is not None
-                    ]
-                else:
-                    # 2026-08-26 레드팀 감사 4라운드 항목 5 — validate BLOCKED→카탈로그 폴백
-                    # 전환이 무로깅이었다. CLAUDE.md에 기록된 "timeline category_code null-string
-                    # bug 3rd recurrence"가 정확히 이 경로라, 로그가 있었으면 1~2번째 재발에서
-                    # 잡혔을 사안 — BLOCKED 사유를 그대로 남긴다.
+                checklist_category_status = result.get("checklist_category_status") or {}
+                blocked_categories = {
+                    category
+                    for category in active_categories
+                    if checklist_category_status.get(category) != "SUCCESS"
+                }
+                if blocked_categories:
+                    # 2026-08-26 레드팀 감사 4라운드 항목 5의 로깅 규칙을 그대로 따른다 —
+                    # BLOCKED→카탈로그 폴백 전환은 반드시 사유와 함께 로그를 남긴다.
                     logger.warning(
-                        "Personalization CHECKLIST BLOCKED for wedding_id=%s trigger=%s, "
-                        "falling back to catalog: %s",
+                        "Personalization CHECKLIST partially BLOCKED for wedding_id=%s "
+                        "trigger=%s, falling back to catalog for categories=%s: %s",
                         wedding.id,
                         trigger,
-                        domain_errors.get("CHECKLIST"),
+                        sorted(blocked_categories),
+                        result.get("checklist_category_errors"),
                     )
-                    checklist_rows = _checklist_fallback_rows(active_categories)
+                checklist_rows = _merge_checklist_rows(
+                    active_categories, blocked_categories, result["checklist_draft"] or []
+                )
             if "TIMELINE" in affected_domains:
                 if domain_statuses.get("TIMELINE") == "SUCCESS":
                     scale_factor = compute_prep_scale_factor(today, wedding.wedding_date)
