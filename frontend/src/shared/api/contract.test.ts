@@ -15,9 +15,11 @@ describe("계약 어휘", () => {
     expect(REGION_CODES).toContain("NATIONWIDE");
   });
 
-  it("인용 티어는 4개, verdict 는 3개다", () => {
+  // verdict 는 3 → 4 로 늘어난 이력이 있다: 스코프 이탈 거절이 "근거 없음"(GENERAL)을 재사용하던
+  // 것을 전용 값으로 분리했다(backend PR #130, 2026-08-29).
+  it("인용 티어는 4개, verdict 는 4개다", () => {
     expect(SOURCE_TIERS).toHaveLength(4);
-    expect(VERDICTS).toEqual(["SUPPORTED", "WEAK", "GENERAL"]);
+    expect(VERDICTS).toEqual(["SUPPORTED", "WEAK", "GENERAL", "OUT_OF_SCOPE"]);
   });
 });
 

@@ -27,7 +27,7 @@ const MESSAGE: ChatMessage = {
 };
 
 describe("AI 답변 — 검증 배지", () => {
-  it("verdict 3종을 목업 문구 그대로 낸다", () => {
+  it("verdict 4종을 목업 문구 그대로 낸다", () => {
     const { rerender } = render(<MessageBubble message={MESSAGE} />);
     expect(screen.getByText("✓ 근거 확인됨")).toBeInTheDocument();
 
@@ -36,6 +36,23 @@ describe("AI 답변 — 검증 배지", () => {
 
     rerender(<MessageBubble message={{ ...MESSAGE, verification: { verdict: "GENERAL", reason: "" } }} />);
     expect(screen.getByText("일반 정보 · 근거 없음")).toBeInTheDocument();
+
+    rerender(<MessageBubble message={{ ...MESSAGE, verification: { verdict: "OUT_OF_SCOPE", reason: "" } }} />);
+    expect(screen.getByText("상담 범위 밖")).toBeInTheDocument();
+  });
+
+  // 이번 버그의 본질은 "크래시"가 아니라 **문구 오염**이었다 — 스코프 이탈 거절이 GENERAL 을
+  // 재사용해 「일반 정보 · 근거 없음」으로 떴다. 위 4종 테스트만으로는 이걸 못 잡는다:
+  // VERDICT_FALLBACK 이 마침 GENERAL 과 같은 문구라, 라벨 항목을 빼먹어도 폴백이 통과시킨다.
+  // 두 문구가 서로 새지 않는다는 것을 양방향으로 못박는다.
+  it("OUT_OF_SCOPE 와 GENERAL 은 서로의 문구로 새지 않는다", () => {
+    const { rerender } = render(
+      <MessageBubble message={{ ...MESSAGE, verification: { verdict: "OUT_OF_SCOPE", reason: "" } }} />,
+    );
+    expect(screen.queryByText("일반 정보 · 근거 없음")).not.toBeInTheDocument();
+
+    rerender(<MessageBubble message={{ ...MESSAGE, verification: { verdict: "GENERAL", reason: "" } }} />);
+    expect(screen.queryByText("상담 범위 밖")).not.toBeInTheDocument();
   });
 
   it("verification이 아직 안 왔으면(스트리밍 중) 근거 영역을 아예 안 낸다", () => {

@@ -4,7 +4,10 @@ export type ChatRole = "user" | "assistant";
 // backend/app/schemas/common.py:56 이 원본이다 — 이전엔 여기가 "UNSUPPORTED"로 잘못 옮겨져
 // 있었다(실제 값은 "WEAK"). 실행 중엔 MessageBubble의 3항 연산자 마지막 분기가 우연히 커버해서
 // 겉으로는 안 드러났지만, 타입 자체가 틀려 있었다(다른 세션의 목업 재대조 감사로 발견, 2026-08-24).
-export type VerificationVerdict = "SUPPORTED" | "WEAK" | "GENERAL";
+// "OUT_OF_SCOPE"는 2026-08-29에 늘어난 4번째 값이다(backend PR #130) — 결혼 준비와 무관한 요청을
+// 검색/생성 없이 거절한 경우. 종전엔 이것도 "GENERAL"을 재사용해서 배지가 「일반 정보 · 근거 없음」
+// 으로 떴다 — "근거가 약해 일반론으로 답했다"와 "답하기를 거절했다"는 서로 다른 상황이라 분리했다.
+export type VerificationVerdict = "SUPPORTED" | "WEAK" | "GENERAL" | "OUT_OF_SCOPE";
 
 // 챗 그래프(backend/app/rag/graph.py) 노드 이름과 1:1 — SSE stage 이벤트 payload
 // (backend/app/schemas/common.py의 ChatStage) 그대로. 진행상황 표시용 UX 신호일 뿐 최종

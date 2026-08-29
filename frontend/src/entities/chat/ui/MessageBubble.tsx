@@ -5,16 +5,24 @@ import type { ReactNode } from "react";
 import { Badge, SourceList } from "@/shared/ui";
 import type { ChatMessage, MessageRating } from "../model";
 
-// verdict 3종은 backend/app/schemas/common.py:56 원본 그대로("WEAK"가 실제 값 — 이전엔
-// "UNSUPPORTED"로 잘못 알고 있었다, entities/chat/model.ts 머리말 참조). 문구는 목업 그대로다
-// (s3-category-detail.html:355,361) — "출처"가 아니라 "근거", 체크마크 포함.
+// verdict 4종은 backend/app/schemas/common.py:66 원본 그대로("WEAK"가 실제 값 — 이전엔
+// "UNSUPPORTED"로 잘못 알고 있었다, entities/chat/model.ts 머리말 참조). 앞 3종의 문구는 목업
+// 그대로다(s3-category-detail.html:355,361) — "출처"가 아니라 "근거", 체크마크 포함.
+//
+// "OUT_OF_SCOPE"는 목업에 없다(2026-08-29 신설, backend PR #130). 목업 톤을 따라 명사형·간결로
+// 맞췄다 — Badge 는 whitespace-nowrap 계약이라 길수록 레이아웃이 불리하다.
 //
 // Record<string, string> 인 이유 — 타입에 없는 값이 와도 화면이 비지 않게 폴백을 남긴다
 // (SOURCE_TIER_LABEL 과 같은 원칙). 종전에는 3항 연산자의 마지막 분기가 그 역할을 했다.
+//
+// ⚠️ 폴백이 GENERAL 과 같은 문구라, 여기서 항목을 빠뜨리면 **크래시 대신 조용한 오답**이 된다
+// (OUT_OF_SCOPE 가 정확히 그 상태였다). 새 verdict 를 늘릴 땐 MessageBubble.test.tsx 의
+// 「서로의 문구로 새지 않는다」 테스트도 같이 늘린다.
 const VERDICT_LABEL: Record<string, string> = {
   SUPPORTED: "✓ 근거 확인됨",
   WEAK: "근거 불충분",
   GENERAL: "일반 정보 · 근거 없음",
+  OUT_OF_SCOPE: "상담 범위 밖",
 };
 const VERDICT_FALLBACK = "일반 정보 · 근거 없음";
 
