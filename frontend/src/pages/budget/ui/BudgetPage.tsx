@@ -67,8 +67,9 @@ interface BudgetData {
   totalBudget: number;
   categories: WeddingCategory[];
   /** `WeddingCategory`(GET /wedding-categories)엔 `has_cost`가 없다 — 비용 유무는 카테고리
-      상수(`GET /categories`)만 안다. "비용 없음" 카테고리는 슬라이더/바 대신 안내 텍스트만
-      보여주려면 이 조회가 하나 더 필요하다 — 하드코딩 대신 응답을 그대로 따른다. */
+      상수(`GET /categories`)만 안다. 비용을 다루지 않는 카테고리를 「카테고리별 예산 현황」
+      목록에서 빼고 결제 선택지에서도 거르려면 이 조회가 하나 더 필요하다 — 하드코딩 대신
+      응답을 그대로 따른다. */
   hasCostByCode: ReadonlyMap<string, boolean>;
   /** "비용 관리" 섹션이 결제 목록의 category_code를 사람이 읽는 이름으로 보여줄 때 쓴다.
       **9개 전체를 담는다** — 비활성 카테고리에 이미 등록된 결제도 목록엔 그대로 보이므로

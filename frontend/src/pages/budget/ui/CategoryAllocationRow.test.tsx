@@ -26,7 +26,6 @@ function category(overrides: Partial<WeddingCategory>): WeddingCategory {
 }
 
 const BASE_PROPS = {
-  hasCost: true,
   totalBudget: 45_000_000,
   hasBenchmark: false,
   benchmark: undefined,
@@ -79,13 +78,9 @@ describe("CategoryAllocationRow — 보기 모드", () => {
     expect(screen.getByText("- 예산 미배정")).toBeInTheDocument();
   });
 
-  it("비용이 없는 카테고리는 기존처럼 '비용 없음'만 보여준다(회귀 없음)", () => {
-    const row = category({ planned_budget: 0, paid_amount: 0 });
-    render(<CategoryAllocationRow category={row} {...BASE_PROPS} hasCost={false} />);
-
-    expect(screen.getByText("비용 없음")).toBeInTheDocument();
-    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
-  });
+  // 「비용이 없는 카테고리는 '비용 없음'만 보여준다」 테스트는 여기 있었다 — 그 행은 이제
+  // 목록에서 아예 걸러지므로(2026-08-29, 사용자 결정) 행 컴포넌트에 해당 분기가 없다.
+  // 대신 아래 목록 describe 가 "상견례가 목록에 안 나온다"를 지킨다.
 });
 
 // 회귀 테스트 — 레드팀 감사 #21 "예산 페이지가 비활성 카테고리를 계속 보여준다".
@@ -106,7 +101,7 @@ function amountsPanel() {
   return within(panel as HTMLElement);
 }
 
-describe("CategoryAllocationList — 비활성 카테고리 제외", () => {
+describe("CategoryAllocationList — 비활성·비용 없는 카테고리 제외", () => {
   const ACTIVE = category({ category_code: "VENUE", name_ko: "예식장", planned_budget: 12_000_000 });
   const INACTIVE = category({
     category_code: "HONEYMOON",
@@ -115,14 +110,22 @@ describe("CategoryAllocationList — 비활성 카테고리 제외", () => {
     planned_budget: 3_000_000,
     display_order: 2,
   });
+  // 활성이지만 비용 개념이 없는 카테고리 — 배포 상태의 상견례가 그렇다
+  // (backend/app/core/categories.py, has_cost=False).
+  const NO_COST = category({
+    category_code: "MEETING",
+    name_ko: "상견례",
+    planned_budget: 0,
+    display_order: 3,
+  });
 
   function renderList() {
     render(
       <CategoryAllocationList
-        rows={[ACTIVE, INACTIVE]}
-        originalCategories={[ACTIVE, INACTIVE]}
+        rows={[ACTIVE, INACTIVE, NO_COST]}
+        originalCategories={[ACTIVE, INACTIVE, NO_COST]}
         totalBudget={30_000_000}
-        hasCostByCode={new Map([["VENUE", true], ["HONEYMOON", true]])}
+        hasCostByCode={new Map([["VENUE", true], ["HONEYMOON", true], ["MEETING", false]])}
         hasBenchmarkByCode={new Map()}
         benchmarkByCode={new Map()}
         isEditingScenario={false}
@@ -141,6 +144,14 @@ describe("CategoryAllocationList — 비활성 카테고리 제외", () => {
     expect(amountsPanel().queryByText("신혼여행")).not.toBeInTheDocument();
     // 배정액(300만원)도 함께 사라진다 — 행 전체를 걸렀다는 뜻.
     expect(amountsPanel().queryByText("300만원")).not.toBeInTheDocument();
+  });
+
+  it("비용을 다루지 않는 카테고리(상견례)는 목록에 나오지 않는다", () => {
+    renderList();
+
+    expect(amountsPanel().queryByText("상견례")).not.toBeInTheDocument();
+    // 예전엔 이름 + "비용 없음" 한 줄이 남아 있었다 — 그 문구도 함께 사라진다.
+    expect(amountsPanel().queryByText("비용 없음")).not.toBeInTheDocument();
   });
 
   it("활성 카테고리는 진행바·금액을 그대로 보여준다(회귀 없음)", () => {
