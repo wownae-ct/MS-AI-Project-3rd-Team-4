@@ -128,7 +128,7 @@ async def retrieve_node(state: ChatState, config: RunnableConfig) -> dict:
             "category_code": state["category_code"] or "ALL",
             **profile_query(state["query"]).as_metadata(),
         },
-    ):
+    ) as trace:
         if is_retry:
             client = get_azure_openai_client(settings)
             search_query = await _await_with_heartbeat(
@@ -136,6 +136,13 @@ async def retrieve_node(state: ChatState, config: RunnableConfig) -> dict:
                 writer,
             )
         chunks = await retrieve(session, search_query, state["category_code"], settings)
+        # Phase 7 감사(Low) — 검색은 OpenAI 호출이 아니라 순수 DB 쿼리라 langfuse.openai
+        # monkeypatch의 자동계측 대상이 아니다(generate/verify 노드와 달리 이 노드만 자기 span에
+        # output을 직접 안 채우면 Langfuse UI에 "뭐가 검색됐는지"가 전혀 안 남는다). chunk_id만
+        # 남기고 본문(content)은 싣지 않는다 — 디버깅엔 ID로 DB를 다시 찾아보면 충분하고, 본문까지
+        # 실으면 payload만 커진다. 0건이어도(RAG_NO_CONTEXT) 빈 리스트를 명시적으로 남겨 "0건
+        # 검색됨"과 "기록 안 됨"을 구분한다.
+        trace.update(output=[c.chunk_id for c in chunks])
         update: dict = {"context": chunks}
         if is_retry:
             update["retry_count"] = state.get("retry_count", 0) + 1
