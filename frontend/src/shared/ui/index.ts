@@ -30,6 +30,7 @@ export { StatusCallout, type StatusCalloutProps } from "./StatusCallout";
 export { Tabs, type TabsRootProps } from "./Tabs";
 export {
   IconCalendar,
+  IconCamera,
   IconChart,
   IconChat,
   IconCheck,
@@ -39,6 +40,9 @@ export {
   IconInfo,
   IconNaver,
   IconSettings,
+  IconThumbDown,
+  IconThumbUp,
   IconWallet,
   type IconProps,
+  type ThumbIconProps,
 } from "./icons";

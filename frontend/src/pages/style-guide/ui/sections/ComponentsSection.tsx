@@ -5,6 +5,7 @@ import {
   Card,
   IconCheck,
   IconChevronDown,
+  IconInfo,
   Loading,
   Money,
   Progress,
@@ -119,12 +120,19 @@ export function ProgressSection() {
           막대로 그립니다 — 0%도 100%도 아닙니다. 스크린리더에는{" "}
           <code className="font-bold">aria-valuenow</code> 를 생략해 같은 사실을 전합니다.
         </p>
-        <p className="text-sm text-ink-soft">
-          ⚠️ 불확정 막대를 <span className="font-bold">데이터 로딩에 쓰지 않습니다</span>. 진행률 역할은
-          &ldquo;측정 가능한 진행&rdquo;을 약속하는데 조회 대기는 그렇지 않고, 동작 줄이기 환경에서는 움직임이
-          멈춰 부분 막대가 &ldquo;40% 진행됨&rdquo;으로 오독됩니다. 조회 대기는 아래 로딩 섹션을 씁니다.
-        </p>
-      </Card>
+        {/* [2026-08-29 D18] 머리의 ⚠️ 컬러 이모지를 걷어냈다 — 이 문단은 화면에 실제로 렌더된다.
+            Rule 을 그대로 쓰지 않는 이유는 Rule 이 text-base·text-ink 카드형이라 바로 위 형제
+            문단(text-sm·text-ink-soft)과 톤이 어긋나서다. 구성(아이콘 + 본문 2열)만 빌려온다. */}
+        <p className="flex items-start gap-2 text-sm text-ink-soft">
+          <span className="mt-0.5 shrink-0 text-primary">
+            <IconInfo size={14} />
+          </span>
+          <span>
+            불확정 막대를 <span className="font-bold">데이터 로딩에 쓰지 않습니다</span>. 진행률 역할은
+            &ldquo;측정 가능한 진행&rdquo;을 약속하는데 조회 대기는 그렇지 않고, 동작 줄이기 환경에서는 움직임이
+            멈춰 부분 막대가 &ldquo;40% 진행됨&rdquo;으로 오독됩니다. 조회 대기는 아래 로딩 섹션을 씁니다.
+          </span>
+        </p>      </Card>
     </Section>
   );
 }
