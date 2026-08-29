@@ -5,6 +5,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+// ⚠️ [2026-08-30] 오늘 날짜를 `new Date().toISOString().slice(0,10)` 으로 계산하고 있었다 —
+// **D20 이 앱에서 지운 바로 그 UTC 버그**다(`shared/lib/date.ts` 의 `todayISO` 가 그 자리를
+// 대신한다). 컴포넌트는 `todayISO()`(KST)를 쓰는데 테스트만 UTC 로 재고 있어서, **KST
+// 00:00~08:59 에만** 하루가 어긋나 두 케이스가 깨졌다(그 시간대에 실제로 깨져서 발견했다).
+// 계산을 앱과 같은 함수로 통일한다 — 시각에 따라 결과가 갈리는 테스트를 남기지 않는다.
+import { todayISO } from "@/shared/lib/date";
 import type { Payment } from "../model";
 import { PaymentListRow } from "./PaymentListRow";
 
@@ -178,7 +184,7 @@ describe("PaymentListRow — 상태 전환(PLANNED→PAID)", () => {
     await user.click(screen.getByLabelText("이미 결제했어요"));
 
     expect(screen.queryByLabelText("예정일")).not.toBeInTheDocument();
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayISO();
     expect(screen.getByLabelText("결제일")).toHaveValue(today);
     expect(screen.getByText("저장하면 「지급완료」로 바뀝니다.")).toBeInTheDocument();
   });
@@ -191,7 +197,7 @@ describe("PaymentListRow — 상태 전환(PLANNED→PAID)", () => {
     await user.click(screen.getByLabelText("이미 결제했어요"));
     await user.click(screen.getByRole("button", { name: "저장" }));
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayISO();
     expect(patchPaymentMock).toHaveBeenCalledWith(
       "p1",
       expect.objectContaining({ paid_date: today }),

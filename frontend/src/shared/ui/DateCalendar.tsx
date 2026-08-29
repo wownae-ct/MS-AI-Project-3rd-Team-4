@@ -48,6 +48,9 @@ import {
 } from "@/shared/lib/date";
 import { dateCellClass, dateCellLabel } from "./date-cell-style";
 import { IconChevronDown } from "./icons";
+// 배럴(`index.ts`)이 아니라 직접 집는다 — 이 파일은 `DateField` 가 `React.lazy` 로 내린 별도
+// 청크라, 배럴을 지나면 정적 참조가 생겨 초기 청크로 끌려온다(그 파일 머리말 §번들).
+import { Select } from "./Select";
 
 const DAYS_PER_WEEK = 7;
 const MONTHS_PER_YEAR = 12;
@@ -63,7 +66,6 @@ const HEADER_ROW = "flex items-center justify-between gap-1";
 const NAV_BUTTON =
   "flex h-tap w-tap flex-none items-center justify-center rounded-md text-base text-ink-soft " +
   "transition-colors duration-150 enabled:hover:text-primary disabled:cursor-not-allowed disabled:opacity-50";
-const JUMP_SELECT = "min-h-tap rounded-md border border-line bg-surface px-1.5 text-base text-ink";
 const JUMP_GROUP = "flex flex-1 items-center justify-center gap-1";
 const WEEKDAY_CELL = "h-8 text-xs font-bold text-ink-soft";
 const WEEKDAY_CELL_WEEKEND = "h-8 text-xs font-bold text-ink";
@@ -237,31 +239,24 @@ export function DateCalendar({
               아래 화살표 아이콘을 돌려 쓴다(NumberInput 의 스피너가 쓰는 그 수법). */}
           <IconChevronDown size={16} className="rotate-90" />
         </button>
+        {/* [D22] 둘 다 `text-base`(16px) 였다 — 요일 12px · 빠른 선택 칩 14px · 푸터 12px 인 이
+            패널에서 **가장 덜 중요한 요소(월 이동 단축)가 가장 큰 글자**였다. `compact` 로 14px 로
+            내린다. `<select>` 자신은 16px 그대로다(a11y.md §2.5, Select.tsx 머리말). */}
         <div className={JUMP_GROUP}>
-          <select
-            className={JUMP_SELECT}
+          <Select
+            size="compact"
             aria-label="연도"
-            value={viewYear}
-            onChange={(event) => shiftMonths((Number(event.target.value) - viewYear) * MONTHS_PER_YEAR)}
-          >
-            {years.map((year) => (
-              <option key={year} value={year}>
-                {year}년
-              </option>
-            ))}
-          </select>
-          <select
-            className={JUMP_SELECT}
+            value={String(viewYear)}
+            onValueChange={(next) => shiftMonths((Number(next) - viewYear) * MONTHS_PER_YEAR)}
+            options={years.map((year) => ({ value: String(year), label: `${year}년` }))}
+          />
+          <Select
+            size="compact"
             aria-label="월"
-            value={viewMonthNumber}
-            onChange={(event) => shiftMonths(Number(event.target.value) - viewMonthNumber)}
-          >
-            {MONTH_NUMBERS.map((month) => (
-              <option key={month} value={month}>
-                {month}월
-              </option>
-            ))}
-          </select>
+            value={String(viewMonthNumber)}
+            onValueChange={(next) => shiftMonths(Number(next) - viewMonthNumber)}
+            options={MONTH_NUMBERS.map((month) => ({ value: String(month), label: `${month}월` }))}
+          />
         </div>
         <button
           type="button"

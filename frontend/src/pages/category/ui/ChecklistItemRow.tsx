@@ -3,7 +3,7 @@
 // 같은 이유·같은 패턴: 재사용 가능한 항목 하나짜리 프레젠테이션 조각을 별도 파일로 뺀다.
 import { type ChecklistItem, type ChecklistStatus } from "@/entities/checklist";
 import { ReportButton } from "@/entities/feedback";
-import { Badge, SourceList } from "@/shared/ui";
+import { Badge, Select, SourceList } from "@/shared/ui";
 
 // HOMEWARE(혼수)만 다른 상태기계를 쓴다 — 03_API_spec.md #12 표. 나머지 8개 카테고리는 공통 4상태.
 const HOMEWARE_STATUS_OPTIONS: { value: ChecklistStatus; label: string }[] = [
@@ -64,18 +64,18 @@ export function ChecklistItemRow({ item, categoryCode, onStatusChange }: Checkli
           로 펼쳐져 이 행의 형제 flex 아이템이 된다. 상태 select 와 나란히 두면 좁은 폭에서 넘치므로
           폼이 자기 줄을 쓰게 한다(그 컴포넌트가 `w-full` 을 갖는다). */}
       <div className="mt-1 flex flex-wrap items-center gap-2">
-        <select
+        {/* [D22] `text-base`(16px) 였다 — 제목이 14px · 본문이 12px 인 이 행에서 **상태 컨트롤이
+            가장 큰 글자**였다(위계 역전, 사용자 리포트 2026-08-29). 목업 s3 는 이 자리를
+            `.status-chip` 으로 그린다. `compact` 는 보이는 라벨만 14px 로 내리고 `<select>` 자신은
+            16px 를 유지한다 — a11y.md §2.5 는 그대로다(Select.tsx 머리말). */}
+        <Select
+          size="compact"
+          className="w-fit"
           value={item.status}
           aria-label={`${item.title} 상태`}
-          onChange={(e) => onStatusChange(item, e.target.value as ChecklistStatus)}
-          className="min-h-tap w-fit rounded-md border border-line bg-surface px-2 text-base text-ink"
-        >
-          {statusOptionsFor(categoryCode).map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+          onValueChange={(next) => onStatusChange(item, next as ChecklistStatus)}
+          options={statusOptionsFor(categoryCode)}
+        />
         {/* 신고(F13)는 사용자가 직접 추가하지 않은 항목에만 의미가 있다 — 본인 입력(origin=USER)은
             신고 대상이 아니다. LLM 생성분뿐 아니라 카탈로그 폴백(origin=CATALOG_FALLBACK)도
             시스템이 만든 콘텐츠라 오류가 있으면 똑같이 신고할 수 있어야 한다(2026-08-28,

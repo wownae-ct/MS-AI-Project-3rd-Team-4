@@ -32,11 +32,12 @@
 // **총예산 입력칸 자체는 이제 `TotalBudgetField` 가 그린다(2026-08-28).** 8단계(Step8Allocation)가
 // 배분 초과를 그 자리에서 고치려고 같은 입력을 쓰기 때문이다 — 마크업을 복사하면 두 화면의 스텝·
 // 콤마·반올림이 조용히 갈린다. 이 컴포넌트는 "미정" 토글과 안내 문구만 그 필드에 끼워 넣는다.
+import { useId } from "react";
 import type { TotalAverageBenchmark } from "@/entities/wedding";
 import { REGION_CODES, type RegionCode } from "@/shared/api";
 import { wonStringToManwon, wonToManwon } from "@/shared/lib/money";
-import { NumberInput } from "@/shared/ui";
-import { FIELD_LABEL, FIELD_NOTE, INPUT, INPUT_DISABLED, SELECT } from "../onboarding-styles";
+import { NumberInput, Select } from "@/shared/ui";
+import { FIELD_LABEL, FIELD_NOTE, INPUT, INPUT_DISABLED } from "../onboarding-styles";
 import { TotalBudgetField } from "./TotalBudgetField";
 
 // 2026-08-26 사용자 피드백: 5개(서울강남/서울외/경기/인천/부산)만 노출돼 있었다 — 지역 14개
@@ -120,6 +121,7 @@ export function Step2RegionBudget({
   onGuestCountUnsureChange,
   benchmark,
 }: Step2Props) {
+  const regionId = useId();
   const regionLabel = REGION_OPTIONS.find((option) => option.value === regionCode)?.label ?? regionCode;
   // 미정일 때 비활성 입력칸에 보여줄 값. 입력칸은 만원 단위라 여기서 변환한다(§머리말).
   // 벤치마크가 아직 안 왔거나 조회에 실패했으면 빈 칸으로 둔다 — 0을 채우면 "0원으로 시작한다"는
@@ -128,15 +130,17 @@ export function Step2RegionBudget({
 
   return (
     <div className="flex flex-col gap-5">
-      <label className={FIELD_LABEL}>
+      {/* [D22] `htmlFor` 로 잇는다 — `Select` 는 래퍼 안에 컨트롤을 그리므로 `<label>` 이 감싸도
+          린터가 연결을 못 알아본다(같은 파일의 `TotalBudgetField`·`NumberInput` 과 같은 사정). */}
+      <label className={FIELD_LABEL} htmlFor={regionId}>
         지역
-        <select className={SELECT} value={regionCode} onChange={(event) => onRegionCodeChange(event.target.value)}>
-          {REGION_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+        <Select
+          id={regionId}
+          className="w-full"
+          value={regionCode}
+          onValueChange={onRegionCodeChange}
+          options={REGION_OPTIONS}
+        />
       </label>
 
       <TotalBudgetField

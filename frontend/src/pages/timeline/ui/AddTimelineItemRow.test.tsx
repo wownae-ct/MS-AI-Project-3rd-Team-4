@@ -51,6 +51,8 @@ describe("AddTimelineItemRow — 카테고리 선택지", () => {
   it("넘겨받은 목록만 낸다 — 카테고리 상수를 스스로 조회하지 않는다", async () => {
     await openForm();
 
+    // [D22] 목록은 열었을 때만 존재한다 — 네이티브 `<select>` 가 아니라 자체 목록이다.
+    await userEvent.click(screen.getByRole("combobox", { name: "카테고리" }));
     const options = screen.getAllByRole("option").map((el) => el.textContent);
     expect(options).toEqual(["카테고리 무관", "예식장", "스드메"]);
     expect(getCategoriesMock).not.toHaveBeenCalled();
@@ -59,6 +61,7 @@ describe("AddTimelineItemRow — 카테고리 선택지", () => {
   it("목록이 비어도 '카테고리 무관'으로 계속 추가할 수 있다", async () => {
     render(<AddTimelineItemRow categoryOptions={[]} onAdded={() => {}} />);
     await userEvent.click(screen.getByRole("button", { name: "+ 항목 추가" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "카테고리" }));
 
     expect(screen.getAllByRole("option").map((el) => el.textContent)).toEqual(["카테고리 무관"]);
   });
@@ -66,7 +69,8 @@ describe("AddTimelineItemRow — 카테고리 선택지", () => {
   it("고른 카테고리가 그대로 POST 로 나간다", async () => {
     await openForm();
 
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "카테고리" }), "SDM");
+    await userEvent.click(screen.getByRole("combobox", { name: "카테고리" }));
+    await userEvent.click(screen.getByRole("option", { name: "스드메" }));
     await userEvent.type(screen.getByRole("textbox", { name: "항목 이름" }), "드레스 투어");
     await userEvent.type(screen.getByRole("textbox", { name: "날짜" }), "2027-01-15");
     await userEvent.click(screen.getByRole("button", { name: "추가" }));

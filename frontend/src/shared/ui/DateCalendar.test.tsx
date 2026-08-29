@@ -79,8 +79,12 @@ describe("DateCalendar — 월 이동", () => {
   it("연·월 셀렉트로 멀리 건너뛴다 — 결혼식 날짜를 고르는 주 경로다", async () => {
     const user = userEvent.setup();
     renderCalendar({ value: "2026-11-02" });
-    await user.selectOptions(screen.getByRole("combobox", { name: "연도" }), "2027");
-    await user.selectOptions(screen.getByRole("combobox", { name: "월" }), "5");
+    // [D22] `selectOptions` 를 쓰지 않는다 — 이 컨트롤은 이제 네이티브 `<select>` 가 아니라
+    // 자체 목록이다(`shared/ui/Select.tsx`). 열고 고르는 **사용자가 실제로 하는 동작**을 태운다.
+    await user.click(screen.getByRole("combobox", { name: "연도" }));
+    await user.click(screen.getByRole("option", { name: "2027년" }));
+    await user.click(screen.getByRole("combobox", { name: "월" }));
+    await user.click(screen.getByRole("option", { name: "5월" }));
     expect(screen.getByRole("button", { name: "2027년 5월 15일 (토)" })).toBeInTheDocument();
   });
 

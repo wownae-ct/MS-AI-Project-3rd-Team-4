@@ -25,7 +25,7 @@ import { useId, useRef, useState } from "react";
 import { ApiError } from "@/shared/api";
 import { futureQuickPicks, pastQuickPicks, todayISO } from "@/shared/lib/date";
 import { AMOUNT_STEP_WON } from "@/shared/lib/money";
-import { DateField, IconCamera, NumberInput } from "@/shared/ui";
+import { DateField, IconCamera, NumberInput, Select } from "@/shared/ui";
 import { createPayment, getReceiptExtract } from "../api/payment";
 import type { PaymentType } from "../model";
 import { PAYMENT_TYPE_LABEL } from "./payment-labels";
@@ -41,6 +41,8 @@ const RECEIPT_BTN =
   "border border-dashed border-primary bg-primary-soft " +
   "text-sm font-bold text-primary disabled:cursor-not-allowed disabled:opacity-50";
 const FIELD_NOTE = "text-xs text-ink-soft";
+// [D22] `Select` 는 `{ value, label }` 목록을 받는다. 라벨 맵이 단일 출처라 여기서 한 번만 옮긴다.
+const PAYMENT_TYPE_OPTIONS = Object.entries(PAYMENT_TYPE_LABEL).map(([value, label]) => ({ value, label }));
 
 // 백엔드 허용치와 동일하게 맞춘다(backend/app/routers/budget.py:56-58) — 서버 왕복 없이
 // 바로 알려주는 편이 사용자 경험이 낫다. 서버 쪽 검증은 그대로 최종 방어선으로 남는다.
@@ -223,18 +225,13 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
           없다(마크업이 바이트 단위로 그대로 유지된다). 카테고리는 영수증 OCR도 추론하지 않는다
           (ReceiptExtractResult에 category_code가 아예 없다) — 항상 사용자가 직접 고른다. */}
       {categoryOptions !== undefined && (
-        <select
-          className={FORM_INPUT}
+        <Select
+          className="w-full"
           aria-label="카테고리"
           value={selectedCategory}
-          onChange={(e) => setSelectedCategory(e.target.value)}
-        >
-          {categoryOptions.map((option) => (
-            <option key={option.code} value={option.code}>
-              {option.name_ko}
-            </option>
-          ))}
-        </select>
+          onValueChange={setSelectedCategory}
+          options={categoryOptions.map((option) => ({ value: option.code, label: option.name_ko }))}
+        />
       )}
       <input
         className={FORM_INPUT}
@@ -243,18 +240,13 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
         value={itemName}
         onChange={(e) => setItemName(e.target.value)}
       />
-      <select
-        className={FORM_INPUT}
+      <Select
+        className="w-full"
         aria-label="결제 유형"
         value={paymentType}
-        onChange={(e) => setPaymentType(e.target.value as PaymentType)}
-      >
-        {Object.entries(PAYMENT_TYPE_LABEL).map(([value, label]) => (
-          <option key={value} value={value}>
-            {label}
-          </option>
-        ))}
-      </select>
+        onValueChange={(next) => setPaymentType(next as PaymentType)}
+        options={PAYMENT_TYPE_OPTIONS}
+      />
       <input
         className={FORM_INPUT}
         aria-label="업체명"

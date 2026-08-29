@@ -13,7 +13,7 @@ import { useState } from "react";
 import { createTimelineItem } from "@/entities/timeline";
 import { ApiError } from "@/shared/api";
 import { futureQuickPicks, todayISO } from "@/shared/lib/date";
-import { DateField } from "@/shared/ui";
+import { DateField, Select } from "@/shared/ui";
 
 const ADD_BTN =
   "w-full rounded-sm border border-dashed border-line bg-transparent py-2.5 text-sm font-bold text-ink-soft";
@@ -95,19 +95,16 @@ export function AddTimelineItemRow({ weddingDate, categoryOptions, onAdded }: Ad
 
   return (
     <div className="flex flex-col gap-2 rounded-md border border-line bg-bg p-3">
-      <select
-        className={FORM_INPUT}
+      <Select
+        className="w-full"
         aria-label="카테고리"
         value={categoryCode}
-        onChange={(e) => setCategoryCode(e.target.value)}
-      >
-        <option value="">카테고리 무관</option>
-        {categoryOptions.map((c) => (
-          <option key={c.code} value={c.code}>
-            {c.name_ko}
-          </option>
-        ))}
-      </select>
+        onValueChange={setCategoryCode}
+        options={[
+          { value: "", label: "카테고리 무관" },
+          ...categoryOptions.map((c) => ({ value: c.code, label: c.name_ko })),
+        ]}
+      />
       <input
         className={FORM_INPUT}
         aria-label="항목 이름"

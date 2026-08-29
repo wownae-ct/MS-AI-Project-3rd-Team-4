@@ -107,7 +107,8 @@ describe("CostManagementTab — 카테고리 필터", () => {
     await user.click(screen.getByRole("button", { name: /다음/u })); // 2페이지로 이동해 둔다
     await screen.findByText("2 / 2");
 
-    await user.selectOptions(screen.getByRole("combobox", { name: "카테고리 필터" }), "SDM");
+    await user.click(screen.getByRole("combobox", { name: "카테고리 필터" }));
+    await user.click(screen.getByRole("option", { name: "스드메" }));
 
     // 필터 변경으로 1페이지로 리셋되고, SDM 카테고리 1건만 남는다(페이지 컨트롤도 사라진다).
     expect(await screen.findByText("스드메 단독 항목")).toBeInTheDocument();
@@ -120,7 +121,8 @@ describe("CostManagementTab — 카테고리 필터", () => {
     renderTab();
 
     await screen.findByText("결제 항목 1");
-    await user.selectOptions(screen.getByRole("combobox", { name: "카테고리 필터" }), "SDM");
+    await user.click(screen.getByRole("combobox", { name: "카테고리 필터" }));
+    await user.click(screen.getByRole("option", { name: "스드메" }));
 
     expect(await screen.findByText("이 카테고리엔 등록된 납부 내역이 없습니다.")).toBeInTheDocument();
   });

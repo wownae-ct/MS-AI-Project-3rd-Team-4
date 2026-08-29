@@ -47,7 +47,9 @@ export const INPUT =
 // 두 개 중 하나를 그대로 고르는 이 파일의 규범을 따른다.
 export const INPUT_DISABLED = `${INPUT} disabled:cursor-not-allowed disabled:opacity-50`;
 
-export const SELECT = INPUT;
+// [2026-08-29 D22] `SELECT = INPUT` 을 삭제했다. 2단계의 지역 드롭다운이 공용 `shared/ui/Select`
+// 로 옮겨가면서 참조가 사라졌다 — 팔레트에 죽은 값을 남기지 않는 이 저장소 관례(theme.css 가
+// 참조 없어진 soft 토큰을 지운 것과 같은 처리).
 
 // 9단계(자유 서술) 전용 — INPUT은 min-h-tap(한 줄 높이) 고정이라 여러 줄 입력엔 안 맞는다.
 // resize-none — 카드 폭이 이미 max-w-[430px]로 고정된 화면이라 가로 리사이즈 핸들이 레이아웃을

@@ -3,10 +3,12 @@
 // 접수 확인만 보여준다.
 import { useState } from "react";
 import { ApiError } from "@/shared/api";
+import { Select } from "@/shared/ui";
 import { createFeedbackReport } from "../api/feedback";
 import type { FeedbackReasonCategory, FeedbackTargetType } from "../model";
 
 const REASON_OPTIONS: FeedbackReasonCategory[] = ["부정확함", "부적절함", "도움안됨", "편향/차별적", "기타"];
+const REASON_SELECT_OPTIONS = REASON_OPTIONS.map((reason) => ({ value: reason, label: reason }));
 
 interface ReportButtonProps {
   targetType: FeedbackTargetType;
@@ -62,17 +64,15 @@ export function ReportButton({ targetType, targetId }: ReportButtonProps) {
   // `flex-wrap` 을 걸었다) 글자가 커진 만큼 자기 줄에서 전폭을 쓰는 편이 예측 가능하다.
   return (
     <div className="flex w-full flex-col gap-1.5 rounded-md border border-line bg-bg p-2">
-      <select
+      {/* [D22] `aria-label` 을 함께 붙인다 — 이 컨트롤은 감싸는 `<label>` 도 `aria-label` 도 없어
+          **접근명이 아예 없었다.** 스크린리더에는 이름 없는 콤보박스로 들린다. */}
+      <Select
+        className="w-full"
+        aria-label="신고 사유"
         value={reason}
-        onChange={(e) => setReason(e.target.value as FeedbackReasonCategory)}
-        className="min-h-tap w-full rounded-md border border-line bg-surface px-2 text-base text-ink"
-      >
-        {REASON_OPTIONS.map((r) => (
-          <option key={r} value={r}>
-            {r}
-          </option>
-        ))}
-      </select>
+        onValueChange={(next) => setReason(next as FeedbackReasonCategory)}
+        options={REASON_SELECT_OPTIONS}
+      />
       <input
         type="text"
         value={comment}

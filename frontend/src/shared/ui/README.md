@@ -14,6 +14,7 @@
 | `theme.css` | `@theme` 디자인 토큰 — `docs/design/` 의 값 1:1 |
 | `Page` `Card` `Button` `Badge` `Money` `Progress` `Tabs` `ErrorBoundary` `icons` | 프리미티브 |
 | `NumberInput` `DateField` | 네이티브 입력 대체 — 각각 `type="number"` · `type="date"` 를 갈아끼웠다(그 파일 머리말에 **무엇을 잃고 어떻게 갚았는지** 표로 있다). `DateField` 의 그리드(`DateCalendar`)는 `React.lazy` 로 내린 별도 청크라 `index.ts` 로 내보내지 않는다 |
+| `Select` | 네이티브 `<select>` 대체(D22) — 위 둘과 같은 계열이고, 그 파일 머리말에 **무엇을 잃고 어떻게 갚았는지** 표로 있다(잃는 것은 모바일 OS 피커 하나다). 목록까지 직접 그리는 이유는 **열린 목록을 브라우저·OS 가 그려 닫힌 상자와 이질적이었기 때문**이다(사용자 리포트). APG 「Select-Only Combobox」. `field` 16px / `compact` 14px, 드롭다운 11곳이 쓰던 클래스 문자열 5종의 단일 소유자다 |
 | `index.ts` | 공개 API. 슬라이스 밖에서는 이 파일로만 접근한다 |
 
 CSS 는 사이드이펙트라 `index.ts` 로 재수출할 수 없다 — 그래서 `main.tsx` 가 경로로 직접 import 한다([layers.md §4.2](../../../docs/architecture/layers.md)).
@@ -35,7 +36,7 @@ CSS 는 사이드이펙트라 `index.ts` 로 재수출할 수 없다 — 그래�
 | 보조 문구 | `~0.86rem` | `text-sm`(14px) + `text-ink-soft` | 원 디자인 문서의 Body("설명 텍스트, 보조 문구")가 이 자리다 |
 | 캡션·라벨 | — | `text-xs`(12px) + `text-ink-soft` | 짧은 것만 |
 | 헤드라인 | `~1.2–1.3rem` | `text-xl`(1.25rem) | 행간 1.4 |
-| **입력 필드** | — | **16px 미만 금지** | 근거: KRDS 16px + iOS Safari 자동 확대(**2차 자료** — Apple 1차 문서 미확인, [a11y.md](../../../docs/design/a11y.md) §2.3) |
+| **입력 필드** | — | **16px 미만 금지** | 근거: KRDS 16px + iOS Safari 자동 확대(**2차 자료** — Apple 1차 문서 미확인, [a11y.md](../../../docs/design/a11y.md) §2.3).<br>⚠️ 대상은 **텍스트 입력**이다. 드롭다운(`Select`)의 트리거는 `<button>` 이라 iOS 확대 조건 밖이고 이 계약의 적용 대상이 아니다(D22) — 콘텐츠 안에 홀로 놓이면 14px 를 쓴다 |
 
 ## 지켜야 할 규범
 
