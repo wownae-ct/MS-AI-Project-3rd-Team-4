@@ -18,7 +18,12 @@
 // `priority`는 백엔드가 `str`로만 열어 둔 필드다(backend/app/schemas/checklist.py:25,
 // 04_DB_spec.md:205의 관용값은 high/mid/low이지만 DB CHECK 제약은 없다) — Literal로 좁히지
 // 않고 알려진 값만 라벨을 붙이고 모르는 값은 원문을 그대로 보여준다(지어내지 않는다).
-import { Badge } from "@/shared/ui";
+//
+// **④ 카테고리 배지에 색이 붙는다(D17, 2026-08-29, 사용자 지시).** 이 배지는 예산 탭 「비용
+// 관리」의 카테고리 배지(`entities/payment/ui/PaymentListRow.tsx`)와 **의미상 같은 것**이라
+// 같은 색을 써야 한다 — 그래서 이름이 아니라 `categoryCode` 로 색을 고른다(이름은 서버가 주는
+// 표시 문자열이라 색의 키로 삼으면 문구가 바뀔 때 조용히 색을 잃는다).
+import { Badge, categoryBadgeClass } from "@/shared/ui";
 
 const PRIORITY_LABEL: Record<string, string> = {
   high: "우선순위 높음",
@@ -31,14 +36,16 @@ export interface RecoRowProps {
   priority: string;
   /** `category_code` 를 화면에서 해석한 이름. 데이터는 이름을 복제하지 않는다. */
   categoryName: string;
+  /** 배지 색을 고르는 키 — 이름이 아니라 코드다(D17). 호출부가 이미 갖고 있는 값이다. */
+  categoryCode: string;
 }
 
-export function RecoRow({ title, priority, categoryName }: RecoRowProps) {
+export function RecoRow({ title, priority, categoryName, categoryCode }: RecoRowProps) {
   return (
     <div className="flex flex-col gap-1.5 rounded-md border border-line px-3 py-2.5">
       <p className="text-sm font-bold text-ink">{title}</p>
       <div className="flex items-center justify-between gap-2">
-        <Badge>{categoryName}</Badge>
+        <Badge tone={categoryBadgeClass(categoryCode)}>{categoryName}</Badge>
         {/* D6 — 상태색을 쓰지 않는다. 우선순위를 색으로 구분하지 않고 텍스트 그대로 읽힌다. */}
         <span className="text-xs text-ink-soft">{PRIORITY_LABEL[priority] ?? priority}</span>
       </div>

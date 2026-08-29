@@ -14,14 +14,28 @@ const SWATCHES: readonly { name: string; hex: string; box: string; note: string 
   { name: "line", hex: "#E7E3DE", box: "bg-line", note: "1px 헤어라인 보더 · 진행률 트랙" },
   { name: "success", hex: "#166534", box: "bg-success", note: "D12 — 업체 사례 GOOD 배지 전용. surface 대비 7.13" },
   { name: "success-soft", hex: "#E1F4E8", box: "bg-success-soft", note: "배지 배경 — 위에 success 6.22" },
-  { name: "payment-deposit", hex: "#8A5A12", box: "bg-payment-deposit", note: "D13 — 계약금 배지. surface 대비 5.91" },
-  { name: "payment-deposit-soft", hex: "#F5EBD9", box: "bg-payment-deposit-soft", note: "배지 배경 — 위에 deposit 5.00" },
-  { name: "payment-interim", hex: "#2F5F8F", box: "bg-payment-interim", note: "D13 — 중도금 배지. surface 대비 6.66" },
-  { name: "payment-interim-soft", hex: "#DFE8F2", box: "bg-payment-interim-soft", note: "배지 배경 — 위에 interim 5.38" },
-  { name: "payment-balance", hex: "#54407E", box: "bg-payment-balance", note: "D13 — 잔금 배지. surface 대비 8.71" },
-  { name: "payment-balance-soft", hex: "#E6E1F2", box: "bg-payment-balance-soft", note: "배지 배경 — 위에 balance 6.81" },
-  { name: "payment-etc", hex: "#5F4F43", box: "bg-payment-etc", note: "D13 — 기타 배지. surface 대비 7.82" },
-  { name: "payment-etc-soft", hex: "#EEE7DF", box: "bg-payment-etc-soft", note: "배지 배경 — 위에 etc 6.38" },
+  { name: "payment-deposit", hex: "#386695", box: "bg-payment-deposit", note: "D17 — 계약금(1단계 연). surface 대비 6.00" },
+  { name: "payment-interim", hex: "#194E7E", box: "bg-payment-interim", note: "D17 — 중도금(2단계 중). surface 대비 8.63" },
+  { name: "payment-balance", hex: "#0C375D", box: "bg-payment-balance", note: "D17 — 잔금(3단계 진). surface 대비 12.21" },
+  { name: "payment-etc", hex: "#58514C", box: "bg-payment-etc", note: "D17 — 기타(순서 밖, 중립). surface 대비 7.79" },
+  { name: "category-meeting", hex: "#81383D", box: "bg-category-meeting", note: "D17 — 상견례 배지. surface 대비 8.18" },
+  { name: "category-meeting-soft", hex: "#FFE1E1", box: "bg-category-meeting-soft", note: "배지 배경 — 위에 meeting 6.67" },
+  { name: "category-venue", hex: "#434C89", box: "bg-category-venue", note: "D17 — 예식장 배지. surface 대비 7.97" },
+  { name: "category-venue-soft", hex: "#E3E8FF", box: "bg-category-venue-soft", note: "배지 배경 — 위에 venue 6.55" },
+  { name: "category-sdm", hex: "#674078", box: "bg-category-sdm", note: "D17 — 스드메 배지. surface 대비 8.14" },
+  { name: "category-sdm-soft", hex: "#F2E3F9", box: "bg-category-sdm-soft", note: "배지 배경 — 위에 sdm 6.64" },
+  { name: "category-gift", hex: "#7A4306", box: "bg-category-gift", note: "D17 — 예물·예단 배지. surface 대비 7.98" },
+  { name: "category-gift-soft", hex: "#FBE5D4", box: "bg-category-gift-soft", note: "배지 배경 — 위에 gift 6.56" },
+  { name: "category-homeware", hex: "#405D1A", box: "bg-category-homeware", note: "D17 — 혼수 배지. surface 대비 7.50" },
+  { name: "category-homeware-soft", hex: "#E2EED7", box: "bg-category-homeware-soft", note: "배지 배경 — 위에 homeware 6.23" },
+  { name: "category-invitation", hex: "#00635F", box: "bg-category-invitation", note: "D17 — 청첩장·답례품 배지. surface 대비 7.12" },
+  { name: "category-invitation-soft", hex: "#D2F1EE", box: "bg-category-invitation-soft", note: "배지 배경 — 위에 invitation 5.95" },
+  { name: "category-honeymoon", hex: "#005D7C", box: "bg-category-honeymoon", note: "D17 — 신혼여행 배지. surface 대비 7.35" },
+  { name: "category-honeymoon-soft", hex: "#D3EFFA", box: "bg-category-honeymoon-soft", note: "배지 배경 — 위에 honeymoon 6.12" },
+  { name: "category-homenew", hex: "#605300", box: "bg-category-homenew", note: "D17 — 신혼집 구하기 배지. surface 대비 7.68" },
+  { name: "category-homenew-soft", hex: "#EEEBD2", box: "bg-category-homenew-soft", note: "배지 배경 — 위에 homenew 6.38" },
+  { name: "category-etc", hex: "#58514C", box: "bg-category-etc", note: "D17 — 기타 배지. payment-etc 와 같은 중립값(의도)" },
+  { name: "category-etc-soft", hex: "#EDE9E6", box: "bg-category-etc-soft", note: "배지 배경 — 위에 etc 6.45" },
 ];
 
 export function ColorSection() {
@@ -65,10 +79,15 @@ export function ColorSection() {
         그 화면을 지목한 별도 결정을 먼저 씁니다.
       </Rule>
       <Rule>
-        위 <code className="font-bold">payment-*</code> 4쌍은 상태 색이 아니라{" "}
-        <span className="font-bold">카테고리 색</span>입니다(D13, 2026-08-27) — 결제 유형(계약금·
-        중도금·잔금·기타)을 구분할 뿐 「성공/위험」 같은 판단을 싣지 않으므로 위 D6과는 범위가 다릅니다.
-        적용 범위는 비용 관리의 결제 유형 배지 하나뿐입니다.
+        위 <code className="font-bold">payment-*</code> · <code className="font-bold">category-*</code> 는
+        상태 색이 아니라 <span className="font-bold">분류 색</span>입니다(D13, 2026-08-27 → D17,
+        2026-08-29) — 무엇이 무엇인지 나눌 뿐 「성공/위험」 같은 판단을 싣지 않으므로 위 D6과는
+        범위가 다릅니다. 두 계열은 <span className="font-bold">데이터 성격이 달라 색 쓰는 법도
+        다릅니다</span>: 웨딩 카테고리는 순서가 없는 명목형이라 <span className="font-bold">서로
+        다른 색상 9종</span>, 결제 유형은 계약금→중도금→잔금이라는 순서형이라{" "}
+        <span className="font-bold">한 색상의 명도 3단계</span>(기타만 중립)입니다. 같은 줄에 배지가
+        둘 붙는 곳에서는 <span className="font-bold">형태가 계열을 가릅니다</span> — 카테고리는
+        채움, 결제 유형은 테두리.
       </Rule>
       <Rule>
         primary 면 채움은 <span className="font-bold">면적으로 등급</span>이 갈립니다 — 버튼 · 배지 ·

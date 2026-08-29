@@ -137,6 +137,7 @@ export function ReportPage() {
                   title={check.title}
                   priority={check.priority}
                   categoryName={categoryNameById.get(check.category_code) ?? check.category_code}
+                  categoryCode={check.category_code}
                 />
               ))}
             </div>

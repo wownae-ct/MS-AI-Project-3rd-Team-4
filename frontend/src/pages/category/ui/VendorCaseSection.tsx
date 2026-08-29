@@ -15,11 +15,14 @@ import { Badge, Card, SourceList } from "@/shared/ui";
 
 // 조립하지 않고 완성된 리터럴 둘 중 하나를 고른다 — Tailwind 스캐너는 소스를 평문으로 읽어
 // 런타임 조립을 찾지 못한다(Card.tsx와 같은 처리). GOOD 은 success 색(D12, decisions.md — 업체
-// 사례 배지 한 곳에 한해 D6을 좁게 뒤집은 예외), BAD 는 Badge 기본값을 그대로 쓴다.
+// 사례 배지 한 곳에 한해 D6을 좁게 뒤집은 예외), BAD 는 Badge 기본값(undefined)을 그대로 쓴다.
+// **색은 `tone`, 여백은 `className`** 으로 나눠 넘긴다 — 색을 className 으로 넘기면 기준 색과
+// 명시도가 같아 산출 CSS 순서에 질 수 있다(Badge.tsx 머리말의 실측). 이 배지는 `success` 가
+// 알파벳 순으로 `primary` 뒤라 우연히 살아 있었을 뿐이다.
 // mt-0.5 는 text-xs 배지를 text-sm 제목의 첫 줄에 광학적으로 맞추는 값 — items-start 로 바꾸면서
 // 필요해졌다(제목이 두 줄이 될 수 있어 items-center 를 쓸 수 없다).
-const CASE_BADGE_GOOD = "mt-0.5 bg-success-soft text-success";
-const CASE_BADGE_BAD = "mt-0.5";
+const CASE_BADGE_SPACING = "mt-0.5";
+const CASE_BADGE_GOOD_TONE = "bg-success-soft text-success";
 
 export function VendorCaseSection({ response }: { response: VendorCasesResponse }) {
   return (
@@ -34,7 +37,7 @@ export function VendorCaseSection({ response }: { response: VendorCasesResponse 
                 한다. 종전엔 둘 다 아무 제약이 없어 긴 case_label 이 배지를 1글자 폭까지 눌러
                 캡슐 모양을 뭉갰다(사용자 리포트 2026-08-29, 이 화면이 가장 심했다). */}
             <div className="flex items-start gap-2">
-              <Badge className={c.case_type === "GOOD" ? CASE_BADGE_GOOD : CASE_BADGE_BAD}>
+              <Badge className={CASE_BADGE_SPACING} tone={c.case_type === "GOOD" ? CASE_BADGE_GOOD_TONE : undefined}>
                 {c.case_type === "GOOD" ? "잘한 사례" : "주의할 사례"}
               </Badge>
               <p className="min-w-0 text-sm font-bold text-ink">{c.case_label}</p>

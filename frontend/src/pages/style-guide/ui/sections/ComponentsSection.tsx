@@ -75,12 +75,51 @@ export function ButtonSection() {
 
 export function BadgeSection() {
   return (
-    <Section title="배지" hint="pill · primary-soft · primary. 짧은 라벨 전용 — 절대 잘리지 않습니다.">
+    <Section title="배지" hint="pill · 채움(기본)과 테두리 두 변이. 짧은 라벨 전용 — 절대 잘리지 않습니다.">
       <Card className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-3">
           <Badge>강조</Badge>
           <Badge>항목 A</Badge>
           <Badge>항목 B</Badge>
+        </div>
+        {/* D17 — 두 축을 나란히 둔다. 위: 명목형(서로 다른 색상, 채움) / 아래: 순서형(한 색상의
+            명도 3단계, 테두리). 클래스 문자열을 조립하지 않고 리터럴로 적는다(Tailwind 스캐너). */}
+        <div className="flex flex-col gap-2">
+          <span className="text-xs text-ink-soft">웨딩 카테고리 — 명목형 · 색상 9종 · 채움</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone="bg-category-venue-soft text-category-venue">예식장</Badge>
+            <Badge tone="bg-category-sdm-soft text-category-sdm">스드메</Badge>
+            <Badge tone="bg-category-gift-soft text-category-gift">예물·예단</Badge>
+            <Badge tone="bg-category-homeware-soft text-category-homeware">혼수</Badge>
+            <Badge tone="bg-category-invitation-soft text-category-invitation">청첩장</Badge>
+            <Badge tone="bg-category-honeymoon-soft text-category-honeymoon">신혼여행</Badge>
+            <Badge tone="bg-category-homenew-soft text-category-homenew">신혼집</Badge>
+            <Badge tone="bg-category-meeting-soft text-category-meeting">상견례</Badge>
+            <Badge tone="bg-category-etc-soft text-category-etc">기타</Badge>
+          </div>
+          <span className="text-xs text-ink-soft">결제 유형 — 순서형 · 명도 3단계 · 테두리</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" tone="text-payment-deposit">
+              계약금
+            </Badge>
+            <Badge variant="outline" tone="text-payment-interim">
+              중도금
+            </Badge>
+            <Badge variant="outline" tone="text-payment-balance">
+              잔금
+            </Badge>
+            <Badge variant="outline" tone="text-payment-etc">
+              기타
+            </Badge>
+          </div>
+          <span className="text-xs text-ink-soft">한 줄에 둘이 붙는 자리(비용 관리) — 형태가 계열을 가른다</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" tone="text-payment-balance">
+              잔금
+            </Badge>
+            <Badge tone="bg-category-venue-soft text-category-venue">예식장</Badge>
+            <p className="min-w-0 truncate text-sm font-bold text-ink">본식 잔금 계약</p>
+          </div>
         </div>
         {/* 눌림 회귀를 눈으로 확인하는 자리 — 아주 좁은 열 안에 긴 한국어 문장과 배지를 나란히
             놓는다. Badge 의 nowrap/shrink-0 이 빠지면 배지가 「주/의/할/사/례」로 세로로 접혀
@@ -98,8 +137,14 @@ export function BadgeSection() {
         글자 폭까지 눌려 캡슐 모양이 뭉개집니다. 대신 <span className="font-bold">압력은 옆 텍스트가 받습니다</span>{" "}
         — 배지와 나란히 놓는 본문에는 <code className="font-bold">min-w-0</code> 과 줄바꿈/말줄임을 함께 줍니다.
       </Rule>
+      <Rule>
+        <span className="font-bold">색은 값을, 형태는 계열을</span> 나타냅니다(D17). 한 줄에 배지가 둘 붙는
+        곳(비용 관리)에서 채움/테두리가 갈리지 않으면 색상환에 13색이 섞여 어느 쪽이 무슨 축인지
+        흐려집니다. 그리고 <span className="font-bold">색은 언제나 보조 단서</span>입니다 — 배지에는 한글
+        라벨이 항상 함께 있어 색을 못 읽어도 정보가 남습니다(WCAG 1.4.1).
+      </Rule>
       <OpenDecision>
-        디자인 문서가 정의한 배지 스타일은 <span className="font-bold">이 하나뿐</span>입니다. 다른 톤의 배지가
+        디자인 문서가 정의한 배지 변이는 <span className="font-bold">채움과 테두리 둘뿐</span>입니다. 세 번째가
         필요해지면 디자인 문서를 먼저 갱신해야 합니다 — 여기서 지어내지 않았습니다. 그리고{" "}
         <span className="font-bold">길이 상한이 없는 문자열은 배지에 담지 않습니다</span> — 출처 제목처럼 서버가
         길이를 정하는 것은 <code className="font-bold">SourceList</code> 로 갑니다.

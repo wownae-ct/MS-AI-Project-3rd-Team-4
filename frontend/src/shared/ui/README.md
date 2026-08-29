@@ -40,6 +40,7 @@ CSS 는 사이드이펙트라 `index.ts` 로 재수출할 수 없다 — 그래�
 규범의 원문과 근거는 [`docs/design/README.md`](../../../docs/design/README.md) 「현행 규범 요약」. 여기는 코드에서 지켜야 할 형태로 옮긴 것이다.
 
 1. **The One Accent Rule** — 베리 플럼은 배지 · 주요 버튼 · 강조 텍스트 · 진행률 채움에만. **배경 워시로 쓰지 않는다.**
+   - 예외는 **분류 색** 셋이다 — 업체 사례 `success`(D12) · 결제 유형 `payment-*`(D13→D17) · 웨딩 카테고리 `category-*`(D17). 셋 다 배지 하나씩에만 쓰고, 새 화면에 색이 필요하면 그 화면을 지목한 별도 결정을 먼저 쓴다. 카테고리 코드→클래스 매핑은 `category-badge.ts` 가 단일 출처다(호출부가 `entities/payment` 와 `pages/report` 양쪽이라 entity 에 둘 수 없다).
 2. **The Flat-By-Default Rule** — 그림자를 쓰지 않는다. 표면 구분은 1px 헤어라인 보더(`border-line`)로만. 호버도 그림자가 아니라 보더/배경의 옅은 변화로. **그림자는 `box-shadow` 하나가 아니다** — `shadow-*` · `inset-shadow-*` 는 `box-shadow`, `drop-shadow-*` 는 `--tw-drop-shadow*` 커스텀 속성 + `filter`, `text-shadow-*` 는 `text-shadow` 로 나간다. 네 계열 전부 금지 ([D10](../../../docs/design/decisions.md#d10-그림자-네임스페이스를-폐기하고-게이트를-파서로-다시-만든다)).
 3. **팔레트 밖 색 금지** — `theme.css` 가 `--color-*: initial` 로 Tailwind 기본 팔레트를 폐기해 **명명 유틸리티**(`bg-red-500` 류)는 없다. 그러나 **임의값(`bg-[#77354F]`)은 테마와 무관하게 그대로 컴파일된다** — Tailwind 에 이를 끄는 설정이 없다. 그래서 **빌드 게이트가 산출 CSS 의 색을 `theme.css` 화이트리스트와 대조해 막는다** ([D8](../../../docs/design/decisions.md#d8-팔레트-밖-색-서술을-사실에-맞게-고치고-게이트로-강제한다)).
 4. **semantic color(성공/경고/위험)를 지어내지 않는다** — 도입하지 않기로 닫았다 ([D6](../../../docs/design/decisions.md#d6-상태-색을-도입하지-않는다)). 상태는 보더 · 배경 톤 · 텍스트 · 형태로 표현한다.
