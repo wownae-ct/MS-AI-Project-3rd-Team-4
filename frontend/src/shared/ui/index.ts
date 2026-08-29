@@ -43,6 +43,7 @@ export { StatusCallout, type StatusCalloutProps } from "./StatusCallout";
 export { Switch, type SwitchProps } from "./Switch";
 export { Tabs, type TabsRootProps } from "./Tabs";
 export {
+  IconArchive,
   IconCalendar,
   IconCamera,
   IconChart,

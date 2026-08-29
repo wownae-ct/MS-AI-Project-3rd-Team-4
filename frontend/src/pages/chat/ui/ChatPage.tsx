@@ -19,8 +19,38 @@
 import { useState } from "react";
 import { ChatPanel } from "@/entities/chat";
 import { ReportButton } from "@/entities/feedback";
-import { Button, Page } from "@/shared/ui";
+import { IconArchive, Page } from "@/shared/ui";
 import { ChatHistoryDrawer } from "./ChatHistoryDrawer";
+
+// 헤더의 「지난 대화」 아이콘 버튼.
+//
+// **`shared/ui/Button` 을 쓰지 않는다.** 이 자리에 필요한 것은 「36×36 정사각 · rounded-sm ·
+// 탭바와 같은 아이콘 색」인데, `Button` 의 secondary 는 `rounded-md px-4`(→ 54×36)와 `text-ink` 를
+// 정적 룩업으로 못박고 있다. 호출부에서 `rounded-sm`·`text-ink-soft` 를 덧붙여 이기려 하면
+// **조용히 실패한다** — Tailwind 는 클래스 나열 순서가 아니라 **생성 CSS 순서**로 승부를 내고,
+// 그 순서는 우리가 적는 자리가 아니라 테마 변수 선언 순서(`--radius-sm` 이 `--radius-md` 보다
+// 먼저)가 정한다. 한 속성에 두 유틸리티를 얹는 방식 자체를 피한다.
+// 남은 선택지는 ①`Button` 에 아이콘 전용 룩업 3종을 새로 여는 것과 ②여기서 직접 그리는 것인데,
+// 호출부가 하나뿐이라 공유 컴포넌트를 넓힐 근거가 없다(`ChatHistoryDrawer` 머리말이 같은 판단을
+// 같은 이유로 내렸다). `entities/chat/ui/MessageBubble.tsx` 의 평가 버튼이 이미 이 방식이다 —
+// 다만 그쪽은 44×44 · `rounded-md` · `aria-pressed` 2채널이라 규격이 달라 공통화하지 않는다.
+//
+// 🚨 `h-9 w-9` 와 `after:*` 는 **짝이다.** 상자는 36×36 으로 그리고, 의사요소가 사방으로 4px 씩
+// 넘쳐 히트 영역을 44×44 로 되돌린다(docs/design/a11y.md §1.5 의 44px 계약 — `Button` 의 `sm` 이
+// 세로로만 하는 일을 여기선 가로까지 한다. 폭이 높이와 같아졌으므로 가로도 되살려야 한다).
+// 짝이 깨져도 **화면에는 아무 변화가 없다** — ChatPage.test.tsx 가 계약으로 고정한다.
+//
+// 색은 하단 탭바의 비활성 아이콘과 **같은 토큰**(`text-ink-soft`)이다(app/ui/NavItem.tsx `BASE`).
+// `text-ink` 였을 때 헤더 아이콘만 더 검고 무거웠다(사용자 리포트 2026-08-29). primary 는 쓰지
+// 않는다 — 「현재 위치」도 「주요 행동」도 아니다(The One Accent Rule).
+//
+// `hover` 를 `enabled:` 뒤에 두는 것은 `shared/ui/Button.tsx` 가 세운 규약을 그대로 따르는 것이다.
+// 포커스 링은 `shared/ui/styles.css` 의 전역 `:focus-visible` 이 준다 — 여기서 따로 그리지 않는다.
+const HISTORY_BUTTON =
+  "relative inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-sm border " +
+  "border-line bg-surface text-ink-soft transition-[background-color,border-color,color] duration-150 " +
+  "after:absolute after:-inset-1 " +
+  "enabled:hover:border-ink-soft enabled:hover:bg-bg enabled:hover:text-ink";
 
 // 하단 탭 전환은 이 컴포넌트를 언마운트한다 — sessionId 를 로컬 state에만 두면 전송 중 다른
 // 탭으로 갔다 돌아왔을 때 sessionId=null 로 재마운트돼 이미 서버에 존재하는 세션이 영구히
@@ -93,13 +123,31 @@ export function ChatPage() {
       // `fill` 은 헤더 높이를 뺀 나머지를 대화창에 준다 — 트리거가 헤더를 두 줄로 만들면 그만큼
       // 대화창이 줄어든다. 한 줄에 들어가는 크기로 둔다.
       //
-      // [2026-08-29] `size="sm"` — 컨트롤이 세로로 무겁다는 사용자 요청. `fill` 화면이라 이 8px 은
-      // 그대로 **대화창이 8px 커지는 것**으로 돌아온다. 터치 타겟은 44px 그대로다(Button.tsx `SIZE`
-      // 주석 — 의사요소로 히트 영역만 되살린다). 같은 이유로 `ChatPanel` 의 입력행도 함께 낮췄다.
+      // [2026-08-29] 버튼 높이 36px — 컨트롤이 세로로 무겁다는 사용자 요청. `fill` 화면이라 이 8px 은
+      // 그대로 **대화창이 8px 커지는 것**으로 돌아온다. 터치 타겟은 44px 그대로다(위 `HISTORY_BUTTON`
+      // 의 의사요소 짝). 같은 이유로 `ChatPanel` 의 입력행도 함께 낮췄다.
+      //
+      // [2026-08-29] 라벨을 아카이브 아이콘으로 바꿨다(사용자 요청). **이 한 자리에서만**
+      // `shared/ui/icons.tsx` 머리말의 「아이콘만으로는 뜻이 전달되지 않으므로 라벨을 항상 함께
+      // 표시한다」(NNG Icon Usability)를 벗어나므로 근거를 남긴다 — 잃는 것을 하나씩 되돌린 결과다:
+      //   · 접근명은 `aria-label` 이 **같은 문자열**로 그대로 갖는다. 스크린리더가 듣는 것은 1바이트도
+      //     달라지지 않으며, 이 화면의 테스트가 전부 `name: "지난 대화"` 로 이 버튼을 찾으므로
+      //     `aria-label` 이 조용히 빠지면 접근명이 빈 문자열이 되어 **즉시 깨진다**(계약 고정).
+      //   · 마우스 사용자에게는 `title` 이 같은 문자열을 노출한다. `aria-label` 과 **반드시 같은 값**
+      //     이어야 한다 — 다르면 스크린리더가 둘 다 읽는다(MessageBubble.tsx 평가 버튼과 같은 처리).
+      //   · 아이콘만 보이는 터치 사용자에게 남는 유일한 몫(한눈에 뜻)은 열어 보는 것으로 곧장
+      //     확인된다 — 드로어 제목이 「지난 대화」이고, 파괴적 행동이 아니라 닫기 한 번으로 돌아온다.
+      // 터치 타겟은 여전히 44×44 다 — 위 `HISTORY_BUTTON` 의 의사요소가 되살린다.
       actions={
-        <Button variant="secondary" size="sm" onClick={() => setHistoryOpen(true)}>
-          지난 대화
-        </Button>
+        <button
+          type="button"
+          aria-label="지난 대화"
+          title="지난 대화"
+          onClick={() => setHistoryOpen(true)}
+          className={HISTORY_BUTTON}
+        >
+          <IconArchive />
+        </button>
       }
     >
       <ChatPanel
