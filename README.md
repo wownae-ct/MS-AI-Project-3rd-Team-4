@@ -1,74 +1,120 @@
-# 메리맵 (MarryMap) — frontend
+# 메리맵 (MarryMap)
 
-SeSAC MS AI 엔지니어 4기 3차 프로젝트 (2인 팀)의 프론트엔드. 예식장·스드메(드레스/스튜디오/
-메이크업) 중심 예산·타임라인·계약전 체크리스트 관리와 RAG 기반 AI상담을 제공하는 React 앱.
-이 브랜치는 `frontend/`를 소유한다. 전체 프로젝트 개요·백엔드는 [`main` 브랜치
-README](../../tree/main/README.md) 참고.
+SeSAC MS AI 엔지니어 4기 3차 프로젝트 (2인 팀). 예식장·스드메(드레스/스튜디오/메이크업) 중심으로
+예산·타임라인·계약전 체크리스트를 관리하고, 실제 사례(좋은예/나쁜예)와 공식 통계에 근거한 RAG
+상담을 받는 웨딩 준비 앱. "크로스핏 폼 코치"(웹캠 운동 코칭) → "브리프코치"(AI 화법 트레이너)에
+이은 **2차 주제 전환**(2026-08-20)으로, 인프라·협업 구조는 그대로 두고 주제만 다시 바꿨다.
 
-## 스택
+**2026-08-28: `backend`·`frontend`가 `main`으로 승격 완료.** 이제 `main`이 실제 배포 대상
+코드를 담고 있다(아래 "배포 현황" 참고). 각 브랜치별 상세 내용은 해당 브랜치의 README 참고 —
+`backend` README, `frontend` README(GitHub에서 해당 브랜치로 전환한 뒤 루트 README를 보면
+된다).
 
-React 19 + TypeScript + Vite 8 + Tailwind CSS v4 + Base UI, Vitest, oxlint. Feature-Sliced
-Design(FSD) 구조.
+## 주요 기능
 
-## 화면
+- **인증**: 이메일+비밀번호(BFF + Opaque 세션 쿠키) + 소셜 로그인(구글·네이버 라이브, 카카오·
+  애플 구현 완료·머지 보류)
+- **예산/결제**: 카테고리별 예산 배정, 시세 벤치마크 비교, 결제 CRUD(환불/취소 포함) + 영수증
+  사진 OCR 자동입력
+- **체크리스트/타임라인**: 웨딩별 개인화 LangGraph 에이전트가 생성, 사용자 수정 항목은 재생성에서
+  보호, 카탈로그 폴백으로 안정성 확보
+- **AI상담**: RAG(하이브리드 검색+RRF, pgvector HNSW) 기반 챗, SSE 스트리밍, 근거 인용, 메시지
+  평점
+- **대시보드/리포트**: 예산 벤치마크 카드, 카테고리별 진행률(타임라인 기준)
+- **업체 사례**: vendor_case ↔ 소비자원 분쟁사례 크로스링크, 신고 기능
 
-| 화면 | 내용 |
-|---|---|
-| S0 | 로그인 — 이메일+비밀번호, 소셜 로그인(구글·네이버 라이브, 카카오·애플 노출) |
-| S1 | 온보딩 — 9단계(지역/예산 → 취향 → 카테고리 on/off → 우선순위 → 진행상황 → 자유서술 → 리뷰), `POST /weddings` SSE 스트림 소비, 카테고리/예산을 한 번에 전송(개인화 LLM 호출 1회로 통합) |
-| S2 | 대시보드 — 요약, 예산 벤치마크 카드, 카테고리별 체크리스트 진행률 |
-| S3 | 카테고리 상세 — 체크리스트(citation 배지, 클릭 시 근거 확장) + 시세비교 |
-| S4 | 타임라인 — D-day 기준 항목, 준비기간 스케일링 반영 |
-| S5 | 리포트 — 카테고리별 진행률(타임라인 기준) |
-| S6 | 예산 — 4분류(지불완료/지불예정/배정/미배정), 결제 등록·수정(환불/취소 포함)·영수증 OCR 자동입력 |
-| 설정(⚙️) | 로그아웃, 비밀번호 변경/온보딩 다시하기(준비 중 placeholder) |
+## 아키텍처 개요 (routers → services → models/rag/personalization)
 
-AI상담(챗)은 별도 화면 — SSE(`fetch` + `ReadableStream`, POST라 `EventSource` 사용 불가)로
-스트리밍, flex-fill 레이아웃. WebSocket 없음.
+CRUD API + RAG 상담 1개 엔드포인트 + 체크리스트/타임라인 개인화 에이전트로 구성된다. 각각
+독립된 3노드 LangGraph를 쓴다(챗: retrieve→generate→verify, 개인화: route→generate→validate).
 
-## 시작하기
-
-```bash
-cd frontend
-npm install
-npm run dev        # 개발 서버
-```
-
-## 명령
-npm run dev	            Vite 개발 서버
-npm run lint	oxlint .
-npm run test	vitest run
-npm run build	tsc -b && vite build (산출물 dist/)
-npm run depcruise	FSD 레이어 경계 검사(dependency-cruiser)
-검증 게이트: typecheck → lint → test → build. 커밋 전 전부 돌리며, CI(frontend-ci.yml)도 같은 순서로 실행한다.
+| 레이어 | 위치 | 역할 |
+|---|---|---|
+| Routers | `backend/app/routers/{system,wedding,ai}/` + `auth.py` | 도메인별 서브패키지로 재구성(2026-08-26) — 37개 엔드포인트(OpenAPI 노출 35개; OAuth 리다이렉트 2개는 스키마 비노출) |
+| Services | `backend/app/services/` | 비즈니스 로직 |
+| Models | `backend/app/models/` | SQLAlchemy 2.0 async, 15개 테이블 |
+| RAG | `backend/app/rag/` | indexing(오프라인 색인) / retrieval(하이브리드 검색+RRF) / graph(LangGraph 3노드, CRAG 조건부 재시도 ≤1회) |
+| Personalization | `backend/app/personalization/` + `services/personalization.py` | 체크리스트/타임라인 전담 LangGraph 3노드, 카탈로그 폴백, 조건부 재시도 ≤1회 |
+| Frontend | `frontend/src/` | React 19 + Vite + TS, FSD 구조. S0~S6 전 화면 + 설정(⚙️)/AI상담 실구현 |
 
 ## 폴더 구조
-src/
-  app/          App.tsx(RouterProvider) · router/router.tsx(코드 기반 라우트 트리, lazy 분할)
-                · ui/AppShell.tsx(탭바↔사이드바)
-  pages/        dashboard(S2) · category(S3) · timeline(S4) · report(S5) · budget(S6) ·
-                onboarding(S1) · settings
-  entities/     도메인 타입 + API 클라이언트 — wedding · payment · chat · dashboard ·
-                vendor-case · personalization · checklist · timeline
-  shared/
-    api/        REST 클라이언트 — backend/app/routers/* 와 1:1 대응하는 유일한 출처
-    ui/         디자인 시스템(Page · Card · Button · Badge · Money · Progress · Tabs ·
-                ErrorBoundary · icons), styles.css/theme.css
 
-frontend/old/에 이전 주제(크로스핏 폼 코치 — MediaPipe 파이프라인, WS 8-state machine, 24B
-바이너리 프로토콜) 구현 아카이브 — tsconfig/.oxlintrc.json/vite.config.ts에서 전부
-제외. 손대지 말 것, 필요하면 조각만 복사해서 src/로 이식.
+```
+backend/    FastAPI(app/main.py) + SQLAlchemy 2.0 async 모델(app/models/) + Alembic(alembic/)
+            + routers(system/wedding/ai 서브패키지 + auth.py)/services/rag/personalization.
+            backend/old/에 이전 주제 구현 아카이브(lint/test 제외)
+frontend/   React 19 + Vite + TS. S0~S6 전 화면 + 설정(⚙️)/AI상담 화면까지 실구현 완료. 백엔드와
+            같은 AKS Ingress 아래 same-origin으로 배포(2026-08-26, 서드파티 쿠키 차단 우회) —
+            Azure Static Web Apps 배포는 PR 프리뷰/로컬 크로스오리진 검증용으로 별도 병행
+data/       RAG 코퍼스(DS1_PRICE~DS8_UGC — 참가격/소비자원 사례/표준계약서/정부정책/설문/
+            체크리스트/타임라인/UGC, 10문서/151청크). data/old/에 이전 주제 코퍼스 아카이브
+db/         vendor_case/price_benchmark 콘텐츠 시드 로더 스크립트만 남음 — checklist/timeline은
+            공유 마스터 시드 없이 개인화 에이전트가 웨딩별로 생성. 스키마 자체는
+            backend/app/models/ + backend/alembic/에 있음
+infra/      Bicep(Azure 리소스) + AKS 매니페스트 + ArgoCD(GitOps, staging/production 네임스페이스
+            분리 + Image Updater 자동 배포) — 이전 주제 빌드 그대로 재사용
+docs/       docs/wedding/new-plan/이 코드 실측 기반 최신 설계 자료(작성 진행 중, 로컬 전용).
+            docs/wedding/plan/new/이 이전 BASELINE v4.0. 이전 주제 설계 문서는 docs/old/에 보존
+```
 
-## 빌드 게이트
-npm run build 마지막 단계에서 scripts/check-bundle-budget.mjs가 산출물을 디스크에서 읽어
-검사한다 — JS/CSS gzip 예산, 최대 청크, 폰트 raw 크기, 그리고 디자인 규범(팔레트 밖 색,
-토큰 밖 라운드, 다크모드, 소스 내 색 임의값/ring-*/그림자 토큰 사용 여부). 위반이면 exit 1이고
-우회 플래그가 없다.
+> **커스텀 모델 학습 없음**: RAG/개인화는 학습이 아니라 서비스가 매 요청 호출하는 라이브
+> LangGraph 컴포넌트라 이 레포(`backend/app/rag/`, `backend/app/personalization/`, `data/`)에
+> 있다. Azure OpenAI가 chat/embedding 배포를 분리 제공한다.
 
-## 배포
-- 같은 AKS Ingress 아래 /로 서빙(same-origin, /api는 backend) — frontend push가 staging, main push가 production 트리거(2026-08-26, 서드파티 쿠키 차단 우회를 위해 same-origin으로 전환)
-- Azure Static Web Apps: PR 프리뷰 + 로컬 크로스오리진 개발/테스트용으로 병행 운영 (frontend-ci.yml, VITE_API_BASE를 빌드 타임에 굽기 때문에 staging/production 이미지가 별도 태그로 빌드됨)
+## 배포 현황
 
-## 브랜치 전략
-feature/frontend-* → PR → frontend → PR → main.
-전체 브랜치 전략·폴더 소유권은 main README 참고.
+- **production**: `https://merrymap-production.koreacentral.cloudapp.azure.com`(Azure
+  LoadBalancer 자동생성 DNS 라벨, 구매 도메인 아님) — `main` push가 트리거, ArgoCD Image
+  Updater가 ACR 신규 태그를 감지해 자동 반영.
+- **staging**: `https://20-249-52-148.nip.io`(같은 LB IP, nip.io 무료 와일드카드 DNS) —
+  `backend`/`frontend` push가 각각 트리거.
+- backend+frontend가 같은 AKS Ingress 아래 same-origin(`/api` → backend, `/` → frontend)으로
+  서빙된다. 상세: [`infra/README.md`](infra/README.md), `infra/k8s/`.
+
+## 브랜치 전략 & 폴더 소유권
+
+```
+feature/backend-*  ─┐
+feature/infra-*     ├─ PR → backend  ─┐
+feature/rag-*       ┘                 │
+                                       ├─ PR → main (배포 릴리스)
+feature/frontend-*  ─── PR → frontend ┘
+```
+
+| 브랜치 | 용도 | 소유 폴더 | 직접 push |
+|---|---|---|---|
+| `main` | 배포 릴리스. `backend`/`frontend`의 PR만 받음 | 전체(머지 결과) | **금지** |
+| `backend` | 백엔드 통합 브랜치 | `backend/`, `data/`, `db/`, `infra/`, 루트 설정 | 금지 (feature 브랜치 PR만) |
+| `frontend` | 프론트 통합 브랜치 | `frontend/` | 금지 (feature 브랜치 PR만) |
+| `feature/*` | 실제 작업 브랜치 | 위 소유 폴더 내 | 자유 (본인 브랜치) |
+
+각 브랜치는 자신이 소유하지 않은 폴더를 건드리지 않는다. 이는 다음 두 가지로 강제된다:
+1. **[CODEOWNERS](.github/CODEOWNERS)** — 폴더별 필수 리뷰어 지정
+2. **[path-guard 워크플로우](.github/workflows/path-guard.yml)** — PR이 대상 브랜치의 소유 폴더 밖 파일을 건드리면 CI 실패
+
+로컬 작업 시 자신의 폴더만 체크아웃하려면 [`scripts/setup-sparse-checkout.sh`](scripts/setup-sparse-checkout.sh) 참고.
+
+### main 보호 설정 (GitHub에서 수동 설정 필요)
+
+리포 코드만으로는 push 차단이 강제되지 않는다 — GitHub Settings에서 브랜치 보호 규칙을 켜야 실제로 막힌다.
+
+**Settings → Branches → Add branch ruleset (또는 Add rule) → Branch name pattern: `main`**
+
+- [x] Require a pull request before merging
+  - Require approvals: 1
+- [x] Require status checks to pass before merging
+  - `gitleaks` 체크 추가
+  - Require branches to be up to date before merging
+- [x] Do not allow bypassing the above settings (관리자 포함 — 1인이라도 실수 방지)
+- [x] Restrict deletions / Block force pushes
+
+같은 방식으로 `backend`, `frontend` 브랜치에도 규칙 추가하고, 여기엔 **`path-guard` 체크를 required로 반드시 추가**할 것 —
+안 그러면 path-guard가 실패해도 그냥 머지가 가능해서 폴더 소유권 강제가 무력화된다.
+
+## 보안
+
+모든 push/PR에서 [gitleaks](.github/workflows/gitleaks.yml)로 시크릿 유출을 스캔한다. 설정은 [`.gitleaks.toml`](.gitleaks.toml). 시크릿은 전부 Key Vault → CSI → K8s Secret 경로로만 주입되며 코드에 하드코딩하지 않는다.
+
+## 인프라
+
+Azure AKS + ArgoCD(GitOps) + Bicep(IaC). 자세한 내용은 [`infra/README.md`](infra/README.md) 참고.
