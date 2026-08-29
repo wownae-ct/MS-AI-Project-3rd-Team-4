@@ -84,7 +84,12 @@ _SEARCH_SQL = text("""
                 + CASE
                       WHEN :apply_contract_bonus
                            AND COALESCE(v.item_type, k.item_type) = 'CONTRACT_TERM'
-                      THEN :contract_bonus
+                      -- 가산점 바인딩 파라미터는 바인딩 전엔 타입이 unknown이라, 이 THEN
+                      -- 분기를 명시 캐스팅하지 않으면 Postgres가 ELSE 0(정수 리터럴)에 맞춰
+                      -- 전체 CASE 타입을 integer로 추론해버려 0.1이 0으로 잘려나간다
+                      -- (red-bug.md #22 — F9 계약조건 가산점이 배포 이래 한 번도 실제로
+                      -- 반영된 적이 없었던 근본 원인, staging 실 DB로 재현·격리 완료).
+                      THEN CAST(:contract_bonus AS double precision)
                       ELSE 0
                   END AS rrf_score
         FROM vector_search v
