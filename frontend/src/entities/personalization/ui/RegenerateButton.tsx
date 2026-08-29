@@ -86,8 +86,12 @@ export function RegenerateButton({ domain, label, impact, onRegenerated }: Regen
     }
   }
 
+  // flex-wrap + basis-full — 이 행은 자식 수가 고정인데 **뒤 둘의 길이를 서버가 정한다**
+  // (`note` 는 실행 결과, `error` 는 ApiError.message — 429 rate limit 문구가 특히 길다).
+  // 감싸 주지 않으면 좁은 폭에서 버튼이 밀려 글자가 넘치거나 접힌다. 상태 문구를 자기 줄에
+  // 두는 이 형태는 `pages/dashboard/ui/WeddingDateEdit.tsx` 가 이미 쓰는 선례 그대로다.
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <button
         type="button"
         onClick={handleOpen}
@@ -96,9 +100,9 @@ export function RegenerateButton({ domain, label, impact, onRegenerated }: Regen
       >
         {pending ? "다시 생성하는 중…" : label}
       </button>
-      {note && <output className="text-xs text-ink-soft">{note}</output>}
+      {note && <output className="basis-full text-xs text-ink-soft">{note}</output>}
       {error && (
-        <span role="alert" className="text-xs text-primary">
+        <span role="alert" className="basis-full text-xs text-primary">
           {error}
         </span>
       )}

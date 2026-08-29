@@ -8,7 +8,10 @@ import { ApiError } from "@/shared/api";
 
 const ADD_BTN =
   "w-full rounded-sm border border-dashed border-line bg-transparent py-2.5 text-sm font-bold text-ink-soft";
-const FORM_INPUT = "min-h-tap w-full rounded-md border border-line bg-surface px-2.5 text-sm text-ink";
+// [2026-08-29] `text-sm`(14px) 이었다 — 「입력 필드 16px 미만 금지」 규범 위반(a11y.md §2.5).
+// iOS Safari 가 16px 미만 입력에 포커스 시 화면을 자동 확대하고 되돌리지 않는다. 같은 폼의
+// `AddChecklistItemRow`/`AddPaymentRow` 는 처음부터 `text-base` 였다 — 이 파일만 갈려 있었다.
+const FORM_INPUT = "min-h-tap w-full rounded-md border border-line bg-surface px-2.5 text-base text-ink";
 
 interface AddTimelineItemRowProps {
   onAdded: () => void;

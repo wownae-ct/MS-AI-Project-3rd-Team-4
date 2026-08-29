@@ -126,9 +126,12 @@
 | 캡션 · 라벨 | `text-xs` 12px + `text-ink-soft` |
 | 입력 필드 | **16px 미만 금지** |
 | 행간 (CJK) | 1.5~1.6 |
+| 한국어 줄바꿈 | **어절 단위** — `body` 에 `word-break: keep-all` + `overflow-wrap: break-word` ([D19](decisions.md#d19-한국어-조판-규칙의-값과-범위를-함께-고친다--keep-all--break-word-본문-전체)) |
 | 최소 터치 타겟 | 44px (`min-h-tap`) |
 
 수치의 출처와 **근거 등급**은 [a11y.md](a11y.md). 요약하면 — **44px은 WCAG AA가 아니라 AAA다.**
+
+⚠️ 줄바꿈 규칙의 두 값은 **짝이고 둘 다 필요하다.** `keep-all` 단독이면 어절보다 긴 문자열이 컨테이너를 밀어내고, `break-word` 대신 `overflow-wrap: anywhere` 를 쓰면 그 값이 `min-content` 계산에까지 끼어들어 **좁은 flex 자리에서 글자가 세로로 접힌다**(D19 가 고친 실제 결함이다). 호출부에서 이 짝을 다시 걸지 않는다 — `body` 에서 상속된다.
 
 ## 갱신 규칙
 

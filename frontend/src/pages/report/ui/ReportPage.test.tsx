@@ -98,7 +98,11 @@ describe("카드 구조", () => {
     await renderReport();
 
     const titles = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
-    expect(titles).toEqual(["예산", "카테고리별 진행률", "다음에 확인하면 좋아요"]);
+    // [2026-08-29] 이 단언이 **낡아 있었다** — 2026-08-28 에 이 카드의 산출 기준이 체크리스트에서
+    // 타임라인으로 바뀌며 제목도 「카테고리별 진행률」→「타임라인 진행률」이 됐는데(ReportPage.tsx
+    // 머리말 · CompletionRow.tsx 머리말) 여기만 따라오지 않아 이 테스트가 계속 빨간불이었다.
+    // 화면 쪽이 옳으므로 단언을 화면에 맞춘다.
+    expect(titles).toEqual(["예산", "타임라인 진행률", "다음에 확인하면 좋아요"]);
   });
 
   it("추천 카드의 부제는 제목이 아니다", async () => {

@@ -56,12 +56,16 @@ export function ReportButton({ targetType, targetId }: ReportButtonProps) {
     );
   }
 
+  // [2026-08-29] 두 입력이 `text-xs`(12px) 였다 — 「입력 필드 16px 미만 금지」 규범 위반
+  // (a11y.md §2.5). iOS Safari 가 16px 미만 입력에 포커스 시 화면을 자동 확대하고 되돌리지 않는다.
+  // `w-full` 을 함께 준다 — 이 폼은 체크리스트/타임라인 행의 flex 형제로 놓이는데(그쪽에
+  // `flex-wrap` 을 걸었다) 글자가 커진 만큼 자기 줄에서 전폭을 쓰는 편이 예측 가능하다.
   return (
-    <div className="flex flex-col gap-1.5 rounded-md border border-line bg-bg p-2">
+    <div className="flex w-full flex-col gap-1.5 rounded-md border border-line bg-bg p-2">
       <select
         value={reason}
         onChange={(e) => setReason(e.target.value as FeedbackReasonCategory)}
-        className="rounded-md border border-line bg-surface px-2 py-1 text-xs text-ink"
+        className="min-h-tap w-full rounded-md border border-line bg-surface px-2 text-base text-ink"
       >
         {REASON_OPTIONS.map((r) => (
           <option key={r} value={r}>
@@ -74,7 +78,7 @@ export function ReportButton({ targetType, targetId }: ReportButtonProps) {
         value={comment}
         onChange={(e) => setComment(e.target.value)}
         placeholder="추가 설명(선택)"
-        className="rounded-md border border-line bg-surface px-2 py-1 text-xs text-ink"
+        className="min-h-tap w-full rounded-md border border-line bg-surface px-2 text-base text-ink"
       />
       {error && (
         <p role="alert" className="text-xs text-primary">

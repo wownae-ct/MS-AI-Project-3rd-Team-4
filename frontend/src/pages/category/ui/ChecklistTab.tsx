@@ -164,7 +164,11 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
         </Card>
       )}
 
-      <div className="flex items-center justify-between gap-2">
+      {/* flex-wrap — 「계약 조항만 보기」 라벨(약 118px)과 「AI 체크리스트 다시 생성」 버튼(약
+          131px)이 이미 빡빡한데, 재생성 후에는 그 옆에 결과 문구가 더 붙는다. 375px 폰의
+          가용폭(343px)을 넘는 순간 종전엔 라벨과 버튼이 **둘 다 세로로 접혔다**(D19 §결함 ①).
+          D19 가 그 붕괴를 막았으므로 이제는 넘치기 전에 줄을 바꿔 줘야 한다. */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <label className="flex items-center gap-2 text-sm text-ink-soft">
           <input
             type="checkbox"

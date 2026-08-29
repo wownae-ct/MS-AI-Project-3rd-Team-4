@@ -142,12 +142,21 @@ export function TypographySection() {
       </Rule>
       <Card className="flex flex-col gap-2">
         <h3 className="text-base font-bold text-ink">한국어 줄바꿈</h3>
+        {/* [2026-08-29 D19] 이 카드가 **옛 범위를 문서화**하고 있었다 — "제목 · 버튼 · 라벨에는".
+            규칙이 `body` 로 올라가 문서 전체가 상속하므로 문구를 고치고, 실증 상자에 본문 예시를
+            더해 규칙이 어디까지 미치는지 화면에서 바로 보이게 한다. */}
         <p className="text-sm text-ink-soft">
-          제목 · 버튼 · 라벨에는 <code className="font-bold">word-break: keep-all</code> 이 걸려 있어 어절
-          중간에서 줄이 끊기지 않습니다. 아래 상자의 제목을 보세요.
+          <span className="font-bold">모든 텍스트</span>에 <code className="font-bold">word-break: keep-all</code> 이
+          걸려 있어 어절 중간에서 줄이 끊기지 않습니다. 짝인{" "}
+          <code className="font-bold">overflow-wrap: break-word</code> 는 어절 하나가 줄보다 길 때만 그 어절을
+          끊습니다 — <code className="font-bold">anywhere</code> 가 아닙니다. 그 값은 최소 폭 계산에까지
+          끼어들어 좁은 자리에서 글자를 세로로 접습니다.
         </p>
         <div className="max-w-[13rem] rounded-sm border border-line p-3">
           <h4 className="text-base font-bold text-ink">긴 제목도 어절 중간에서 끊기지 않습니다</h4>
+          <p className="mt-1 text-sm text-ink-soft">
+            본문도 마찬가지입니다. 예식장 계약서를 꼼꼼히 확인하세요.
+          </p>
         </div>
       </Card>
     </Section>

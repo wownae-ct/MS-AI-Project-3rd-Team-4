@@ -36,7 +36,7 @@ import type { TotalAverageBenchmark } from "@/entities/wedding";
 import { REGION_CODES, type RegionCode } from "@/shared/api";
 import { wonStringToManwon, wonToManwon } from "@/shared/lib/money";
 import { NumberInput } from "@/shared/ui";
-import { FIELD_LABEL, FIELD_NOTE_KEEP, INPUT, INPUT_DISABLED, SELECT } from "../onboarding-styles";
+import { FIELD_LABEL, FIELD_NOTE, INPUT, INPUT_DISABLED, SELECT } from "../onboarding-styles";
 import { TotalBudgetField } from "./TotalBudgetField";
 
 // 2026-08-26 사용자 피드백: 5개(서울강남/서울외/경기/인천/부산)만 노출돼 있었다 — 지역 14개
@@ -163,14 +163,14 @@ export function Step2RegionBudget({
             비활성 입력칸의 value 는 스크린리더 전달이 불확실하므로 같은 금액을 이 문단이 원 단위
             텍스트로도 반드시 전달하게 둔다(하객수 쪽과 같은 근거). */}
         {benchmark !== null && (
-          <p className={FIELD_NOTE_KEEP}>
+          <p className={FIELD_NOTE}>
             {totalBudgetUnsure
               ? `${regionLabel} 지역 예식장+스드메 참가격 평균 합산인 ${benchmark.median_price.toLocaleString("ko-KR")}원으로 설정됐어요.`
               : `${regionLabel} 지역 예식장+스드메 참가격 평균 합산은 ${benchmark.median_price.toLocaleString("ko-KR")}원 이에요.`}
           </p>
         )}
         {totalBudgetUnsure && (
-          <p className={FIELD_NOTE_KEEP}>위 참고값으로 시작하고, 나중에 정확한 예산으로 바꿀 수 있어요.</p>
+          <p className={FIELD_NOTE}>위 참고값으로 시작하고, 나중에 정확한 예산으로 바꿀 수 있어요.</p>
         )}
       </TotalBudgetField>
 
@@ -207,7 +207,7 @@ export function Step2RegionBudget({
             placeholder 는 스크린리더로 잘 전달되지 않으므로, 같은 200을 이 문단이 텍스트로도
             반드시 전달하게 둔다(둘 다 같은 상수에서 나온다). */}
         {guestCountUnsure && (
-          <p className={FIELD_NOTE_KEEP}>
+          <p className={FIELD_NOTE}>
             평균 보증인원 기준인 {GUEST_COUNT_UNSURE_DEFAULT}명으로 시작해요. 나중에 언제든
             바꿀 수 있어요.
           </p>

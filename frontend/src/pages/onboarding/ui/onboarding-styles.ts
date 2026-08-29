@@ -64,8 +64,10 @@ export const TEXTAREA =
 // 겪은 사고 — 최초 수정 커밋이 설명 주석에 그 단어를 그대로 썼다가 이 게이트에 다시 잡혔다).
 export const FIELD_NOTE = "text-xs text-ink-soft";
 
-// 어절 단위로만 줄을 끊는 안내 문구용(2026-08-28 사용자 지시). styles.css 가 제목·버튼·라벨에
-// 거는 `word-break: keep-all` + `overflow-wrap: anywhere` 짝과 같은 조합이다 — 그 규칙은 요소
-// 선택자 기반이라 <div> 안의 <p>인 이 문구들은 상속받지 못해서 유틸리티로 다시 건다.
-// 뒤쪽 유틸리티는 긴 금액 문자열이 좁은 화면에서 컨테이너를 밀어내는 경우를 받아낸다.
-export const FIELD_NOTE_KEEP = `${FIELD_NOTE} break-keep wrap-anywhere`;
+// [2026-08-29 D19] `FIELD_NOTE_KEEP` 을 삭제했다.
+//
+// 그 상수는 어절 단위 줄바꿈을 이 문구들에 **다시 걸어 주는 우회책**이었고, 존재 사유가 자기
+// 주석에 적혀 있었다 — *"그 규칙은 요소 선택자 기반이라 <div> 안의 <p>인 이 문구들은 상속받지
+// 못해서 유틸리티로 다시 건다."* D19 가 `styles.css` 의 조판 규칙을 `body` 로 올려 문서 전체가
+// 상속하게 만들었으므로 **이제 필요가 없다.** 호출부는 `FIELD_NOTE` 를 그대로 쓰면 된다.
+// (같은 이유로 `ChecklistItemRow.tsx` 의 `break-words` 손패치도 함께 지웠다.)
