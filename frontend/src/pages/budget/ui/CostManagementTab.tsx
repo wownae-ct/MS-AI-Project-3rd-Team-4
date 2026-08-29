@@ -1,8 +1,10 @@
 // "비용 관리" 섹션 — 전 카테고리 통합 납부 내역 + 영수증 OCR 입력 (UX 개편, 2026-08-26 신설).
 //
 // `getPayments()`를 `categoryCode` 없이 부른다 — 이 파라미터가 원래 optional이라(entities/payment/
-// api/payment.ts) 전체 카테고리 결제 내역 조회에 백엔드 변경이 필요 없다. 정렬은 서버가 보장하지
-// 않으므로 여기서 결제일(없으면 예정일) 내림차순으로 다시 정렬한다 — 최근/임박한 것이 위로.
+// api/payment.ts) 전체 카테고리 결제 내역 조회에 백엔드 변경이 필요 없다. **정렬은 서버가 보장하지
+// 않으므로 화면이 직접 세운다** — 규칙과 근거는 `sort-payments.ts` 머리말에 있다(2026-08-29,
+// 사용자 지시로 「최근 활동순」에서 「예정일 기준」으로 바뀌었다: 아직 안 낸 건이 예정일 임박순으로
+// 앞, 끝난 건이 뒤).
 // 카테고리 필터는 이 정렬된 목록을 클라이언트에서 다시 거른다(재조회 안 함) — 목록이 이미
 // 한 번에 다 와 있으므로(has_cost 카테고리 전체) 필터 전환마다 로딩 상태를 새로 만들 이유가 없다.
 //
@@ -22,6 +24,7 @@ import { useEffect, useState } from "react";
 import { AddPaymentRow, PaymentListRow, getPayments, type Payment } from "@/entities/payment";
 import { ApiError } from "@/shared/api";
 import { Card, Loading, SkeletonRows } from "@/shared/ui";
+import { sortPaymentsByDueDate } from "./sort-payments";
 
 export interface CostManagementTabProps {
   categoryLabelByCode: ReadonlyMap<string, string>;
@@ -35,10 +38,6 @@ const PAGE_BUTTON =
 const FILTER_SELECT = "min-h-tap rounded-md border border-line bg-surface px-2 text-xs text-ink";
 const ALL_CATEGORIES = "";
 
-function sortByRecency(payments: readonly Payment[]): Payment[] {
-  return payments.toSorted((a, b) => (b.paid_date ?? b.due_date ?? "").localeCompare(a.paid_date ?? a.due_date ?? ""));
-}
-
 export function CostManagementTab({ categoryLabelByCode, categoryOptions, onPaymentsChanged }: CostManagementTabProps) {
   const [payments, setPayments] = useState<Payment[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +47,7 @@ export function CostManagementTab({ categoryLabelByCode, categoryOptions, onPaym
   function refetchPayments() {
     getPayments()
       .then((res) => {
-        setPayments(sortByRecency(res.payments));
+        setPayments(sortPaymentsByDueDate(res.payments));
         // 이전 실패로 뜬 에러가 있었다면 지운다 — CostTab.tsx의 같은 관례(레드팀 감사 교차 패턴 02).
         setError(null);
       })
@@ -62,7 +61,7 @@ export function CostManagementTab({ categoryLabelByCode, categoryOptions, onPaym
     getPayments()
       .then((res) => {
         if (cancelled) return;
-        setPayments(sortByRecency(res.payments));
+        setPayments(sortPaymentsByDueDate(res.payments));
         setError(null);
       })
       .catch((err: unknown) => {
