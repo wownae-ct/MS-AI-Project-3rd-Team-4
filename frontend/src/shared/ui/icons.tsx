@@ -3,7 +3,7 @@
 // 의미를 전달해야 하는 자리라면 아이콘이 아니라 텍스트로 말한다.
 //
 // 추가 규칙: 쓸 곳이 확정되지 않은 아이콘을 미리 만들지 않는다. 필요해지면 같은 파일에 추가한다.
-// 20개를 넘어가면 lucide-react 도입을 재검토한다(ADR 0004).
+// 20개를 넘어가면 lucide-react 도입을 재검토한다(ADR 0004). **현재 14종**(브랜드 마크 2 포함).
 // Home·Calendar·Wallet·Chart 는 하단 탭바 4개(홈·타임라인·예산·리포트)의 용처가 확정돼 추가했다
 // (docs/design/layout.md §3). 아이콘만으로는 뜻이 전달되지 않으므로 **라벨을 항상 함께 표시한다** — NNG Icon Usability.
 
@@ -124,6 +124,59 @@ export function IconSettings(props: IconProps) {
       <line x1="17.7" y1="6.3" x2="19.8" y2="4.2" />
     </svg>
   );
+}
+
+// 영수증 촬영/선택 버튼(entities/payment/ui/AddPaymentRow.tsx)에서 컬러 이모지 📷 를 걷어내며
+// 용처가 확정돼 추가했다(D18). 다른 아이콘처럼 primitive(사각+선+원)만 쓴다.
+export function IconCamera(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <rect x="2" y="7" width="20" height="13" rx="2" />
+      <path d="M8 7 9.3 4h5.4L16 7" />
+      <circle cx="12" cy="13.5" r="3.5" />
+    </svg>
+  );
+}
+
+// 엄지 — AI 답변 평가 버튼(entities/chat/ui/MessageBubble.tsx)에서 컬러 이모지 👍👎 를 걷어내며
+// 용처가 확정돼 추가했다(D18).
+//
+// **두 아이콘은 같은 기하의 180° 점대칭이다.** 손으로 두 번 그리면 굵기·시각 중심이 반드시
+// 어긋나고, 나란히 놓인 두 버튼에서는 그 어긋남이 바로 보인다. 기하를 한 벌만 두고 회전으로
+// 파생시키면 대칭이 구조적으로 보장된다(Lucide 의 thumbs-down 도 thumbs-up 의 점대칭이다).
+//
+// 손목(rect)과 손바닥(path)을 분리한 구성이라 path 는 왼쪽이 열려 있다 — 그 열린 변이 정확히
+// rect 의 오른쪽 변(x=7)과 겹쳐 손목/손바닥 경계선이 된다. filled 일 때 SVG 는 열린 path 를
+// 닫힌 것처럼 채우므로 이 구성 그대로 면이 메워진다.
+const THUMB_CUFF = { x: 2.5, y: 10.5, width: 4.5, height: 9.5, rx: 1.5 } as const;
+const THUMB_BODY = "M7 11.5 10.8 3.6a2 2 0 0 1 3.2 1.6V10h4.4a2 2 0 0 1 1.9 2.6l-1.7 5.4A2.5 2.5 0 0 1 16.3 20H7";
+
+// 엄지 두 종에만 여는 prop 이다 — 공용 IconProps 는 그대로 둔다(이 파일 머리말: "그 아이콘만
+// 별도 props 로 연다"). 아이콘은 여전히 장식이라 label 은 열지 않는다: 접근명은 이 아이콘을 감싼
+// 버튼의 aria-label 이 갖는다.
+export interface ThumbIconProps extends IconProps {
+  /** 선택됨 — 면을 채운다. 선택을 색 하나로만 알리지 않기 위한 두 번째 채널이다(WCAG 1.4.1). */
+  filled?: boolean;
+}
+
+// fill 은 base() 가 주는 "none" 을 **뒤쪽 prop 으로** 덮어쓴다 — 순서가 뒤바뀌면 채움이 조용히 사라진다.
+function Thumb({ filled, down, ...props }: ThumbIconProps & { down: boolean }) {
+  return (
+    <svg {...base(props)} fill={filled === true ? "currentColor" : "none"}>
+      <g transform={down ? "rotate(180 12 12)" : undefined}>
+        <rect {...THUMB_CUFF} />
+        <path d={THUMB_BODY} />
+      </g>
+    </svg>
+  );
+}
+
+export function IconThumbUp(props: ThumbIconProps) {
+  return <Thumb {...props} down={false} />;
+}
+
+export function IconThumbDown(props: ThumbIconProps) {
+  return <Thumb {...props} down={true} />;
 }
 
 // 브랜드 마크(Google·Naver) — 위 아이콘들과 달리 currentColor 를 따르지 않는다. 로그인 버튼에

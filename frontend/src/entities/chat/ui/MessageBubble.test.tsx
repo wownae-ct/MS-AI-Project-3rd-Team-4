@@ -9,11 +9,16 @@
 //
 // 목록 자체의 동작은 shared/ui/SourceList.test.tsx 가 덮는다. 여기서는 **말풍선이 무엇을 어떤
 // 모양으로 넘기는지**만 단언한다.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ChatMessage } from "../model";
 import { MessageBubble } from "./MessageBubble";
+
+// 화면에 나가는 이모지를 잡는다(D18). 소스 전역 게이트(scripts/lib/source-norms.mjs)가 아니라
+// **렌더 결과**를 보는 이유 — 그 스캐너는 정규식 기반이라 주석을 구분하지 못하는데, 이 저장소
+// 주석에는 🚨·⚠️ 가 의도적으로 많다. 화면에 나가는 것만 정확히 잡으려면 여기가 맞는 자리다.
+const EMOJI = /\p{Extended_Pictographic}/u;
 
 const LONG_TITLE = "결혼식장 표준약관 제9조 위약금 및 계약해제에 관한 세부 조항 전문";
 
@@ -29,7 +34,7 @@ const MESSAGE: ChatMessage = {
 describe("AI 답변 — 검증 배지", () => {
   it("verdict 4종을 목업 문구 그대로 낸다", () => {
     const { rerender } = render(<MessageBubble message={MESSAGE} />);
-    expect(screen.getByText("✓ 근거 확인됨")).toBeInTheDocument();
+    expect(screen.getByText("근거 확인됨")).toBeInTheDocument();
 
     rerender(<MessageBubble message={{ ...MESSAGE, verification: { verdict: "WEAK", reason: "" } }} />);
     expect(screen.getByText("근거 불충분")).toBeInTheDocument();
@@ -59,7 +64,7 @@ describe("AI 답변 — 검증 배지", () => {
     render(<MessageBubble message={{ ...MESSAGE, verification: undefined }} />);
 
     // 이 시점엔 "근거 없음"조차 확정된 사실이 아니다.
-    expect(screen.queryByText("✓ 근거 확인됨")).not.toBeInTheDocument();
+    expect(screen.queryByText("근거 확인됨")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /근거/u })).not.toBeInTheDocument();
   });
 
@@ -132,5 +137,76 @@ describe("AI 답변 — 인용 근거", () => {
 
     expect(screen.getByText("팀에서 직접 정리한 자료라 원문 링크는 없어요.")).toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+});
+
+// 평가 버튼은 그동안 테스트가 **한 건도 없었다**(ChatPanel.test.tsx 도 평가를 다루지 않는다).
+// 👍/👎 이모지를 자체 아이콘으로 바꾸면서(D18) 함께 채운다 — 특히 접근명과 aria-pressed 는
+// 이모지가 사라져도 **글자 그대로 유지되어야 하는** 계약이라 여기서 못박는다.
+describe("AI 답변 — 평가 버튼", () => {
+  const RATED: ChatMessage = { ...MESSAGE, user_rating: "GOOD" };
+
+  it("onRate 를 안 넘기면(인사말·스트리밍 draft) 평가 버튼이 아예 없다", () => {
+    render(<MessageBubble message={MESSAGE} />);
+
+    expect(screen.queryByRole("button", { name: /도움됐어요|아쉬워요/u })).not.toBeInTheDocument();
+  });
+
+  it("verification 이 아직 안 왔으면 평가 버튼이 없다 — 완결된 답변이 아니다", () => {
+    render(<MessageBubble message={{ ...MESSAGE, verification: undefined }} onRate={() => {}} />);
+
+    expect(screen.queryByRole("button", { name: /도움됐어요|아쉬워요/u })).not.toBeInTheDocument();
+  });
+
+  it("접근명은 이모지 시절 문구 그대로다 — 아이콘은 장식이라 이름을 만들지 않는다", () => {
+    render(<MessageBubble message={MESSAGE} onRate={() => {}} />);
+
+    expect(screen.getByRole("button", { name: "이 답변이 도움됐어요" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "이 답변이 아쉬워요" })).toBeInTheDocument();
+  });
+
+  it("누르면 해당 메시지 id 와 등급으로 onRate 가 불린다", async () => {
+    const user = userEvent.setup();
+    const onRate = vi.fn();
+    render(<MessageBubble message={MESSAGE} onRate={onRate} />);
+
+    await user.click(screen.getByRole("button", { name: "이 답변이 아쉬워요" }));
+
+    expect(onRate).toHaveBeenCalledExactlyOnceWith("m1", "BAD");
+  });
+
+  // 배타적 선택이므로 한쪽이 눌린 동안 다른 쪽은 반드시 false 다 — 둘 다 true 로 보이면
+  // 스크린리더 사용자에게는 "둘 다 눌림"으로 읽힌다.
+  it("선택 상태가 aria-pressed 로 나오고, 반대쪽은 눌리지 않은 상태로 남는다", () => {
+    render(<MessageBubble message={RATED} onRate={() => {}} />);
+
+    expect(screen.getByRole("button", { name: "이 답변이 도움됐어요" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "이 답변이 아쉬워요" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  // 선택을 **색 하나로만** 알리지 않는다(WCAG 1.4.1). 형태 채널은 아이콘의 fill 이다 —
+  // 선택된 쪽만 면이 채워지고, 반대쪽은 선으로 남는다.
+  //
+  // ⚠️ 버튼을 접근명으로 집는다. 위치(querySelectorAll)로 집으면 근거 목록 토글이 첫 버튼이라
+  // 엉뚱한 svg(IconChevronDown)를 검사하게 된다 — 실제로 한 번 당했다.
+  it("선택된 쪽 아이콘만 면이 채워진다 — 색 말고 형태로도 구분된다", () => {
+    render(<MessageBubble message={RATED} onRate={() => {}} />);
+
+    const up = screen.getByRole("button", { name: "이 답변이 도움됐어요" }).querySelector("svg");
+    const down = screen.getByRole("button", { name: "이 답변이 아쉬워요" }).querySelector("svg");
+
+    expect(up).toHaveAttribute("fill", "currentColor");
+    expect(down).toHaveAttribute("fill", "none");
+  });
+
+  // RTL 의 렌더 루트를 구조 분해하지 않고 document.body 로 읽는다 — 그 식별자는 Tailwind
+  // 스캐너의 bare 후보가 되어 산출 CSS 에 규칙 하나를 만든다(ghost-candidates.test.mjs 가 막고
+  // 있는 유령이고, 그 테스트가 이름을 갖고 있다). screen 이 보는 곳과 같은 노드다.
+  //
+  // ⚠️ 이 주석에 그 식별자를 평문으로 적지 않는다 — 스캐너는 주석도 후보로 삼는다.
+  it("화면에 이모지가 남아 있지 않다", () => {
+    render(<MessageBubble message={RATED} onRate={() => {}} />);
+
+    expect(document.body.textContent).not.toMatch(EMOJI);
   });
 });

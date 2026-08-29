@@ -28,7 +28,7 @@ CSS 는 사이드이펙트라 `index.ts` 로 재수출할 수 없다 — 그래�
 | bg / surface / line | `#F7F6F4` / `#FFFFFF` / `#E7E3DE` | `bg-surface` `border-line` | `bg` 는 base 레이어가 `body` 에 1회 적용 |
 | 라운드 sm / md / lg / pill | `8` / `10` / `16` / `999px` | `rounded-sm` `rounded-md` `rounded-lg` `rounded-pill` | **4단계가 전부다** — `--radius-*: initial` 로 Tailwind 기본 8단계를 폐기했다(D1). `rounded-2xl` 류는 생성되지 않는다. ⚠️ `rounded-full`(∞px)·`rounded-none`(0)은 폐기와 무관하게 살아남는다 — `full` 은 게이트가 잡고, 원형은 `rounded-pill` 로. 이 저장소에서 `rounded-md` 는 10px, `rounded-lg` 는 16px(카드) |
 | spacing xs~xl | `4/8/16/20/24px` | Tailwind 기본 `--spacing`(4px) 배수 | 정확히 표현된다 → **별도 토큰을 만들지 않았다**. ⚠️ 이 칸에 유틸리티명을 나열하지 않는다 — 스캐너가 읽어 유틸리티를 만든다(아래 「산문이 유틸리티를 만든다」) |
-| 터치 타겟 44px | — | `min-h-tap` | **WCAG AAA 2.5.5 + Apple HIG 44pt + KRDS 터치 44px 의 수렴.** WCAG **AA** 최저선은 24px(2.5.8). 근거 등급은 [a11y.md](../../../docs/design/a11y.md) §1 |
+| 터치 타겟 44px | — | `min-h-tap` `min-w-tap` | **WCAG AAA 2.5.5 + Apple HIG 44pt + KRDS 터치 44px 의 수렴.** WCAG **AA** 최저선은 24px(2.5.8). 근거 등급은 [a11y.md](../../../docs/design/a11y.md) §1. ⚠️ **44px 는 두 변 모두다** — 라벨 없는 아이콘 버튼은 높이만 잡으면 가로가 글리프 폭까지 줄어든다(AI 답변 평가 버튼이 실제로 28px 였다, D18) |
 | 주 본문 (읽는 글) | — | `text-base`(16px) + `text-ink` | **원 디자인 문서의 공백을 메운 단계.** KRDS "본문 최소 16px" 권고와 일치 |
 | 보조 문구 | `~0.86rem` | `text-sm`(14px) + `text-ink-soft` | 원 디자인 문서의 Body("설명 텍스트, 보조 문구")가 이 자리다 |
 | 캡션·라벨 | — | `text-xs`(12px) + `text-ink-soft` | 짧은 것만 |
@@ -45,7 +45,7 @@ CSS 는 사이드이펙트라 `index.ts` 로 재수출할 수 없다 — 그래�
 4. **semantic color(성공/경고/위험)를 지어내지 않는다** — 도입하지 않기로 닫았다 ([D6](../../../docs/design/decisions.md#d6-상태-색을-도입하지-않는다)). 상태는 보더 · 배경 톤 · 텍스트 · 형태로 표현한다.
 5. **`ring-*` 금지 — 링은 `outline-*` 로** — `ring-2` 류는 `box-shadow` 로, `ring-primary` 류는 `--tw-ring-color` 커스텀 속성으로 컴파일된다. **어떤 네임스페이스 폐기로도 막히지 않는다**(컴파일 실측). 게이트가 둘 다 잡는다. `outline-2 outline-offset-2 outline-primary` 를 쓴다 ([D9](../../../docs/design/decisions.md#d9-ring--를-금지어로-둔다)).
 6. **금액은 `Money`로만** — KRW 정수 · 콤마 · `tabular-nums` · 700. 화면마다 `toLocaleString` 을 직접 부르면 표기가 조용히 갈린다.
-7. **아이콘은 인라인 SVG** — 외부 아이콘 CDN 금지(self-hosting 원칙). 20개를 넘으면 라이브러리 도입을 재검토한다.
+7. **아이콘은 인라인 SVG** — 외부 아이콘 CDN 금지(self-hosting 원칙). 20개를 넘으면 라이브러리 도입을 재검토한다(현재 14종). **화면에 나가는 이모지·문자 글리프를 쓰지 않는다** — 폰트 글리프라 색 게이트의 사각지대이고, 코드포인트가 Wanted Sans 의 어느 `unicode-range` 조각에도 없어 OS 폰트로 폴백해 플랫폼마다 모양·폭·색이 달라진다 ([D18](../../../docs/design/decisions.md#d18-화면에-렌더되는-이모지문자-글리프를-자체-아이콘으로-대체한다)). 주석 안의 이모지는 화면에 나가지 않으므로 무관하다.
 8. **폰트는 self-host** — Wanted Sans Variable(OFL-1.1). 원 디자인 문서가 Pretendard 를 명시적으로 기각했다.
 9. **다크모드 없음** — 라이트 전용. 게이트가 `prefers-color-scheme` 을 막는다.
 

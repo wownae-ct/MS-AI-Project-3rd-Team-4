@@ -24,7 +24,7 @@
 import { useRef, useState } from "react";
 import { ApiError } from "@/shared/api";
 import { AMOUNT_STEP_WON } from "@/shared/lib/money";
-import { NumberInput } from "@/shared/ui";
+import { IconCamera, NumberInput } from "@/shared/ui";
 import { createPayment, getReceiptExtract } from "../api/payment";
 import type { PaymentType } from "../model";
 import { PAYMENT_TYPE_LABEL } from "./payment-labels";
@@ -32,9 +32,13 @@ import { PAYMENT_TYPE_LABEL } from "./payment-labels";
 const ADD_BTN =
   "mt-3 w-full rounded-sm border border-dashed border-line bg-transparent py-2.5 text-sm font-bold text-ink-soft";
 const FORM_INPUT = "min-h-tap w-full rounded-md border border-line bg-surface px-2.5 text-base text-ink";
+// [2026-08-29 D18] text-center → inline-flex 중앙 정렬. 라벨 앞의 📷 컬러 이모지를 IconCamera 로
+// 바꾸면서 필요해졌다 — min-h-tap 이 박스를 줄높이보다 키울 때 콘텐츠를 수직 중앙에 두는 이
+// 저장소의 표준 방식이다(shared/ui/Button.tsx BASE 와 같은 이유).
 const RECEIPT_BTN =
-  "min-h-tap w-full cursor-pointer rounded-md border border-dashed border-primary bg-primary-soft " +
-  "text-center text-sm font-bold text-primary disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex min-h-tap w-full cursor-pointer items-center justify-center gap-2 rounded-md " +
+  "border border-dashed border-primary bg-primary-soft " +
+  "text-sm font-bold text-primary disabled:cursor-not-allowed disabled:opacity-50";
 const FIELD_NOTE = "text-xs text-ink-soft";
 
 // 백엔드 허용치와 동일하게 맞춘다(backend/app/routers/budget.py:56-58) — 서버 왕복 없이
@@ -196,7 +200,18 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
         disabled={isExtracting}
         onClick={() => fileInputRef.current?.click()}
       >
-        {isExtracting ? "영수증 분석 중…" : "📷 영수증으로 채우기"}
+        {/* 진행 중 분기에는 아이콘을 넣지 않는다 — AddPaymentRow.test.tsx 가 그 접근명("영수증
+            분석 중…")을 정확히 고정하고 있고, 진행 중 상태는 문구가 스스로 말한다.
+            아이콘이 aria-hidden 이라 유휴 상태 접근명도 "영수증으로 채우기"로 깨끗해졌다 —
+            종전엔 "📷 영수증으로 채우기"라 일부 스크린리더가 이모지 이름까지 읽었다. */}
+        {isExtracting ? (
+          "영수증 분석 중…"
+        ) : (
+          <>
+            <IconCamera size={16} />
+            영수증으로 채우기
+          </>
+        )}
       </button>
       {receiptUrl !== null && !isExtracting && <p className={FIELD_NOTE}>영수증에서 읽은 값이에요 — 확인하고 필요하면 고쳐주세요.</p>}
       {/* categoryOptions가 있을 때만 렌더 — 카테고리가 이미 고정된 S3 비용 탭은 이 select 자체가
