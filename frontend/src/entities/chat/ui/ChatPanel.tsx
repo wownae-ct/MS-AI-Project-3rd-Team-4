@@ -22,17 +22,9 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ApiError } from "@/shared/api";
 import { Button, Card } from "@/shared/ui";
 import { createChatSession, getChatMessages, rateChatMessage, sendChatMessage } from "../api/chat";
-import type { ChatCitation, ChatMessage, ChatStage, ChatVerification, MessageRating } from "../model";
+import type { ChatMessage, ChatStage, MessageRating } from "../model";
 import { MessageBubble } from "./MessageBubble";
-import { TypingIndicator } from "./TypingIndicator";
-
-// stage 이벤트(2026-08-24 백엔드 세션 추가) 라벨 — 챗 그래프 3노드(retrieve→generate→verify)
-// 이름과 1:1. 사용자 요청 "진행상황이 보이게해야지"에 대응하는 실제 표시 문구.
-const STAGE_LABELS: Record<ChatStage, string> = {
-  retrieve: "근거를 찾고 있어요",
-  generate: "답변을 작성하고 있어요",
-  verify: "답변을 검증하고 있어요",
-};
+import { StreamingDraft, type DraftAssistantMessage } from "./StreamingDraft";
 
 interface ChatPanelProps {
   /**
@@ -52,14 +44,6 @@ interface ChatPanelProps {
   renderReportAction?: (messageId: string) => ReactNode;
 }
 
-// 스트리밍 중인 답변을 완결된 ChatMessage 처럼 다루기 위한 임시 형태 — id 는 아직 서버가
-// 발급하지 않았으므로(done 이벤트에서야 message_id 가 온다) 프론트에서만 쓰는 자리표시자.
-interface DraftAssistantMessage {
-  content: string;
-  citations?: ChatCitation[];
-  verification?: ChatVerification;
-}
-
 export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderReportAction }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState<DraftAssistantMessage | null>(null);
@@ -68,9 +52,8 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
   const [error, setError] = useState<string | null>(null);
   const [stage, setStage] = useState<ChatStage | null>(null);
   // CRAG 재시도 루프(verify가 WEAK/GENERAL이면 최대 1회 retrieve→generate→verify를 다시 돎,
-  // 2026-08-24 백엔드 세션 인계) 진행 중 여부 — stage가 아직 없거나(현재 배포본) null로 리셋된
-  // 직후(2차 시도의 첫 stage 이벤트가 오기 전) TypingIndicator 라벨을 "다시 찾는 중"으로 보여주는
-  // 용도일 뿐, retry 자체의 처리(토큰 버리기)는 draft/draftRef 리셋만으로 끝난다.
+  // 2026-08-24 백엔드 세션 인계) 진행 중 여부 — 화면에 남아 있는 답변이 아직 1차 결과라는 뜻이라
+  // StreamingDraft가 "다시 찾는 중" 안내를 붙이는 근거가 된다. 2차 첫 토큰이 도착하면 내린다.
   const [retrying, setRetrying] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   // sending state는 리렌더를 거쳐야 반영된다 — IME 조합 확정 시 Enter 키다운이 두 번 잡히는
@@ -96,6 +79,10 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
   // 표시해 그 1회의 히스토리 재조회만 건너뛴다 — 기존에 이미 있던 세션으로 진입할 때의 정상
   // 히스토리 복원(effect 최초 실행)은 그대로 동작한다.
   const skipNextHistoryFetchRef = useRef(false);
+  // CRAG 재시도가 예고된 상태 — 다음 토큰은 2차 답변의 첫 글자이므로 누적이 아니라 **교체**다.
+  // 예전엔 retry 이벤트를 받는 즉시 draft를 비웠는데, 그러면 2차 첫 토큰이 오기까지의 공백 동안
+  // 사용자가 읽던 1차 답변이 통째로 사라졌다(레드팀 감사 #16). 버리는 시점만 뒤로 미룬다.
+  const replaceOnNextTokenRef = useRef(false);
   // 진행 중인 sendChatMessage SSE 스트림을 컴포넌트 언마운트 시 끊기 위한 컨트롤러 — 이전엔
   // abort 수단이 전혀 없어, 하단 탭 이동으로 언마운트돼도 스트림이 조용히 계속 실행됐다
   // (레드팀 감사 HIGH). 요청마다 새로 만들어 교체한다.
@@ -105,7 +92,7 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
       abortControllerRef.current?.abort();
     };
   }, []);
-  // 평가(👍/👎) 연타 가드 — 메시지별 "가장 최근 요청" 일련번호. 응답이 보낸 순서와 다르게
+  // 평가(좋아요/싫어요) 연타 가드 — 메시지별 "가장 최근 요청" 일련번호. 응답이 보낸 순서와 다르게
   // 도착해도, 이 메시지에 대해 자신이 아직 최신 요청일 때만 실패 롤백을 적용한다(레드팀 감사:
   // 안 그러면 나중에 보낸 성공 결과를 먼저 보낸 요청의 실패 롤백이 덮어쓸 수 있다).
   const ratingSeqRef = useRef<Map<string, number>>(new Map());
@@ -152,6 +139,7 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
     setSending(true);
     setStage(null);
     setRetrying(false);
+    replaceOnNextTokenRef.current = false;
     const initialDraft = { content: "" };
     setDraft(initialDraft);
     draftRef.current = initialDraft;
@@ -173,8 +161,17 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
         content,
         {
           onToken: (delta) => {
+            // ⚠️ ref 읽기·비우기는 반드시 updater **바깥**에서 한다. StrictMode(app/main.tsx)는
+            // updater를 순수성 검증용으로 두 번 부르는데, 안에서 비우면 두 번째 호출이
+            // replacing=false를 봐서 1차 답변이 지워지지 않고 2차가 뒤에 이어붙는다.
+            const replacing = replaceOnNextTokenRef.current;
+            if (replacing) {
+              replaceOnNextTokenRef.current = false;
+              setRetrying(false); // 2차 답변이 실제로 오기 시작했다 — "다시 찾는 중" 안내를 내린다.
+            }
             setDraft((cur) => {
-              const next = cur ? { ...cur, content: cur.content + delta } : { content: delta };
+              const base = replacing ? "" : (cur?.content ?? "");
+              const next = { ...cur, content: base + delta };
               draftRef.current = next;
               return next;
             });
@@ -197,11 +194,11 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
             setStage(nextStage);
           },
           onRetry: () => {
-            // 1차 답변 토큰은 전부 버린다 — 2차 답변이 처음부터 다시 스트리밍된다. citations/
+            // draft를 **비우지 않는다** — 1차 답변은 2차 첫 토큰이 실제로 도착할 때 교체된다
+            // (위 onToken의 replacing 분기). 그때까지 사용자는 읽던 답변을 계속 볼 수 있고,
+            // StreamingDraft가 "다시 찾고 있어요" 안내를 그 아래에 붙인다. citations/
             // verification은 항상 마지막 시도 결과 하나만 오므로 여기서 따로 지울 게 없다.
-            const freshDraft = { content: "" };
-            setDraft(freshDraft);
-            draftRef.current = freshDraft;
+            replaceOnNextTokenRef.current = true;
             setStage(null);
             setRetrying(true);
           },
@@ -311,35 +308,7 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
         {messages.map((m) => (
           <MessageBubble key={m.id} message={m} onRate={handleRate} renderReportAction={renderReportAction} />
         ))}
-        {draft &&
-          (draft.content === "" ? (
-            // 첫 토큰이 오기 전 구간 — "스트리밍 중"과 "아직 시작 안 함"을 구분해서 보여준다
-            // (사용자 요청: "진행상황이 보이게"). 토큰이 하나라도 오면 아래 MessageBubble로
-            // 전환되므로 이 상태는 항상 일시적이다. stage가 있으면 그걸 최우선으로 보여주고
-            // (retry 이후 2차 시도의 stage 이벤트가 오면 자연히 여기로 갱신된다), stage가 아직
-            // 없는데 retry 직후라면 "다시 찾는 중" 문구로, 둘 다 아니면 기존 폴백 문구로 보여준다.
-            <TypingIndicator
-              label={stage ? STAGE_LABELS[stage] : retrying ? "더 정확한 답변을 다시 찾고 있어요" : "답변을 준비하고 있어요"}
-            />
-          ) : (
-            <div className="flex flex-col gap-1 items-start">
-              <MessageBubble
-                message={{
-                  id: "draft",
-                  role: "assistant",
-                  content: draft.content,
-                  citations: draft.citations,
-                  verification: draft.verification,
-                  created_at: new Date(0).toISOString(),
-                }}
-              />
-              {/* 토큰은 이미 나오는데 verify 노드가 아직 안 끝난 구간 — 답변 문장은 다
-                  왔지만 근거 검증 중이라 verification 배지가 아직 안 붙는다는 걸 알려준다. */}
-              {stage === "verify" && !draft.verification && (
-                <p className="text-xs text-ink-soft">{STAGE_LABELS.verify}</p>
-              )}
-            </div>
-          ))}
+        {draft && <StreamingDraft draft={draft} stage={stage} retrying={retrying} />}
       </div>
 
       {error && (
