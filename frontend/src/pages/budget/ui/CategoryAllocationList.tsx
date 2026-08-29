@@ -6,13 +6,24 @@
 // 됐다. 둘을 한 컴포넌트가 연달아 렌더하던 구조로는 그 순서를 만들 수 없어 파일을 갈랐다.
 // (AllocationOverview는 원래 BudgetPage의 모듈 의존성 상한(`import/max-dependencies`, 10)을
 // 넘기지 않으려고 만든 묶음이었다 — 갈라도 BudgetPage import는 정확히 10개로 한도 안이다.)
+//
+// **비활성 카테고리 제외(2026-08-29, 레드팀 감사 #21, 사용자 결정)** — 온보딩에서 끈 카테고리가
+// 이 목록에만 활성과 똑같은 모습으로 남아 있었다. 대시보드(`GET /dashboard/summary`)와 타임라인
+// (`GET /timeline-items`)은 서버가 비활성을 걸러서 주는데, 이 화면이 쓰는
+// `GET /wedding-categories`만 9개 전체를 준다 — 그래서 거르는 일이 프론트 몫이다.
+//
+// ⚠️ **거르는 곳이 여기여야 한다.** BudgetPage 가 넘겨주는 `rows` 를 그쪽에서 미리 걸러 버리면
+// 같은 배열을 쓰는 `plannedTotal`(총예산 초과 게이트)까지 활성만 세게 되는데, 서버의
+// BUDGET_EXCEEDED 검증은 `is_active` 무관 9개 전체 합이라(01-endpoints.md:149) "화면은 통과인데
+// 저장이 400" 이 난다. **표시만 거르고 계산 집합은 건드리지 않는다.**
 import type { BenchmarkComparison } from "@/entities/payment";
 import type { WeddingCategory } from "@/entities/wedding";
 import { Card } from "@/shared/ui";
 import { CategoryAllocationRow } from "./CategoryAllocationRow";
 
 export interface CategoryAllocationListProps {
-  /** 보기 모드면 원본, 시나리오 편집 중이면 draft — BudgetPage가 이미 이 둘을 합쳐서 내려준다. */
+  /** 보기 모드면 원본, 시나리오 편집 중이면 draft — BudgetPage가 이미 이 둘을 합쳐서 내려준다.
+      비활성 포함 9개 전체가 오고, 화면에서 거르는 것은 이 컴포넌트가 한다(머리말 참고). */
   rows: readonly WeddingCategory[];
   /** originalAmount 계산 기준 — 항상 원본(draft 아님). draft 중에도 "저장 전 값"을 보여줘야 한다. */
   originalCategories: readonly WeddingCategory[];
@@ -36,10 +47,12 @@ export function CategoryAllocationList({
   isEditingScenario,
   onDraftChange,
 }: CategoryAllocationListProps) {
+  const activeRows = rows.filter((category) => category.is_active);
+
   return (
     <Card title="카테고리별 예산 현황">
       <div>
-        {rows.map((category) => {
+        {activeRows.map((category) => {
           const hasCost = hasCostByCode.get(category.category_code) ?? true;
           const original = originalCategories.find((c) => c.category_code === category.category_code);
           const originalAmount = original?.planned_budget ?? category.planned_budget;
