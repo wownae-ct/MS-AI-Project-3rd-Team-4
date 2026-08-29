@@ -40,6 +40,8 @@ export function CategoryAllocationRow({
   originalAmount,
   onDraftChange,
 }: CategoryAllocationRowProps) {
+  // 비활성 카테고리는 여기까지 오지 않는다 — 호출부(CategoryAllocationList)가 목록에서 미리
+  // 거른다(2026-08-29, 사용자 결정). 이 컴포넌트는 활성 카테고리 한 행만 그리면 된다.
   if (!hasCost) {
     return (
       <div className={ROW}>

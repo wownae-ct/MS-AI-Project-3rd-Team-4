@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import type { WeddingCategory } from "@/entities/wedding";
+import { CategoryAllocationList } from "./CategoryAllocationList";
 import { CategoryAllocationRow } from "./CategoryAllocationRow";
 
 function category(overrides: Partial<WeddingCategory>): WeddingCategory {
@@ -84,5 +85,52 @@ describe("CategoryAllocationRow — 보기 모드", () => {
 
     expect(screen.getByText("비용 없음")).toBeInTheDocument();
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  });
+});
+
+// 회귀 테스트 — 레드팀 감사 #21 "예산 페이지가 비활성 카테고리를 계속 보여준다".
+// 대시보드·타임라인은 서버가 걸러 주지만(`GET /dashboard/summary`·`GET /timeline-items`),
+// 이 화면이 쓰는 `GET /wedding-categories`는 9개 전체를 준다 — 거르는 건 프론트 몫이다.
+//
+// 거르는 주체는 `CategoryAllocationList`다(행이 아니라 목록). 그래서 이 테스트도 목록을 렌더한다.
+describe("CategoryAllocationList — 비활성 카테고리 제외", () => {
+  const ACTIVE = category({ category_code: "VENUE", name_ko: "예식장", planned_budget: 12_000_000 });
+  const INACTIVE = category({
+    category_code: "HONEYMOON",
+    name_ko: "신혼여행",
+    is_active: false,
+    planned_budget: 3_000_000,
+    display_order: 2,
+  });
+
+  function renderList() {
+    render(
+      <CategoryAllocationList
+        rows={[ACTIVE, INACTIVE]}
+        originalCategories={[ACTIVE, INACTIVE]}
+        totalBudget={30_000_000}
+        hasCostByCode={new Map([["VENUE", true], ["HONEYMOON", true]])}
+        hasBenchmarkByCode={new Map()}
+        benchmarkByCode={new Map()}
+        isEditingScenario={false}
+        onDraftChange={() => {}}
+      />,
+    );
+  }
+
+  it("비활성 카테고리는 목록에 나오지 않는다", () => {
+    renderList();
+
+    expect(screen.getByText("예식장")).toBeInTheDocument();
+    expect(screen.queryByText("신혼여행")).not.toBeInTheDocument();
+    // 배정액(300만원)도 함께 사라진다 — 행 전체를 걸렀다는 뜻.
+    expect(screen.queryByText("300만원")).not.toBeInTheDocument();
+  });
+
+  it("활성 카테고리는 진행바·금액을 그대로 보여준다(회귀 없음)", () => {
+    renderList();
+
+    expect(screen.getByText("1,200만원")).toBeInTheDocument();
+    expect(screen.getAllByRole("progressbar")).toHaveLength(1);
   });
 });
