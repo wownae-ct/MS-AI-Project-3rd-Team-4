@@ -17,6 +17,13 @@
 // BUDGET_EXCEEDED 검증은 `is_active` 무관 9개 전체 합이라(01-endpoints.md:149) "화면은 통과인데
 // 저장이 400" 이 난다. **표시만 거르고 계산 집합은 건드리지 않는다.**
 //
+// **비용 없는 카테고리도 제외한다(2026-08-29, 사용자 결정)** — `has_cost=false` 인 카테고리는
+// 지금 상견례(MEETING) 하나다(backend/app/core/categories.py, 00_BASELINE §1 카테고리 표 —
+// 스펙대로의 의도된 설정이다). 그 행은 금액도 막대도 슬라이더도 없이 이름과 "비용 없음" 만
+// 그렸다 — 이 목록에서 사용자가 할 수 있는 일이 하나도 없는 줄이었다. 카테고리 자체가 사라지는
+// 것은 아니다: 홈의 체크리스트 진행률 카드, 카테고리 상세, 그리고 이 카드의 ⚙ 「카테고리 사용
+// 여부」 패널(9개 전체를 받는다)에는 그대로 나온다.
+//
 // ## 카테고리 on/off 도 이 카드가 소유한다(2026-08-29, 사용자 지시)
 //
 // 위 필터를 넣으면서 **끈 카테고리를 다시 켤 길이 완전히 사라졌다** — 그 UI 는 온보딩 7단계에만
@@ -86,7 +93,17 @@ export function CategoryAllocationList({
   onManagingActivationChange,
   onCategoriesSaved,
 }: CategoryAllocationListProps) {
-  const activeRows = rows.filter((category) => category.is_active);
+  // 화면에서만 거른다 — `rows` 자체는 그대로 두어야 BudgetPage 의 `plannedTotal`(서버와 같은
+  // 9개 전체 합)이 어긋나지 않는다(머리말).
+  //
+  // `?? true` — 카테고리 상수를 아직/영영 못 받았으면 숨기지 않는다. 아는 것만 거른다.
+  // 숨긴 행에 금액이 묻힐 걱정은 없다: `has_cost=false` 카테고리는 온보딩 8단계가 입력칸·
+  // 슬라이더를 그리지 않고(Step8Allocation.tsx), 결제 선택지에서도 빠지며(BudgetPage.tsx
+  // `costEligibleCategoryOptions`), PUT 은 조회값을 그대로 되돌려 보내므로 planned_budget 이
+  // 0 이외가 될 경로가 UI 에 없다.
+  const visibleRows = rows.filter(
+    (category) => category.is_active && (hasCostByCode.get(category.category_code) ?? true),
+  );
 
   // 한 카드에 편집 모드 둘이 동시에 열리면 초안이 어느 쪽 것인지 알 수 없고, 전환하는 순간
   // 배분 초안이 조용히 버려진다. 반대 방향(사용 여부 편집 중 "예산 조정하기" 막기)은 BudgetPage 가 건다.
@@ -112,15 +129,13 @@ export function CategoryAllocationList({
           되돌리기에 자연스럽다. */}
       <DisclosurePanel id={AMOUNTS_PANEL_ID} open={!isManagingActivation} focusOnOpen={false} divider={false}>
         <div>
-          {activeRows.map((category) => {
-            const hasCost = hasCostByCode.get(category.category_code) ?? true;
+          {visibleRows.map((category) => {
             const original = originalCategories.find((c) => c.category_code === category.category_code);
             const originalAmount = original?.planned_budget ?? category.planned_budget;
             return (
               <CategoryAllocationRow
                 key={category.category_code}
                 category={category}
-                hasCost={hasCost}
                 totalBudget={totalBudget}
                 hasBenchmark={hasBenchmarkByCode.get(category.category_code) ?? false}
                 benchmark={benchmarkByCode.get(category.category_code)}

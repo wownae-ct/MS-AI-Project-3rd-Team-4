@@ -1,6 +1,6 @@
-// BudgetPage.tsx에서 분리 — eslint/max-lines(300줄) 게이트 때문에 카테고리 한 행의 세 가지
-// 렌더 분기(비용 없음/보기 모드/시나리오 편집 모드 슬라이더)를 별도 파일로 뺐다. 상태(scenarioDraft
-// 등)는 여전히 BudgetPage가 소유한다 — 이 컴포넌트는 순수하게 한 행만 그린다.
+// BudgetPage.tsx에서 분리 — eslint/max-lines(300줄) 게이트 때문에 카테고리 한 행의 렌더 분기
+// (보기 모드/시나리오 편집 모드 슬라이더)를 별도 파일로 뺐다. 상태(scenarioDraft 등)는 여전히
+// BudgetPage가 소유한다 — 이 컴포넌트는 순수하게 한 행만 그린다.
 import { Slider } from "@base-ui/react/slider";
 import type { BenchmarkComparison } from "@/entities/payment";
 import type { WeddingCategory } from "@/entities/wedding";
@@ -9,7 +9,6 @@ import { Badge, Money, Progress } from "@/shared/ui";
 
 export interface CategoryAllocationRowProps {
   category: WeddingCategory;
-  hasCost: boolean;
   totalBudget: number;
   /** 시세비교 대상인지 — 대시보드 `CategoryRow.tsx`와 같은 의미(2026-08-26, UX 개편 2차,
       사용자 지시). 편집(슬라이더) 중에는 저장된 원본 기준으로만 보여준다 — 드래그마다 다시
@@ -32,7 +31,6 @@ const SLIDER_STEP_MANWON = AMOUNT_STEP_MANWON;
 
 export function CategoryAllocationRow({
   category,
-  hasCost,
   totalBudget,
   hasBenchmark,
   benchmark,
@@ -40,19 +38,10 @@ export function CategoryAllocationRow({
   originalAmount,
   onDraftChange,
 }: CategoryAllocationRowProps) {
-  // 비활성 카테고리는 여기까지 오지 않는다 — 호출부(CategoryAllocationList)가 목록에서 미리
-  // 거른다(2026-08-29, 사용자 결정). 이 컴포넌트는 활성 카테고리 한 행만 그리면 된다.
-  if (!hasCost) {
-    return (
-      <div className={ROW}>
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="text-sm font-bold text-ink">{category.name_ko}</span>
-          <span className="text-xs text-ink-soft">비용 없음</span>
-        </div>
-      </div>
-    );
-  }
-
+  // 비활성 카테고리도, 비용을 다루지 않는 카테고리(`has_cost=false`, 지금은 상견례)도 여기까지
+  // 오지 않는다 — 호출부(CategoryAllocationList)가 목록에서 미리 거른다(2026-08-29, 사용자
+  // 결정). 이 컴포넌트는 예산을 다루는 활성 카테고리 한 행만 그리면 된다. 예전의 "비용 없음"
+  // 분기는 그래서 사라졌다(도달할 수 없는 코드였다).
   if (!isEditingScenario) {
     // Progress는 값을 [0,1]로 클램프한다 — 초과지출(paid_amount>planned_budget, 비율>100%)이
     // "정확히 다 씀"과 시각적으로 구분되지 않는다(레드팀 감사). 편집 모드를 열어야만 초과 여부를
@@ -121,9 +110,9 @@ export function CategoryAllocationRow({
             금액 「30,000만원 30,000만원」(`text-sm`) ≈ 160px  → gap 8 을 더해 **266px**
           보기 모드(금액 하나)는 184px 이라 안전하지만 편집 모드에서만 12px 넘쳤다 — 3억대
           신혼집처럼 만원 표기가 6자리가 되는 카테고리에서 실제로 걸린다.
-          `flex-wrap` 이면 금액 덩어리가 다음 줄로 내려가고 이름은 한 줄에 남는다. 나머지 세
-          분기(비용 없음 · 보기 모드 · 하단 잠김 표시)는 값이 하나뿐이라 그대로 둔다 — 재보고
-          안전해서 두는 것이지 빠뜨린 것이 아니다. */}
+          `flex-wrap` 이면 금액 덩어리가 다음 줄로 내려가고 이름은 한 줄에 남는다. 나머지 두
+          자리(보기 모드 · 하단 잠김 표시)는 값이 하나뿐이라 그대로 둔다 — 재보고 안전해서
+          두는 것이지 빠뜨린 것이 아니다. */}
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <span className="text-sm font-bold text-ink">{category.name_ko}</span>
         <span className="flex-none text-sm font-bold text-ink [font-variant-numeric:tabular-nums]">
