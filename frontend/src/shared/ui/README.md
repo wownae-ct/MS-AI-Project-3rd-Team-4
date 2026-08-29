@@ -13,6 +13,7 @@
 | `styles.css` | **앱의 유일한 CSS 진입점.** `app/main.tsx` 가 이것 하나만 import 한다. Tailwind · 폰트 · `@source` · base 레이어 |
 | `theme.css` | `@theme` 디자인 토큰 — `docs/design/` 의 값 1:1 |
 | `Page` `Card` `Button` `Badge` `Money` `Progress` `Tabs` `ErrorBoundary` `icons` | 프리미티브 |
+| `NumberInput` `DateField` | 네이티브 입력 대체 — 각각 `type="number"` · `type="date"` 를 갈아끼웠다(그 파일 머리말에 **무엇을 잃고 어떻게 갚았는지** 표로 있다). `DateField` 의 그리드(`DateCalendar`)는 `React.lazy` 로 내린 별도 청크라 `index.ts` 로 내보내지 않는다 |
 | `index.ts` | 공개 API. 슬라이스 밖에서는 이 파일로만 접근한다 |
 
 CSS 는 사이드이펙트라 `index.ts` 로 재수출할 수 없다 — 그래서 `main.tsx` 가 경로로 직접 import 한다([layers.md §4.2](../../../docs/architecture/layers.md)).

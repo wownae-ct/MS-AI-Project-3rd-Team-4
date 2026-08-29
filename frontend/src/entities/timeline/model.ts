@@ -26,6 +26,26 @@ export interface TimelineItemsResponse {
   items: TimelineItem[];
 }
 
+/**
+ * 수동 재생성(#32) 뒤에도 **남을** 항목인가.
+ *
+ * 서버의 실제 보존 기준은 "사용자가 손댄 적 있는 행"(`user_edited_at IS NOT NULL`)이고 그 값은
+ * 응답에 없다. 화면이 아는 것 중 그 기준과 1:1로 대응하는 것은 **완료 체크(status=DONE)** 와
+ * **날짜 직접 변경(date_overridden)** 둘뿐이라 이 둘로 판정한다.
+ *
+ * 어긋나는 경우가 하나 있다 — 완료를 체크했다가 **해제**한 항목은 서버에선 보존되는데 여기선
+ * 초기화 쪽으로 센다. 방향은 이쪽이 맞다: 실제보다 **덜 남는다고** 말하는 오차라, 사용자가
+ * 예상보다 많이 잃는 일은 생기지 않는다(정확한 수를 알려면 응답에 보존 플래그가 필요하다 —
+ * 백엔드 변경 사안이라 지금은 하지 않는다).
+ *
+ * 이 술어를 화면이 아니라 여기 두는 이유 — **재생성 확인 다이얼로그의 개수**와 **재생성 중
+ * 스켈레톤의 자리**가 같은 기준을 써야 한다. 둘이 갈리면 "3개만 남아요"라고 예고해 놓고 5개를
+ * 남긴 채 기다리는 화면이 된다.
+ */
+export function isTimelineItemKept(item: TimelineItem): boolean {
+  return item.status === "DONE" || item.date_overridden;
+}
+
 export interface TimelineItemPatchInput {
   target_date?: string;
   status?: TimelineItemStatus;

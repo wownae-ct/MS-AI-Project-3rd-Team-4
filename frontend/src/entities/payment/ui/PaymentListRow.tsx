@@ -46,8 +46,9 @@
 // 변경은 없다).
 import { useState } from "react";
 import { ApiError } from "@/shared/api";
+import { futureQuickPicks, pastQuickPicks, todayISO } from "@/shared/lib/date";
 import { AMOUNT_STEP_WON } from "@/shared/lib/money";
-import { Badge, categoryBadgeClass, Money, NumberInput } from "@/shared/ui";
+import { Badge, categoryBadgeClass, DateField, Money, NumberInput } from "@/shared/ui";
 import { deletePayment, patchPayment } from "../api/payment";
 import type { Payment, PaymentPatchInput } from "../model";
 import { PAYMENT_TYPE_BADGE_CLASS, PAYMENT_TYPE_LABEL } from "./payment-labels";
@@ -68,10 +69,6 @@ const TOGGLE_ROW = "flex items-center gap-2 rounded-md border border-line bg-bg 
 const TOGGLE_CHECKBOX = "size-[18px] accent-primary";
 const TOGGLE_LABEL = "text-xs font-bold text-ink";
 const HINT_TEXT = "text-xs font-bold text-primary";
-
-function todayISODate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export interface PaymentListRowProps {
   payment: Payment;
@@ -120,7 +117,7 @@ export function PaymentListRow({ payment: p, categoryLabel, onChanged }: Payment
 
   function handleTogglePaid(checked: boolean) {
     setMarkAsPaid(checked);
-    setDraftDate(checked ? todayISODate() : (p.due_date ?? ""));
+    setDraftDate(checked ? todayISO() : (p.due_date ?? ""));
   }
 
   async function handleSave() {
@@ -236,8 +233,8 @@ export function PaymentListRow({ payment: p, categoryLabel, onChanged }: Payment
             좁은 폭을 넘을 수 있다. 폼 컨트롤은 `min-width: auto` 가 **내재 크기**(입력의 기본
             size · 날짜 칸의 서식 폭)로 잡혀 그 아래로 눌리지 않으므로, 감싸 주지 않으면 카드
             밖으로 넘쳐 가로 스크롤이 생긴다. 320px 에서 두 칸이 위아래로 갈라지는 것이 의도다.
-            날짜 칸에 `flex-1` 을 함께 주는 이유 — ROW_INPUT 의 `w-full` 만으로는 flex 기준 크기가
-            100% 로 잡혀 폭이 남아도 **항상** 다음 줄로 내려간다. `flex-1`(basis 0)이 그것을 막는다. */}
+            [2026-08-29 D20] 날짜 칸은 이제 **항상** 자기 줄을 쓴다(`basis-full`) — 아래로 캘린더를
+            펼치기 때문이다. 아래 그 칸의 주석에 사유가 있다. 금액 칸의 `flex-1` 은 그대로 둔다. */}
         <div className="flex flex-wrap gap-2">
           <NumberInput
             wrapClassName="flex-1"
@@ -248,13 +245,24 @@ export function PaymentListRow({ payment: p, categoryLabel, onChanged }: Payment
             value={draftAmount}
             onValueChange={setDraftAmount}
           />
-          <input
-            className={`${ROW_INPUT} flex-1 [font-variant-numeric:tabular-nums]`}
-            type="date"
+          {/* [D20] `<input type="date">` 였다. 이 칸은 상태에 따라 **성격이 뒤집힌다** —
+              결제일이면 이미 지난 날(오늘·어제, 오늘 이후는 불가), 예정일이면 앞으로의 날이다.
+              그 사실을 빠른 선택과 `max` 로 그대로 옮긴다. `clearable` 은 주지 않는다: 이
+              폼은 날짜가 비면 저장 자체가 막히므로(handleSubmit 의 `!draftDate`) 비울 수단이
+              오히려 막다른 길이다.
+              🚨 `flex-1` 이 아니라 `basis-full` 이다 — 이 칸은 이제 **아래로 캘린더를 펼친다.**
+              금액 칸과 폭을 반씩 나누면 7열 그리드가 한 칸 20px 남짓으로 눌려 44px 터치 타겟
+              규범이 깨진다(좁은 화면에서는 어차피 `flex-wrap` 이 갈라 놓던 배치라, 넓은 화면도
+              같은 모양으로 통일하는 셈이다). */}
+          <DateField
+            wrapClassName="basis-full"
+            className={`${ROW_INPUT} [font-variant-numeric:tabular-nums]`}
             aria-label={dateLabel}
             value={draftDate}
             disabled={markAsCanceled}
-            onChange={(e) => setDraftDate(e.target.value)}
+            onChange={setDraftDate}
+            max={willUsePaidDate ? todayISO() : undefined}
+            quickPicks={willUsePaidDate ? pastQuickPicks(todayISO()) : futureQuickPicks(todayISO())}
           />
         </div>
         {isPlanned && (

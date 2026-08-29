@@ -177,7 +177,8 @@ export function ProgressSection() {
             &ldquo;측정 가능한 진행&rdquo;을 약속하는데 조회 대기는 그렇지 않고, 동작 줄이기 환경에서는 움직임이
             멈춰 부분 막대가 &ldquo;40% 진행됨&rdquo;으로 오독됩니다. 조회 대기는 아래 로딩 섹션을 씁니다.
           </span>
-        </p>      </Card>
+        </p>
+      </Card>
     </Section>
   );
 }
@@ -194,6 +195,16 @@ export function LoadingSection() {
             자리표시는 <span className="font-bold">즉시</span> 그립니다 — 임무가 &ldquo;기다림 알리기&rdquo;가
             아니라 콘텐츠가 들어올 상자를 미리 차지해 레이아웃이 밀리지 않게 하는 것이기 때문입니다. 반면 문구는
             200ms가 지나야 뜹니다. 빠른 응답에서 떴다 사라지면 진행 표시가 아니라 결함으로 읽힙니다.
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <p className="text-sm font-bold text-ink">목록 일부만 다시 채워질 때</p>
+          <SkeletonRows count={2} variant="row" />
+          <p className="text-sm text-ink-soft">
+            AI 재생성처럼 <span className="font-bold">일부 항목만 교체되는</span> 대기에는 남는 항목을 그대로
+            둔 채 지워질 자리에만 이 변이를 세웁니다. 글줄 자리표시로 대신하면 목록이 쪼그라들었다 다시
+            늘어나 자리표시가 자리를 잡지 못합니다.
           </p>
         </div>
 

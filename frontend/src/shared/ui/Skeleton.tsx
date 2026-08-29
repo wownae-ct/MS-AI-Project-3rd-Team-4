@@ -18,11 +18,16 @@
 // 블록 자체는 장식이므로 `aria-hidden` 으로 완전히 뺀다. 행이 N개라고 N번 읽히면 안 된다 —
 // "불러오는 중"이라는 announce 는 같은 영역의 `Loading` 이 **한 번만** 낸다.
 //
-// ## 왜 단일 바 컴포넌트를 따로 내보내지 않는가
+// ## 변이는 실제로 필요해질 때만 늘린다
 //
-// 지금 필요한 쓰임새가 "카드 안 목록 자리"뿐이다. 쓰지 않는 변이를 미리 만들면 그 클래스가
-// 산출 CSS 에 들어가는데 초기 청크 예산 여유가 극히 적다. 한 줄짜리 자리표시가 실제로 필요해지면
-// 그때 추가한다 — Badge.tsx 와 같은 원칙이다.
+// 처음엔 "카드 안 목록 자리" 하나뿐이었고, 쓰지 않는 변이를 미리 만들면 그 클래스가 산출 CSS 에
+// 들어가므로(초기 청크 예산 여유가 극히 적다) 늘리지 않기로 했다 — Badge.tsx 와 같은 원칙.
+//
+// **`variant="row"` 가 그 조건을 채운 첫 사례다**(D21, AI 재생성 중 부분 스켈레톤). 그 자리는
+// 기존 `text` 변이로 대신할 수 없다: 재생성 중에는 **남는 항목과 스켈레톤이 같은 목록 안에
+// 나란히** 서는데, 16px 짜리 글줄 자리표시가 56px 짜리 항목 행을 대신하면 목록이 눈에 띄게
+// 쪼그라들었다가 결과 도착과 함께 다시 늘어난다 — 자리표시가 **자리를 안 잡는** 셈이라 존재
+// 이유가 무너진다.
 
 const WRAP = "flex flex-col gap-3";
 
@@ -32,13 +37,24 @@ const ROW = "h-4 w-full animate-pulse rounded-sm bg-line";
 // 마지막 행만 짧게 — 실제 텍스트 블록이 마지막 줄에서 짧아지는 모양을 흉내 낸다.
 // 전부 같은 길이면 콘텐츠가 아니라 표처럼 보인다.
 const ROW_LAST = "h-4 w-2/3 animate-pulse rounded-sm bg-line";
+// 목록 행 한 줄 분량. 타임라인 행(체크박스 + 제목 + 메타 2줄)과 체크리스트 행이 대략 이 높이다.
+// 마지막 행을 짧게 만들지 않는다 — 이쪽은 글줄이 아니라 **행**을 흉내 내는 것이라 길이가
+// 들쭉날쭉하면 오히려 목록으로 안 읽힌다.
+const LIST_ROW = "h-11 w-full animate-pulse rounded-sm bg-line";
+
+export type SkeletonRowsVariant = "text" | "row";
 
 export interface SkeletonRowsProps {
   /** 그릴 행 수. 실제로 올 항목 수를 대략 반영한다 — 많을수록 시프트가 줄지만 과하면 허풍이 된다. */
   count: number;
+  /**
+   * `text`(기본) — 글줄 자리표시. 카드가 통째로 비어 있는 콜드 로드에 쓴다.
+   * `row` — 목록 **행** 자리표시. 남아 있는 실제 행과 나란히 설 때 쓴다(위 머리말 참고).
+   */
+  variant?: SkeletonRowsVariant;
 }
 
-export function SkeletonRows({ count }: SkeletonRowsProps) {
+export function SkeletonRows({ count, variant = "text" }: SkeletonRowsProps) {
   // 인덱스를 그대로 key 로 쓰지 않는다 — 목록이 재정렬되지 않아 안전하긴 하지만, 규범 검사에
   // 걸리지 않도록 안정적인 문자열 키를 만든다. 값 자체에는 의미가 없다.
   const rows = Array.from({ length: count }, (_, index) => `skeleton-row-${index}`);
@@ -46,8 +62,14 @@ export function SkeletonRows({ count }: SkeletonRowsProps) {
   return (
     <span className={WRAP} aria-hidden="true">
       {rows.map((rowKey, index) => (
-        <span key={rowKey} className={index === count - 1 ? ROW_LAST : ROW} />
+        <span key={rowKey} className={pickRowClass(variant, index === count - 1)} />
       ))}
     </span>
   );
+}
+
+/** 완성된 리터럴 중 하나를 고른다(런타임 조립 금지 — shared/ui/README 「코드 규약」). */
+function pickRowClass(variant: SkeletonRowsVariant, isLast: boolean): string {
+  if (variant === "row") return LIST_ROW;
+  return isLast ? ROW_LAST : ROW;
 }

@@ -1,5 +1,6 @@
 // 체크리스트 도메인 타입 — 03_API_spec.md ② 섹션(#12-#14).
 // status 유효값은 카테고리에 따라 갈린다(HOMEWARE 만 다른 상태기계) — API 스펙 §2-B, 화면이 분기한다.
+import { CHECKLIST_STATUS_BY_CATEGORY, type CategoryCode } from "@/shared/api";
 
 export type ChecklistItemType = "CONTRACT_TERM" | "EXTRA_COST" | "PREP";
 // "CATALOG_FALLBACK"은 2026-08-28 신규 — 개인화 validate가 BLOCKED일 때의 결정론적
@@ -35,6 +36,24 @@ export interface ChecklistItem {
 
 export interface ChecklistItemsResponse {
   items: ChecklistItem[];
+}
+
+/**
+ * 수동 재생성(#32) 뒤에도 **남을** 항목인가. `entities/timeline` 의 `isTimelineItemKept` 와 같은
+ * 목적·같은 한계다(서버의 `user_edited_at` 를 응답이 주지 않아 화면이 아는 흔적으로 근사한다).
+ *
+ * 체크리스트에서 사용자가 남기는 흔적은 **상태 변경**과 **메모** 둘이다. "상태를 바꿨다"는
+ * 초기 상태와 다르다는 뜻이고, 그 초기 상태는 카테고리마다 갈린다(HOMEWARE 만 LISTED, 나머지는
+ * TODO). 그 표는 `shared/api/contract.ts` 의 `CHECKLIST_STATUS_BY_CATEGORY` 가 이미 갖고 있으므로
+ * **첫 값**을 초기 상태로 읽는다 — 여기서 목록을 다시 적으면 두 곳이 조용히 갈린다.
+ *
+ * ⚠️ 바꿨다가 되돌린 항목은 서버에선 보존되는데 여기선 초기화 쪽으로 센다 — 타임라인과 같은
+ * 방향의 오차라(실제보다 덜 남는다고 말한다) 사용자가 예상보다 많이 잃는 일은 없다.
+ */
+export function isChecklistItemKept(item: ChecklistItem, categoryCode: string): boolean {
+  if (item.memo !== null && item.memo !== "") return true;
+  const initialStatus = CHECKLIST_STATUS_BY_CATEGORY[categoryCode as CategoryCode]?.[0];
+  return initialStatus !== undefined && item.status !== initialStatus;
 }
 
 export interface ChecklistItemPatchInput {

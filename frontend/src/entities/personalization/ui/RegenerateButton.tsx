@@ -55,10 +55,23 @@ interface RegenerateButtonProps {
    * 그럴 땐 생략하고 문구로만 알린다.
    */
   impact?: RegenerateImpact;
-  onRegenerated: () => void;
+  /**
+   * 재생성이 끝난 뒤 화면이 목록을 다시 받아오는 자리.
+   *
+   * **Promise 를 돌려주면 그것까지 기다린 뒤에 pending 을 내린다(D21).** 종전엔 재생성 응답만
+   * 기다리고 곧바로 "다 됐다" 상태로 돌아갔는데, 그 사이(재조회가 도착하기 전) 화면에는 **곧
+   * 지워질 옛 목록**이 완성된 결과인 양 잠깐 되살아났다. 화면이 그 구간에 자리표시를 세우려면
+   * 「끝났다」의 정의가 재조회 도착까지여야 한다.
+   */
+  onRegenerated: () => void | Promise<void>;
+  /**
+   * 진행 여부를 화면에 알린다 — 화면은 이 값으로 **지워질 항목 자리에만** 스켈레톤을 세운다
+   * (D21). 버튼 자신도 같은 상태를 쓰지만, 그건 라벨 교체와 연타 방지까지가 전부다.
+   */
+  onPendingChange?: (pending: boolean) => void;
 }
 
-export function RegenerateButton({ domain, label, impact, onRegenerated }: RegenerateButtonProps) {
+export function RegenerateButton({ domain, label, impact, onRegenerated, onPendingChange }: RegenerateButtonProps) {
   const [confirming, setConfirming] = useState(false);
   const [pending, setPending] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -74,15 +87,20 @@ export function RegenerateButton({ domain, label, impact, onRegenerated }: Regen
 
   async function handleConfirm() {
     setPending(true);
+    onPendingChange?.(true);
+    // 확인창은 먼저 닫는다 — 진행 표시는 이제 목록 쪽(자리표시)에 있고, 다이얼로그가 그 목록을
+    // 가린 채 수십 초를 버티면 "무엇이 남는지"를 볼 수 없다(D21 이 오버레이를 기각한 것과 같은 이유).
+    setConfirming(false);
     try {
       const result = await regeneratePersonalization([domain]);
       setNote(regenerateNote(result.status === "BLOCKED"));
-      onRegenerated();
+      // 재조회까지 기다린다 — 위 `onRegenerated` 주석 참고.
+      await onRegenerated();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "다시 생성하지 못했습니다.");
     } finally {
       setPending(false);
-      setConfirming(false);
+      onPendingChange?.(false);
     }
   }
 

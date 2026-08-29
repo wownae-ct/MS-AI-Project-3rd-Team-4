@@ -14,4 +14,5 @@ export {
   type ChecklistStatusHomeware,
   type SourceTier,
 } from "./model";
+export { isChecklistItemKept } from "./model";
 export { createChecklistItem, getChecklistItems, patchChecklistItem } from "./api/checklist";

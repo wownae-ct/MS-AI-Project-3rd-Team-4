@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { createTimelineItem } from "@/entities/timeline";
 import { getCategories, type CategoryConstant } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
+import { futureQuickPicks, todayISO } from "@/shared/lib/date";
+import { DateField } from "@/shared/ui";
 
 const ADD_BTN =
   "w-full rounded-sm border border-dashed border-line bg-transparent py-2.5 text-sm font-bold text-ink-soft";
@@ -14,10 +16,13 @@ const ADD_BTN =
 const FORM_INPUT = "min-h-tap w-full rounded-md border border-line bg-surface px-2.5 text-base text-ink";
 
 interface AddTimelineItemRowProps {
+  /** 캘린더에 기준선으로 표시할 결혼식 날짜. `TimelinePage` 가 이미 들고 있는 값을 내려준다
+      (여기서 `GET /weddings/me` 를 새로 부르지 않는다) — 없을 수도 있다(온보딩에서 "미정"). */
+  weddingDate?: string;
   onAdded: () => void;
 }
 
-export function AddTimelineItemRow({ onAdded }: AddTimelineItemRowProps) {
+export function AddTimelineItemRow({ weddingDate, onAdded }: AddTimelineItemRowProps) {
   const [open, setOpen] = useState(false);
   const [categories, setCategories] = useState<CategoryConstant[] | null>(null);
   const [categoryCode, setCategoryCode] = useState<string>("");
@@ -111,12 +116,17 @@ export function AddTimelineItemRow({ onAdded }: AddTimelineItemRowProps) {
         value={title}
         onChange={(e) => setTitle(e.target.value)}
       />
-      <input
+      {/* [D20] `<input type="date">` 였다. 타임라인 항목은 「대략 3주 뒤」처럼 **오늘 기준 상대
+          시점**으로 떠올리는 일이 대부분이라 빠른 선택 칩이 그 계산을 대신한다. 결혼식 날짜는
+          그리드에 밑줄로 표시해 "본식 전인가 후인가"를 고르는 순간 볼 수 있게 한다. */}
+      <DateField
         className={FORM_INPUT}
-        type="date"
         aria-label="날짜"
         value={targetDate}
-        onChange={(e) => setTargetDate(e.target.value)}
+        onChange={setTargetDate}
+        quickPicks={futureQuickPicks(todayISO())}
+        markedDate={weddingDate}
+        markedLabel="결혼식 날짜"
       />
       {error && (
         <p role="alert" className="text-xs text-primary">

@@ -82,6 +82,10 @@ const EXPECTED_BARE_UTILITIES = {
   // 이 클래스를 className 에 쓰지 않는다(구현은 border border-current bg-surface).
   outline: "Badge 의 outline 변이 이름 — VARIANT 룩업의 키라 이름을 비틀 수 없다",
   static: "ErrorBoundary 의 static getDerivedStateFromError — JS 키워드라 피할 수 없다",
+  // D20(날짜 입력)이 들여왔다. `DateCalendar` 의 월 그리드는 진짜 `<table>` 이다 — div + role 로
+  // 흉내 내면 접근성 린트가 막고(비대화형 요소에 대화형 role 금지) 행·열 헤더 관계도 잃는다.
+  // 태그 이름이라 이름을 비틀 수단이 없다. `.table{display:table}` 한 줄이다.
+  table: "DateCalendar 의 월 그리드 <table> — HTML 태그 이름이라 피할 수 없다",
   // ⚠️ 이 항목만 128 B 다(위 「25 B 남짓」의 예외 — .transform 은 --tw-rotate-*·--tw-skew-* 5개를
   // 잇는 값이라 규칙이 길다). 그래도 받아들이는 이유: icons.tsx 의 IconThumbDown 은 IconThumbUp 과
   // **같은 기하의 180° 점대칭**이고, 그 회전을 SVG `transform` 속성으로 낸다. 속성 이름이라 이름을

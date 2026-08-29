@@ -101,6 +101,15 @@ describe("RegenerateButton — 초기화 경고", () => {
     expect(dialog).toHaveTextContent("모든 카테고리가 함께 바뀌어요.");
   });
 
+  it("확인하는 순간 확인창이 닫힌다 — 진행 표시는 이제 목록 쪽에 있다(D21)", async () => {
+    const { user } = renderTimelineButton();
+
+    await user.click(screen.getByRole("button", { name: "AI 타임라인 다시 생성" }));
+    await user.click(await screen.findByRole("button", { name: "다시 생성" }));
+
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
   it("실패하면 확인창을 닫고 오류를 알린다 — 성공한 것처럼 보이지 않게", async () => {
     regenerateMock.mockRejectedValue(new Error("boom"));
     const { onRegenerated, user } = renderTimelineButton();
@@ -111,5 +120,63 @@ describe("RegenerateButton — 초기화 경고", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("다시 생성하지 못했습니다.");
     expect(onRegenerated).not.toHaveBeenCalled();
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+});
+
+// D21 — 화면이 「지워질 항목 자리에만 자리표시를 세우는」 동안을 알기 위한 계약이다.
+// 여기가 어긋나면 자리표시가 결과보다 **먼저** 걷혀, 곧 지워질 옛 목록이 완성본인 양 잠깐 뜬다.
+function renderWithPendingSpy(onRegenerated: () => void | Promise<void>) {
+  const onPendingChange = vi.fn();
+  render(
+    <RegenerateButton
+      domain="TIMELINE"
+      label="AI 타임라인 다시 생성"
+      onRegenerated={onRegenerated}
+      onPendingChange={onPendingChange}
+    />,
+  );
+  return { onPendingChange, user: userEvent.setup() };
+}
+
+describe("RegenerateButton — 진행 상태 알림", () => {
+  it("확인 직후 참, 끝나면 거짓을 알린다", async () => {
+    const { onPendingChange, user } = renderWithPendingSpy(vi.fn());
+
+    await user.click(screen.getByRole("button", { name: "AI 타임라인 다시 생성" }));
+    await user.click(await screen.findByRole("button", { name: "다시 생성" }));
+
+    expect(onPendingChange.mock.calls.map(([value]) => value)).toEqual([true, false]);
+  });
+
+  it("재조회(onRegenerated)가 끝나기 전에는 진행 상태를 내리지 않는다", async () => {
+    let finishRefetch: (() => void) | undefined;
+    const refetch = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishRefetch = resolve;
+        }),
+    );
+    const { onPendingChange, user } = renderWithPendingSpy(refetch);
+
+    await user.click(screen.getByRole("button", { name: "AI 타임라인 다시 생성" }));
+    await user.click(await screen.findByRole("button", { name: "다시 생성" }));
+
+    expect(refetch).toHaveBeenCalledTimes(1);
+    expect(onPendingChange.mock.calls.map(([value]) => value)).toEqual([true]);
+
+    finishRefetch?.();
+    await screen.findByText("다시 생성했어요.");
+    expect(onPendingChange.mock.calls.map(([value]) => value)).toEqual([true, false]);
+  });
+
+  it("실패해도 진행 상태는 반드시 내려간다 — 자리표시가 영원히 남지 않는다", async () => {
+    regenerateMock.mockRejectedValue(new Error("boom"));
+    const { onPendingChange, user } = renderWithPendingSpy(vi.fn());
+
+    await user.click(screen.getByRole("button", { name: "AI 타임라인 다시 생성" }));
+    await user.click(await screen.findByRole("button", { name: "다시 생성" }));
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(onPendingChange.mock.calls.map(([value]) => value)).toEqual([true, false]);
   });
 });

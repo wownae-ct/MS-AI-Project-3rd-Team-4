@@ -21,10 +21,11 @@
 // 새로 찍어야 했고, 이는 OCR 인식률 저하와도 연결되는 문제였다(docs/wedding/refactor/
 // bug-todo.md). `capture` 속성을 제거해 브라우저 기본 파일 선택 UI(카메라/갤러리 둘 다 선택
 // 가능)를 쓰도록 되돌린다.
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { ApiError } from "@/shared/api";
+import { futureQuickPicks, pastQuickPicks, todayISO } from "@/shared/lib/date";
 import { AMOUNT_STEP_WON } from "@/shared/lib/money";
-import { IconCamera, NumberInput } from "@/shared/ui";
+import { DateField, IconCamera, NumberInput } from "@/shared/ui";
 import { createPayment, getReceiptExtract } from "../api/payment";
 import type { PaymentType } from "../model";
 import { PAYMENT_TYPE_LABEL } from "./payment-labels";
@@ -72,6 +73,10 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // `<label>` 이 감싸는 것이 네이티브 입력이 아니라 컴포넌트라 htmlFor 로 이어 준다 —
+  // 안 이으면 접근성 린트(label-has-associated-control)가 잡고, 실제로도 라벨 클릭이 죽는다.
+  const dueDateId = useId();
+  const paidDateId = useId();
   // 진행 중인 OCR 요청을 취소하기 위한 컨트롤러 — 이전엔 취소 수단이 없어, "취소"로 폼을 닫아도
   // 요청은 계속 진행되다가 나중에 도착한 결과가 이미 닫은(리셋된) 폼 상태를 조용히 채웠다
   // (레드팀 감사).
@@ -266,13 +271,36 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
         value={amount}
         onValueChange={setAmount}
       />
-      <label className="flex flex-col gap-1">
+      {/* [D20] 둘 다 `<input type="date">` 였다. 두 칸의 성격이 정반대라 빠른 선택도 갈린다 —
+          예정일은 앞으로의 날짜(오늘·1주 뒤·1개월 뒤), 결제일은 이미 지난 날짜(오늘·어제)다.
+          결제일에 `max` 를 두는 이유: 아직 오지 않은 날에 결제할 수는 없다(백엔드도 PLANNED +
+          paid_date 를 거부한다 — backend/app/schemas/payment.py:73-81). 둘 다 `clearable` 이다 —
+          이 폼은 둘 중 하나만 채워도 저장되므로(handleSubmit 의 `!dueDate && !paidDate`) 잘못
+          채운 칸을 비울 수단이 반드시 있어야 한다. 네이티브에서는 iOS 에 그 수단이 없었다. */}
+      <label className="flex flex-col gap-1" htmlFor={dueDateId}>
         <span className={FIELD_NOTE}>납부 예정일{paidDate !== "" && "(선택 — 이미 결제했다면 비워둬도 돼요)"}</span>
-        <input className={FORM_INPUT} type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        <DateField
+          id={dueDateId}
+          className={FORM_INPUT}
+          aria-label="납부 예정일"
+          value={dueDate}
+          onChange={setDueDate}
+          quickPicks={futureQuickPicks(todayISO())}
+          clearable
+        />
       </label>
-      <label className="flex flex-col gap-1">
+      <label className="flex flex-col gap-1" htmlFor={paidDateId}>
         <span className={FIELD_NOTE}>결제일(이미 냈으면, 선택)</span>
-        <input className={FORM_INPUT} type="date" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} />
+        <DateField
+          id={paidDateId}
+          className={FORM_INPUT}
+          aria-label="결제일"
+          value={paidDate}
+          onChange={setPaidDate}
+          max={todayISO()}
+          quickPicks={pastQuickPicks(todayISO())}
+          clearable
+        />
       </label>
       {error && (
         <p role="alert" className="text-xs text-primary">
