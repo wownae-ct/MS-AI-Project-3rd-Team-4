@@ -30,6 +30,15 @@ class PersonalizationState(TypedDict):
     # SUCCESS/BLOCKED 판정에 전혀 영향을 주지 않는다.
     validation_status: dict[str, str]
     validation_errors: dict[str, list[str]]
+    # 2026-08-30 결정(red-bug.md #9-11) — CHECKLIST 전용 카테고리 단위 판정. 위 validation_status/
+    # validation_errors["CHECKLIST"]는 이 두 dict의 요약값(하나라도 BLOCKED면 도메인 전체
+    # BLOCKED)일 뿐이고, 실제 폴백 병합(app/services/personalization.py)은 이 두 필드를 본다 —
+    # 성공한 카테고리는 LLM 결과를, 실패한 카테고리만 카탈로그 폴백을 쓴다. affected_domains에
+    # CHECKLIST가 없으면 빈 dict. TIMELINE은 이 세분화 대상이 아니다(category_code=null 범용
+    # 항목 개념 때문에 카테고리 분리가 그대로 적용되지 않아 도메인 단위 판정만 유지한다 —
+    # app/personalization/graph.py 모듈 docstring 참고).
+    checklist_category_status: dict[str, str]
+    checklist_category_errors: dict[str, list[str]]
     # 2026-08-25 결정 — validate가 BLOCKED이면 generate로 최대 1회 돌아간다(챗 그래프 CRAG
     # 재시도와 동일 패턴, 새 노드 아님·조건부 엣지만). validate_node가 BLOCKED 판정 시에만
     # 증가시킨다 — generate_node는 이 값이 0보다 크면 validation_errors를 피드백으로 프롬프트에

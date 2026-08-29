@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.core.categories import CATEGORY_META_BY_CODE
 from app.core.config import Settings
 from app.personalization.graph import build_graph
 from app.rag.retrieval import RetrievedChunk
@@ -44,6 +45,16 @@ _SUCCESS_CHECKLIST = {
 _SUCCESS_TIMELINE = {
     "timeline_items": [
         {"category_code": "VENUE", "title": "웨딩홀 계약", "default_dday_offset_days": -300}
+    ]
+}
+# TIMELINE은 도메인 단위 그대로라(2026-08-30 결정 참고) 활성 카테고리 전부를 한 응답에
+# 커버해야 SUCCESS다 — TestChecklistCategoryFanOut의 active_categories=["VENUE","SDM"]
+# 테스트는 위 VENUE 단독 페이로드로는 TIMELINE 자체가 BLOCKED돼 버려 CHECKLIST 재시도
+# 회귀 검증이 흐려진다(TIMELINE도 같이 재호출됨).
+_SUCCESS_TIMELINE_VENUE_SDM = {
+    "timeline_items": [
+        {"category_code": "VENUE", "title": "웨딩홀 계약", "default_dday_offset_days": -300},
+        {"category_code": "SDM", "title": "드레스 투어", "default_dday_offset_days": -200},
     ]
 }
 
@@ -86,6 +97,47 @@ def _prompts_by_domain(client: MagicMock) -> tuple[list[str], list[str]]:
         else:
             timeline_prompts.append(prompt)
     return checklist_prompts, timeline_prompts
+
+
+def _client_with_checklist_categories_and_timeline(
+    checklist_by_category: dict[str, list[dict]],
+    timeline_payloads: list[dict] | None = None,
+) -> MagicMock:
+    """2026-08-30 결정(red-bug.md #9-11) 전용 — CHECKLIST가 이제 도메인 단위가 아니라
+    카테고리 단위로 독립 호출되므로, 도메인 마커만으로는(위 `_client_with_domain_responses`)
+    "어느 카테고리 호출인지"를 구분할 수 없다. `_generate_checklist_category_draft`가
+    `profile["active_categories"]`를 그 카테고리 하나짜리 리스트로 좁혀 넘기고,
+    `build_generate_prompt`가 그걸 raw ENUM이 아니라 한글 이름으로
+    `"활성 카테고리: {한글명}"` 한 줄로 렌더링하므로(red-bug.md #20 유출 수정,
+    `_describe_priorities_and_categories`) 그 줄로 카테고리를 판별한다. TIMELINE은
+    기존과 동일하게 도메인 단위 그대로다. `client.call_log`에 호출 순서대로 매칭된
+    카테고리/도메인 이름을 남겨, 어느 카테고리가 몇 번 불렸는지 그대로 검사할 수 있게 한다."""
+    checklist_queues = {
+        category: list(payloads) for category, payloads in checklist_by_category.items()
+    }
+    timeline_queue = list(timeline_payloads or [])
+    call_log: list[str] = []
+
+    def _marker(category: str) -> str:
+        return f"활성 카테고리: {CATEGORY_META_BY_CODE[category].name_ko}"
+
+    async def _side_effect(*args, **kwargs):
+        prompt = kwargs["messages"][0]["content"]
+        if "timeline_items" in prompt and "checklist_items" not in prompt:
+            call_log.append("TIMELINE")
+            payload = timeline_queue.pop(0)
+        else:
+            matched = next(category for category in checklist_queues if _marker(category) in prompt)
+            call_log.append(matched)
+            payload = checklist_queues[matched].pop(0)
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(payload)))]
+        )
+
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(side_effect=_side_effect)
+    client.call_log = call_log
+    return client
 
 
 def _initial_state() -> dict:
@@ -474,3 +526,92 @@ class TestContractCitationGrounding:
             )
 
         mock_retrieve.assert_not_called()
+
+
+class TestChecklistCategoryFanOut:
+    """2026-08-30 결정(red-bug.md #9-11) — #129(도메인 분리) 배포 이후에도 staging에서
+    CHECKLIST가 80% 확률로 계속 BLOCKED됐다. 활성 카테고리 전부(최대 9개)를 한 CHECKLIST
+    호출이 커버해야 하는 구조가 원인이라, 카테고리 단위로 한 번 더 쪼갠다."""
+
+    @pytest.mark.asyncio
+    async def test_each_active_category_gets_its_own_independent_call(self):
+        state = _initial_state()
+        state["profile"] = {"active_categories": ["VENUE", "SDM"]}
+        venue_checklist = {
+            "checklist_items": [{"category_code": "VENUE", "title": "웨딩홀 계약서 확인"}]
+        }
+        sdm_checklist = {"checklist_items": [{"category_code": "SDM", "title": "드레스 피팅"}]}
+        client = _client_with_checklist_categories_and_timeline(
+            checklist_by_category={"VENUE": [venue_checklist], "SDM": [sdm_checklist]},
+            timeline_payloads=[_SUCCESS_TIMELINE_VENUE_SDM],
+        )
+        with patch("app.personalization.graph.get_azure_openai_client", return_value=client):
+            graph = build_graph()
+            result = await graph.ainvoke(state, {"configurable": {"settings": _TEST_SETTINGS}})
+
+        # 결합 1콜이 아니라 카테고리별 2콜(+TIMELINE 1콜) = 총 3콜.
+        assert client.chat.completions.create.call_count == 3
+        assert sorted(c for c in client.call_log if c != "TIMELINE") == ["SDM", "VENUE"]
+        assert result["checklist_category_status"] == {"VENUE": "SUCCESS", "SDM": "SUCCESS"}
+        titles = {item["title"] for item in result["checklist_draft"]}
+        assert titles == {"웨딩홀 계약서 확인", "드레스 피팅"}
+
+    @pytest.mark.asyncio
+    async def test_one_blocked_category_is_retried_alone_success_category_not_recalled(self):
+        # 이번 재발 버그의 핵심 회귀 — VENUE는 1차에 SUCCESS, SDM만 BLOCKED. VENUE 큐에
+        # 응답을 1개만 넣어둬서, 재시도 때 VENUE가 다시 불리면 pop(0)이 StopIteration으로
+        # 즉시 실패한다(carry-forward 위반 감지).
+        state = _initial_state()
+        state["profile"] = {"active_categories": ["VENUE", "SDM"]}
+        venue_checklist = {
+            "checklist_items": [{"category_code": "VENUE", "title": "웨딩홀 계약서 확인"}]
+        }
+        sdm_success = {"checklist_items": [{"category_code": "SDM", "title": "드레스 피팅"}]}
+        client = _client_with_checklist_categories_and_timeline(
+            checklist_by_category={
+                "VENUE": [venue_checklist],
+                "SDM": [{"checklist_items": []}, sdm_success],
+            },
+            timeline_payloads=[_SUCCESS_TIMELINE_VENUE_SDM],
+        )
+        with patch("app.personalization.graph.get_azure_openai_client", return_value=client):
+            graph = build_graph()
+            result = await graph.ainvoke(state, {"configurable": {"settings": _TEST_SETTINGS}})
+
+        # VENUE 1콜 + SDM 2콜(1차 BLOCKED + 재시도 SUCCESS) + TIMELINE 1콜 = 총 4콜.
+        assert client.chat.completions.create.call_count == 4
+        assert client.call_log.count("VENUE") == 1
+        assert client.call_log.count("SDM") == 2
+        assert result["checklist_category_status"] == {"VENUE": "SUCCESS", "SDM": "SUCCESS"}
+        assert result["retry_count"] == 1
+        titles = {item["title"] for item in result["checklist_draft"]}
+        assert titles == {"웨딩홀 계약서 확인", "드레스 피팅"}
+
+    @pytest.mark.asyncio
+    async def test_category_still_blocked_after_retry_reflected_in_final_status(self):
+        # 카테고리 하나가 재시도까지 소진하고도 계속 BLOCKED면(예: 그래도 빈 응답),
+        # checklist_category_status에 그대로 BLOCKED로 남아야 한다 —
+        # app/services/personalization.py가 이 값으로 그 카테고리만 카탈로그 폴백한다.
+        state = _initial_state()
+        state["profile"] = {"active_categories": ["VENUE", "SDM"]}
+        venue_checklist = {
+            "checklist_items": [{"category_code": "VENUE", "title": "웨딩홀 계약서 확인"}]
+        }
+        client = _client_with_checklist_categories_and_timeline(
+            checklist_by_category={
+                "VENUE": [venue_checklist],
+                "SDM": [{"checklist_items": []}, {"checklist_items": []}],
+            },
+            timeline_payloads=[_SUCCESS_TIMELINE_VENUE_SDM],
+        )
+        with patch("app.personalization.graph.get_azure_openai_client", return_value=client):
+            graph = build_graph()
+            result = await graph.ainvoke(state, {"configurable": {"settings": _TEST_SETTINGS}})
+
+        assert client.call_log.count("SDM") == 2  # 1차 + 재시도 1회, 상한(_MAX_RETRIES=1) 소진
+        assert result["checklist_category_status"] == {"VENUE": "SUCCESS", "SDM": "BLOCKED"}
+        assert result["validation_status"]["CHECKLIST"] == "BLOCKED"
+        # VENUE는 그래도 살아남아 checklist_draft에 남아있어야 한다(app/services/
+        # personalization.py의 카테고리 단위 병합이 이 값을 그대로 신뢰).
+        titles = {item["title"] for item in result["checklist_draft"]}
+        assert titles == {"웨딩홀 계약서 확인"}
