@@ -47,19 +47,47 @@
   --color-success: #166534; /* surface 대비 7.13 · bg 대비 6.60 · line 대비 5.58 (WCAG 상대휘도) */
   --color-success-soft: #e1f4e8; /* 배지 배경 — 위에 success 6.22 */
 
-  /* 결제 유형(계약금/중도금/잔금/기타) 배지 색 — D13 (docs/design/decisions.md), 2026-08-27,
-     사용자 지시. D6/D12는 "상태(성공/경고/위험) 색"에 관한 결정이고 이건 카테고리 색이라 범위가
-     다르지만, "새 색은 이 문서 → theme.css 순서로"라는 D8의 절차는 그대로 따른다. 넷 다
-     surface/bg/line 전부에서 WCAG AA(4.5:1)를 여유 있게 넘는다(node로 상대휘도 직접 계산,
-     추정치 아님) — soft 배경 위 자기 색 글자도 전부 4.5:1 이상. */
-  --color-payment-deposit: #8a5a12; /* 계약금 — surface 5.91 · bg 5.47 · line 4.63 */
-  --color-payment-deposit-soft: #f5ebd9; /* 배지 배경 — 위에 deposit 5.00 */
-  --color-payment-interim: #2f5f8f; /* 중도금 — surface 6.66 · bg 6.16 · line 5.21 */
-  --color-payment-interim-soft: #dfe8f2; /* 배지 배경 — 위에 interim 5.38 */
-  --color-payment-balance: #54407e; /* 잔금 — surface 8.71 · bg 8.06 · line 6.82 */
-  --color-payment-balance-soft: #e6e1f2; /* 배지 배경 — 위에 balance 6.81 */
-  --color-payment-etc: #5f4f43; /* 기타 — surface 7.82 · bg 7.24 · line 6.12 */
-  --color-payment-etc-soft: #eee7df; /* 배지 배경 — 위에 etc 6.38 */
+  /* 결제 유형(계약금/중도금/잔금/기타) 배지 색 — D13 (2026-08-27) 으로 도입, D17 (2026-08-29,
+     사용자 지시)로 **값을 다시 잡았다.** D6/D12는 "상태(성공/경고/위험) 색"에 관한 결정이고
+     이건 분류 색이라 범위가 다르지만, "새 색은 문서 → theme.css 순서로"라는 D8의 절차는
+     그대로 따른다.
+     계약금 → 중도금 → 잔금은 **순서가 있는 축**이다(기타만 그 축 밖). D13은 여기에 서로 다른
+     색상 4종을 입혀 순서를 못 실었고, 카테고리 색 9종(아래)이 들어오면서 한 색상환에 13색이
+     겹치는 문제까지 생겼다. 그래서 색상은 H250(블루) 하나로 통일하고 **명도 3단계**로 순서를
+     싣는다 — 이 색상은 카테고리 9색이 비운 가장 넓은 구간(honeymoon 225 ↔ venue 275 한가운데)
+     이라 어느 카테고리 색과도 25° 이상 떨어진다.
+     배지는 이제 **테두리 변이**(surface 배경 + border-current)라 글자가 흰 표면 위에 놓인다 —
+     soft 배경 토큰은 참조하는 곳이 없어져 삭제했다(팔레트에 죽은 값을 남기지 않는다).
+     넷 다 surface/bg/line 전부에서 WCAG AA(4.5:1)를 넘는다(node로 상대휘도 직접 계산, 추정치 아님). */
+  --color-payment-deposit: #386695; /* 계약금 1단계(연) — surface 6.00 · bg 5.55 · line 4.69 */
+  --color-payment-interim: #194e7e; /* 중도금 2단계(중) — surface 8.63 · bg 7.99 · line 6.76 */
+  --color-payment-balance: #0c375d; /* 잔금 3단계(진) — surface 12.21 · bg 11.30 · line 9.56 */
+  --color-payment-etc: #58514c; /* 기타 — 순서 밖이라 중립 무채. surface 7.79 · bg 7.21 · line 6.10 */
+
+  /* 웨딩 카테고리(9종) 배지 색 — D17 (docs/design/decisions.md), 2026-08-29, 사용자 지시.
+     위 결제 유형과 달리 **순서가 없는 명목형**이라 서로 다른 색상으로 나눈다. 두 계열은 배지
+     형태(카테고리=채움 / 결제 유형=테두리)로 갈리므로 색상환을 공유해도 축이 혼동되지 않는다.
+     진한색 L=0.44 C=0.10, soft 틴트 L=0.935 C=0.033 (OKLCH)으로 고정해 어느 배지도 다른 배지보다
+     튀지 않게 했고, 카테고리끼리 최소 30° · primary(H352)/success(H151)에서 20° 이상 비켜 놓았다.
+     전부 surface/bg/line + 자기 soft 배경 위에서 WCAG AA(4.5:1)를 넘는다(node로 직접 계산). */
+  --color-category-meeting: #81383d; /* 상견례 — surface 8.18 · bg 7.58 · line 6.41 */
+  --color-category-meeting-soft: #ffe1e1; /* 배지 배경 — 위에 meeting 6.67 */
+  --color-category-venue: #434c89; /* 예식장 — surface 7.97 · bg 7.38 · line 6.24 */
+  --color-category-venue-soft: #e3e8ff; /* 배지 배경 — 위에 venue 6.55 */
+  --color-category-sdm: #674078; /* 스드메 — surface 8.14 · bg 7.53 · line 6.37 */
+  --color-category-sdm-soft: #f2e3f9; /* 배지 배경 — 위에 sdm 6.64 */
+  --color-category-gift: #7a4306; /* 예물·예단 — surface 7.98 · bg 7.38 · line 6.24 */
+  --color-category-gift-soft: #fbe5d4; /* 배지 배경 — 위에 gift 6.56 */
+  --color-category-homeware: #405d1a; /* 혼수 — surface 7.50 · bg 6.95 · line 5.87 */
+  --color-category-homeware-soft: #e2eed7; /* 배지 배경 — 위에 homeware 6.23 */
+  --color-category-invitation: #00635f; /* 청첩장·답례품 — surface 7.12 · bg 6.59 · line 5.57 */
+  --color-category-invitation-soft: #d2f1ee; /* 배지 배경 — 위에 invitation 5.95 */
+  --color-category-honeymoon: #005d7c; /* 신혼여행 — surface 7.35 · bg 6.81 · line 5.75 */
+  --color-category-honeymoon-soft: #d3effa; /* 배지 배경 — 위에 honeymoon 6.12 */
+  --color-category-homenew: #605300; /* 신혼집 구하기 — surface 7.68 · bg 7.11 · line 6.01 */
+  --color-category-homenew-soft: #eeebd2; /* 배지 배경 — 위에 homenew 6.38 */
+  --color-category-etc: #58514c; /* 기타 — 중립 무채. surface 7.79 · bg 7.21 · line 6.10 */
+  --color-category-etc-soft: #ede9e6; /* 배지 배경 — 위에 etc 6.45 */
 
   /* Typography — Wanted Sans Variable.
      원 디자인 문서가 Pretendard 를 "브랜드 식별력이 떨어진다"는 이유로 명시 기각했다.

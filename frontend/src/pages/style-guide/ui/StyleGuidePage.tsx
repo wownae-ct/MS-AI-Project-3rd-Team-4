@@ -12,10 +12,12 @@ import { ColorSection, TypographySection } from "./sections/FoundationSection";
 import {
   BadgeSection,
   ButtonSection,
+  LoadingSection,
   MoneySection,
   ProgressSection,
   TabsSection,
 } from "./sections/ComponentsSection";
+import { DateFieldSection, SelectSection } from "./sections/FormsSection";
 import { FocusSection, NonGoalsSection, ShapeSection, SurfaceSection } from "./sections/SystemSection";
 
 export function StyleGuidePage() {
@@ -31,6 +33,13 @@ export function StyleGuidePage() {
       <ButtonSection />
       <BadgeSection />
       <ProgressSection />
+      {/* 진행률 바로 아래 둔다 — 둘의 경계(값이 있는 진행 vs 조회 대기)가 가장 헷갈리는 자리라
+          나란히 보여야 구분이 선다(D14). */}
+      <LoadingSection />
+      {/* 타이포 절 바로 옆이 아니라 여기 둔다 — 드롭다운의 요점은 스케일 자체가 아니라 **폼
+          컨트롤에서 그 스케일이 어떻게 갈리는가**라, 같은 성격인 날짜 입력과 나란히 서야 읽힌다(D22). */}
+      <SelectSection />
+      <DateFieldSection />
       <TabsSection />
       <SurfaceSection />
       <FocusSection />

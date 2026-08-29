@@ -20,7 +20,9 @@ export type RegionCode = (typeof REGION_CODES)[number];
 export const SOURCE_TIERS = ["OFFICIAL", "NEWS", "INDUSTRY", "CONSENSUS"] as const;
 export type SourceTier = (typeof SOURCE_TIERS)[number];
 
-export const VERDICTS = ["SUPPORTED", "WEAK", "GENERAL"] as const;
+// "OUT_OF_SCOPE" 는 2026-08-29 에 늘어난 4번째 값이다(backend PR #130) — 결혼 준비와 무관한
+// 요청을 검색/생성 없이 거절한 경우다. 종전엔 이 상황도 "GENERAL"(근거 없음)을 재사용했다.
+export const VERDICTS = ["SUPPORTED", "WEAK", "GENERAL", "OUT_OF_SCOPE"] as const;
 export type Verdict = (typeof VERDICTS)[number];
 
 /** ⚠️ 소문자다. 대문자로 비교하면 조용히 안 맞는다. */

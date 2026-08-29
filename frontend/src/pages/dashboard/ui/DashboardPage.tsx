@@ -3,6 +3,9 @@
 // 콘텐츠 열은 `repeat(auto-fit, minmax(320px, 1fr))` 다(layout.md §2 라우트 표). `auto-fit` 을 쓰는
 // 이유는 브레이크포인트를 늘리지 않고 카드가 스스로 재배치되게 하기 위해서다(§7) — 그래서 `Page` 에
 // `max-w-none` 을 주어 폭 제한은 셸(최대 1160px)에 맡긴다.
+// ⚠️ 하한은 `min(320px,100%)` 으로 감싼다 — 320px 기기에서 컨테이너(288px)보다 큰 하한이 그대로
+//    넘쳤다(아래 그 자리의 🚨 주석에 산술이 있다). 같은 형태를 쓰는 `pages/report/ui/ReportPage.tsx`
+//    도 함께 감쌌다.
 //
 // **목업과 의도적으로 다른 점** (전부 규범/요구사항이 목업을 이기는 경우 — ADR 0006)
 //   1. 브랜드 블록(s2:146-149)을 그리지 않는다 — 사이드바 소관이다(layout.md §4).
@@ -10,15 +13,17 @@
 //   2. 카드 제목을 `<p>` 가 아니라 `<h2>` 로 낸다 — WCAG 1.3.1 F2 (a11y.md §4).
 //   3. 금액은 총액까지 굵은 `ink` 다 — "금액은 항상 tabular-nums + 700"(docs/design/README.md).
 //   4. **예산 도넛을 걷어냈다(UX 개편, 2026-08-26)** — 예산 상세는 예산 페이지가 전담하고,
-//      대시보드는 카테고리별 진행 상황(체크리스트·시세비교)에 집중한다. 도넛 자체는
+//      대시보드는 카테고리별 진행 상황에 집중한다. 도넛 자체는
 //      `pages/budget/ui/BudgetDonut.tsx`로 이동했다(`git mv`, 이력 보존).
-//   5. **"카테고리별 예산"을 "카테고리별 체크리스트 진행률 · 시세비교"로 바꿨다**(2026-08-27,
+//   5. **"카테고리별 예산"을 "카테고리별 체크리스트 진행률"로 바꿨다**(2026-08-27,
 //      최초엔 "· 시세비교"만 있었으나 "체크리스트 진행률" 카드라는 게 제목만 봐선 안 드러나던
-//      문제로 "진행률"을 추가했다) — `CategoryRow.tsx` 머리말 참고.
+//      문제로 "진행률"을 추가했다) — `CategoryRow.tsx` 머리말 참고. 처음 붙었던 "· 시세비교"는
+//      아래 9번에서 다시 떨어졌다.
 //
 // **실API 연동 이후 생긴 것들**
-//   · 로딩/에러 상태: 실 fetch 는 실패할 수 있어 최소 텍스트만 추가했다("불러오는 중…",
-//     `role="alert"` — 로그인/온보딩 화면이 이미 쓰는 관례 그대로).
+//   · 로딩/에러 상태: 에러는 `role="alert"`(로그인/온보딩 화면이 이미 쓰는 관례 그대로).
+//     로딩은 처음엔 최소 텍스트 한 줄이었지만 지금은 자리표시 + 문구다 — 디자인 근거가 없어
+//     미뤄 뒀던 것이 D14 로 정해졌다(docs/design/decisions.md).
 //   · "다가오는 납부" → "다가오는 할 일": `PaymentRow.tsx` 머리말 참고 — API 응답에 금액이 없다.
 //   · 카테고리 → S3 상세 진입: `CategoryRow.tsx`가 행 전체를 `/category/$id` 링크로 감싼다.
 //
@@ -35,10 +40,19 @@
 //      "총 예산 현황" 카드로 흡수됐다(`pages/budget/ui/BudgetDonut.tsx`). `summary.budget_benchmark`는
 //      이 화면에서 더 이상 안 쓴다(백엔드 응답 자체는 그대로 내려온다 — 필드를 소비하는 화면만
 //      바뀐 것).
+//
+// **UX 개편 7차(2026-08-29, 사용자 지시)**
+//   9. **카테고리 행의 시세비교를 걷어냈다** — 「시세 대비 … · 중앙값 …」 결과도, 비교할 수 없을
+//      때의 「예산을 배정하면 시세와 비교할 수 있어요.」 안내도 더 이상 내지 않는다. 8번에서
+//      총예산 시세비교가 예산 페이지로 넘어간 데 이어, 카테고리별 시세비교도 그 화면
+//      (「카테고리별 예산 현황」 행)이 전담한다 — 홈에는 중복이었고, 예산 미배정 상태에서는
+//      정보 없는 안내 문구만 행마다 쌓였다. 카드 제목에서 "· 시세비교"가 빠졌고 조회 훅
+//      (`use-category-benchmarks.ts`)은 삭제됐다 — 홈 첫 로딩에서 `GET /categories` 1회와
+//      `GET /benchmarks/compare` 최대 2회가 사라진다.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getDashboardSummary, type DashboardSummary } from "@/entities/dashboard";
 import { ApiError } from "@/shared/api";
-import { Card, Page } from "@/shared/ui";
+import { Card, Loading, Page, SkeletonRows } from "@/shared/ui";
 import { adaptHeadline } from "./adapt-summary";
 import { CategoryChecklistSection } from "./CategoryChecklistSection";
 import { PaymentRow } from "./PaymentRow";
@@ -113,7 +127,13 @@ export function DashboardPage() {
   if (summary === null) {
     return (
       <Page title="대시보드" width="max-w-none">
-        <p className="text-sm text-ink-soft">불러오는 중…</p>
+        {/* D14 L2 — 자리표시가 카드 부피를 먼저 잡아 데이터 도착 시 레이아웃이 밀리지 않는다.
+            문구를 함께 남기는 이유: 「동작 줄이기」 환경에서는 자리표시의 움직임이 멈춰
+            (styles.css 전역 규칙) 정지한 블록이 빈 화면으로 읽힌다 — 그때 남는 단서가 문구다. */}
+        <Card title="다가오는 할 일">
+          <SkeletonRows count={3} />
+        </Card>
+        <Loading />
       </Page>
     );
   }
@@ -129,7 +149,15 @@ export function DashboardPage() {
         onDateSaved={() => fetchSummary()}
       />
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] gap-5">
+      {/* 🚨 [2026-08-29] `minmax(320px,…)` 이 아니라 `minmax(min(320px,100%),…)` 다.
+          `auto-fit` 은 열 **개수**만 줄인다 — 트랙 하한은 고정 320px 그대로라, 1열로 접힌 뒤에도
+          트랙이 320px 을 고집한다. 320px 기기에서 이 컨테이너의 실제 폭은 `Page` 의 `px-4` 를 뺀
+          **288px** 이므로 카드가 32px 넘쳐 페이지에 가로 스크롤이 생겼다(320px 전수 검사에서 발견).
+          `min(320px,100%)` 은 「320px 을 원하되 컨테이너보다 크면 컨테이너만큼」이라 좁은 폭에서만
+          하한이 풀린다 — 넓은 폭의 다열 배치는 1px 도 바뀌지 않는다.
+          ⚠️ 완성된 리터럴로 적는다. Tailwind 스캐너는 소스를 평문으로 훑으므로 조립하면 유틸리티가
+          생성되지 않고 **빌드는 성공한 채 배치만 사라진다**(CLAUDE.md §5.1). */}
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(320px,100%),1fr))] gap-5">
         <Card title="다가오는 할 일">
           {summary.upcoming_items.length === 0 ? (
             <p className="text-sm text-ink-soft">다가오는 할 일이 없습니다.</p>

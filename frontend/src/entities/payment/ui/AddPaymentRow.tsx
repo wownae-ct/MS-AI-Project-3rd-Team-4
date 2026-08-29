@@ -21,8 +21,11 @@
 // 새로 찍어야 했고, 이는 OCR 인식률 저하와도 연결되는 문제였다(docs/wedding/refactor/
 // bug-todo.md). `capture` 속성을 제거해 브라우저 기본 파일 선택 UI(카메라/갤러리 둘 다 선택
 // 가능)를 쓰도록 되돌린다.
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { ApiError } from "@/shared/api";
+import { futureQuickPicks, pastQuickPicks, todayISO } from "@/shared/lib/date";
+import { AMOUNT_STEP_WON } from "@/shared/lib/money";
+import { DateField, IconCamera, NumberInput, Select } from "@/shared/ui";
 import { createPayment, getReceiptExtract } from "../api/payment";
 import type { PaymentType } from "../model";
 import { PAYMENT_TYPE_LABEL } from "./payment-labels";
@@ -30,10 +33,16 @@ import { PAYMENT_TYPE_LABEL } from "./payment-labels";
 const ADD_BTN =
   "mt-3 w-full rounded-sm border border-dashed border-line bg-transparent py-2.5 text-sm font-bold text-ink-soft";
 const FORM_INPUT = "min-h-tap w-full rounded-md border border-line bg-surface px-2.5 text-base text-ink";
+// [2026-08-29 D18] text-center → inline-flex 중앙 정렬. 라벨 앞의 📷 컬러 이모지를 IconCamera 로
+// 바꾸면서 필요해졌다 — min-h-tap 이 박스를 줄높이보다 키울 때 콘텐츠를 수직 중앙에 두는 이
+// 저장소의 표준 방식이다(shared/ui/Button.tsx BASE 와 같은 이유).
 const RECEIPT_BTN =
-  "min-h-tap w-full cursor-pointer rounded-md border border-dashed border-primary bg-primary-soft " +
-  "text-center text-sm font-bold text-primary disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex min-h-tap w-full cursor-pointer items-center justify-center gap-2 rounded-md " +
+  "border border-dashed border-primary bg-primary-soft " +
+  "text-sm font-bold text-primary disabled:cursor-not-allowed disabled:opacity-50";
 const FIELD_NOTE = "text-xs text-ink-soft";
+// [D22] `Select` 는 `{ value, label }` 목록을 받는다. 라벨 맵이 단일 출처라 여기서 한 번만 옮긴다.
+const PAYMENT_TYPE_OPTIONS = Object.entries(PAYMENT_TYPE_LABEL).map(([value, label]) => ({ value, label }));
 
 // 백엔드 허용치와 동일하게 맞춘다(backend/app/routers/budget.py:56-58) — 서버 왕복 없이
 // 바로 알려주는 편이 사용자 경험이 낫다. 서버 쪽 검증은 그대로 최종 방어선으로 남는다.
@@ -55,7 +64,9 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
   const [itemName, setItemName] = useState("");
   const [paymentType, setPaymentType] = useState<PaymentType>("DEPOSIT");
   const [vendorName, setVendorName] = useState("");
-  const [amount, setAmount] = useState("");
+  // 문자열이 아니라 `number | null` 이다 — 금액 칸이 `NumberInput` 으로 바뀌면서 "빈 칸"의
+  // 표현이 `""` 에서 `null` 로 옮겨갔다. 0 과 빈 칸은 여전히 구분된다(0원 항목은 아래 검증이 막는다).
+  const [amount, setAmount] = useState<number | null>(null);
   const [dueDate, setDueDate] = useState("");
   const [paidDate, setPaidDate] = useState("");
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
@@ -64,6 +75,10 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // `<label>` 이 감싸는 것이 네이티브 입력이 아니라 컴포넌트라 htmlFor 로 이어 준다 —
+  // 안 이으면 접근성 린트(label-has-associated-control)가 잡고, 실제로도 라벨 클릭이 죽는다.
+  const dueDateId = useId();
+  const paidDateId = useId();
   // 진행 중인 OCR 요청을 취소하기 위한 컨트롤러 — 이전엔 취소 수단이 없어, "취소"로 폼을 닫아도
   // 요청은 계속 진행되다가 나중에 도착한 결과가 이미 닫은(리셋된) 폼 상태를 조용히 채웠다
   // (레드팀 감사).
@@ -74,7 +89,7 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
     setItemName("");
     setPaymentType("DEPOSIT");
     setVendorName("");
-    setAmount("");
+    setAmount(null);
     setDueDate("");
     setPaidDate("");
     setReceiptUrl(null);
@@ -103,7 +118,7 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
       const result = await getReceiptExtract(file, abortController.signal);
       if (result.item_name !== null) setItemName(result.item_name);
       if (result.vendor_name !== null) setVendorName(result.vendor_name);
-      if (result.amount !== null) setAmount(String(result.amount));
+      if (result.amount !== null) setAmount(result.amount);
       if (result.paid_date !== null) setPaidDate(result.paid_date);
       setReceiptUrl(result.receipt_url);
     } catch (err) {
@@ -115,7 +130,9 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
   }
 
   async function handleSubmit() {
-    const parsedAmount = Number(amount);
+    // 빈 칸(null)은 0으로 떨어뜨려 아래 `<= 0` 검증이 그대로 잡게 둔다 — 검증 문구를
+    // "금액을 입력해 주세요"로 따로 갈래를 내지 않는다(다른 필드와 같은 한 줄 안내를 쓴다).
+    const parsedAmount = amount ?? 0;
     // due_date는 무조건 필수가 아니다 — backend PaymentCreate.due_date도 optional이고, 영수증
     // OCR로 결제일(paidDate)이 이미 채워진 건은 "언제까지 낼지"가 더 이상 의미가 없을 수 있다.
     if (
@@ -190,25 +207,31 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
         disabled={isExtracting}
         onClick={() => fileInputRef.current?.click()}
       >
-        {isExtracting ? "영수증 분석 중…" : "📷 영수증으로 채우기"}
+        {/* 진행 중 분기에는 아이콘을 넣지 않는다 — AddPaymentRow.test.tsx 가 그 접근명("영수증
+            분석 중…")을 정확히 고정하고 있고, 진행 중 상태는 문구가 스스로 말한다.
+            아이콘이 aria-hidden 이라 유휴 상태 접근명도 "영수증으로 채우기"로 깨끗해졌다 —
+            종전엔 "📷 영수증으로 채우기"라 일부 스크린리더가 이모지 이름까지 읽었다. */}
+        {isExtracting ? (
+          "영수증 분석 중…"
+        ) : (
+          <>
+            <IconCamera size={16} />
+            영수증으로 채우기
+          </>
+        )}
       </button>
       {receiptUrl !== null && !isExtracting && <p className={FIELD_NOTE}>영수증에서 읽은 값이에요 — 확인하고 필요하면 고쳐주세요.</p>}
       {/* categoryOptions가 있을 때만 렌더 — 카테고리가 이미 고정된 S3 비용 탭은 이 select 자체가
           없다(마크업이 바이트 단위로 그대로 유지된다). 카테고리는 영수증 OCR도 추론하지 않는다
           (ReceiptExtractResult에 category_code가 아예 없다) — 항상 사용자가 직접 고른다. */}
       {categoryOptions !== undefined && (
-        <select
-          className={FORM_INPUT}
+        <Select
+          className="w-full"
           aria-label="카테고리"
           value={selectedCategory}
-          onChange={(e) => setSelectedCategory(e.target.value)}
-        >
-          {categoryOptions.map((option) => (
-            <option key={option.code} value={option.code}>
-              {option.name_ko}
-            </option>
-          ))}
-        </select>
+          onValueChange={setSelectedCategory}
+          options={categoryOptions.map((option) => ({ value: option.code, label: option.name_ko }))}
+        />
       )}
       <input
         className={FORM_INPUT}
@@ -217,18 +240,13 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
         value={itemName}
         onChange={(e) => setItemName(e.target.value)}
       />
-      <select
-        className={FORM_INPUT}
+      <Select
+        className="w-full"
         aria-label="결제 유형"
         value={paymentType}
-        onChange={(e) => setPaymentType(e.target.value as PaymentType)}
-      >
-        {Object.entries(PAYMENT_TYPE_LABEL).map(([value, label]) => (
-          <option key={value} value={value}>
-            {label}
-          </option>
-        ))}
-      </select>
+        onValueChange={(next) => setPaymentType(next as PaymentType)}
+        options={PAYMENT_TYPE_OPTIONS}
+      />
       <input
         className={FORM_INPUT}
         aria-label="업체명"
@@ -236,22 +254,45 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
         value={vendorName}
         onChange={(e) => setVendorName(e.target.value)}
       />
-      <input
+      <NumberInput
         className={FORM_INPUT}
-        type="number"
+        step={AMOUNT_STEP_WON}
         min={0}
         aria-label="금액(원)"
         placeholder="금액(원)"
         value={amount}
-        onChange={(e) => setAmount(e.target.value)}
+        onValueChange={setAmount}
       />
-      <label className="flex flex-col gap-1">
+      {/* [D20] 둘 다 `<input type="date">` 였다. 두 칸의 성격이 정반대라 빠른 선택도 갈린다 —
+          예정일은 앞으로의 날짜(오늘·1주 뒤·1개월 뒤), 결제일은 이미 지난 날짜(오늘·어제)다.
+          결제일에 `max` 를 두는 이유: 아직 오지 않은 날에 결제할 수는 없다(백엔드도 PLANNED +
+          paid_date 를 거부한다 — backend/app/schemas/payment.py:73-81). 둘 다 `clearable` 이다 —
+          이 폼은 둘 중 하나만 채워도 저장되므로(handleSubmit 의 `!dueDate && !paidDate`) 잘못
+          채운 칸을 비울 수단이 반드시 있어야 한다. 네이티브에서는 iOS 에 그 수단이 없었다. */}
+      <label className="flex flex-col gap-1" htmlFor={dueDateId}>
         <span className={FIELD_NOTE}>납부 예정일{paidDate !== "" && "(선택 — 이미 결제했다면 비워둬도 돼요)"}</span>
-        <input className={FORM_INPUT} type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        <DateField
+          id={dueDateId}
+          className={FORM_INPUT}
+          aria-label="납부 예정일"
+          value={dueDate}
+          onChange={setDueDate}
+          quickPicks={futureQuickPicks(todayISO())}
+          clearable
+        />
       </label>
-      <label className="flex flex-col gap-1">
+      <label className="flex flex-col gap-1" htmlFor={paidDateId}>
         <span className={FIELD_NOTE}>결제일(이미 냈으면, 선택)</span>
-        <input className={FORM_INPUT} type="date" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} />
+        <DateField
+          id={paidDateId}
+          className={FORM_INPUT}
+          aria-label="결제일"
+          value={paidDate}
+          onChange={setPaidDate}
+          max={todayISO()}
+          quickPicks={pastQuickPicks(todayISO())}
+          clearable
+        />
       </label>
       {error && (
         <p role="alert" className="text-xs text-primary">

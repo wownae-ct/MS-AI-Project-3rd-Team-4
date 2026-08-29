@@ -6,4 +6,5 @@ export type {
   TimelineItemsResponse,
   TimelineItemStatus,
 } from "./model";
+export { isTimelineItemKept } from "./model";
 export { createTimelineItem, getTimelineItems, patchTimelineItem } from "./api/timeline";

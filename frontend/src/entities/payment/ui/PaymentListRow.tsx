@@ -31,6 +31,14 @@
 // (origin/backend 코드로 확인), 이 상태 전환도 삭제와 마찬가지로 별도 합계 보정 로직이 필요
 // 없다 — status가 바뀌는 순간 다음 조회부터 집계에 자동 반영된다.
 //
+// **배지 두 개의 색 체계(D17, 2026-08-29, 사용자 지시).** 이 행은 배지를 두 개 붙이는 유일한
+// 자리다 — 결제 유형(계약금/중도금/잔금/기타)과 카테고리(예식장/스드메/…). 둘 다 「채운 색
+// 알약」이면 한 줄에 13색이 섞여 어느 쪽이 무슨 축인지 흐려지므로 **형태로 계열을 가른다**:
+//   · 카테고리 = 채움(`Badge` 기본) + 서로 다른 색상 9종 — 순서 없는 명목형
+//   · 결제 유형 = 테두리(`variant="outline"`) + 한 색상의 명도 3단계 — 계약금→중도금→잔금 순서형
+// 카테고리 색은 `categoryLabel`(사람이 읽는 이름)이 아니라 `p.category_code`로 고른다 — 이미
+// 이 컴포넌트에 있는 값이라 **호출부 prop 이 늘지 않는다.**
+//
 // **삭제 확인도 모달이 아니라 인라인 전환**이다("OOO 삭제할까요?" + 삭제/취소) — 이 저장소엔
 // danger 색 토큰이 아예 없다(D6) — 새로 만들지 않고 기존 에러 문구와 같은 text-primary 굵은
 // 글씨만 쓴다. 삭제 확인엔 상태별 보조 문구도 붙는다(PAID: 총 지불액에서 빠진다는 안내 —
@@ -38,12 +46,20 @@
 // 변경은 없다).
 import { useState } from "react";
 import { ApiError } from "@/shared/api";
-import { Badge, Money } from "@/shared/ui";
+import { futureQuickPicks, pastQuickPicks, todayISO } from "@/shared/lib/date";
+import { AMOUNT_STEP_WON } from "@/shared/lib/money";
+import { Badge, categoryBadgeClass, DateField, Money, NumberInput } from "@/shared/ui";
 import { deletePayment, patchPayment } from "../api/payment";
 import type { Payment, PaymentPatchInput } from "../model";
 import { PAYMENT_TYPE_BADGE_CLASS, PAYMENT_TYPE_LABEL } from "./payment-labels";
 
-const ROW_INPUT = "min-h-tap w-full rounded-md border border-line bg-surface px-2.5 text-sm text-ink";
+// [2026-08-29] `text-sm`(14px) 이었다 — **규범 위반이다.** docs/design/README.md · shared/ui/README.md ·
+// a11y.md §2.5 가 셋 다 「입력 필드 16px 미만 금지」를 못박아 뒀고, a11y.md §2.4 는 회피책까지
+// 봉쇄했다(`user-scalable=no` 는 WCAG 1.4.4 위반 — *"반드시 입력 필드 폰트를 16px 이상으로 올려
+// 해결한다"*). iOS Safari 는 16px 미만 입력에 포커스가 가면 화면을 자동 확대하고 **되돌리지
+// 않는다** — 이후 모든 화면이 확대·가로 스크롤 상태로 남는다(사용자 리포트 2026-08-29
+// "모바일 특히 아이폰에서 UI 가 망가진다"). 이 행은 `type="date"` 까지 포함해 그 대상이 셋이다.
+const ROW_INPUT = "min-h-tap w-full rounded-md border border-line bg-surface px-2.5 text-base text-ink";
 const GHOST_BUTTON = "text-xs font-bold text-ink-soft transition-colors duration-150 hover:text-primary";
 const PRIMARY_BUTTON = "min-h-tap flex-1 rounded-md bg-primary text-xs font-bold text-surface disabled:opacity-50";
 const LINE_BUTTON = "min-h-tap flex-1 rounded-md border border-line bg-surface text-xs font-bold text-ink-soft disabled:opacity-50";
@@ -53,10 +69,6 @@ const TOGGLE_ROW = "flex items-center gap-2 rounded-md border border-line bg-bg 
 const TOGGLE_CHECKBOX = "size-[18px] accent-primary";
 const TOGGLE_LABEL = "text-xs font-bold text-ink";
 const HINT_TEXT = "text-xs font-bold text-primary";
-
-function todayISODate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export interface PaymentListRowProps {
   payment: Payment;
@@ -71,7 +83,8 @@ type Mode = "idle" | "editing" | "deleting";
 export function PaymentListRow({ payment: p, categoryLabel, onChanged }: PaymentListRowProps) {
   const [mode, setMode] = useState<Mode>("idle");
   const [draftName, setDraftName] = useState("");
-  const [draftAmount, setDraftAmount] = useState("");
+  // `number | null` — 빈 칸의 표현이 `""` 에서 `null` 로 옮겨갔다(NumberInput 계약).
+  const [draftAmount, setDraftAmount] = useState<number | null>(null);
   const [draftDate, setDraftDate] = useState("");
   const [markAsPaid, setMarkAsPaid] = useState(false);
   const [markAsCanceled, setMarkAsCanceled] = useState(false);
@@ -87,7 +100,7 @@ export function PaymentListRow({ payment: p, categoryLabel, onChanged }: Payment
 
   function startEdit() {
     setDraftName(p.item_name);
-    setDraftAmount(String(p.amount));
+    setDraftAmount(p.amount);
     setDraftDate((isPlanned ? p.due_date : p.paid_date) ?? "");
     setMarkAsPaid(false);
     setMarkAsCanceled(false);
@@ -104,11 +117,12 @@ export function PaymentListRow({ payment: p, categoryLabel, onChanged }: Payment
 
   function handleTogglePaid(checked: boolean) {
     setMarkAsPaid(checked);
-    setDraftDate(checked ? todayISODate() : (p.due_date ?? ""));
+    setDraftDate(checked ? todayISO() : (p.due_date ?? ""));
   }
 
   async function handleSave() {
-    const parsedAmount = Number(draftAmount);
+    // 빈 칸(null)은 0으로 떨어뜨려 아래 `<= 0` 검증이 그대로 잡게 둔다.
+    const parsedAmount = draftAmount ?? 0;
     if (!draftName || !Number.isFinite(parsedAmount) || parsedAmount <= 0 || !draftDate) {
       setSaveState("error");
       setErrorMessage("항목명·금액·날짜를 모두 올바르게 입력해 주세요.");
@@ -205,28 +219,50 @@ export function PaymentListRow({ payment: p, categoryLabel, onChanged }: Payment
   if (mode === "editing") {
     return (
       <li className="flex flex-col gap-2 border-b border-line pb-3 last:border-0 last:pb-0">
-        <div className="flex items-center gap-2">
-          <Badge className={PAYMENT_TYPE_BADGE_CLASS[p.payment_type]}>{PAYMENT_TYPE_LABEL[p.payment_type] ?? p.payment_type}</Badge>
-          {categoryLabel !== undefined && <Badge>{categoryLabel}</Badge>}
+        {/* flex-wrap — 배지 2개가 이제 안 눌리므로(D16) 좁은 폭에서는 뒤따르는 텍스트가 다음
+            줄로 내려가야 한다. 없으면 그 텍스트가 세로로 접힌다. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline" tone={PAYMENT_TYPE_BADGE_CLASS[p.payment_type]}>
+            {PAYMENT_TYPE_LABEL[p.payment_type] ?? p.payment_type}
+          </Badge>
+          {categoryLabel !== undefined && <Badge tone={categoryBadgeClass(p.category_code)}>{categoryLabel}</Badge>}
           <span className="text-xs font-bold text-primary">수정 중</span>
         </div>
         <input className={ROW_INPUT} aria-label="항목명" value={draftName} onChange={(e) => setDraftName(e.target.value)} />
-        <div className="flex gap-2">
-          <input
+        {/* flex-wrap — 입력 글자가 16px 로 올라가면서(위 ROW_INPUT) 두 칸의 min-content 합이
+            좁은 폭을 넘을 수 있다. 폼 컨트롤은 `min-width: auto` 가 **내재 크기**(입력의 기본
+            size · 날짜 칸의 서식 폭)로 잡혀 그 아래로 눌리지 않으므로, 감싸 주지 않으면 카드
+            밖으로 넘쳐 가로 스크롤이 생긴다. 320px 에서 두 칸이 위아래로 갈라지는 것이 의도다.
+            [2026-08-29 D20] 날짜 칸은 이제 **항상** 자기 줄을 쓴다(`basis-full`) — 아래로 캘린더를
+            펼치기 때문이다. 아래 그 칸의 주석에 사유가 있다. 금액 칸의 `flex-1` 은 그대로 둔다. */}
+        <div className="flex flex-wrap gap-2">
+          <NumberInput
+            wrapClassName="flex-1"
             className={`${ROW_INPUT} [font-variant-numeric:tabular-nums]`}
-            type="number"
+            step={AMOUNT_STEP_WON}
             min={0}
             aria-label="금액(원)"
             value={draftAmount}
-            onChange={(e) => setDraftAmount(e.target.value)}
+            onValueChange={setDraftAmount}
           />
-          <input
+          {/* [D20] `<input type="date">` 였다. 이 칸은 상태에 따라 **성격이 뒤집힌다** —
+              결제일이면 이미 지난 날(오늘·어제, 오늘 이후는 불가), 예정일이면 앞으로의 날이다.
+              그 사실을 빠른 선택과 `max` 로 그대로 옮긴다. `clearable` 은 주지 않는다: 이
+              폼은 날짜가 비면 저장 자체가 막히므로(handleSubmit 의 `!draftDate`) 비울 수단이
+              오히려 막다른 길이다.
+              🚨 `flex-1` 이 아니라 `basis-full` 이다 — 이 칸은 이제 **아래로 캘린더를 펼친다.**
+              금액 칸과 폭을 반씩 나누면 7열 그리드가 한 칸 20px 남짓으로 눌려 44px 터치 타겟
+              규범이 깨진다(좁은 화면에서는 어차피 `flex-wrap` 이 갈라 놓던 배치라, 넓은 화면도
+              같은 모양으로 통일하는 셈이다). */}
+          <DateField
+            wrapClassName="basis-full"
             className={`${ROW_INPUT} [font-variant-numeric:tabular-nums]`}
-            type="date"
             aria-label={dateLabel}
             value={draftDate}
             disabled={markAsCanceled}
-            onChange={(e) => setDraftDate(e.target.value)}
+            onChange={setDraftDate}
+            max={willUsePaidDate ? todayISO() : undefined}
+            quickPicks={willUsePaidDate ? pastQuickPicks(todayISO()) : futureQuickPicks(todayISO())}
           />
         </div>
         {isPlanned && (
@@ -281,10 +317,14 @@ export function PaymentListRow({ payment: p, categoryLabel, onChanged }: Payment
   return (
     <li className="flex items-center justify-between gap-3 border-b border-line pb-3 last:border-0 last:pb-0">
       <div className="flex min-w-0 flex-col gap-0.5">
-        <div className="flex items-center gap-2">
-          <Badge className={PAYMENT_TYPE_BADGE_CLASS[p.payment_type]}>{PAYMENT_TYPE_LABEL[p.payment_type] ?? p.payment_type}</Badge>
-          {categoryLabel !== undefined && <Badge>{categoryLabel}</Badge>}
-          <p className="truncate text-sm font-bold text-ink">{p.item_name}</p>
+        {/* flex-wrap + min-w-0 — 배지 2개가 이제 안 눌리므로(D16) 좁은 폭에서는 항목명이 다음
+            줄로 내려가 거기서 전폭을 쓰고 잘린다. 종전엔 같은 줄에서 0px 까지 밀려 사라졌다. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline" tone={PAYMENT_TYPE_BADGE_CLASS[p.payment_type]}>
+            {PAYMENT_TYPE_LABEL[p.payment_type] ?? p.payment_type}
+          </Badge>
+          {categoryLabel !== undefined && <Badge tone={categoryBadgeClass(p.category_code)}>{categoryLabel}</Badge>}
+          <p className="min-w-0 truncate text-sm font-bold text-ink">{p.item_name}</p>
         </div>
         <p className="text-xs text-ink-soft">
           {p.vendor_name ?? "업체명 미상"} ·{" "}

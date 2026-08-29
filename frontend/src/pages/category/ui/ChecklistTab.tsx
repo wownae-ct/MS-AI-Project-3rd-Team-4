@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import {
   getChecklistItems,
+  isChecklistItemKept,
   patchChecklistItem,
   type ChecklistItem,
   type ChecklistItemType,
@@ -16,7 +17,7 @@ import { RegenerateButton } from "@/entities/personalization";
 import { getVendorCases, type VendorCasesResponse } from "@/entities/vendor-case";
 import type { CategoryConstant } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
-import { Card } from "@/shared/ui";
+import { Card, Loading, SkeletonRows, StatusCallout } from "@/shared/ui";
 import { AddChecklistItemRow } from "./AddChecklistItemRow";
 import { ChecklistItemRow } from "./ChecklistItemRow";
 import { VendorCaseSection } from "./VendorCaseSection";
@@ -44,9 +45,14 @@ const PAGE_BUTTON =
 export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) {
   const [items, setItems] = useState<ChecklistItem[] | null>(null);
   const [vendorCases, setVendorCases] = useState<VendorCasesResponse | null>(null);
+  // null 하나로는 "아직 안 왔다"와 "영영 안 온다"가 구분되지 않는다 — 로딩 자리를 잡기 시작한
+  // 이상 실패를 따로 알아야 그 자리를 회수할 수 있다(D14 SE2).
+  const [vendorCasesFailed, setVendorCasesFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [contractOnly, setContractOnly] = useState(false);
   const [contractPage, setContractPage] = useState(0);
+  // 재생성 진행 여부 — 참인 동안 **지워질 항목 자리에만** 스켈레톤이 선다(D21).
+  const [regenerating, setRegenerating] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,8 +75,10 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
 
   // 커스텀 항목 추가·수동 재생성 뒤 목록을 다시 받아온다 — 둘 다 서버가 항목을 새로 만들거나
   // 대체하는 동작이라 낙관적 갱신 대신 재조회가 맞다.
-  function refetchItems() {
-    getChecklistItems({ categoryCode })
+  // **Promise 를 돌려준다(D21)** — `RegenerateButton` 이 재조회 도착까지 기다린 뒤에 진행
+  // 상태를 내린다. 안 그러면 그 빈틈에 곧 지워질 옛 목록이 완성본인 양 되살아난다.
+  function refetchItems(): Promise<void> {
+    return getChecklistItems({ categoryCode })
       .then((res) => {
         setItems(res.items);
         // 이전 실패로 뜬 에러가 있었다면 지운다 — 안 지우면 이후 성공해도 화면 전체가 영구히
@@ -91,6 +99,7 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
       })
       .catch(() => {
         // 업체사례는 보조 콘텐츠다 — 실패해도 체크리스트 본문은 그대로 보여준다.
+        if (!cancelled) setVendorCasesFailed(true);
       });
     return () => {
       cancelled = true;
@@ -122,7 +131,13 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
   }
 
   if (items === null) {
-    return <p className="text-sm text-ink-soft">불러오는 중…</p>;
+    // D14 L2 — 카드 안 목록이라 문구는 보조기기에만 낸다(형태가 이미 대기를 보여준다).
+    return (
+      <Card>
+        <SkeletonRows count={5} />
+        <Loading srOnly />
+      </Card>
+    );
   }
 
   const visibleItems = contractOnly ? items.filter((i) => i.item_type === "CONTRACT_TERM") : items;
@@ -137,27 +152,62 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
       )}
 
       {categoryMeta?.has_vendor_cases ? (
-        vendorCases && <VendorCaseSection response={vendorCases} />
+        // 로딩 중엔 자리를 잡고, 실패하면 회수한다 — 영구 자리표시를 남기지 않는다(D14 SE2).
+        vendorCases ? (
+          <VendorCaseSection response={vendorCases} />
+        ) : (
+          !vendorCasesFailed && (
+            <Card title="업체 사례">
+              <SkeletonRows count={2} />
+              <Loading srOnly />
+            </Card>
+          )
+        )
       ) : (
         <Card>
           <p className="text-sm text-ink-soft">업체 사례는 이 카테고리에서 아직 준비 중입니다.</p>
         </Card>
       )}
 
-      <div className="flex items-center justify-between gap-2">
-        <label className="flex items-center gap-2 text-sm text-ink-soft">
-          <input
-            type="checkbox"
-            checked={contractOnly}
-            onChange={(e) => {
-              setContractOnly(e.target.checked);
-              setContractPage(0); // 토글을 바꾸면 이전 상태의 페이지 번호가 새 목록엔 안 맞을 수 있다.
-            }}
-            className="size-4"
+      {/* flex-wrap — 「계약 조항만 보기」 라벨(약 118px)과 「AI 체크리스트 다시 생성」 버튼(약
+          131px)이 이미 빡빡한데, 재생성 후에는 그 옆에 결과 문구가 더 붙는다. 375px 폰의
+          가용폭(343px)을 넘는 순간 종전엔 라벨과 버튼이 **둘 다 세로로 접혔다**(D19 §결함 ①).
+          D19 가 그 붕괴를 막았으므로 이제는 넘치기 전에 줄을 바꿔 줘야 한다. */}
+      {/* 안내를 **gap 없는** 상자 안에 둔다 — `StatusCallout` 은 숨어도 부모의 flex 아이템으로
+          남아, gap 이 있는 컨테이너에 직접 놓으면 평소에도 빈 줄이 생긴다(그 컴포넌트 §여백). */}
+      <div className="flex flex-col">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <label className="flex items-center gap-2 text-sm text-ink-soft">
+            <input
+              type="checkbox"
+              checked={contractOnly}
+              onChange={(e) => {
+                setContractOnly(e.target.checked);
+                setContractPage(0); // 토글을 바꾸면 이전 상태의 페이지 번호가 새 목록엔 안 맞을 수 있다.
+              }}
+              className="size-4"
+            />
+            계약 조항만 보기
+          </label>
+          {/* impact(유지/초기화 개수)를 넘기지 않는다 — 이 탭은 카테고리 하나의 항목만 들고 있는데
+              재생성은 웨딩의 모든 카테고리를 대상으로 하므로, 여기서 센 수는 실제보다 작다.
+              대신 확인 다이얼로그가 "모든 카테고리가 함께 바뀐다"를 문구로 알린다. */}
+          <RegenerateButton
+            domain="CHECKLIST"
+            label="AI 체크리스트 다시 생성"
+            onRegenerated={refetchItems}
+            onPendingChange={setRegenerating}
           />
-          계약 조항만 보기
-        </label>
-        <RegenerateButton domain="CHECKLIST" label="AI 체크리스트 다시 생성" onRegenerated={refetchItems} />
+        </div>
+        {/* D14 L3 의 문구 계층을 지키되 표현은 오버레이가 아니라 제자리 자리표시다(D21).
+            개수를 말하지 않는 것은 위 `impact` 를 넘기지 않는 것과 같은 이유다 — 이 탭은
+            카테고리 하나만 알고 재생성은 전체가 대상이라 여기서 센 수는 틀린 수가 된다. */}
+        <StatusCallout shown={regenerating}>
+          <p className="text-sm font-bold text-ink">AI가 체크리스트를 다시 만들고 있어요.</p>
+          <p className="text-xs text-ink-soft">
+            상태를 바꾸거나 메모한 항목은 그대로 남아요. 30초 정도 걸릴 수 있어요.
+          </p>
+        </StatusCallout>
       </div>
 
       {groups
@@ -168,10 +218,11 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
 
           // 추가 비용/준비 사항은 그대로 전체를 낸다 — 페이지네이션은 계약 조항에만 적용한다.
           if (group !== "CONTRACT_TERM") {
+            const shownItems = keepDuringRegeneration(allGroupItems, regenerating, categoryCode);
             return (
               <Card key={group} title={GROUP_LABEL[group]}>
                 <ul className="flex flex-col gap-3">
-                  {allGroupItems.map((item) => (
+                  {shownItems.map((item) => (
                     <ChecklistItemRow
                       key={item.id}
                       item={item}
@@ -180,6 +231,7 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
                     />
                   ))}
                 </ul>
+                <RegeneratingRows shown={shownItems.length} total={allGroupItems.length} />
               </Card>
             );
           }
@@ -198,10 +250,15 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
             (safePage + 1) * CONTRACT_TERM_PAGE_SIZE,
           );
 
+          // 재생성 중 유지/교체는 **지금 보고 있는 페이지 안에서** 가른다 — 페이지네이션은
+          // 표시 방식일 뿐이라, 여기서 전체 개수로 자리표시를 세우면 한 페이지에 5개만 오던
+          // 카드가 갑자기 수십 줄로 부푼다.
+          const shownPageItems = keepDuringRegeneration(pageItems, regenerating, categoryCode);
+
           return (
             <Card key={group} title={GROUP_LABEL[group]}>
               <ul className="flex flex-col gap-3">
-                {pageItems.map((item) => (
+                {shownPageItems.map((item) => (
                   <ChecklistItemRow
                     key={item.id}
                     item={item}
@@ -210,6 +267,7 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
                   />
                 ))}
               </ul>
+              <RegeneratingRows shown={shownPageItems.length} total={pageItems.length} />
               {totalPages > 1 && (
                 <div className="mt-3 flex items-center justify-center gap-4 border-t border-line pt-3">
                   <button
@@ -242,7 +300,25 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
           );
         })}
 
-      <AddChecklistItemRow categoryCode={categoryCode} onAdded={refetchItems} />
+      {/* 재생성 중에는 추가 폼을 감춘다 — 서버가 재생성 시작 시점에 보호되지 않은 항목을
+          (직접 추가한 것까지) 지우므로, 그 사이에 추가한 항목이 방금 만들었는데 조용히 사라진다. */}
+      {!regenerating && <AddChecklistItemRow categoryCode={categoryCode} onAdded={refetchItems} />}
+    </div>
+  );
+}
+
+/** 재생성 중이면 남을 항목만 남긴다. 평소에는 받은 목록 그대로다. */
+function keepDuringRegeneration(items: ChecklistItem[], regenerating: boolean, categoryCode: string): ChecklistItem[] {
+  return regenerating ? items.filter((item) => isChecklistItemKept(item, categoryCode)) : items;
+}
+
+/** 카드 안에서 지워질 항목이 차지하던 자리. `shown === 0` 이면 위 여백이 필요 없다. */
+function RegeneratingRows({ shown, total }: { shown: number; total: number }) {
+  const replacedCount = total - shown;
+  if (replacedCount <= 0) return null;
+  return (
+    <div className={shown > 0 ? "mt-3" : undefined}>
+      <SkeletonRows count={replacedCount} variant="row" />
     </div>
   );
 }

@@ -3,9 +3,15 @@
 // 의미를 전달해야 하는 자리라면 아이콘이 아니라 텍스트로 말한다.
 //
 // 추가 규칙: 쓸 곳이 확정되지 않은 아이콘을 미리 만들지 않는다. 필요해지면 같은 파일에 추가한다.
-// 20개를 넘어가면 lucide-react 도입을 재검토한다(ADR 0004).
+// 20개를 넘어가면 lucide-react 도입을 재검토한다(ADR 0004). **현재 15종**(브랜드 마크 2 포함).
 // Home·Calendar·Wallet·Chart 는 하단 탭바 4개(홈·타임라인·예산·리포트)의 용처가 확정돼 추가했다
 // (docs/design/layout.md §3). 아이콘만으로는 뜻이 전달되지 않으므로 **라벨을 항상 함께 표시한다** — NNG Icon Usability.
+// 예외는 라벨을 `aria-label` + `title` 로 **같은 문자열 그대로** 옮긴 자리뿐이다(MessageBubble 의 평가
+// 버튼, ChatPage 의 「지난 대화」) — 각 호출부가 무엇을 어떻게 되돌렸는지 주석으로 남긴다.
+//
+// 격자: 탭바·내비에 나란히 서는 아이콘은 **x 3~21(18칸)** 안에 그린다. `size` 는 뷰포트 크기일 뿐
+// 실제 시각 크기는 그림이 쓰는 칸 수가 정한다 — 20칸으로 그리면 같은 size 로도 11% 커 보인다
+// (IconArchive 주석의 실제 사고). 셀프컨테인드한 자리(로그인 마크·설정 톱니)는 이 제약 밖이다.
 
 // 최소로만 연다 — 쓰는 화면이 없다. size 와 className 뿐이고 aria-* 는 받지 않는다(장식용 고정).
 // 의미를 전달하는 아이콘이 실제로 필요해지는 날, 그 아이콘만 별도 props 로 연다 (docs/design/inventory.md §7).
@@ -122,6 +128,89 @@ export function IconSettings(props: IconProps) {
       <line x1="20" y1="12" x2="23" y2="12" />
       <line x1="4.2" y1="19.8" x2="6.3" y2="17.7" />
       <line x1="17.7" y1="6.3" x2="19.8" y2="4.2" />
+    </svg>
+  );
+}
+
+// 영수증 촬영/선택 버튼(entities/payment/ui/AddPaymentRow.tsx)에서 컬러 이모지 📷 를 걷어내며
+// 용처가 확정돼 추가했다(D18). 다른 아이콘처럼 primitive(사각+선+원)만 쓴다.
+export function IconCamera(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <rect x="2" y="7" width="20" height="13" rx="2" />
+      <path d="M8 7 9.3 4h5.4L16 7" />
+      <circle cx="12" cy="13.5" r="3.5" />
+    </svg>
+  );
+}
+
+// 엄지 — AI 답변 평가 버튼(entities/chat/ui/MessageBubble.tsx)에서 컬러 이모지 👍👎 를 걷어내며
+// 용처가 확정돼 추가했다(D18).
+//
+// **두 아이콘은 같은 기하의 180° 점대칭이다.** 손으로 두 번 그리면 굵기·시각 중심이 반드시
+// 어긋나고, 나란히 놓인 두 버튼에서는 그 어긋남이 바로 보인다. 기하를 한 벌만 두고 회전으로
+// 파생시키면 대칭이 구조적으로 보장된다(Lucide 의 thumbs-down 도 thumbs-up 의 점대칭이다).
+//
+// 손목(rect)과 손바닥(path)을 분리한 구성이라 path 는 왼쪽이 열려 있다 — 그 열린 변이 정확히
+// rect 의 오른쪽 변(x=7)과 겹쳐 손목/손바닥 경계선이 된다. filled 일 때 SVG 는 열린 path 를
+// 닫힌 것처럼 채우므로 이 구성 그대로 면이 메워진다.
+const THUMB_CUFF = { x: 2.5, y: 10.5, width: 4.5, height: 9.5, rx: 1.5 } as const;
+const THUMB_BODY = "M7 11.5 10.8 3.6a2 2 0 0 1 3.2 1.6V10h4.4a2 2 0 0 1 1.9 2.6l-1.7 5.4A2.5 2.5 0 0 1 16.3 20H7";
+
+// 엄지 두 종에만 여는 prop 이다 — 공용 IconProps 는 그대로 둔다(이 파일 머리말: "그 아이콘만
+// 별도 props 로 연다"). 아이콘은 여전히 장식이라 label 은 열지 않는다: 접근명은 이 아이콘을 감싼
+// 버튼의 aria-label 이 갖는다.
+export interface ThumbIconProps extends IconProps {
+  /** 선택됨 — 면을 채운다. 선택을 색 하나로만 알리지 않기 위한 두 번째 채널이다(WCAG 1.4.1). */
+  filled?: boolean;
+}
+
+// fill 은 base() 가 주는 "none" 을 **뒤쪽 prop 으로** 덮어쓴다 — 순서가 뒤바뀌면 채움이 조용히 사라진다.
+function Thumb({ filled, down, ...props }: ThumbIconProps & { down: boolean }) {
+  return (
+    <svg {...base(props)} fill={filled === true ? "currentColor" : "none"}>
+      <g transform={down ? "rotate(180 12 12)" : undefined}>
+        <rect {...THUMB_CUFF} />
+        <path d={THUMB_BODY} />
+      </g>
+    </svg>
+  );
+}
+
+export function IconThumbUp(props: ThumbIconProps) {
+  return <Thumb {...props} down={false} />;
+}
+
+export function IconThumbDown(props: ThumbIconProps) {
+  return <Thumb {...props} down={true} />;
+}
+
+// 아카이브 상자 — AI상담 헤더의 「지난 대화」 버튼이 텍스트에서 아이콘으로 바뀌며(2026-08-29,
+// 사용자 요청) 용처가 확정돼 추가했다. 이 파일에서 **혼자 뜻을 지는 첫 아이콘**이라, 접근명과
+// 툴팁을 버튼 쪽에서 어떻게 유지하는지는 호출부(pages/chat/ui/ChatPage.tsx)의 주석에 적었다.
+//
+// 구성은 Lucide `archive` 를 따른다 — 뚜껑(rect) · 몸체(path) · 손잡이(line) 셋뿐이라 이 파일이
+// 지키는 primitive 원칙(원·사각·선)에서 벗어나지 않는다.
+//
+// 🚨 **좌표는 Lucide 원본을 그대로 옮기지 않았다.** 처음엔 그대로 옮겼다가 사용자 리포트로
+// 되돌렸다(2026-08-29, "탭 아이콘들에 비해 조악함"). 원인이 셋이고 전부 좌표에 있었다:
+//
+//   ① **혼자 컸다.** 원본은 x 2~22(20칸)를 쓰는데, 하단 탭바에 나가는 5종(home·calendar·wallet·
+//      chart·chat)은 전부 **x 3~21(18칸)** 안에 산다. 같은 `size` 를 줘도 이 아이콘만 11% 크게
+//      렌더돼 헤더에서 탭바를 내려다보면 무게가 어긋났다. → 18칸으로 맞춘다.
+//   ② **뚜껑이 뭉갰다.** 뚜껑 높이 5 에 stroke 2 를 그으면 내부에 남는 여백이 3칸뿐이고,
+//      기본 size 20 에서는 2.5px 다 — 선 두 줄이 아니라 검은 막대 하나로 보인다. → 높이 6(여백 4칸).
+//   ③ **라운드가 3종이었다.** 뚜껑 rx=1 · 몸체 코너 2 · 세트 표준 2 가 뒤섞였다. → rx=2 로 통일.
+//
+// 손잡이 y 는 몸체가 한 칸 내려간 만큼 함께 내린다(몸체 안에서 같은 비율 = 위에서 1/3 지점).
+// strokeWidth 는 2 그대로다 — 1.6 으로 낮추자는 화면 스펙은 기각돼 있다(docs/design/inventory.md
+// §7 「strokeWidth 는 2를 유지한다」).
+export function IconArchive(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <rect x="3" y="3" width="18" height="6" rx="2" />
+      <path d="M5 9v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9" />
+      <line x1="10" y1="13" x2="14" y2="13" />
     </svg>
   );
 }

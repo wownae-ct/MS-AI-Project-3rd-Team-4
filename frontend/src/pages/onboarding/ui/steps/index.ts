@@ -5,14 +5,24 @@
 // 2026-08-28, 자유 서술 단계(9단계) 추가로 9→10단계 재편, 확인 화면이 10단계로 밀림).
 // 스텝이 더 늘어도 컨테이너의 의존성 수가 늘지 않도록 여기서 한 번만 모은다.
 export { GeneratingOverlay } from "../GeneratingOverlay";
+export { OnboardingNav } from "../OnboardingNav";
 export { STEP_HEADLINE, STEP_SUBTITLE, TOTAL_STEPS, type Step } from "../step-copy";
+// 스텝이 아니지만 여기로 모은다 — 위 두 줄과 같은 이유(2026-08-28, 8단계 배분 초과 가드).
+// ⚠️ 그 파일은 `AllocationRow` 를 이 배럴이 아니라 `./Step7CategoryToggle` 에서 직접 가져간다 —
+// 여기를 거치면 import 순환이 된다(`import/no-cycle`).
+export { useAllocationGuard, type AllocationGuard } from "../use-allocation-guard";
 export { Step1RoleDate, type UnsurePrecision } from "./Step1RoleDate";
-export { REGION_LABELS, Step2RegionBudget } from "./Step2RegionBudget";
+export { GUEST_COUNT_UNSURE_DEFAULT, REGION_LABELS, Step2RegionBudget } from "./Step2RegionBudget";
 export { Step3Taste, TASTE_CARDS } from "./Step3Taste";
 export { Step4Goals } from "./Step4Goals";
 export { SDM_CHIPS, Step5Priority, VENUE_CHIPS } from "./Step5Priority";
 export { PROGRESS_ITEMS, Step6Progress } from "./Step6Progress";
-export { categoriesToAllocationRows, Step7CategoryToggle, type AllocationRow } from "./Step7CategoryToggle";
+export {
+  allocationRowsToCategoryUpdates,
+  categoriesToAllocationRows,
+  Step7CategoryToggle,
+  type AllocationRow,
+} from "./Step7CategoryToggle";
 export { Step8Allocation } from "./Step8Allocation";
 export { CUSTOM_REQUEST_MAX_LENGTH, Step9CustomRequest } from "./Step9CustomRequest";
 export { Step10Review } from "./Step10Review";

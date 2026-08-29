@@ -29,7 +29,14 @@ export function CompletionRow({ category }: CompletionRowProps) {
 
   return (
     <div className="flex items-center gap-2.5 py-2 first:pt-0 last:pb-0">
-      <span className="w-20 shrink-0 text-sm font-bold text-ink">{category.name}</span>
+      {/* [2026-08-29] `w-20` → `min-w-20`. 종전 값은 *"실측 76.60px 로 w-20(80px) 안에 들어간다
+          (여유 3.4px)"* 라는 **한 폰트의 실측**에 기대고 있었다. iOS 는 Wanted Sans 가 도착하기
+          전 폴백(Apple SD Gothic Neo)으로 먼저 레이아웃하고 메트릭이 다르다 — D18 이 이모지를
+          걷어낸 것과 같은 종류의 문제다("OS 폰트로 폴백 → 플랫폼마다 폭이 달라진다").
+          게다가 D19 로 `keep-all` 이 본문에 걸리면서 공백 없는 `청첩장·답례품`이 **한 덩어리
+          어절**이 됐다(가운뎃점은 UAX #14 에서 낱말 안의 문자다) — 3.4px 여유로는 못 받는다.
+          `min-w-20` 은 줄어들지 않되 필요하면 늘어나므로 정렬은 유지하고 상수 의존만 없앤다. */}
+      <span className="min-w-20 shrink-0 text-sm font-bold text-ink">{category.name}</span>
 
       {/* Progress 는 루트에 w-full 이 하드코딩돼 있고 className prop 이 없다(Progress.tsx).
           래퍼로 폭을 준다 — 화면 하나 때문에 shared 의 API 를 넓히지 않는다. */}

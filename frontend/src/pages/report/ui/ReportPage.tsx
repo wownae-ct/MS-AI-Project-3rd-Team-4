@@ -29,7 +29,8 @@
 //   5. 카테고리명은 데이터의 전체 이름을 쓴다 — 목업은 이 화면에서만 줄여 적었다.
 //
 // **실API 연동 이후 새로 생긴 것들**
-//   · 로딩/에러 상태: §5 대시보드가 이미 세운 관례 그대로 — "불러오는 중…", `role="alert"`.
+//   · 로딩/에러 상태: §5 대시보드가 이미 세운 관례 그대로 — 로딩은 자리표시 + 문구(D14),
+//     에러는 `role="alert"`.
 //   · `GET /wedding-categories`를 `GET /reports/me`와 함께 불러온다 — 카테고리 진행률 응답에
 //     이름이 없어서다(adapt-report.ts 참고). 두 호출이 병렬(Promise.all)이라 어느 한쪽이
 //     실패하면 화면 전체를 에러로 취급한다(부분 렌더는 이 화면 어디에도 선례가 없다).
@@ -39,7 +40,7 @@ import { useEffect, useState } from "react";
 import { getMyReport, type MyReport } from "@/entities/dashboard";
 import { deriveBudgetSummary, getWeddingCategories, type WeddingCategory } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
-import { Card, Page } from "@/shared/ui";
+import { Card, Loading, Page, SkeletonRows } from "@/shared/ui";
 import { adaptCategoryCompletions } from "./adapt-report";
 import { BudgetStats } from "./BudgetStats";
 import { completionPercent, CompletionRow } from "./CompletionRow";
@@ -86,7 +87,11 @@ export function ReportPage() {
   if (data === null) {
     return (
       <Page title="리포트" subtitle="지금까지 준비 상황 요약이에요" width="max-w-none">
-        <p className="text-sm text-ink-soft">불러오는 중…</p>
+        {/* D14 L2 */}
+        <Card>
+          <SkeletonRows count={4} />
+        </Card>
+        <Loading />
       </Page>
     );
   }
@@ -104,12 +109,16 @@ export function ReportPage() {
 
   return (
     <Page title="리포트" subtitle="지금까지 준비 상황 요약이에요" width="max-w-none">
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-5">
+      {/* 하한을 `min(…,100%)` 으로 감싼다 — `auto-fit` 은 열 개수만 줄이고 트랙 하한은 고정이라,
+          하한이 컨테이너보다 커지는 순간 1열로 접힌 뒤에도 그대로 넘친다. 260px 은 320px 기기의
+          컨테이너 폭(288px) 안이라 **지금은** 안전하지만, 값이 한 번만 올라가도 대시보드가 실제로
+          당한 결함(그 파일의 🚨 주석)이 여기서 재현된다. 두 화면이 같은 형태를 쓰므로 방어도 같이 둔다. */}
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(260px,100%),1fr))] gap-5">
         <Card title="예산">
           <BudgetStats summary={budget} />
         </Card>
 
-        <Card title="카테고리별 진행률">
+        <Card title="타임라인 진행률">
           {byCompletion.length === 0 ? (
             <p className="text-sm text-ink-soft">진행률을 계산할 카테고리가 아직 없습니다.</p>
           ) : (
@@ -132,6 +141,7 @@ export function ReportPage() {
                   title={check.title}
                   priority={check.priority}
                   categoryName={categoryNameById.get(check.category_code) ?? check.category_code}
+                  categoryCode={check.category_code}
                 />
               ))}
             </div>

@@ -20,7 +20,7 @@
 // **UX 개편 2차(2026-08-26, 사용자 지시)** — 이 화면에서 3개 컴포넌트가 빠졌다:
 //   · 결혼식 날짜 수정(`WeddingDateCard`) → 대시보드 헤드라인으로 이동
 //     (`pages/dashboard/ui/WeddingHeadline.tsx`).
-//   · 총예산 수정("남은예산" 카드, `TotalBudgetCard`) → `AllocationOverview`의 "총 예산 현황"
+//   · 총예산 수정("남은예산" 카드, `TotalBudgetCard`) → 아래 "총 예산 현황"
 //     카드 안 `BudgetDonut.tsx`로 흡수. "총 예산 현황"에 도넛·범례·총예산 수정이 이미 다 모여
 //     있는데 남은예산만 별개 카드로 둘 이유가 없다는 판단.
 // 대신 "카테고리별 예산 현황" 행에 대시보드와 같은 시세비교 줄이 새로 붙는다(`useCategoryBenchmarks`,
@@ -37,13 +37,26 @@
 // 예산 미배정인데 지출이 생긴 카테고리(예: 혼수)의 막대·금액이 0으로만 보이던 버그도
 // 함께 고쳤다(`CategoryAllocationRow.tsx`) — 사용자 신고. "집행"이라는 말도 전부
 // "지불"로 바꿨다.
-import { useEffect, useState } from "react";
+//
+// **UX 개편 5차(2026-08-29, 사용자 지시)** — 화면 순서를 「총 예산 현황(도넛) → 다가오는 결제 →
+// 비용 관리 → 카테고리별 예산 현황」으로 바꿨다. 전체 요약을 맨 위에 두고 상세로 내려가는
+// 순서다. 도넛과 카테고리별 목록을 한 덩어리로 렌더하던 `AllocationOverview.tsx`는 그 사이에
+// 다른 섹션이 끼게 되면서 성립하지 않아 없앴다 — 목록 쪽은 `CategoryAllocationList.tsx`로
+// 옮겼고, 도넛은 이 파일이 직접 그린다.
+//
+// **UX 개편 6차(2026-08-29, 사용자 지시) — 배분이 총예산을 넘으면 저장을 막는다.**
+// 온보딩 8단계가 2026-08-28에 받은 것과 같은 가드다. 예전엔 초과 상태로 "저장"을 누를 수 있었고,
+// `PUT /wedding-categories`가 400 BUDGET_EXCEEDED를 낸 뒤에야 서버 메시지로 알 수 있었다 —
+// 서버 왕복을 한 번 낭비하고, 고치려면 화면 맨 위 도넛까지 스크롤해 "수정"을 찾아야 했다.
+// 이제 저장 버튼 아래 안내가 이유와 함께 총예산을 올리는 길(CTA)을 준다.
+import { useEffect, useRef, useState } from "react";
 import { getDashboardSummary, type BudgetBenchmarkSummary } from "@/entities/dashboard";
 import { getUpcomingPayments, UpcomingPaymentsCard, type UpcomingPaymentEntry } from "@/entities/payment";
-import { getCategories, getMyWedding, getWeddingCategories, putWeddingCategories, type WeddingCategory } from "@/entities/wedding";
+import { deriveBudgetSummary, getCategories, getMyWedding, getWeddingCategories, putWeddingCategories, type WeddingCategory } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
-import { Page } from "@/shared/ui";
-import { AllocationOverview } from "./AllocationOverview";
+import { Money, Page, StatusCallout } from "@/shared/ui";
+import { BudgetDonut } from "./BudgetDonut";
+import { CategoryAllocationList } from "./CategoryAllocationList";
 import { CostManagementTab } from "./CostManagementTab";
 import { useCategoryBenchmarks } from "./use-category-benchmarks";
 
@@ -54,17 +67,21 @@ interface BudgetData {
   totalBudget: number;
   categories: WeddingCategory[];
   /** `WeddingCategory`(GET /wedding-categories)엔 `has_cost`가 없다 — 비용 유무는 카테고리
-      상수(`GET /categories`)만 안다. "비용 없음" 카테고리는 슬라이더/바 대신 안내 텍스트만
-      보여주려면 이 조회가 하나 더 필요하다 — 하드코딩 대신 응답을 그대로 따른다. */
+      상수(`GET /categories`)만 안다. 비용을 다루지 않는 카테고리를 「카테고리별 예산 현황」
+      목록에서 빼고 결제 선택지에서도 거르려면 이 조회가 하나 더 필요하다 — 하드코딩 대신
+      응답을 그대로 따른다. */
   hasCostByCode: ReadonlyMap<string, boolean>;
-  /** "비용 관리" 섹션이 결제 목록의 category_code를 사람이 읽는 이름으로 보여줄 때 쓴다. */
+  /** "비용 관리" 섹션이 결제 목록의 category_code를 사람이 읽는 이름으로 보여줄 때 쓴다.
+      **9개 전체를 담는다** — 비활성 카테고리에 이미 등록된 결제도 목록엔 그대로 보이므로
+      (2026-08-29 사용자 결정: 기록된 돈은 숨기지 않는다) 그 행의 라벨이 원시 ENUM 으로
+      떨어지면 안 된다. 거르는 것은 아래 `costEligibleCategoryOptions`(선택지)뿐이다. */
   categoryLabelByCode: ReadonlyMap<string, string>;
-  /** has_cost인 카테고리만 — "비용 관리"의 새 결제 추가 폼(AddPaymentRow)이 카테고리 선택
-      드롭다운에 쓴다. 비용 개념이 없는 카테고리(MEETING 등)엔 결제를 만들 수 없게 미리 거른다. */
-  costEligibleCategoryOptions: readonly { code: string; name_ko: string }[];
 }
 
 const PRIMARY_BUTTON = "min-h-tap rounded-md bg-primary px-4 text-sm font-bold text-surface disabled:opacity-50";
+// 링크가 아니라 화면 안 동작이라 <button> 이다. 밑줄은 "누를 수 있다"를 색 말고도 전달한다
+// (D6 — 상태색만으로 의미를 싣지 않는다). 온보딩 8단계의 같은 CTA와 같은 리터럴이다.
+const OVER_CTA = "min-h-tap w-fit text-left text-sm font-bold text-primary underline";
 
 // data가 아직 없는 동안(로딩/에러)에도 useCategoryBenchmarks 훅은 호출돼야 한다(Hooks 규칙 —
 // 조건부 호출 금지) — 매 렌더 새 배열 리터럴(`[]`)을 넘기면 그 훅의 useEffect deps가 매번
@@ -93,6 +110,27 @@ export function BudgetPage() {
   // 두 곳만 그 관례를 안 따르고 있었다.
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
 
+  // 「카테고리 사용 여부」 패널 열림 — 패널 자체는 CategoryAllocationList 아래
+  // CategoryActivationPanel 이 그리지만(이 파일은 import 상한 10에 닿아 있다), **상태는 여기
+  // 있어야 한다**: 아래 "예산 조정하기" 버튼도 같은 값으로 막아야 하기 때문이다(한 카드에 편집
+  // 모드 둘이 동시에 열리면 배분 초안이 조용히 버려진다). 반대 방향의 잠금은 그 컴포넌트가 건다.
+  const [isManagingCategories, setIsManagingCategories] = useState(false);
+
+  // 총예산 수정 패널 열림 — BudgetDonut 내부가 아니라 여기 있다. 초과 안내의 CTA가 화면
+  // 아래에서 이 패널을 열어야 하기 때문이다(BudgetDonut.tsx 머리말).
+  const [isEditingTotal, setIsEditingTotal] = useState(false);
+  const donutRef = useRef<HTMLDivElement>(null);
+
+  // CTA는 화면 맨 아래에 있고 패널은 맨 위 카드에 있다 — 스크롤이 없으면 "아무 일도 안 일어난
+  // 것"처럼 보인다. 입력칸 포커스는 DisclosurePanel이 스스로 한다.
+  // `behavior: "smooth"`를 쓰지 않는 이유 — styles.css의 전역 prefers-reduced-motion 규칙은
+  // animation/transition duration만 덮어 `scroll-behavior`는 잡지 못한다. 기본값(즉시 이동)이
+  // 그 환경에서 안전하다.
+  function openTotalBudgetEditor() {
+    setIsEditingTotal(true);
+    donutRef.current?.scrollIntoView({ block: "start" });
+  }
+
   useEffect(() => {
     let cancelled = false;
     Promise.all([getMyWedding(), getWeddingCategories(), getCategories()])
@@ -104,10 +142,6 @@ export function BudgetPage() {
             categories: sorted,
             hasCostByCode: new Map(constants.categories.map((c) => [c.code, c.has_cost])),
             categoryLabelByCode: new Map(constants.categories.map((c) => [c.code, c.name_ko])),
-            costEligibleCategoryOptions: constants.categories
-              .filter((c) => c.has_cost)
-              .toSorted((a, b) => a.display_order - b.display_order)
-              .map((c) => ({ code: c.code, name_ko: c.name_ko })),
           });
         }
       })
@@ -162,6 +196,21 @@ export function BudgetPage() {
   // 배정」 목록이 낡은 값을 보여주지 않게 카테고리만 다시 불러온다 — 총예산/날짜는 그 액션과
   // 무관하니 건드리지 않는다. 시나리오 편집 중에 호출돼도 안전하다 — draft는 그대로 두고
   // `data.categories`(원본)만 갱신한다.
+  // 카테고리 사용 여부 저장 성공 — 서버가 돌려준 최신 9개로 갈아 끼우고 패널을 닫는다.
+  // `refetchCategories` 와 **같은 정렬 규칙**을 쓴다(둘이 갈리면 저장 직후와 재조회 후의 행
+  // 순서가 달라진다). 재조회를 따로 걸지 않는 이유 — PUT 응답이 이미 최신 목록이다.
+  // 체크리스트·타임라인도 서버에서 함께 다시 만들어졌지만 그건 다른 화면이고, 그 화면들은
+  // 마운트마다 조회하므로 여기서 손댈 것이 없다.
+  //
+  // `keepPanelOpen` — 아직 끝나지 않은 갱신(끄기의 낙관적 반영 · 실패 원복)이라는 뜻이다.
+  // 그때 `isManagingCategories` 를 내리면 저장이 도는 46초 동안 "예산 조정하기" 가 풀려
+  // 재생성을 유발하는 PUT 둘이 겹친다(CategoryAllocationList.tsx 머리말).
+  function handleCategoriesSaved(categories: WeddingCategory[], options?: { keepPanelOpen?: boolean }) {
+    const sorted = categories.toSorted((a, b) => a.display_order - b.display_order);
+    setData((prev) => (prev ? { ...prev, categories: sorted } : prev));
+    if (options?.keepPanelOpen !== true) setIsManagingCategories(false);
+  }
+
   function refetchCategories() {
     getWeddingCategories()
       .then((res) => {
@@ -247,64 +296,155 @@ export function BudgetPage() {
   const rows = scenarioDraft ?? data.categories;
   const isEditingScenario = scenarioDraft !== null;
 
+  // "비용 관리"의 카테고리 필터·새 결제 추가 드롭다운이 쓰는 선택지.
+  //
+  // **state 가 아니라 렌더 시점 파생값이다(2026-08-29).** 예전엔 초기 로드 때 `GET /categories`
+  // (전역 상수)만 보고 `has_cost` 로 한 번 걸러 `data` 안에 넣어 뒀는데, 그러면 두 가지가 어긋났다:
+  //   · **`is_active` 를 안 봤다** — 온보딩에서 끈 카테고리로 결제를 새로 만들 수 있었고, 그
+  //     금액은 대시보드 `total_paid`(서버가 활성만 합산)에도 「카테고리별 예산 현황」(비활성 제외)
+  //     에도 안 잡힌 채 남았다.
+  //   · 아래 카테고리 on/off 로 활성 집합이 바뀌어도 낡은 목록이 그대로 남았다.
+  // `data.categories` 는 초기 로드·`refetchCategories`·on/off 저장 셋 다 display_order 로
+  // 정렬해 넣으므로 여기서 다시 정렬하지 않는다. **draft(`rows`)가 아니라 원본을 본다** — 저장
+  // 전 슬라이더 값이 결제 폼의 선택지를 바꿀 이유가 없다.
+  const costEligibleCategoryOptions = data.categories
+    .filter((category) => category.is_active && (data.hasCostByCode.get(category.category_code) ?? false))
+    .map((category) => ({ code: category.category_code, name_ko: category.name_ko }));
+
+  // 🚨 **서버와 같은 집합으로 센다.** `PUT /wedding-categories`의 BUDGET_EXCEEDED 검증은
+  // `is_active` 무관 **9개 전체 합**이다(01-endpoints.md:149). 반면 deriveBudgetSummary 의
+  // `unallocated`는 활성만 센다 — 그걸로 게이트를 만들면 "화면은 통과인데 서버가 400"이 난다.
+  // `rows`는 CategoryAllocationList 가 전부 렌더하는 그 배열, 즉 비활성 포함 전체다.
+  //
+  // 대안(비활성은 payload에 0으로 보내 서버를 우리 쪽에 맞추기)은 택하지 않았다 — 비활성
+  // 카테고리에 paid_amount 가 있으면(비용 관리의 카테고리 목록은 has_cost 로만 거른다) 0을
+  // 보내는 순간 BUDGET_BELOW_PAID 400 이 새로 생긴다. 판정 집합만 맞추는 쪽이 부작용이 없다.
+  const plannedTotal = rows.reduce((sum, category) => sum + category.planned_budget, 0);
+  const isOverAllocated = plannedTotal > data.totalBudget;
+
+  // 초과 안내가 가리킬 **원인**. 비활성 카테고리는 `CategoryAllocationList` 가 화면에서 걸러
+  // 내지만(레드팀 감사 #21) 위 `plannedTotal` 에는 그대로 들어간다 — 서버의 BUDGET_EXCEEDED
+  // 판정 집합과 같아야 하기 때문이다. 그래서 "초과했어요"만 뜨고 **그 원인이 되는 행은 화면
+  // 어디에도 없는** 상태가 만들어진다. 온보딩 7단계 말고는 카테고리를 다시 켤 UI 가 없어
+  // 그 금액을 0 으로 되돌릴 수단도 없으므로, 최소한 무엇이 남아 있는지는 말해 준다
+  // (그래야 사용자가 총예산 인상이 유일한 길임을 납득할 수 있다).
+  const inactiveAllocated = rows.reduce(
+    (sum, category) => (category.is_active ? sum : sum + category.planned_budget),
+    0,
+  );
+
   return (
     <Page title="예산 재배분" subtitle="카테고리 사이로 예산을 옮겨 봅니다.">
       <div className="flex flex-col gap-5">
+        {/* 대시보드에 있던 도넛을 이 화면으로 옮겼다(UX 개편 2차, 2026-08-26) — deriveBudgetSummary가
+            draft-aware한 rows를 받으므로, 시나리오 편집 중 슬라이더를 움직이면 도넛도 같이
+            움직인다(entities/wedding/model/derive-budget-summary.ts 머리말 — 예전 대시보드
+            도넛의 "미배정이 거의 항상 안 그려지던" 버그도 여기서 함께 고쳐졌다).
+            UX 개편 3차(2026-08-26)로 대시보드의 "예산 시세 비교" 카드도 여기 흡수됐다 —
+            BudgetDonut이 자기 Card(제목 "총 예산 현황" + titleAction 수정 버튼)를 직접 그리므로
+            여기서는 Card로 감싸지 않는다. */}
+        {/* 감싸는 div 는 초과 안내 CTA 가 스크롤해 올 목적지다 — Card 는 ref 를 받지 않는다. */}
+        <div ref={donutRef}>
+          <BudgetDonut
+            summary={deriveBudgetSummary(rows, data.totalBudget)}
+            onTotalBudgetSaved={(nextTotal) => setData((prev) => (prev ? { ...prev, totalBudget: nextTotal } : prev))}
+            benchmark={budgetBenchmark}
+            isEditing={isEditingTotal}
+            onIsEditingChange={setIsEditingTotal}
+          />
+        </div>
+
         {upcomingPayments !== null && (
           <UpcomingPaymentsCard payments={upcomingPayments} windowDays={UPCOMING_PAYMENT_WINDOW_DAYS} />
         )}
 
         <CostManagementTab
           categoryLabelByCode={data.categoryLabelByCode}
-          categoryOptions={data.costEligibleCategoryOptions}
+          categoryOptions={costEligibleCategoryOptions}
           onPaymentsChanged={refetchCategories}
         />
 
-        <AllocationOverview
+        <CategoryAllocationList
           rows={rows}
           originalCategories={data.categories}
           totalBudget={data.totalBudget}
           hasCostByCode={data.hasCostByCode}
           hasBenchmarkByCode={hasBenchmarkByCode}
           benchmarkByCode={benchmarkByCode}
-          budgetBenchmark={budgetBenchmark}
           isEditingScenario={isEditingScenario}
           onDraftChange={updateDraftBudget}
-          onTotalBudgetSaved={(nextTotal) => setData((prev) => (prev ? { ...prev, totalBudget: nextTotal } : prev))}
+          isManagingActivation={isManagingCategories}
+          onManagingActivationChange={setIsManagingCategories}
+          onCategoriesSaved={handleCategoriesSaved}
         />
 
-        {isEditingScenario ? (
-          <div className="flex items-center gap-3">
-            {/* 저장 진행 중엔 뒤로가기를 막는다 — 안 막으면 이미 시작된 저장 요청이 취소된 뒤에도
-                진행돼, 성공 시 취소했던 배분 결과가 그대로 되살아난다(레드팀 감사 HIGH). */}
+        {/* gap 없는 래퍼 — StatusCallout 의 <output> 은 숨어도(안쪽만 display:none) 여전히 flex
+            아이템이라, 바깥 `gap-5` 의 형제로 두면 초과가 아닐 때도 20px 빈 줄이 남는다.
+            여백은 그 컴포넌트 자신의 mt-4 가 낸다. */}
+        <div className="flex flex-col">
+          {isEditingScenario ? (
+            // flex-wrap + basis-full — `saveErrorMessage` 는 서버 문구를 그대로 싣는다(예:
+            // "배정 합계가 예산을 3,000,000원 초과합니다."). 감싸 주지 않으면 좁은 폭에서 두
+            // 버튼을 밀어낸다. WeddingDateEdit.tsx 의 같은 형태를 따른다.
+            <div className="flex flex-wrap items-center gap-3">
+              {/* 저장 진행 중엔 뒤로가기를 막는다 — 안 막으면 이미 시작된 저장 요청이 취소된 뒤에도
+                  진행돼, 성공 시 취소했던 배분 결과가 그대로 되살아난다(레드팀 감사 HIGH).
+                  초과 상태에서도 뒤로는 막지 않는다 — 초안을 버리는 것이라 안전하고, 배분을 더
+                  내릴 수 없는 경우(paid_amount 하한)의 유일한 탈출구다. */}
+              <button
+                type="button"
+                onClick={cancelScenario}
+                disabled={saveState === "saving"}
+                className="text-sm font-bold text-ink-soft hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span aria-hidden="true">‹</span> 뒤로
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveScenario()}
+                disabled={saveState === "saving" || isOverAllocated}
+                className={PRIMARY_BUTTON}
+              >
+                {saveState === "saving" ? "저장 중…" : "저장"}
+              </button>
+              {/* D6 — 상태색 없이 텍스트만으로 저장 결과를 전달한다. */}
+              {saveState === "error" && (
+                <span role="alert" className="basis-full text-sm text-primary">
+                  {saveErrorMessage}
+                </span>
+              )}
+            </div>
+          ) : (
+            // 사용 여부 편집 중엔 막는다 — 두 편집 모드가 같은 카드에서 동시에 열리면 어느
+            // 초안을 저장하는지 알 수 없다. 반대 방향(배분 편집 중 설정 버튼 잠금)은
+            // CategoryAllocationList 가 건다.
             <button
               type="button"
-              onClick={cancelScenario}
-              disabled={saveState === "saving"}
-              className="text-sm font-bold text-ink-soft hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <span aria-hidden="true">‹</span> 뒤로
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleSaveScenario()}
-              disabled={saveState === "saving"}
+              onClick={startScenario}
+              disabled={isManagingCategories}
               className={PRIMARY_BUTTON}
             >
-              {saveState === "saving" ? "저장 중…" : "저장"}
+              예산 조정하기
             </button>
-            {/* D6 — 상태색 없이 텍스트만으로 저장 결과를 전달한다. */}
-            {saveState === "error" && (
-              <span role="alert" className="text-sm text-primary">
-                {saveErrorMessage}
-              </span>
+          )}
+
+          {/* 보기 모드에서도 띄운다(2026-08-29 사용자 결정) — 도넛의 "수정"으로 총예산만 낮추면
+              바로 초과 상태가 된다(PATCH /weddings/me 는 배분 합계를 검증하지 않는다). 그 경로로
+              들어온 사용자에게도 고치는 길을 준다. */}
+          <StatusCallout shown={isOverAllocated}>
+            <p className="text-sm font-bold text-primary">설정한 예산이 총예산을 초과했어요.</p>
+            {/* 원인이 화면 밖에 있을 때만 낸다 — 보이는 행들만으로 설명되는 초과에까지 이
+                문장을 붙이면 "0원이 남아 있어요" 같은 무의미한 안내가 된다. */}
+            {inactiveAllocated > 0 && (
+              <p className="text-sm text-ink-soft">
+                사용 안 함 카테고리에 <Money value={inactiveAllocated} />이 남아 있어요 — 이 금액도 함께 계산돼요.
+              </p>
             )}
-          </div>
-        ) : (
-          <button type="button" onClick={startScenario} className={PRIMARY_BUTTON}>
-            예산 조정하기
-          </button>
-        )}
+            <button type="button" className={OVER_CTA} onClick={openTotalBudgetEditor}>
+              총예산 금액을 조정할까요?
+            </button>
+          </StatusCallout>
+        </div>
         {!isEditingScenario && saveState === "saved" && <output className="text-sm text-ink-soft">저장됐어요</output>}
       </div>
     </Page>

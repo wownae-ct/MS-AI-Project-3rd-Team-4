@@ -107,7 +107,8 @@ describe("CostManagementTab — 카테고리 필터", () => {
     await user.click(screen.getByRole("button", { name: /다음/u })); // 2페이지로 이동해 둔다
     await screen.findByText("2 / 2");
 
-    await user.selectOptions(screen.getByRole("combobox", { name: "카테고리 필터" }), "SDM");
+    await user.click(screen.getByRole("combobox", { name: "카테고리 필터" }));
+    await user.click(screen.getByRole("option", { name: "스드메" }));
 
     // 필터 변경으로 1페이지로 리셋되고, SDM 카테고리 1건만 남는다(페이지 컨트롤도 사라진다).
     expect(await screen.findByText("스드메 단독 항목")).toBeInTheDocument();
@@ -120,8 +121,35 @@ describe("CostManagementTab — 카테고리 필터", () => {
     renderTab();
 
     await screen.findByText("결제 항목 1");
-    await user.selectOptions(screen.getByRole("combobox", { name: "카테고리 필터" }), "SDM");
+    await user.click(screen.getByRole("combobox", { name: "카테고리 필터" }));
+    await user.click(screen.getByRole("option", { name: "스드메" }));
 
     expect(await screen.findByText("이 카테고리엔 등록된 납부 내역이 없습니다.")).toBeInTheDocument();
+  });
+});
+
+// 정렬 규칙 자체는 `sort-payments.test.ts`가 단위로 고정한다. 여기서 고정하는 것은 **이 화면이
+// 그 정렬을 실제로 태우는가** — 특히 5개씩 페이지네이션되므로 "1페이지 맨 위에 무엇이 오는가"가
+// 사용자가 보는 전부다(2026-08-29, 사용자 지시로 「최근 활동순」 → 「예정일 기준」).
+describe("CostManagementTab — 기본 정렬(예정일 기준)", () => {
+  it("1페이지 맨 위는 가장 임박한 미납 건이고, 끝난 건은 그 뒤로 밀린다", async () => {
+    getPaymentsMock.mockResolvedValue({
+      payments: [
+        // 응답 순서를 일부러 뒤섞는다 — 서버는 정렬을 보장하지 않는다.
+        payment(1, { item_name: "지난 계약금", status: "PAID", due_date: null, paid_date: "2026-03-10" }),
+        payment(2, { item_name: "먼 잔금", status: "PLANNED", due_date: "2026-11-02", paid_date: null }),
+        payment(3, { item_name: "임박한 중도금", status: "PLANNED", due_date: "2026-09-15", paid_date: null }),
+        payment(4, { item_name: "최근 계약금", status: "PAID", due_date: null, paid_date: "2026-07-01" }),
+      ],
+    });
+    renderTab();
+
+    await screen.findByText("임박한 중도금");
+    const rows = screen.getAllByRole("listitem").map((li) => li.textContent ?? "");
+
+    expect(rows[0]).toContain("임박한 중도금");
+    expect(rows[1]).toContain("먼 잔금");
+    expect(rows[2]).toContain("최근 계약금");
+    expect(rows[3]).toContain("지난 계약금");
   });
 });

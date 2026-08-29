@@ -1,15 +1,14 @@
-// BudgetPage.tsx에서 분리 — eslint/max-lines(300줄) 게이트 때문에 카테고리 한 행의 세 가지
-// 렌더 분기(비용 없음/보기 모드/시나리오 편집 모드 슬라이더)를 별도 파일로 뺐다. 상태(scenarioDraft
-// 등)는 여전히 BudgetPage가 소유한다 — 이 컴포넌트는 순수하게 한 행만 그린다.
+// BudgetPage.tsx에서 분리 — eslint/max-lines(300줄) 게이트 때문에 카테고리 한 행의 렌더 분기
+// (보기 모드/시나리오 편집 모드 슬라이더)를 별도 파일로 뺐다. 상태(scenarioDraft 등)는 여전히
+// BudgetPage가 소유한다 — 이 컴포넌트는 순수하게 한 행만 그린다.
 import { Slider } from "@base-ui/react/slider";
 import type { BenchmarkComparison } from "@/entities/payment";
 import type { WeddingCategory } from "@/entities/wedding";
-import { manwonToWon, wonToManwon, wonToManwonCeil } from "@/shared/lib/money";
+import { AMOUNT_STEP_MANWON, formatManwon, manwonToWon, wonToManwon, wonToManwonCeil } from "@/shared/lib/money";
 import { Badge, Money, Progress } from "@/shared/ui";
 
 export interface CategoryAllocationRowProps {
   category: WeddingCategory;
-  hasCost: boolean;
   totalBudget: number;
   /** 시세비교 대상인지 — 대시보드 `CategoryRow.tsx`와 같은 의미(2026-08-26, UX 개편 2차,
       사용자 지시). 편집(슬라이더) 중에는 저장된 원본 기준으로만 보여준다 — 드래그마다 다시
@@ -24,13 +23,29 @@ export interface CategoryAllocationRowProps {
 }
 
 const ROW = "flex flex-col gap-1.5 border-b border-line py-3 last:border-b-0 last:pb-0 first:pt-0";
+// 켜는 중인 카테고리의 자리표시(D21) — `ROW` 를 그대로 쓴다. 구분선·세로 여백·첫/끝 행 예외가
+// 실제 행과 어긋나면 목록 리듬이 자리표시 구간에서만 깨진다.
+//
+// 안쪽 세 조각의 크기는 **실제 보기 모드 행의 세 줄과 같은 값**이다(이름/금액 줄의 본문 줄상자,
+// 진행률 트랙, 시세비교 보조 줄). `shared/ui` 의 공용 목록 자리표시를 쓰지 않는 이유는 그 파일
+// 머리말이 이미 적어 둔 원칙 때문이다 — 자리표시가 실제 행과 다른 부피를 잡으면 결과가 도착할 때
+// 목록이 늘었다 줄어, 자리표시의 존재 이유가 무너진다.
+//
+// 팔레트 안 line 색 + 기본 pulse 만 쓴다(새 색·토큰 0개, D14). 블록 자체는 장식이라
+// 접근성 트리에서 완전히 뺀다 — 낭독은 카드의 진행 안내가 한 번만 낸다.
+const SKELETON_NAME = "h-5.5 w-20 animate-pulse rounded-sm bg-line";
+const SKELETON_AMOUNT = "h-5.5 w-24 animate-pulse rounded-sm bg-line";
+const SKELETON_BAR = "h-2 w-full animate-pulse rounded-pill bg-line";
+const SKELETON_NOTE = "h-4.5 w-2/5 animate-pulse rounded-sm bg-line";
+
 // 10만원 단위(2026-08-26 사용자 지시) — 단위가 "만원"이라 여기선 10. 온보딩 Step8Allocation의
 // 같은 지시(BUDGET_STEP_WON = 100_000원)와 값 자체는 동일하다, 단위만 다르다.
-const SLIDER_STEP_MANWON = 10;
+// 2026-08-28: 손으로 적어 둔 10을 shared 상수로 바꿨다 — 같은 값이 세 파일에 흩어져 있으면
+// 하나만 바뀌었을 때 슬라이더와 숫자 입력의 스텝이 조용히 갈린다.
+const SLIDER_STEP_MANWON = AMOUNT_STEP_MANWON;
 
 export function CategoryAllocationRow({
   category,
-  hasCost,
   totalBudget,
   hasBenchmark,
   benchmark,
@@ -38,17 +53,10 @@ export function CategoryAllocationRow({
   originalAmount,
   onDraftChange,
 }: CategoryAllocationRowProps) {
-  if (!hasCost) {
-    return (
-      <div className={ROW}>
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="text-sm font-bold text-ink">{category.name_ko}</span>
-          <span className="text-xs text-ink-soft">비용 없음</span>
-        </div>
-      </div>
-    );
-  }
-
+  // 비활성 카테고리도, 비용을 다루지 않는 카테고리(`has_cost=false`)도 여기까지 오지 않는다 —
+  // 호출부(CategoryAllocationList)가 목록에서 미리 거른다(2026-08-29, 사용자 결정). 이
+  // 컴포넌트는 예산을 다루는 활성 카테고리 한 행만 그리면 된다. 예전의 "비용 없음" 분기는
+  // 그래서 사라졌다(도달할 수 없는 코드였다).
   if (!isEditingScenario) {
     // Progress는 값을 [0,1]로 클램프한다 — 초과지출(paid_amount>planned_budget, 비율>100%)이
     // "정확히 다 씀"과 시각적으로 구분되지 않는다(레드팀 감사). 편집 모드를 열어야만 초과 여부를
@@ -72,13 +80,13 @@ export function CategoryAllocationRow({
         <div className="flex items-baseline justify-between gap-2">
           <span className="text-sm font-bold text-ink">{category.name_ko}</span>
           <span className="text-sm font-bold text-ink [font-variant-numeric:tabular-nums]">
-            {wonToManwon(headlineAmount)}만원
+            {formatManwon(headlineAmount)}만원
           </span>
         </div>
         <Progress value={progressValue} label={`${category.name_ko} 예산 지불률`} />
         {overspend > 0 && (
           <span className="text-xs font-bold text-primary">
-            {wonToManwon(overspend)}만원 초과 지불
+            {formatManwon(overspend)}만원 초과 지불
             {/* 미배정 카테고리는 위 헤드라인 금액이 이미 실지출액이라(B안) "초과분"과 값이
                 같다 — 왜 그런지(배정 자체가 없어서) 회색 보조 표기로 밝혀 헷갈리지 않게 한다
                 (사용자 지시, 2026-08-27). */}
@@ -87,7 +95,9 @@ export function CategoryAllocationRow({
         )}
         {hasBenchmark &&
           (benchmark ? (
-            <p className="flex items-center gap-1.5 text-xs text-ink-soft">
+            // flex-wrap — 배지가 이제 안 눌리므로(D16) 좁은 폭에서는 배지가 다음 줄로 내려가야
+            // 한다. BudgetDonut 의 같은 줄은 이미 켜져 있었다(CategoryRow 와 같은 보정).
+            <p className="flex flex-wrap items-center gap-1.5 text-xs text-ink-soft">
               시세 대비 {benchmark.percentile_label} · 중앙값 <Money value={benchmark.median_price} className="text-xs" />
               <Badge>{benchmark.ratio_to_median.toFixed(2)}배</Badge>
             </p>
@@ -107,11 +117,22 @@ export function CategoryAllocationRow({
 
   return (
     <div className={ROW}>
-      <div className="flex items-baseline justify-between gap-2">
+      {/* 🚨 [2026-08-29, 320px 전수 검사] `flex-wrap` — 이 행은 편집 중에만 금액을 **두 개**
+          (취소선 원본 + 새 값) 싣는데, 둘 다 `flex-none` 안에 있어 눌리지 않고 카테고리명도
+          `keep-all`(D19) 때문에 어절 아래로 못 줄어든다. 즉 양쪽 다 안 줄어드는 행이다.
+            320px 기기 → 카드 안쪽 254px
+            이름 「청첩장·답례품」(가운뎃점은 UAX #14 상 낱말 안의 문자라 7자가 한 덩어리) ≈ 98px
+            금액 「30,000만원 30,000만원」(`text-sm`) ≈ 160px  → gap 8 을 더해 **266px**
+          보기 모드(금액 하나)는 184px 이라 안전하지만 편집 모드에서만 12px 넘쳤다 — 3억대
+          신혼집처럼 만원 표기가 6자리가 되는 카테고리에서 실제로 걸린다.
+          `flex-wrap` 이면 금액 덩어리가 다음 줄로 내려가고 이름은 한 줄에 남는다. 나머지 두
+          자리(보기 모드 · 하단 잠김 표시)는 값이 하나뿐이라 그대로 둔다 — 재보고 안전해서
+          두는 것이지 빠뜨린 것이 아니다. */}
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
         <span className="text-sm font-bold text-ink">{category.name_ko}</span>
         <span className="flex-none text-sm font-bold text-ink [font-variant-numeric:tabular-nums]">
-          {changed && <span className="mr-1 font-normal text-ink-soft line-through">{wonToManwon(originalAmount)}만원</span>}
-          {wonToManwon(category.planned_budget)}만원
+          {changed && <span className="mr-1 font-normal text-ink-soft line-through">{formatManwon(originalAmount)}만원</span>}
+          {formatManwon(category.planned_budget)}만원
         </span>
       </div>
 
@@ -155,14 +176,33 @@ export function CategoryAllocationRow({
       </Slider.Root>
 
       <div className="flex items-baseline justify-between gap-2 text-xs text-ink-soft">
-        <span>지급 {wonToManwon(category.paid_amount)}만원 잠김</span>
+        <span>지급 {formatManwon(category.paid_amount)}만원 잠김</span>
         {changed && (
           <span aria-live="polite" className="font-bold text-primary">
             {delta > 0 ? "+" : ""}
-            {wonToManwon(delta)}만원
+            {formatManwon(delta)}만원
           </span>
         )}
       </div>
+    </div>
+  );
+}
+
+export interface CategoryAllocationRowSkeletonProps {
+  /** 시세비교 대상이면 실제 행에 보조 줄이 한 줄 더 붙는다 — 자리표시도 그만큼 잡아야 한다. */
+  hasBenchmark: boolean;
+}
+
+/** 켜기 저장이 서버 응답을 기다리는 동안 그 카테고리가 설 자리(위 SKELETON_* 머리말 참고). */
+export function CategoryAllocationRowSkeleton({ hasBenchmark }: CategoryAllocationRowSkeletonProps) {
+  return (
+    <div className={ROW} aria-hidden="true">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className={SKELETON_NAME} />
+        <span className={SKELETON_AMOUNT} />
+      </div>
+      <span className={SKELETON_BAR} />
+      {hasBenchmark && <span className={SKELETON_NOTE} />}
     </div>
   );
 }

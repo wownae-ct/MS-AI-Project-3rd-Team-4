@@ -25,14 +25,21 @@ vi.mock("@/entities/session", async (orig) => ({
 
 // 이 파일은 라우팅 조립(경로 → 화면 · 가드 · 셸 소재)만 본다 — 화면이 실제로 그리는 데이터는
 // 관심사가 아니다(그건 DashboardPage.test.tsx 등 각 화면 계약 테스트의 몫이다). 그런데
-// CategoryPage(getCategories)와 OnboardingPage(getCategories/getTotalAverageBenchmark)가 실API
-// 배선 이후 진짜 네트워크 호출을 시도하면, `VITE_API_BASE=https://api.test`(존재하지 않는
-// 도메인)로의 DNS 실패가 전체 스위트를 병렬로 돌릴 때 간헐적으로 findBy* 기본 타임아웃을
-// 넘겨 테스트를 깨뜨린다(고립 실행에선 통과, 전체 스위트에선 가끔 실패 — 재현됨). 라우팅
-// 조립과 무관한 네트워크 의존을 없애기 위해 여기서 즉시 응답하는 목으로 바꾼다.
+// CategoryPage(getCategories/getWeddingCategories)와 OnboardingPage(getCategories/
+// getTotalAverageBenchmark)가 실API 배선 이후 진짜 네트워크 호출을 시도하면,
+// `VITE_API_BASE=https://api.test`(존재하지 않는 도메인)로의 DNS 실패가 전체 스위트를 병렬로
+// 돌릴 때 간헐적으로 findBy* 기본 타임아웃을 넘겨 테스트를 깨뜨린다(고립 실행에선 통과, 전체
+// 스위트에선 가끔 실패 — 재현됨). 라우팅 조립과 무관한 네트워크 의존을 없애기 위해 여기서
+// 즉시 응답하는 목으로 바꾼다.
+//
+// `getWeddingCategories` 는 2026-08-29 에 추가됐다 — `TimelinePage`(라벨+활성 판정)와
+// `CategoryPage`(「사용 안 함」 안내 분기)가 쓴다. **빈 목록으로 성공**시키면 두 화면 다
+// 기존 경로를 그대로 탄다: 타임라인은 라벨 없이 렌더하고, 카테고리 상세는 "행이 있고 그
+// is_active 가 false" 가 아니므로 안내로 새지 않는다(그 파일의 fail-open 규칙).
 vi.mock("@/entities/wedding", async (orig) => ({
   ...(await orig<typeof import("@/entities/wedding")>()),
   getCategories: () => Promise.resolve({ categories: [] }),
+  getWeddingCategories: () => Promise.resolve({ categories: [] }),
   getTotalAverageBenchmark: () =>
     Promise.reject(new ApiError({ code: "TOTAL_BUDGET_UNAVAILABLE", message: "x", status: 404, extra: {} })),
 }));
@@ -83,8 +90,12 @@ describe("경로 → 화면 (layout.md §2 라우트 표)", () => {
 
   it("카테고리 상세는 경로 파라미터를 받는다 — URL은 소문자, categoryCode는 대문자로 되돌린다", async () => {
     // `$id` 를 `:id` 로 적으면 리터럴 경로가 되어 조용히 매칭되지 않는다 — 그 회귀를 여기서 잡는다.
-    // 카테고리 상수 조회(`GET /categories`)를 이 테스트는 목으로 두지 않으므로 실패하고,
-    // `CategoryPage`는 그 경우 제목을 원본 `categoryCode`로 폴백한다(CategoryPage.tsx) — 그
+    // 카테고리 상수 조회(`GET /categories`)는 이 파일 상단에서 **빈 목록으로 성공** 목킹돼 있어
+    // "조회는 끝났는데 그 코드가 목록에 없다"가 되고, `CategoryPage`는 그 경우 제목을 원본
+    // `categoryCode`로 폴백한다(CategoryPage.tsx) — 그
+    // (⚠️ 이 주석은 예전에 "목으로 두지 않으므로 실패하고"라고 적혀 있었다. 목이 추가된 뒤에도
+    //  고쳐지지 않아 낡은 설명이었다 — 2026-08-28 정정. 폴백 조건이 "실패"가 아니라 "조회 종료"인
+    //  것이 중요하다: 실패로만 폴백하면 이 테스트는 목이 성공하므로 영영 폴백되지 않는다.)
     // 폴백값이 곧 `$id`가 실제로 라우트에 전달됐다는 증거다. 2026-08-26부터 router.tsx가 그
     // 값을 `.toUpperCase()`로 되돌리므로(CategoryRow.tsx가 링크를 소문자로 만드는 것과 대칭),
     // 폴백 제목도 대문자로 뜬다 — 그 변환이 실제로 일어난다는 증거이기도 하다.
@@ -109,6 +120,20 @@ describe("경로 → 화면 (layout.md §2 라우트 표)", () => {
     renderAt("/");
     await expectScreen("대시보드");
     expect(screen.getByRole("main")).toBeInTheDocument();
+  });
+});
+
+// 이 파일의 다른 테스트들은 `routeTree` 를 메모리 히스토리로 다시 조립한다 — 그 경로로는
+// `createRouter` **옵션**이 검증되지 않는다. 아래 하나만 실제 export 된 라우터를 본다.
+describe("라우터 옵션 계약", () => {
+  // 대기 표시가 없어 "탭을 눌러도 화면이 멈춰 있다"가 오래 방치돼 있었다(D14). 그 원인이
+  // 시각 디자인 부재였고, 코드상으로는 **이 옵션 한 줄이 비어 있던 것**이다 —
+  // 펜딩 컴포넌트가 없으면 라우터가 펜딩 세션을 아예 만들지 않아 지연·최소표시 기계가 통째로
+  // 잠든다(router-core/load-client.js). 그래서 "등록돼 있다" 자체가 계약이다.
+  it("defaultPendingComponent 가 등록돼 있다 — 이게 없으면 펜딩 기계가 통째로 꺼진다", async () => {
+    const { router } = await import("./router");
+
+    expect(router.options.defaultPendingComponent).toBeDefined();
   });
 });
 

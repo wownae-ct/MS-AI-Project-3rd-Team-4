@@ -39,6 +39,14 @@ function Root({ value, defaultValue, onValueChange, children, className }: TabsR
 // 화살표로 훑을 때마다 자동 활성화되면 지나치는 탭마다 요청이 나간다 —
 // WAI-ARIA 도 패널이 비싼 경우 수동 활성화를 권한다.
 // 값이 싼 탭 그룹이 생겨 자동 활성화가 필요해지면 그때 activateOnFocus 를 prop 으로 연다.
+// 넘침 대비를 **일부러 두지 않았다**(320px 전수 검사, 2026-08-29 — 재보지 않도록 산술을 남긴다).
+// 이 줄은 `flex` 만 있고 `flex-wrap` 도 `overflow-x` 도 없다. 320px 기기의 페이지 안쪽은 288px 이고
+// 현재 유일한 실사용처인 카테고리 상세는 탭이 둘이다 — 「체크리스트」(px-4 32 + 5글자 70 ≈ 102px)
+// + 「비용」(32 + 28 ≈ 60px) = 약 162px 이라 여유가 126px 있다.
+//
+// ⚠️ **탭이 셋이 되면 다시 잰다.** `flex-wrap` 을 미리 얹지 않는 이유는 그게 공짜가 아니어서다 —
+// 줄이 바뀌면 `border-b`(이 요소)와 활성 탭의 `border-b-2` 가 서로 다른 줄에 놓여 밑줄이 두 개로
+// 보인다. 그때는 가로 스크롤(`overflow-x-auto`)이 맞는 답일 가능성이 높다.
 function List({ children, label }: { children: ReactNode; label: string }) {
   return (
     <BaseTabs.List aria-label={label} className="flex border-b border-line">

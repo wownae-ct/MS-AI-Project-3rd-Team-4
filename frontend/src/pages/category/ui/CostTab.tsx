@@ -17,7 +17,8 @@ import {
 } from "@/entities/payment";
 import type { CategoryConstant } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
-import { Badge, Card, Money } from "@/shared/ui";
+import { AMOUNT_STEP_WON } from "@/shared/lib/money";
+import { Badge, Card, Loading, Money, NumberInput, Select, SkeletonRows } from "@/shared/ui";
 
 interface CostTabProps {
   categoryCode: string;
@@ -109,7 +110,11 @@ export function CostTab({ categoryCode, categoryMeta }: CostTabProps) {
           </p>
         )}
         {payments === null ? (
-          <p className="text-sm text-ink-soft">불러오는 중…</p>
+          // D14 L2 — 카드 안 목록이라 문구는 보조기기에만 낸다(형태가 이미 대기를 보여준다).
+          <>
+            <SkeletonRows count={3} />
+            <Loading srOnly />
+          </>
         ) : payments.length === 0 ? (
           <p className="text-sm text-ink-soft">등록된 납부 내역이 없습니다.</p>
         ) : (
@@ -127,17 +132,22 @@ export function CostTab({ categoryCode, categoryMeta }: CostTabProps) {
   );
 }
 
+// 라벨↔입력 연결용 고정 id. 이 위젯은 화면에 하나뿐이라(카테고리별 시세 비교 카드) 충돌이 없다.
+const BENCHMARK_AMOUNT_ID = "benchmark-amount";
+const BENCHMARK_ITEM_ID = "benchmark-item";
+
 function BenchmarkWidget({ categoryCode }: { categoryCode: string }) {
   const options = ITEM_CODE_OPTIONS[categoryCode] ?? FALLBACK_ITEM_CODE_OPTIONS;
   const [itemCode, setItemCode] = useState(options[0].value);
-  const [amountInput, setAmountInput] = useState("");
+  // `number | null` — 빈 칸의 표현이 `""` 에서 `null` 로 옮겨갔다(NumberInput 계약).
+  const [amountInput, setAmountInput] = useState<number | null>(null);
   const [result, setResult] = useState<BenchmarkComparison | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleCompare() {
-    const amount = Number(amountInput);
-    if (!Number.isFinite(amount) || amount <= 0) {
+    const amount = amountInput ?? 0;
+    if (amount <= 0) {
       setError("금액을 올바르게 입력해 주세요.");
       return;
     }
@@ -157,27 +167,26 @@ function BenchmarkWidget({ categoryCode }: { categoryCode: string }) {
   return (
     <Card title="시세 비교">
       <div className="flex flex-wrap items-end gap-2">
-        <label className="flex flex-col gap-1 text-xs text-ink-soft">
+        {/* [D22] `field`(16px) 를 유지한다 — 바로 옆 형제가 `NumberInput`(16px) 인 입력 행이라,
+            여기만 14px 로 내리면 같은 줄에 두 크기가 섞인다. 위계 역전은 콘텐츠 안에 홀로 놓인
+            컨트롤에서 일어난다(Select.tsx 머리말).
+            `htmlFor` 로 잇는 이유는 바로 아래 견적 칸과 같다 — `Select` 도 래퍼 안에 컨트롤을 그린다. */}
+        <label htmlFor={BENCHMARK_ITEM_ID} className="flex flex-col gap-1 text-xs text-ink-soft">
           항목
-          <select
-            value={itemCode}
-            onChange={(e) => setItemCode(e.target.value)}
-            className="min-h-tap rounded-md border border-line bg-surface px-2 text-base text-ink"
-          >
-            {options.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+          <Select id={BENCHMARK_ITEM_ID} value={itemCode} onValueChange={setItemCode} options={options} />
         </label>
-        <label className="flex flex-col gap-1 text-xs text-ink-soft">
+        {/* htmlFor 로 잇는다 — NumberInput 은 래퍼 안에 입력을 그리므로 label 이 감싸도
+            린터가 연결을 알아보지 못하고, 무엇보다 라벨 클릭으로 포커스가 오는 동작을
+            브라우저마다 운에 맡기지 않는다. */}
+        <label htmlFor={BENCHMARK_AMOUNT_ID} className="flex flex-col gap-1 text-xs text-ink-soft">
           내 견적(원)
-          <input
-            type="number"
+          <NumberInput
+            id={BENCHMARK_AMOUNT_ID}
+            step={AMOUNT_STEP_WON}
             min={0}
+            aria-label="내 견적(원)"
             value={amountInput}
-            onChange={(e) => setAmountInput(e.target.value)}
+            onValueChange={setAmountInput}
             className="min-h-tap w-32 rounded-md border border-line bg-surface px-2 text-base text-ink"
           />
         </label>
@@ -185,9 +194,13 @@ function BenchmarkWidget({ categoryCode }: { categoryCode: string }) {
           type="button"
           onClick={() => void handleCompare()}
           disabled={loading}
+          aria-busy={loading || undefined}
           className="min-h-tap rounded-md border border-transparent bg-primary px-4 text-sm font-bold text-surface enabled:hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
-          비교
+          {/* D14 L1 — 비활성만으로는 "눌린 건가"를 알 수 없다. 라벨로 진행을 말한다.
+              공용 Button 으로 바꾸지 않은 것은 이 버튼이 자체 클래스를 갖고 있어서다 —
+              변환은 별건으로 남긴다(D14 Phase 3). */}
+          {loading ? "비교 중…" : "비교"}
         </button>
       </div>
 
@@ -199,8 +212,10 @@ function BenchmarkWidget({ categoryCode }: { categoryCode: string }) {
 
       {result && (
         <div className="mt-3 flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-ink-soft">
+          {/* gap-2 · min-w-0 — 종전엔 간격조차 없어 좁은 폭에서 문구와 배지가 맞붙었고, 배지가
+              눌려 캡슐 모양이 뭉개졌다(D16). 배지가 안 눌리는 만큼 압력은 왼쪽 문구가 받는다. */}
+          <div className="flex items-center justify-between gap-2">
+            <p className="min-w-0 text-sm text-ink-soft">
               중앙값 <Money value={result.median_price} /> · {result.percentile_label}
             </p>
             <Badge>{result.ratio_to_median.toFixed(2)}배</Badge>

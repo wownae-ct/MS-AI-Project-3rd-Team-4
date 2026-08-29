@@ -5,6 +5,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+// ⚠️ [2026-08-30] 오늘 날짜를 `new Date().toISOString().slice(0,10)` 으로 계산하고 있었다 —
+// **D20 이 앱에서 지운 바로 그 UTC 버그**다(`shared/lib/date.ts` 의 `todayISO` 가 그 자리를
+// 대신한다). 컴포넌트는 `todayISO()`(KST)를 쓰는데 테스트만 UTC 로 재고 있어서, **KST
+// 00:00~08:59 에만** 하루가 어긋나 두 케이스가 깨졌다(그 시간대에 실제로 깨져서 발견했다).
+// 계산을 앱과 같은 함수로 통일한다 — 시각에 따라 결과가 갈리는 테스트를 남기지 않는다.
+import { todayISO } from "@/shared/lib/date";
 import type { Payment } from "../model";
 import { PaymentListRow } from "./PaymentListRow";
 
@@ -46,6 +52,34 @@ describe("PaymentListRow — 보기 모드", () => {
     expect(screen.getByText("계약금").className).toContain("payment-deposit");
   });
 
+  // D17 — 한 줄에 배지가 둘 붙는 유일한 자리다. 색(값)만이 아니라 **형태(계열)** 도 갈려야 한다:
+  // 결제 유형은 테두리, 카테고리는 채움. 둘 다 채움이 되면 어느 쪽이 무슨 축인지 흐려진다.
+  it("결제 유형 배지는 테두리 변이, 카테고리 배지는 채움 변이다", () => {
+    render(<PaymentListRow payment={payment({})} categoryLabel="예식장" onChanged={() => {}} />);
+    const paymentTypeBadge = screen.getByText("잔금");
+    expect(paymentTypeBadge.className).toContain("border-current");
+    expect(paymentTypeBadge.className).not.toContain("bg-payment");
+
+    const categoryBadge = screen.getByText("예식장");
+    expect(categoryBadge.className).not.toContain("border-current");
+    expect(categoryBadge.className).toContain("bg-category-venue-soft");
+  });
+
+  // 색은 표시 이름(categoryLabel)이 아니라 category_code 로 고른다 — 서버가 표시 문구를 바꿔도
+  // 색이 조용히 바뀌지 않아야 한다.
+  it("카테고리 배지 색은 표시 이름이 아니라 category_code 로 고른다", () => {
+    render(<PaymentListRow payment={payment({ category_code: "SDM" })} categoryLabel="아무 이름" onChanged={() => {}} />);
+    expect(screen.getByText("아무 이름").className).toContain("category-sdm");
+  });
+
+  // 백엔드가 10번째 카테고리를 추가해도 색을 지어내지 않고 기본 배지로 떨어진다.
+  it("모르는 category_code 는 기본 배지(primary 채움)로 떨어진다", () => {
+    render(<PaymentListRow payment={payment({ category_code: "NEW_ONE" })} categoryLabel="새 카테고리" onChanged={() => {}} />);
+    const badge = screen.getByText("새 카테고리");
+    expect(badge.className).toContain("bg-primary-soft");
+    expect(badge.className).not.toContain("bg-category");
+  });
+
   it("수정·삭제 버튼이 둘 다 있다", () => {
     render(<PaymentListRow payment={payment({})} onChanged={() => {}} />);
     expect(screen.getByRole("button", { name: "수정" })).toBeInTheDocument();
@@ -60,7 +94,8 @@ describe("PaymentListRow — 수정", () => {
     await user.click(screen.getByRole("button", { name: "수정" }));
 
     expect(screen.getByRole("textbox", { name: "항목명" })).toHaveValue("본식장 잔금");
-    expect(screen.getByRole("spinbutton", { name: "금액(원)" })).toHaveValue(28_000_000);
+    // 값은 콤마가 붙은 표시 문자열이다(2026-08-28) — 실제 값은 저장 시 콤마 없는 정수로 나간다.
+    expect(screen.getByRole("spinbutton", { name: "금액(원)" })).toHaveValue("28,000,000");
     // PLANNED(paid_date 없음)는 예정일(due_date)을 편집 대상으로 쓴다.
     expect(screen.getByLabelText("예정일")).toHaveValue("2026-11-02");
   });
@@ -149,7 +184,7 @@ describe("PaymentListRow — 상태 전환(PLANNED→PAID)", () => {
     await user.click(screen.getByLabelText("이미 결제했어요"));
 
     expect(screen.queryByLabelText("예정일")).not.toBeInTheDocument();
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayISO();
     expect(screen.getByLabelText("결제일")).toHaveValue(today);
     expect(screen.getByText("저장하면 「지급완료」로 바뀝니다.")).toBeInTheDocument();
   });
@@ -162,7 +197,7 @@ describe("PaymentListRow — 상태 전환(PLANNED→PAID)", () => {
     await user.click(screen.getByLabelText("이미 결제했어요"));
     await user.click(screen.getByRole("button", { name: "저장" }));
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayISO();
     expect(patchPaymentMock).toHaveBeenCalledWith(
       "p1",
       expect.objectContaining({ paid_date: today }),

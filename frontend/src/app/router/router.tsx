@@ -64,7 +64,7 @@ import { lazy, Suspense } from "react";
 import { loadSession } from "@/entities/session";
 import { DashboardPage } from "@/pages/dashboard";
 import { LoginPage } from "@/pages/login";
-import { PAGE_CONTENT_ID } from "@/shared/ui";
+import { PAGE_CONTENT_ID, RoutePending } from "@/shared/ui";
 import { AppShell } from "../ui/AppShell";
 
 // 보이지 않다가 포커스를 받으면 나타난다. `sr-only` 만 두면 키보드 사용자가 이 링크를 볼 수 없고,
@@ -189,7 +189,11 @@ function CategoryRouteComponent() {
   // 아래 모든 API 호출·`categories?.find((c) => c.code === categoryCode)` 비교가 이 값을 원본
   // 그대로 기대한다. 여기서 한 번만 되돌리면 하위 트리는 URL 대소문자를 아예 모른다.
   return (
-    <Suspense fallback={null}>
+    // `fallback={null}` 이었다 — 청크가 도착할 때까지 화면이 통째로 비었다. 이 라우트만
+    // React.lazy 를 직접 쓰므로 `defaultPendingComponent` 가 닿지 않아 여기서 같은 것을 명시한다
+    // (D14). 라우터의 1초 지연이 걸리지 않는 자리라 빠른 도착에도 잠깐 뜰 수 있지만, 그 대가로
+    // 딥링크 진입에서 빈 화면이 사라진다.
+    <Suspense fallback={<RoutePending />}>
       <LazyCategoryPage categoryCode={id.toUpperCase()} />
     </Suspense>
   );
@@ -279,10 +283,24 @@ export const routeTree = rootRoute.addChildren([
 // **초기 로드에는 아무 영향이 없다** — ADR 0005 R7(LCP·CLS) 측정을 오염시키지 않는다.
 //
 // ⚠️ 이것은 `defaultPendingComponent` 의 대체가 아니다. 호버 없이 바로 탭하거나 딥링크로 들어오면
-// 여전히 대기 구간이 남고, 그동안 화면은 바뀌지 않는다(펜딩 컴포넌트가 없으면 TanStack 은
-// 펜딩 타이머를 시작조차 하지 않고 Suspense 경계도 만들지 않는다 — router-core/load-matches.ts).
-// 로딩 상태의 **디자인 근거가 docs/design/layout.md §9 에 0건**이라 여기서 지어내지 않는다.
-export const router = createRouter({ routeTree, defaultPreload: "intent" });
+// 여전히 대기 구간이 남는다 — 그래서 아래에서 펜딩 컴포넌트를 함께 등록한다.
+//
+// ## `defaultPendingComponent` — 대기 표시 (D14)
+//
+// 예전엔 이 자리가 비어 있었고, 그 사유가 "로딩 상태의 디자인 근거가 layout.md §9 에 0건이라
+// 지어내지 않는다"였다. **그 빈칸을 D14 가 채웠다**(docs/design/decisions.md) — 이제 근거가 있다.
+//
+// 등록 자체가 스위치다. 펜딩 컴포넌트가 **없으면** TanStack 은 펜딩 세션을 아예 만들지 않는다
+// (router-core/load-client.js — `const component = … ?? router.options.defaultPendingComponent;
+// if (!component …) return`). 그래서 지금까지 아래 두 기본값이 통째로 잠들어 있었다:
+//
+//   · `defaultPendingMs: 1000`     1초 안에 끝나는 전환에는 **아무것도 뜨지 않는다**
+//   · `defaultPendingMinMs: 500`   한 번 뜨면 500ms 유지 — 떴다 바로 사라지는 깜빡임을 막는다
+//
+// ⚠️ 최소 표시 500ms 는 공짜가 아니다. `awaitPendingMinimum` 이 남은 시간을 **await 하므로**
+// 데이터가 준비돼도 그만큼 기다린 뒤 새 화면이 뜬다 — **1000~1500ms 구간의 전환은 예전보다
+// 느려진다.** 깜빡임 방지와 맞바꾼 값이고, 거슬리면 `defaultPendingMinMs` 를 낮춘다.
+export const router = createRouter({ routeTree, defaultPreload: "intent", defaultPendingComponent: RoutePending });
 
 // 라우트 타입을 전역에 등록한다 — 이게 있어야 `<Link to="…">` 와 `params` 가 **컴파일 타임에** 검증된다.
 // ADR 0005 가 28 kB 를 지불하고 산 것이 정확히 이 검사이므로, 이 선언이 사라지면 결정의 근거가 사라진다.
