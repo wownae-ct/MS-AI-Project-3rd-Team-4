@@ -16,11 +16,21 @@
 // 날짜를 직접 입력하는 행위는 항상 EXACT 확정을 의미한다 — 온보딩 1단계(Step1RoleDate.tsx)가
 // 날짜 입력=EXACT로 두는 것과 같은 규칙. wedding_date_precision을 함께 보내는 이유도 그것이다
 // — 서버는 EXACT가 아니면 보낸 날짜를 무시하고 근사 규칙으로 대체한다(03_API_spec.md #6 필드 표).
-import { useState } from "react";
-import { updateMyWedding } from "@/entities/wedding";
-import { ApiError } from "@/shared/api";
+// **폼 본체는 `WeddingDateEditForm.tsx` 에 있고 첫 클릭 때 받아온다(D20).** 대시보드는 유일하게
+// 정적 import 되는 화면이라 여기 딸린 것이 전부 초기 청크가 되는데, 폼은 「수정」을 누르기 전까지
+// 화면에 없다 — 그 파일 머리말에 실측과 함께 적어 뒀다.
+import { lazy, Suspense, useState } from "react";
+import { Loading } from "@/shared/ui";
 
-const INLINE_DATE_INPUT = "min-h-tap w-40 rounded-md border border-line bg-surface px-2.5 text-base text-ink focus-visible:border-primary";
+const WeddingDateEditForm = lazy(() =>
+  import("./WeddingDateEditForm").then((mod) => ({ default: mod.WeddingDateEditForm })),
+);
+
+/** 「수정」에 포인터·포커스가 닿는 순간 폼 청크를 받아 둔다 — 누를 때는 이미 도착해 있다. */
+function preloadForm() {
+  void import("./WeddingDateEditForm");
+}
+
 const GHOST_BUTTON = "text-xs font-bold text-ink-soft transition-colors duration-150 hover:text-primary";
 
 export interface WeddingDateEditProps {
@@ -29,73 +39,34 @@ export interface WeddingDateEditProps {
 }
 
 export function WeddingDateEdit({ weddingDate, onSaved }: WeddingDateEditProps) {
-  const [draft, setDraft] = useState<string | null>(null);
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "error">("idle");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
 
-  function startEdit() {
-    setDraft(weddingDate);
-    setSaveState("idle");
-    setErrorMessage(null);
-  }
-
-  function cancelEdit() {
-    setDraft(null);
-    setSaveState("idle");
-    setErrorMessage(null);
-  }
-
-  async function handleSave() {
-    if (draft === null || draft === "") return;
-    const nextDate = draft;
-    setSaveState("saving");
-    setErrorMessage(null);
-    try {
-      await updateMyWedding({ wedding_date: nextDate, wedding_date_precision: "EXACT" });
-      onSaved(nextDate);
-      setDraft(null);
-      setSaveState("idle");
-    } catch (err) {
-      setSaveState("error");
-      setErrorMessage(err instanceof ApiError ? err.message : "결혼식 날짜를 저장하지 못했어요. 다시 시도해 주세요.");
-    }
-  }
-
-  if (draft === null) {
+  if (!editing) {
     return (
-      <button type="button" onClick={startEdit} className={GHOST_BUTTON}>
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        onPointerEnter={preloadForm}
+        onFocus={preloadForm}
+        className={GHOST_BUTTON}
+      >
         수정
       </button>
     );
   }
 
   return (
-    <span className="flex flex-wrap items-center gap-1.5">
-      <input
-        type="date"
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        className={INLINE_DATE_INPUT}
-        aria-label="결혼식 날짜"
+    // 사용자가 방금 누른 자리라 즉시 반응해야 하지만(D14 L1), 프리로드가 거의 항상 이겨서
+    // 이 문구는 뜨지 않는다 — `Loading` 의 200ms 지연 게이트가 그 깜빡임을 막는다.
+    <Suspense fallback={<Loading label="여는 중…" />}>
+      <WeddingDateEditForm
+        weddingDate={weddingDate}
+        onSaved={(nextDate) => {
+          onSaved(nextDate);
+          setEditing(false);
+        }}
+        onCancel={() => setEditing(false)}
       />
-      <button
-        type="button"
-        onClick={() => void handleSave()}
-        disabled={saveState === "saving" || draft === ""}
-        className={GHOST_BUTTON}
-      >
-        {saveState === "saving" ? "저장 중…" : "저장"}
-      </button>
-      {/* 저장 진행 중엔 취소를 막는다 — 안 막으면 취소 후에도 진행 중이던 저장이 성공 시
-          되살아난다(레드팀 감사 HIGH, 예전 BudgetPage.tsx 총예산 편집과 같은 이유). */}
-      <button type="button" onClick={cancelEdit} disabled={saveState === "saving"} className={GHOST_BUTTON}>
-        취소
-      </button>
-      {saveState === "error" && (
-        <span role="alert" className="basis-full text-xs text-primary">
-          {errorMessage}
-        </span>
-      )}
-    </span>
+    </Suspense>
   );
 }

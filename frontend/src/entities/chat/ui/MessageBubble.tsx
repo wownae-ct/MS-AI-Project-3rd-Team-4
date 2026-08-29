@@ -1,11 +1,68 @@
 // ChatPanel.tsx에서 분리(2026-08-24, eslint max-lines 300줄 제한) — 좋아요/싫어요 평가 버튼
 // 추가로 ChatPanel.tsx가 300줄을 넘겨서, 재사용 가능한 프레젠테이션 조각인 이 컴포넌트를
 // 별도 파일로 뺐다. entities/chat/ui/ 소속 유지(ChatPanel과 같은 슬라이스).
-import { useState, type ReactNode } from "react";
-import { Badge } from "@/shared/ui";
-import { safeExternalUrl } from "@/shared/lib/safe-url";
-import { SOURCE_TIER_LABEL } from "@/shared/lib/source-tier";
+import type { ReactNode } from "react";
+import { Badge, IconCheck, IconThumbDown, IconThumbUp, SourceList } from "@/shared/ui";
 import type { ChatMessage, MessageRating } from "../model";
+
+// verdict 4종은 backend/app/schemas/common.py:66 원본 그대로("WEAK"가 실제 값 — 이전엔
+// "UNSUPPORTED"로 잘못 알고 있었다, entities/chat/model.ts 머리말 참조). 앞 3종의 문구는 목업
+// 그대로다(s3-category-detail.html:355,361) — "출처"가 아니라 "근거".
+//
+// **[2026-08-29 D18]** 목업의 체크마크는 그대로 있다. 다만 SUPPORTED 라벨 문자열 안의 문자
+// "✓"(U+2713)가 아니라 배지가 앞세우는 IconCheck 로 렌더한다 — 그 코드포인트는 Wanted Sans 의
+// 어느 unicode-range 조각에도 없어 OS 폰트로 폴백했고 굵기·크기가 플랫폼마다 달랐다. **보이는
+// 것은 같고 렌더 방식만 바뀌었다.**
+//
+// "OUT_OF_SCOPE"는 목업에 없다(2026-08-29 신설, backend PR #130). 목업 톤을 따라 명사형·간결로
+// 맞췄다 — Badge 는 whitespace-nowrap 계약이라 길수록 레이아웃이 불리하다.
+//
+// Record<string, string> 인 이유 — 타입에 없는 값이 와도 화면이 비지 않게 폴백을 남긴다
+// (SOURCE_TIER_LABEL 과 같은 원칙). 종전에는 3항 연산자의 마지막 분기가 그 역할을 했다.
+//
+// ⚠️ 폴백이 GENERAL 과 같은 문구라, 여기서 항목을 빠뜨리면 **크래시 대신 조용한 오답**이 된다
+// (OUT_OF_SCOPE 가 정확히 그 상태였다). 새 verdict 를 늘릴 땐 MessageBubble.test.tsx 의
+// 「서로의 문구로 새지 않는다」 테스트도 같이 늘린다.
+// **[2026-08-29 레드팀 감사 #6]** 앞 두 문구에 「답변」을 명시했다. 감사가 잡은 사례: "강남에서
+// 제일 잘하는 예식장 하나만 콕 집어 달라"에 모델이 "그럴 만한 확인된 근거가 없습니다"라고
+// 정확히 거절하고 일반 기준으로 답을 대체했는데, 배지는 「✓ 근거 확인됨」이었다. verify 단계는
+// 설계상 **답변의 각 주장이 참고자료로 뒷받침되는가**만 보고 원 질문 텍스트를 아예 받지 않으므로
+// (backend/app/rag/generation.py::verify_answer 의 시그니처에 질문이 없다) 그 판정 자체는
+// 정확하다 — 결함이 아니라 **무엇을 확인했는지 말하지 않은 문구**가 문제였다. 「근거 확인됨」은
+// "물어본 것에 답했다"로 읽히고, 거절 답변에 붙으면 정반대 뜻이 된다.
+//
+// GENERAL·OUT_OF_SCOPE 는 그대로 둔다 — 이미 판정 대상을 오해할 여지가 없고, Badge 는
+// whitespace-nowrap 계약이라 길수록 레이아웃이 불리하다(SUMMARY_ROW 가 flex-wrap 이라 잘리진
+// 않고 「근거 N개」 토글이 줄바꿈될 뿐이다).
+const VERDICT_LABEL: Record<string, string> = {
+  SUPPORTED: "답변 근거 확인됨",
+  WEAK: "답변 근거 불충분",
+  GENERAL: "일반 정보 · 근거 없음",
+  OUT_OF_SCOPE: "상담 범위 밖",
+};
+const VERDICT_FALLBACK = "일반 정보 · 근거 없음";
+
+// 평가 버튼 — **[2026-08-29 D18]** 종전엔 👍/👎 컬러 이모지였다. 세 가지가 동시에 깨져 있었다:
+//   ① 선택 시 `bg-primary text-surface` 인데 컬러 이모지는 OS 비트맵 폰트라 currentColor 를
+//      따르지 않는다 — 플럼 배경 위에 노란 엄지가 그대로 남았다.
+//   ② 높이만 min-h-tap 이고 가로는 px-2 + 12px 글리프 = 약 28px 이라, docs/design/a11y.md §1 이
+//      선언한 44px 터치 타겟 계약을 이 버튼 둘만 어기고 있었다(예외 근거 주석도 없었다).
+//   ③ 이모지는 폰트 글리프라 D8 색 게이트(산출 CSS·소스)의 사각지대로 팔레트 밖 색이 들어왔고,
+//      Wanted Sans 의 unicode-range 분할·self-host 전략도 우회했다(코드포인트가 어느 조각에도
+//      없어 OS 폰트로 폴백 → 플랫폼마다 모양·폭·색이 달라진다).
+//
+// 클래스는 **완성 리터럴**로만 적는다 — Tailwind 는 소스를 평문 스캔한다(shared/ui/README 「코드
+// 규약」). 아래처럼 완성된 두 조각을 템플릿으로 잇는 것은 안전하다(Badge.tsx 와 같은 방식).
+const RATE_BASE =
+  "inline-flex min-h-tap min-w-tap cursor-pointer items-center justify-center rounded-md border " +
+  "transition-[background-color,border-color,color] duration-150";
+// 선택됨 — 형태(선→채움)와 색 두 채널로 알린다. 색 하나로만 상태를 전달하지 않는다(WCAG 1.4.1).
+// bg-primary 진한 채움을 쓰지 않는 이유는 The One Accent Rule — 답변 평가는 부가 액션인데
+// 선택되는 순간 그 행에서 가장 강한 요소가 되어 버린다. 같은 조합의 선례가 이미 있다
+// (entities/payment/ui/PaymentListRow.tsx 의 영수증 버튼).
+const RATE_SELECTED = "border-primary bg-primary-soft text-primary";
+// hover 는 전부 `enabled:` 뒤에 둔다 — shared/ui/Button.tsx 가 세운 규약.
+const RATE_IDLE = "border-line bg-bg text-ink-soft enabled:hover:border-ink-soft enabled:hover:text-ink";
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -20,17 +77,6 @@ interface MessageBubbleProps {
 
 export function MessageBubble({ message, onRate, renderReportAction }: MessageBubbleProps) {
   const isUser = message.role === "user";
-  // 인용 배지는 여러 개가 동시에 펼쳐질 수 있다 — chunk_id는 세션 내에서 안정적인 서버 발급 id라
-  // key로도, 펼침 상태 추적에도 그대로 쓴다.
-  const [expandedCitations, setExpandedCitations] = useState<Set<number>>(new Set());
-  function toggleCitation(chunkId: number) {
-    setExpandedCitations((prev) => {
-      const next = new Set(prev);
-      if (next.has(chunkId)) next.delete(chunkId);
-      else next.add(chunkId);
-      return next;
-    });
-  }
   return (
     <div className={`flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
       <div
@@ -53,104 +99,64 @@ export function MessageBubble({ message, onRate, renderReportAction }: MessageBu
           항상 표시한다(HANDOFF.md §4 S3). verification 이 아직 안 왔으면(스트리밍 중) 아무것도
           내지 않는다 — 이 시점엔 "근거 없음" 조차 확정된 사실이 아니다. */}
       {!isUser && message.verification && (
-        // max-w-[85%]로 말풍선과 같은 폭 제한을 주고 flex-wrap을 켠다 — 출처가 여러 개거나
-        // 제목이 길면 한 줄로 욱여넣던 예전 레이아웃이 카드 폭을 뚫고 나가 깨져 보였다
-        // (사용자 리포트 2026-08-26 "화면이 깨져보여 · 박스가 커"). rounded-pill 배지는 원래
-        // 한 줄짜리 짧은 라벨 전용이라 title이 줄바꿈되면 모양 자체가 일그러진다 — 그래서 개별
-        // 배지도 truncate로 한 줄을 강제한다.
-        <div className="flex max-w-[85%] flex-col gap-1.5">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <Badge>
-              {/* 문구는 목업 그대로다(s3-category-detail.html:355,361) — "출처"가 아니라 "근거", 체크마크 포함.
-                  verdict 3종은 backend/app/schemas/common.py:56 원본 그대로("WEAK"가 실제 값 — 이전엔
-                  "UNSUPPORTED"로 잘못 알고 있었다, entities/chat/model.ts 머리말 참조). */}
-              {message.verification.verdict === "SUPPORTED"
-                ? "✓ 근거 확인됨"
-                : message.verification.verdict === "WEAK"
-                  ? "근거 불충분"
-                  : "일반 정보 · 근거 없음"}
-            </Badge>
-            {message.citations?.map((c) => {
-              // source_tier는 백엔드 ENUM 원문(OFFICIAL/CONSENSUS/INDUSTRY)이라 그대로 보여주면
-              // 사용자가 못 알아본다(사용자 리포트 2026-08-26) — SOURCE_TIER_LABEL로 옮기되, 모르는
-              // 값이 와도 지어내지 않고 원문을 그대로 보여준다(PaymentRow.tsx와 같은 원칙).
-              const tierLabel = SOURCE_TIER_LABEL[c.source_tier] ?? c.source_tier;
-              const isExpanded = expandedCitations.has(c.chunk_id);
-              return (
-                <button
-                  key={c.chunk_id}
-                  type="button"
-                  aria-expanded={isExpanded}
-                  aria-label={`근거 자세히 보기: ${tierLabel} · ${c.title}`}
-                  onClick={() => toggleCitation(c.chunk_id)}
-                  className="min-h-tap max-w-[220px] rounded-pill border-none bg-transparent p-0 text-left enabled:hover:opacity-80"
-                >
-                  <Badge className="w-full truncate bg-bg text-ink-soft" title={`${tierLabel} · ${c.title}`}>
-                    {/* 목업 형식(s3-category-detail.html:352-353): "{티어} · {제목}" — 티어만 보여주면
-                        어떤 근거인지 사람이 알 수 없다. 전체 제목은 title 속성(hover 툴팁)뿐 아니라
-                        클릭 시 아래 펼침 영역에도 남긴다 — 터치 기기는 hover가 없어 잘린 텍스트만으론
-                        무슨 근거인지 못 알아본다(사용자 요청 2026-08-26). */}
-                    {tierLabel} · {c.title}
-                  </Badge>
-                </button>
-              );
-            })}
-          </div>
-          {message.citations
-            ?.filter((c) => expandedCitations.has(c.chunk_id))
-            .map((c) => {
-              const tierLabel = SOURCE_TIER_LABEL[c.source_tier] ?? c.source_tier;
-              const safeUrl = c.source_url ? safeExternalUrl(c.source_url) : undefined;
-              return (
-                <div key={c.chunk_id} className="rounded-md border border-line bg-bg px-3 py-2 text-xs text-ink-soft">
-                  <p className="font-bold text-ink">
-                    {tierLabel} · {c.title}
-                  </p>
-                  {safeUrl ? (
-                    <a href={safeUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-primary underline">
-                      원문 보기
-                    </a>
-                  ) : (
-                    // source_url이 null인 경우(entities/chat/model.ts 머리말) — 팀 자체 저작 콘텐츠라
-                    // 원문 링크가 없는 게 정상이다. 링크 없이 조용히 비우면 "왜 안 눌려?" 로 보이니
-                    // 이유를 문구로 남긴다.
-                    <p className="mt-1">팀에서 직접 정리한 자료라 원문 링크는 없어요.</p>
-                  )}
-                </div>
-              );
-            })}
+        // 말풍선과 같은 폭 제한(85%)을 준다.
+        //
+        // **[2026-08-29 개편 — D16]** 종전엔 검증 배지와 인용 배지 N개가 같은 flex 줄에
+        // flex-wrap 으로 놓였다. 인용은 답변당 최대 5개라(RAG_CONTEXT_TOP_K=5) 데스크톱에서
+        // max-w-[220px] 알약이 가로로 3~4개 늘어섰고(사용자 리포트 2026-08-29 "배지가 가로로 쭉
+        // 나열된다"), 제목은 220px 안에서 항상 잘렸다("배지 내용이 잘린다"). 두 증상의 원인이
+        // 하나였다 — 길이·개수가 가변인 것을 짧은 라벨용 그릇에 담은 것. 이제 검증 결과만 배지로
+        // 남기고(짧고 고정된 어휘) 인용은 SourceList 가 세로 목록으로 받는다.
+        <div className="max-w-[85%]">
+          <SourceList
+            leading={
+              // 체크 아이콘은 SUPPORTED 에만 붙는다 — 다른 3종은 "확인됨"이 아니다. Badge BASE 가
+              // 이미 inline-flex items-center 라 gap 만 얹으면 아이콘이 그대로 들어간다.
+              <Badge className={message.verification.verdict === "SUPPORTED" ? "gap-1" : undefined}>
+                {message.verification.verdict === "SUPPORTED" && <IconCheck size={12} />}
+                {VERDICT_LABEL[message.verification.verdict] ?? VERDICT_FALLBACK}
+              </Badge>
+            }
+            items={(message.citations ?? []).map((c) => ({
+              key: c.chunk_id,
+              tier: c.source_tier,
+              title: c.title,
+              url: c.source_url,
+            }))}
+          />
         </div>
       )}
       {/* 좋아요/싫어요 평가 — AI 답변에만(백엔드 규칙과 동일하게 verification이 있는 메시지만
           "완결된 AI 답변"으로 취급). 토글이 아니라 배타적 선택이라 aria-pressed로 현재 선택
           상태를 알린다. */}
       {!isUser && message.verification && onRate && (
-        <div className="flex items-center gap-1">
+        // flex-wrap — `renderReportAction` 이 「신고」를 누르면 인라인 폼 전체로 펼쳐져 이 행의
+        // 형제 flex 아이템이 된다(entities/feedback/ui/ReportButton.tsx). 44px 버튼 둘과 나란히
+        // 두면 좁은 폭에서 넘치므로 폼이 자기 줄을 쓰게 한다 — ChecklistItemRow 와 같은 처리다.
+        <div className="flex flex-wrap items-center gap-1">
+          {/* 아이콘은 장식이다(aria-hidden 기본값) — 접근명은 버튼의 aria-label 이 갖는다. 그래서
+              IconProps 에 label 을 새로 열 필요가 없다(docs/design/inventory.md §7 이 예고한 prop).
+              title 은 aria-label 과 **같은 문자열**로 준다: 마우스 사용자에게 이름을 노출하되
+              두 값이 달라서 생기는 스크린리더 중복 낭독을 만들지 않는다. */}
           <button
             type="button"
             aria-pressed={message.user_rating === "GOOD"}
             aria-label="이 답변이 도움됐어요"
+            title="이 답변이 도움됐어요"
             onClick={() => onRate(message.id, "GOOD")}
-            className={
-              message.user_rating === "GOOD"
-                ? "min-h-tap rounded-md border border-transparent bg-primary px-2 text-xs text-surface"
-                : "min-h-tap rounded-md border border-line bg-bg px-2 text-xs text-ink-soft enabled:hover:text-ink"
-            }
+            className={`${RATE_BASE} ${message.user_rating === "GOOD" ? RATE_SELECTED : RATE_IDLE}`}
           >
-            👍
+            <IconThumbUp size={18} filled={message.user_rating === "GOOD"} />
           </button>
           <button
             type="button"
             aria-pressed={message.user_rating === "BAD"}
             aria-label="이 답변이 아쉬워요"
+            title="이 답변이 아쉬워요"
             onClick={() => onRate(message.id, "BAD")}
-            className={
-              message.user_rating === "BAD"
-                ? "min-h-tap rounded-md border border-transparent bg-primary px-2 text-xs text-surface"
-                : "min-h-tap rounded-md border border-line bg-bg px-2 text-xs text-ink-soft enabled:hover:text-ink"
-            }
+            className={`${RATE_BASE} ${message.user_rating === "BAD" ? RATE_SELECTED : RATE_IDLE}`}
           >
-            👎
+            <IconThumbDown size={18} filled={message.user_rating === "BAD"} />
           </button>
           {renderReportAction?.(message.id)}
         </div>

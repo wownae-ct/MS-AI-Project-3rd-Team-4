@@ -30,7 +30,7 @@ vi.mock("@/entities/session", async (orig) => ({
 //
 // **다만 "/budget 에서 정확히 하나다"가 실제로 깨졌던 원인은 이 네트워크 호출 자체가 아니었다**
 // (교정: 처음엔 DNS 실패가 findBy* 기본 타임아웃을 넘긴 거라고 추정했으나, 아래 mock을 전부
-// 넣은 뒤에도 여전히 간헐적으로 실패해 재조사함) — `/budget`은 `AllocationOverview`·
+// 넣은 뒤에도 여전히 간헐적으로 실패해 재조사함) — `/budget`은 `CategoryAllocationList`·
 // `CostManagementTab`·`BudgetDonut`까지 딸린 무거운 lazy 청크라, 이 환경에서 import+렌더가
 // 다른 라우트보다 오래 걸려 `findByRole`의 기본 대기시간(`@testing-library/dom` 1000ms)을
 // 살짝 넘기는 경우가 있었다(타임아웃을 1100~1500ms로만 올려도 결정적으로 통과함을 확인 —
@@ -113,6 +113,30 @@ describe("내비게이션 마크업", () => {
     expect(screen.getAllByRole("link", { name: "설정" })).toHaveLength(2);
   });
 
+  // [2026-08-28] 브랜드가 layout.md §4 의 예약 슬롯에 들어왔다(D15). 셸이 소유한다는 사실 자체가
+  // 계약이다 — DashboardPage.test.tsx·ReportPage.test.tsx 가 반대편에서 *"화면은 브랜드를 그리지
+  // 않는다"* 를 고정하고 있어, 두 테스트가 한 쌍으로 "브랜드의 소재지는 셸 한 곳"을 지킨다.
+  //
+  // 2개인 것이 계약이다 — 데스크톱 사이드바 + 모바일 상단 바. 설정 진입 링크와 같은 구조이고
+  // (위 테스트 참고) 실브라우저에서는 항상 한쪽이 `display:none` 이다.
+  it("브랜드가 데스크톱 사이드바·모바일 상단 바 양쪽에 있다", async () => {
+    await renderShellAt("/");
+    // 워드마크는 이미지다(로고타입) — 접근명은 alt 로 온다. 화면들이 단언하는
+    // `queryByText("메리맵")` 과 조회 경로가 다르므로 그쪽 계약과 충돌하지 않는다.
+    expect(screen.getAllByRole("img", { name: "메리맵" })).toHaveLength(2);
+  });
+
+  // 🚨 회귀 방지 — 로고 클릭 → 홈은 웹 관례지만 여기서는 `<Link>` 로 만들면 안 된다.
+  // TanStack 의 `Link` 는 활성일 때 `aria-current="page"` 를 붙이고 props 로 덮을 수 없어서
+  // (AppShell.tsx 의 `MobileSettingsLink` 주석에 실측 근거), 대시보드에서 홈 항목과 함께 2개가 되어
+  // 아래 "정확히 하나다" 계약이 깨진다. 바로 아래 홈 탭이 있으므로 잃는 경로가 없다.
+  it("브랜드는 링크가 아니다 — aria-current 계약을 깨지 않기 위해서다", async () => {
+    await renderShellAt("/");
+    expect(screen.queryByRole("link", { name: /메리맵/u })).not.toBeInTheDocument();
+  });
+
+  // 브랜드는 `<nav>` 밖에 둔다 — 이 파일 첫 테스트("nav 랜드마크가 2개")와 아래 "주 메뉴는 5개다" 가
+  // 그 배치를 이미 간접적으로 고정하지만, 링크가 아니라는 위 계약과 함께 읽히도록 여기 남긴다.
   // layout.md §3 의 4개(홈·타임라인·예산·리포트)에 2026-08-24 "AI상담"이 5번째로 추가됐다
   // (12_final_prototype_mockup.html의 탭바 — AppShell.tsx PRIMARY_NAV 머리말 참조).
   it("주 메뉴는 5개다 — 순서가 계약이다", async () => {

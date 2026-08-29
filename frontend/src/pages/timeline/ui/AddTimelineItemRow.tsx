@@ -1,38 +1,45 @@
 // "+ 항목 추가" — 사용자 커스텀 타임라인 항목(POST /timeline-items, origin=USER). 모달 없이
 // 인라인으로 펼치는 이 저장소 관례(pages/category/ui/AddPaymentRow.tsx)를 따른다. category_code는
 // 선택이다 — 혼인신고·본식처럼 카테고리 무관 항목이 실제로 있다(entities/timeline/model.ts 머리말).
-import { useEffect, useState } from "react";
+//
+// **카테고리 목록을 스스로 조회하지 않는다(2026-08-29).** 예전엔 폼을 열 때마다 `GET /categories`
+// (전역 상수 9개)를 불러 그대로 옵션으로 냈는데, 그 목록엔 `is_active`가 없어 **온보딩에서 끈
+// 카테고리도 선택할 수 있었다.** 그렇게 만든 항목은 POST 가 201 로 성공하지만(서버는 존재 여부만
+// 검사한다) `GET /timeline-items` 가 비활성 카테고리 항목을 걸러(`03_API_spec.md` #15) 목록에
+// 끝내 나타나지 않는다 — "추가했어요" 안내까지 뜨는 조용한 유실이었다. 이제 `TimelinePage` 가
+// 이미 받아 둔 `GET /wedding-categories` 에서 **활성만** 골라 prop 으로 내린다
+// (`AddPaymentRow` 의 `categoryOptions` 와 같은 모양) — 조회가 하나 줄기도 한다.
+import { useState } from "react";
 import { createTimelineItem } from "@/entities/timeline";
-import { getCategories, type CategoryConstant } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
+import { futureQuickPicks, todayISO } from "@/shared/lib/date";
+import { DateField, Select } from "@/shared/ui";
 
 const ADD_BTN =
   "w-full rounded-sm border border-dashed border-line bg-transparent py-2.5 text-sm font-bold text-ink-soft";
-const FORM_INPUT = "min-h-tap w-full rounded-md border border-line bg-surface px-2.5 text-sm text-ink";
+// [2026-08-29] `text-sm`(14px) 이었다 — 「입력 필드 16px 미만 금지」 규범 위반(a11y.md §2.5).
+// iOS Safari 가 16px 미만 입력에 포커스 시 화면을 자동 확대하고 되돌리지 않는다. 같은 폼의
+// `AddChecklistItemRow`/`AddPaymentRow` 는 처음부터 `text-base` 였다 — 이 파일만 갈려 있었다.
+const FORM_INPUT = "min-h-tap w-full rounded-md border border-line bg-surface px-2.5 text-base text-ink";
 
 interface AddTimelineItemRowProps {
+  /** 캘린더에 기준선으로 표시할 결혼식 날짜. `TimelinePage` 가 이미 들고 있는 값을 내려준다
+      (여기서 `GET /weddings/me` 를 새로 부르지 않는다) — 없을 수도 있다(온보딩에서 "미정"). */
+  weddingDate?: string;
+  /** 카테고리 선택지. **활성 카테고리만** 담아 넘겨야 한다(머리말 참고) — 거르는 책임은
+      호출부에 있다. 빈 배열이어도 "카테고리 무관"으로 계속 추가할 수 있다. */
+  categoryOptions: readonly { code: string; name_ko: string }[];
   onAdded: () => void;
 }
 
-export function AddTimelineItemRow({ onAdded }: AddTimelineItemRowProps) {
+export function AddTimelineItemRow({ weddingDate, categoryOptions, onAdded }: AddTimelineItemRowProps) {
   const [open, setOpen] = useState(false);
-  const [categories, setCategories] = useState<CategoryConstant[] | null>(null);
   const [categoryCode, setCategoryCode] = useState<string>("");
   const [title, setTitle] = useState("");
   const [targetDate, setTargetDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!open || categories !== null) return;
-    getCategories()
-      .then((res) => setCategories(res.categories.toSorted((a, b) => a.display_order - b.display_order)))
-      .catch(() => {
-        // 카테고리 목록은 보조 입력이다 — 못 불러와도 "무관"으로 계속 추가할 수 있어야 한다.
-        setCategories([]);
-      });
-  }, [open, categories]);
 
   function reset() {
     setCategoryCode("");
@@ -88,19 +95,16 @@ export function AddTimelineItemRow({ onAdded }: AddTimelineItemRowProps) {
 
   return (
     <div className="flex flex-col gap-2 rounded-md border border-line bg-bg p-3">
-      <select
-        className={FORM_INPUT}
+      <Select
+        className="w-full"
         aria-label="카테고리"
         value={categoryCode}
-        onChange={(e) => setCategoryCode(e.target.value)}
-      >
-        <option value="">카테고리 무관</option>
-        {categories?.map((c) => (
-          <option key={c.code} value={c.code}>
-            {c.name_ko}
-          </option>
-        ))}
-      </select>
+        onValueChange={setCategoryCode}
+        options={[
+          { value: "", label: "카테고리 무관" },
+          ...categoryOptions.map((c) => ({ value: c.code, label: c.name_ko })),
+        ]}
+      />
       <input
         className={FORM_INPUT}
         aria-label="항목 이름"
@@ -108,12 +112,17 @@ export function AddTimelineItemRow({ onAdded }: AddTimelineItemRowProps) {
         value={title}
         onChange={(e) => setTitle(e.target.value)}
       />
-      <input
+      {/* [D20] `<input type="date">` 였다. 타임라인 항목은 「대략 3주 뒤」처럼 **오늘 기준 상대
+          시점**으로 떠올리는 일이 대부분이라 빠른 선택 칩이 그 계산을 대신한다. 결혼식 날짜는
+          그리드에 밑줄로 표시해 "본식 전인가 후인가"를 고르는 순간 볼 수 있게 한다. */}
+      <DateField
         className={FORM_INPUT}
-        type="date"
         aria-label="날짜"
         value={targetDate}
-        onChange={(e) => setTargetDate(e.target.value)}
+        onChange={setTargetDate}
+        quickPicks={futureQuickPicks(todayISO())}
+        markedDate={weddingDate}
+        markedLabel="결혼식 날짜"
       />
       {error && (
         <p role="alert" className="text-xs text-primary">

@@ -14,7 +14,7 @@
 // `id`) 정합성 검사였다. 실API의 `next_recommended_checks`는 `category_code`로 참조하고
 // `RecoRow`는 애초에 그 코드를 화면에 렌더하지 않으므로(해석된 이름만 보여준다) 같은 위험이 없다.
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import type { MyReport } from "@/entities/dashboard";
 import type { WeddingCategoriesResponse } from "@/entities/wedding";
 import { ReportPage } from "./ReportPage";
@@ -98,7 +98,11 @@ describe("카드 구조", () => {
     await renderReport();
 
     const titles = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
-    expect(titles).toEqual(["예산", "카테고리별 진행률", "다음에 확인하면 좋아요"]);
+    // [2026-08-29] 이 단언이 **낡아 있었다** — 2026-08-28 에 이 카드의 산출 기준이 체크리스트에서
+    // 타임라인으로 바뀌며 제목도 「카테고리별 진행률」→「타임라인 진행률」이 됐는데(ReportPage.tsx
+    // 머리말 · CompletionRow.tsx 머리말) 여기만 따라오지 않아 이 테스트가 계속 빨간불이었다.
+    // 화면 쪽이 옳으므로 단언을 화면에 맞춘다.
+    expect(titles).toEqual(["예산", "타임라인 진행률", "다음에 확인하면 좋아요"]);
   });
 
   it("추천 카드의 부제는 제목이 아니다", async () => {
@@ -144,6 +148,17 @@ describe("다음에 확인하면 좋아요", () => {
 
     expect(screen.getByText("최소 보증 인원 조항 확인")).toBeInTheDocument();
     expect(screen.getByText("우선순위 높음")).toBeInTheDocument();
+  });
+
+  // D17 — 이 배지는 예산 탭 「비용 관리」의 카테고리 배지와 **의미상 같은 것**이라 색이 같아야
+  // 한다. 두 화면이 각자 다른 색을 쓰면 색으로 카테고리를 익힐 수 없다.
+  it("카테고리 배지가 비용 관리와 같은 카테고리 색을 쓴다", async () => {
+    await renderReport();
+
+    // "예식장"은 이 화면의 진행률 카드에도 나온다 — 추천 행 안으로 범위를 좁힌다.
+    const recoRow = screen.getByText("최소 보증 인원 조항 확인").parentElement;
+    expect(recoRow).not.toBeNull();
+    expect(within(recoRow as HTMLElement).getByText("예식장").className).toContain("category-venue");
   });
 });
 

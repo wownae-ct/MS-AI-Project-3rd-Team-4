@@ -53,6 +53,28 @@ describe("영수증 OCR 취소 버튼", () => {
   });
 });
 
+// D18 — 라벨 앞의 📷 컬러 이모지를 IconCamera 로 바꿨다. 접근명이 "📷 영수증으로 채우기"라
+// 일부 스크린리더가 이모지 이름("카메라")까지 읽던 것도 함께 해소된다.
+describe("영수증 버튼 — 이모지 대신 아이콘", () => {
+  it("접근명에 이모지가 섞이지 않는다", async () => {
+    const user = userEvent.setup();
+    render(<AddPaymentRow categoryCode="VENUE" onAdded={() => {}} />);
+    await user.click(screen.getByRole("button", { name: "+ 납부 항목 추가" }));
+
+    expect(screen.getByRole("button", { name: "영수증으로 채우기" })).toBeInTheDocument();
+  });
+
+  // RTL 의 렌더 루트를 구조 분해하지 않고 document.body 로 읽는다 — 그 식별자가 Tailwind
+  // 스캐너의 bare 후보가 되어 유령 유틸리티를 만든다(ghost-candidates.test.mjs).
+  it("펼친 폼 어디에도 이모지가 렌더되지 않는다", async () => {
+    const user = userEvent.setup();
+    render(<AddPaymentRow categoryCode="VENUE" onAdded={() => {}} />);
+    await user.click(screen.getByRole("button", { name: "+ 납부 항목 추가" }));
+
+    expect(document.body.textContent).not.toMatch(/\p{Extended_Pictographic}/u);
+  });
+});
+
 describe("영수증 파일 입력", () => {
   it("capture 속성이 없어 브라우저 기본 선택 UI(카메라/갤러리 둘 다)를 사용한다", async () => {
     const user = userEvent.setup();

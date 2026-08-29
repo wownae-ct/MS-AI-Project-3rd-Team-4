@@ -40,7 +40,9 @@
 
 **현재 코드에 실제로 적용돼 있는 것만** 적는다. 제안은 [decisions.md](decisions.md)에 있다.
 
-### 색 — 7색 + 호버 1 (`theme.css`)
+### 색 — 중립 + 액센트 (`theme.css`)
+
+> 아래 표는 **화면 전반을 칠하는 기본 팔레트**다. 이것 말고 **분류 색** 계열이 둘 더 있다(업체 사례 `success` — [D12](decisions.md#d12-업체-사례-good-배지에-한해-상태-색-1건을-도입한다), 결제 유형 `payment-*` · 웨딩 카테고리 `category-*` — [D13](decisions.md#d13-결제-유형-배지에-카테고리-색-4종을-도입한다)·D17). 값과 대비는 `theme.css` 와 `/style-guide` 의 스와치가 SSOT 다 — 여기에 개수를 적어 두면 토큰이 늘 때마다 조용히 어긋난다.
 
 | 토큰 | 값 | 용도 |
 |---|---|---|
@@ -55,7 +57,9 @@
 
 - **The One Accent Rule** — 베리 플럼은 배지 · 주요 버튼 · 강조 텍스트 · 진행률 채움에만. **배경 워시나 큰 면적 채우기로 쓰지 않는다.** 희소성이 곧 그 색의 힘이다. 「큰 면적」의 경계는 [D2](decisions.md#d2-primary-면-채움을-면적으로-등급-분리한다)가 정한다 — 카드 전면 채움은 **기각**(2026-08-22 종결).
 - **The No-Pink-Cliché Rule** — "웨딩 = 밝은 핑크 + 세리프 + 그라디언트" 조합을 쓰지 않는다. 베리 플럼은 채도를 낮춘 와인 톤이지 밝은 핑크가 아니다.
+  - ⚠️ **브랜드 마크는 이 규칙과 The One Accent Rule 의 대상이 아니다** → [D15](decisions.md#d15-브랜드-마크를-색-규범의-예외로-둔다). 로고(파스텔 핑크·블루)는 원색을 지키고, 억제는 색이 아니라 **크기 상한**으로 건다. 이 예외는 UI 를 칠하는 색에는 적용되지 않는다 — 아래 「브랜드 자산」 참고.
 - **상태 색(성공 · 경고 · 위험)이 없다.** 지어내지 않는다 → [D6](decisions.md#d6-상태-색을-도입하지-않는다)
+- **분류 색은 상태 색이 아니다.** 「무엇이 무엇인지」를 나눌 뿐 판단을 싣지 않으므로 D6 의 범위 밖이다 → D17. 데이터 성격에 따라 쓰는 법이 갈린다 — 순서 없는 명목형(웨딩 카테고리 9종)은 **서로 다른 색상**, 순서 있는 순서형(계약금→중도금→잔금)은 **한 색상의 명도 단계**. 한 줄에 배지가 둘 붙는 곳에서는 **형태**(카테고리=채움 · 결제 유형=테두리)가 계열을 가른다.
 - ⚠️ **`--color-*: initial`은 임의값을 막지 못한다.** `bg-[#77354F]`는 그대로 컴파일된다 → [D8](decisions.md#d8-팔레트-밖-색-서술을-사실에-맞게-고치고-게이트로-강제한다)
 
 ### 형태
@@ -88,11 +92,26 @@
 
 | 컴포넌트 | 값 | 구현 |
 |---|---|---|
-| `badge-focus` | 배경 `primary-soft` · 글자 `primary` · 모서리 `rounded-pill` · 12px 700 | `Badge` — 변이 없음(규범이 정의한 배지가 하나뿐) |
+| `badge-focus` | 모서리 `rounded-pill` · 12px 700 · **`whitespace-nowrap` + `shrink-0`** · 채움(기본): 배경 `primary-soft` 글자 `primary` / 테두리: 배경 `surface` + 1px `border-current` | `Badge` — 변이 **둘**(채움 · 테두리, D17). 형태는 계열을, 색은 값을 나타낸다. **잘리지 않는 짧은 라벨 전용** — 길이가 가변인 것은 배지에 담지 않는다([D16](decisions.md#d16-배지의-책임을-잘리지-않는-짧은-라벨로-좁힌다)) |
+| 출처 목록 | 접힘 요약 한 줄(`min-h-tap` + 화살표) + 펼침 세로 목록 · 제목 `line-clamp-2` | `SourceList` — 채팅 인용 · 체크리스트 근거 · 업체사례 관련 사례의 공용 그릇([D16](decisions.md#d16-배지의-책임을-잘리지-않는-짧은-라벨로-좁힌다)) |
 | `button-ghost` | 배경 투명 · 글자 `primary` · 모서리 `rounded-sm` · padding 5px 11px | `Button variant="ghost"` — 세로 5px 는 `min-h-tap`(44px)이 대신한다 |
 | `button` primary / secondary | primary 면 + surface 글자 / surface 면 + line 보더 + ink 글자 · `rounded-md` | `Button` — 호버 **적용 완료**([D4](decisions.md#d4-호버-색을-77354f로-확정한다)): `enabled:hover:bg-primary-hover`. `enabled:` 를 붙여 비활성 상태에서 호버가 살아나지 않게 한다 |
 | 진행률 | 트랙 `line` · 채움 `primary` · `rounded-pill` · 높이 8px | `Progress` — 불확정 표현은 [D11](decisions.md#d11-불확정-진행률의-시각-표현) |
 | 카드 | `surface` 면 · 1px `line` 보더 · **`rounded-lg`(16px)** · padding 16px | `Card` — 라운드 16px **전환 완료**([D1](decisions.md#d1-라운드를-4단계로-고정한다)). 슬롯 2개: `title`(→ `<h2>`) · `subtitle`(→ `<p>` · `text-xs ink-soft`) |
+| 날짜 입력 | ISO 마스크 입력(16px) + 44px 달력 버튼 · 아래 힌트 한 줄(`2027년 5월 15일 (토) · 259일 뒤`) · 펼침 캘린더는 6주 고정 42칸, 셀 44px · 선택 = primary 알약 · 오늘 = primary 테두리 · 주말 = **글자 무게** | `DateField` — `<input type="date">` 를 대체한다([D20](decisions.md#d20-날짜-입력을-네이티브-typedate-에서-자체-컴포넌트로-옮긴다)). 값은 언제나 ISO 문자열. 그리드(`DateCalendar`)는 첫 열림 때 받는 **별도 청크** |
+
+### 브랜드 자산 (현행 — [D15](decisions.md#d15-브랜드-마크를-색-규범의-예외로-둔다))
+
+| 항목 | 값 |
+|---|---|
+| 워드마크 | `src/shared/assets/merrymap-wordmark-96.png` (461×96 = **4.803:1**) — `logos/logo-text-3.png` 를 알파 bbox 로 크롭 후 축소한 파생본 |
+| 심볼 | `src/shared/assets/merrymap-symbol-256.png` (256×254 = **1.0079:1**) — **파비콘과 같은 원본** `logos/favicon.png` 를 알파 bbox 로 크롭 → 232×230 축소 → **12px 균일 여백**을 둘러 구운 파생본 (2026-08-29 교체). 여백은 치수다 — 그림 높이 비중(90.55%)이 앞선 자산과 같아야 오버레이 마크 크기가 유지된다 |
+| **함께 쓰지 않는다** | 워드마크가 이미 반지·하트 핀 모티프를 품고 있어 심볼을 곁들이면 모티프가 중복된다. **자리마다 하나만** |
+| 구현 | `shared/ui/Brand.tsx` 하나(`variant="wordmark" \| "symbol"`). 셸은 `AppShell`, 셸 밖 화면은 `Page` 의 `brand` prop |
+| 크기 | 사이드바 26 · 모바일 상단 바 22 · 로그인 32 · 온보딩 22 (전부 워드마크) / 생성 오버레이 56 (심볼) |
+| 최소 크기 | **워드마크 18 · 심볼 24.** 벡터 원본이 없어 렌더러가 보정하지 못한다 |
+| 접근성 | 워드마크 `alt="메리맵"`(유일한 브랜드 표기) · 심볼 `alt=""`(장식) · `width`/`height` 둘 다 명시(CLS) · **링크로 만들지 않는다**(`aria-current` 계약) |
+| 파비콘 | `public/favicon.png`(96, 투명) · `public/apple-touch-icon.png`(180, **흰 배경 평탄화** + 여백 10%) — 원본 `logos/favicon.png`(1.007:1, 사실상 정사각). **심볼과 원본을 공유하지만 파일은 따로다**(굽는 여백·배치 경로가 다르다 — 자산 교체 시 **셋을 같이** 다시 구울 것). 자리표시 `favicon.svg` 는 **삭제**했다 |
 
 ### 범위 밖 (현행)
 
@@ -108,9 +127,12 @@
 | 캡션 · 라벨 | `text-xs` 12px + `text-ink-soft` |
 | 입력 필드 | **16px 미만 금지** |
 | 행간 (CJK) | 1.5~1.6 |
+| 한국어 줄바꿈 | **어절 단위** — `body` 에 `word-break: keep-all` + `overflow-wrap: break-word` ([D19](decisions.md#d19-한국어-조판-규칙의-값과-범위를-함께-고친다--keep-all--break-word-본문-전체)) |
 | 최소 터치 타겟 | 44px (`min-h-tap`) |
 
 수치의 출처와 **근거 등급**은 [a11y.md](a11y.md). 요약하면 — **44px은 WCAG AA가 아니라 AAA다.**
+
+⚠️ 줄바꿈 규칙의 두 값은 **짝이고 둘 다 필요하다.** `keep-all` 단독이면 어절보다 긴 문자열이 컨테이너를 밀어내고, `break-word` 대신 `overflow-wrap: anywhere` 를 쓰면 그 값이 `min-content` 계산에까지 끼어들어 **좁은 flex 자리에서 글자가 세로로 접힌다**(D19 가 고친 실제 결함이다). 호출부에서 이 짝을 다시 걸지 않는다 — `body` 에서 상속된다.
 
 ## 갱신 규칙
 

@@ -4,7 +4,10 @@ export type ChatRole = "user" | "assistant";
 // backend/app/schemas/common.py:56 이 원본이다 — 이전엔 여기가 "UNSUPPORTED"로 잘못 옮겨져
 // 있었다(실제 값은 "WEAK"). 실행 중엔 MessageBubble의 3항 연산자 마지막 분기가 우연히 커버해서
 // 겉으로는 안 드러났지만, 타입 자체가 틀려 있었다(다른 세션의 목업 재대조 감사로 발견, 2026-08-24).
-export type VerificationVerdict = "SUPPORTED" | "WEAK" | "GENERAL";
+// "OUT_OF_SCOPE"는 2026-08-29에 늘어난 4번째 값이다(backend PR #130) — 결혼 준비와 무관한 요청을
+// 검색/생성 없이 거절한 경우. 종전엔 이것도 "GENERAL"을 재사용해서 배지가 「일반 정보 · 근거 없음」
+// 으로 떴다 — "근거가 약해 일반론으로 답했다"와 "답하기를 거절했다"는 서로 다른 상황이라 분리했다.
+export type VerificationVerdict = "SUPPORTED" | "WEAK" | "GENERAL" | "OUT_OF_SCOPE";
 
 // 챗 그래프(backend/app/rag/graph.py) 노드 이름과 1:1 — SSE stage 이벤트 payload
 // (backend/app/schemas/common.py의 ChatStage) 그대로. 진행상황 표시용 UX 신호일 뿐 최종
@@ -22,6 +25,27 @@ export interface ChatSession {
   category_code: string | null;
   title: string | null;
   created_at: string;
+}
+
+// `GET /chat/sessions`(목록) 전용 — 단건 `ChatSession`과 별도 타입인 이유는 백엔드가 그렇게
+// 나눴기 때문이다(backend/app/schemas/chat.py::ChatSessionSummaryOut). 목록에만 필요한
+// `last_message_at`을 더한 모양이고, 생성 응답(`ChatSessionOut`) 시점엔 아직 메시지가 없어
+// 의미가 없는 값이라 거기엔 없다.
+//
+// ⚠️ `title`·`last_message_at`이 **둘 다 nullable**인 것은 실수가 아니다. 세션은 첫 메시지를
+// 보내기 **직전**에 만들어지고(entities/chat/ui/ChatPanel.tsx의 handleSend), 백엔드는 그 첫
+// 메시지가 실제로 저장되는 순간에야 title(첫 질문에서 유도)과 last_message_at을 채운다. 즉
+// 전송이 실패하면 **둘 다 null인 빈 세션**이 서버에 실제로 남는다.
+export interface ChatSessionSummary {
+  id: string;
+  category_code: string | null;
+  title: string | null;
+  last_message_at: string | null;
+  created_at: string;
+}
+
+export interface ChatSessionListResponse {
+  sessions: ChatSessionSummary[];
 }
 
 export interface ChatCitation {

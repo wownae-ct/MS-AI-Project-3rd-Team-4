@@ -5,18 +5,25 @@
 // 머리말 참고. 비활성 카테고리 항목은 서버가 이미 응답에서 뺀다(`03_API_spec.md` #15 — 이
 // 화면에서 따로 필터링하지 않는다).
 //
-// `GET /timeline-items`·`GET /weddings/me`·`GET /categories`를 병렬로 불러온다 — 웨딩은 phase
-// 계산의 기준일(wedding_date)을 얻기 위해서고, 카테고리는 라벨(name_ko) 매핑을 위해서다.
+// `GET /timeline-items`·`GET /weddings/me`·`GET /wedding-categories`를 병렬로 불러온다 — 웨딩은
+// phase 계산의 기준일(wedding_date)을 얻기 위해서고, 카테고리는 라벨(name_ko) 매핑을 위해서다.
 // STEP 10 — 예전엔 "이름 하나 때문에 세 번째 호출을 추가하지 않는다"(YAGNI)며 item.category_code를
-// 그대로 보여줬는데, 그 결과 화면에 "VENUE" 같은 원시 ENUM 코드가 그대로 노출됐다. GET /categories는
-// 활성/비활성 전체 9개를 돌려주므로(비활성 카테고리 소속 잔존 항목도 라벨이 있어야 함) 활성만
-// 거르지 않고 그대로 맵으로 쓴다.
+// 그대로 보여줬는데, 그 결과 화면에 "VENUE" 같은 원시 ENUM 코드가 그대로 노출됐다.
+//
+// **`GET /categories`(전역 상수) → `GET /wedding-categories`(이 웨딩) 로 바꿨다(2026-08-29).**
+// 두 응답 다 9개 전부를 주고 `name_ko`·`display_order`도 똑같이 갖지만, 후자만 `is_active`를 준다 —
+// 아래 「+ 항목 추가」 폼의 카테고리 옵션에서 **끈 카테고리를 빼려면** 그 값이 필요하다. 예전엔
+// 그 폼이 스스로 `GET /categories`를 또 불러 9개를 전부 옵션으로 냈고, 비활성 카테고리를 고르면
+// POST 는 201 로 성공하는데(서버가 존재 여부만 검사) 뒤이은 `GET /timeline-items` 가 그 항목을
+// 걸러내(`03_API_spec.md` #15) **목록에 끝내 나타나지 않았다** — "추가했어요" 안내까지 뜨는
+// 조용한 유실이었다. 호출 개수는 그대로고(폼 쪽 조회가 사라져 실제로는 하나 줄었다) 라벨 맵은
+// 여전히 9개 전체다(맵을 좁히면 폴백이 원시 ENUM 으로 떨어지는 경로가 생긴다).
 import { useEffect, useRef, useState } from "react";
-import { getTimelineItems, type TimelineItem } from "@/entities/timeline";
-import { getCategories, getMyWedding } from "@/entities/wedding";
-import { RegenerateButton } from "@/entities/personalization";
+import { getTimelineItems, isTimelineItemKept, type TimelineItem } from "@/entities/timeline";
+import { getMyWedding, getWeddingCategories } from "@/entities/wedding";
+import { RegenerateButton, type RegenerateImpact } from "@/entities/personalization";
 import { ApiError } from "@/shared/api";
-import { Card, Page } from "@/shared/ui";
+import { Card, Loading, Page, SkeletonRows, StatusCallout } from "@/shared/ui";
 import { AddTimelineItemRow } from "./AddTimelineItemRow";
 import { groupTimelineItemsByPhase, type TimelinePhaseGroup } from "./group-by-phase";
 import { TimelineItemRow } from "./TimelineItemRow";
@@ -24,13 +31,17 @@ import { TimelineItemRow } from "./TimelineItemRow";
 interface TimelineData {
   items: TimelineItem[];
   weddingDate: string | undefined;
+  /** 9개 전체 — 라벨은 거르지 않는다(머리말 참고). */
   categoryLabelByCode: Map<string, string>;
+  /** 「+ 항목 추가」 폼의 선택지. **활성만** 담는다 — 비활성으로 만든 항목은 서버가 목록에서
+      걸러내 화면에 영영 안 나온다. `AddPaymentRow`(entities/payment)의 같은 이름 prop 관례. */
+  categoryOptions: { code: string; name_ko: string }[];
 }
 
 // STEP 8 — "D-12개월부터"를 고정 문구로 박아뒀었는데, 실제 최상단 구간은 LLM이 생성한 카탈로그의
-// 최대 offset이나 완료 구간 재배치(그룹 전체가 DONE이면 아래로 내려감)에 따라 달라질 수 있어
-// 부제와 화면이 어긋났다. 실제로 화면 맨 위에 렌더되는 첫 그룹(groups[0])의 라벨에서 동적으로
-// 만든다 — 그래야 카탈로그가 바뀌거나 구간이 재배치돼도 항상 일치한다.
+// 최대 offset에 따라 달라질 수 있어 부제와 화면이 어긋났다. 실제로 화면 맨 위에 렌더되는 첫
+// 그룹(groups[0])의 라벨에서 동적으로 만든다 — 그래야 카탈로그가 바뀌어도 항상 일치한다.
+// 완료 체크로는 구간 순서가 바뀌지 않으므로(group-by-phase.ts) 이 문구도 체크에 반응하지 않는다.
 const GENERIC_TIMELINE_SUBTITLE = "비활성 카테고리는 제외됩니다";
 
 export function timelineSubtitle(groups: TimelinePhaseGroup[]): string {
@@ -46,19 +57,33 @@ export function resolveCategoryLabel(categoryCode: string | null, categoryLabelB
   return categoryLabelByCode.get(categoryCode) ?? categoryCode;
 }
 
+/** 재생성 확인 다이얼로그에 보여줄 개수. 판정 기준과 그 한계는 `isTimelineItemKept`
+ * (entities/timeline/model.ts) 머리말에 있다 — 확인창의 개수와 재생성 중 스켈레톤의 자리가
+ * **같은 술어**를 써야 해서 그쪽으로 옮겼다. */
+export function timelineRegenerateImpact(items: TimelineItem[]): RegenerateImpact {
+  const keptCount = items.filter((item) => isTimelineItemKept(item)).length;
+  return { keptCount, resetCount: items.length - keptCount };
+}
+
 export function TimelinePage() {
   const [data, setData] = useState<TimelineData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // 재생성 진행 여부 — 이 값이 참인 동안 **지워질 항목 자리에만** 스켈레톤이 선다(D21).
+  const [regenerating, setRegenerating] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getTimelineItems(), getMyWedding(), getCategories()])
+    Promise.all([getTimelineItems(), getMyWedding(), getWeddingCategories()])
       .then(([itemsResponse, wedding, categoriesResponse]) => {
         if (cancelled) return;
         setData({
           items: itemsResponse.items,
           weddingDate: wedding.wedding_date,
-          categoryLabelByCode: new Map(categoriesResponse.categories.map((c) => [c.code, c.name_ko])),
+          categoryLabelByCode: new Map(categoriesResponse.categories.map((c) => [c.category_code, c.name_ko])),
+          categoryOptions: categoriesResponse.categories
+            .filter((c) => c.is_active)
+            .toSorted((a, b) => a.display_order - b.display_order)
+            .map((c) => ({ code: c.category_code, name_ko: c.name_ko })),
         });
       })
       .catch((err: unknown) => {
@@ -70,10 +95,10 @@ export function TimelinePage() {
     };
   }, []);
 
-  // 완료 토글 announce — 체크박스는 네이티브라 체크 자체는 스크린리더가 읽지만, 그 직후
-  // group-by-phase.ts의 완료 구간 재배치(sortDoneLast + pending/done 그룹 분리)가 같은 렌더
-  // 사이클에 일어나 방금 만진 행이 화면에서 자리를 옮길 수 있다 — 최소한 "무엇이 어떻게
-  // 바뀌었는지"는 announce한다(접근성 감사 2026-08-26, WCAG 4.1.3).
+  // 완료 토글 announce — 원래는 체크 직후 행이 자리를 옮겨서(완료 항목 아래로 재배치) 필요했던
+  // 장치인데, 그 재배치는 없어졌다(2026-08-29, group-by-phase.ts). 그래도 남긴다: 체크박스 상태
+  // 말고 실제로 바뀌는 것(취소선·회색)은 순수 시각 정보이고, PATCH 실패로 체크가 되돌아가는
+  // 경로에서는 이 announce가 유일한 안내다(접근성 감사 2026-08-26, WCAG 4.1.3).
   const [announcement, setAnnouncement] = useState("");
 
   function handleItemChange(updated: TimelineItem) {
@@ -87,9 +112,11 @@ export function TimelinePage() {
   // 최근에 보낸 재조회"일 때만 결과를 반영해, 늦게 도착한 예전 응답이 최신 타임라인을 덮어쓰지
   // 않게 막는다(레드팀 감사).
   const refetchSeqRef = useRef(0);
-  function refetchItems() {
+  // **Promise 를 돌려준다(D21).** `RegenerateButton` 이 이것까지 기다린 뒤에야 진행 상태를
+  // 내리므로, 재생성 응답과 재조회 사이의 빈틈에 옛 목록이 완성본인 양 되살아나지 않는다.
+  function refetchItems(): Promise<void> {
     const seq = ++refetchSeqRef.current;
-    getTimelineItems()
+    return getTimelineItems()
       .then((res) => {
         if (refetchSeqRef.current !== seq) return;
         setData((prev) => (prev ? { ...prev, items: res.items } : prev));
@@ -113,7 +140,11 @@ export function TimelinePage() {
   if (data === null) {
     return (
       <Page title="타임라인" subtitle={GENERIC_TIMELINE_SUBTITLE}>
-        <p className="text-sm text-ink-soft">불러오는 중…</p>
+        {/* D14 L2 — 구간 카드 하나 분량의 자리를 먼저 잡는다(실제로는 구간 수만큼 온다). */}
+        <Card>
+          <SkeletonRows count={4} />
+        </Card>
+        <Loading />
       </Page>
     );
   }
@@ -124,28 +155,71 @@ export function TimelinePage() {
     <Page title="타임라인" subtitle={timelineSubtitle(groups)}>
       <output className="sr-only">{announcement}</output>
       <div className="flex flex-col gap-5">
-        <div className="flex justify-end">
-          <RegenerateButton domain="TIMELINE" label="AI 타임라인 다시 생성" onRegenerated={refetchItems} />
+        {/* 버튼과 안내를 **gap 없는** 상자로 묶는다 — `StatusCallout` 은 숨어도 부모의 flex
+            아이템으로 남아, gap 이 있는 컨테이너에 직접 놓으면 평소에도 빈 줄이 생긴다
+            (그 컴포넌트 머리말 §여백). */}
+        <div className="flex flex-col">
+          <div className="flex justify-end">
+            {/* 개수는 화면이 센다 — entities/personalization 은 타임라인 항목을 알지 못한다(레이어 규약).
+                모수는 `groups` 가 아니라 `data.items` 다: 그룹 분류는 표시 방식이고, 재생성은 항목 전체가 대상이다. */}
+            <RegenerateButton
+              domain="TIMELINE"
+              label="AI 타임라인 다시 생성"
+              impact={timelineRegenerateImpact(data.items)}
+              onRegenerated={refetchItems}
+              onPendingChange={setRegenerating}
+            />
+          </div>
+          {/* D14 L3 의 **문구 계층**(해요체 2줄 — 무엇을 / 왜 걸리는지)은 지키되 **표현은
+              전체화면 오버레이가 아니다**(D21). 오버레이는 "무엇이 남는지"를 가려 버려 이
+              화면의 목적과 정면으로 충돌한다. */}
+          <StatusCallout shown={regenerating}>
+            <p className="text-sm font-bold text-ink">AI가 타임라인을 다시 만들고 있어요.</p>
+            <p className="text-xs text-ink-soft">
+              체크했거나 날짜를 바꾼 항목은 그대로 남아요. 30초 정도 걸릴 수 있어요.
+            </p>
+          </StatusCallout>
         </div>
         {/* 목업(s4-timeline.html:80)은 구간 헤더에 라벨과 날짜를 함께 보여준다 — 라벨만으로는
             "12개월 전이 정확히 언제인지" 알 수 없다. 날짜가 없는 유일한 경우("일정 미정" 그룹)는
             그냥 라벨만 낸다. */}
-        {groups.map((group) => (
-          <Card key={group.label} title={group.date ? `${group.label} · ${group.date}` : group.label}>
-            <div className="flex flex-col">
-              {group.items.map((item) => (
-                <TimelineItemRow
-                  key={item.id}
-                  item={item}
-                  categoryLabel={resolveCategoryLabel(item.category_code, data.categoryLabelByCode)}
-                  onStatusChange={handleItemChange}
-                />
-              ))}
-            </div>
-          </Card>
-        ))}
+        {groups.map((group) => {
+          // 재생성 중에는 **남을 항목만** 그대로 그리고, 지워질 항목 수만큼 자리표시를 세운다(D21).
+          // 구간 카드 자체는 유지한다 — 카드가 사라졌다 다시 생기면 기다리는 동안 화면 구조가
+          // 통째로 무너져 "무엇이 남는지"를 볼 수 없다.
+          const visibleItems = regenerating ? group.items.filter((item) => isTimelineItemKept(item)) : group.items;
+          const replacedCount = group.items.length - visibleItems.length;
+          return (
+            <Card key={group.label} title={group.date ? `${group.label} · ${group.date}` : group.label}>
+              <div className="flex flex-col">
+                {visibleItems.map((item) => (
+                  <TimelineItemRow
+                    key={item.id}
+                    item={item}
+                    categoryLabel={resolveCategoryLabel(item.category_code, data.categoryLabelByCode)}
+                    onStatusChange={handleItemChange}
+                  />
+                ))}
+              </div>
+              {replacedCount > 0 && (
+                <div className={visibleItems.length > 0 ? "pt-3" : undefined}>
+                  <SkeletonRows count={replacedCount} variant="row" />
+                </div>
+              )}
+            </Card>
+          );
+        })}
 
-        <AddTimelineItemRow onAdded={refetchItems} />
+        {/* 재생성 중에는 추가 폼을 감춘다 — 서버는 재생성 시작 시점에 보호되지 않은 항목을
+            (직접 추가한 것까지) 지운다. 그 사이에 추가한 항목은 방금 만들었는데 조용히
+            사라지거나, 늦게 도착한 재조회에 덮여 없어진 것처럼 보인다. */}
+        {!regenerating && (
+          <AddTimelineItemRow
+            weddingDate={data.weddingDate}
+            categoryOptions={data.categoryOptions}
+            onAdded={refetchItems}
+          />
+        )}
       </div>
     </Page>
   );

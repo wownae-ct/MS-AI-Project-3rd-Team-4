@@ -14,6 +14,13 @@ vi.mock("@/entities/checklist", async (orig) => ({
   getChecklistItems: () => getChecklistItemsMock(),
 }));
 
+// RegenerateButton 이 부르는 실제 API 만 갈아끼운다 — 버튼 자체는 진짜를 쓴다(확인 다이얼로그와
+// 진행 상태 전달이 이 탭의 자리표시와 맞물리는지가 검사 대상이라 흉내 내면 의미가 없다).
+const regenerateMock = vi.fn();
+vi.mock("@/entities/personalization/api/personalization", () => ({
+  regeneratePersonalization: (domains: string[]) => regenerateMock(domains),
+}));
+
 // has_vendor_cases: false 로 두어 이 테스트 파일에서는 vendor-case 조회 자체가 안 일어나게 한다
 // (업체 사례는 이 배지 기능과 무관한 별도 관심사).
 const CATEGORY_META: CategoryConstant = {
@@ -50,26 +57,33 @@ function makeItem(overrides: Partial<ChecklistItem>): ChecklistItem {
 
 beforeEach(() => {
   getChecklistItemsMock.mockReset();
+  regenerateMock.mockReset();
 });
 
-describe("체크리스트 근거 배지", () => {
-  it("source_tier가 있으면 티어 한글 라벨 + source_label로 배지를 보여준다", async () => {
+// **[2026-08-29 갱신 — D16]** 근거가 배지 나열에서 SourceList(접힘 요약 + 세로 목록)로 옮겨가며
+// 조회 경로가 바뀌었다: 잘린 배지 텍스트("공식 · 제목…")가 아니라 요약 문구("공식 근거 1개")로
+// 토글을 찾고, 펼치면 출처명 전문이 링크로 나온다. 여기서는 **탭이 실제 응답으로 그 줄을 그리는가**
+// 만 본다 — 행 단위 배치는 ChecklistItemRow.test.tsx, 목록 동작은 shared/ui/SourceList.test.tsx.
+describe("체크리스트 근거", () => {
+  it("source_tier가 있으면 티어 한글 라벨로 요약을 보여준다", async () => {
     getChecklistItemsMock.mockResolvedValue({
       items: [makeItem({ source_tier: "OFFICIAL", source_label: "공정위 예식장이용 표준약관(제10030호)" })],
     });
     render(<ChecklistTab categoryCode="VENUE" categoryMeta={CATEGORY_META} />);
 
-    expect(await screen.findByText("공식 · 공정위 예식장이용 표준약관(제10030호)")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "공식 근거 1개" })).toBeInTheDocument();
+    // ENUM 원문이 새어 나오지 않는다.
+    expect(screen.queryByText(/OFFICIAL/u)).not.toBeInTheDocument();
   });
 
-  it("source_tier가 null인 LLM 생성 항목은 배지를 아예 생략한다", async () => {
+  it("source_tier가 null인 LLM 생성 항목은 근거 줄을 아예 생략한다", async () => {
     getChecklistItemsMock.mockResolvedValue({
       items: [makeItem({ source_tier: null, source_label: "" })],
     });
     render(<ChecklistTab categoryCode="VENUE" categoryMeta={CATEGORY_META} />);
 
     expect(await screen.findByText("위약금·환불 규정 확인")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /근거 자세히 보기/u })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /근거/u })).not.toBeInTheDocument();
   });
 
   it("사용자가 직접 추가한 항목은 source_tier와 무관하게 '내가 추가' 배지만 보여준다", async () => {
@@ -81,7 +95,7 @@ describe("체크리스트 근거 배지", () => {
     expect(await screen.findByText("내가 추가")).toBeInTheDocument();
   });
 
-  it("근거 배지를 누르면 원문 링크가 있는 상세 내용이 펼쳐진다", async () => {
+  it("근거 요약을 누르면 출처명 전문이 원문 링크로 펼쳐진다", async () => {
     const user = userEvent.setup();
     getChecklistItemsMock.mockResolvedValue({
       items: [
@@ -94,15 +108,14 @@ describe("체크리스트 근거 배지", () => {
     });
     render(<ChecklistTab categoryCode="VENUE" categoryMeta={CATEGORY_META} />);
 
-    const trigger = await screen.findByRole("button", {
-      name: "근거 자세히 보기: 공식 · 공정위 예식장이용 표준약관(제10030호)",
-    });
+    const trigger = await screen.findByRole("button", { name: "공식 근거 1개" });
     expect(trigger).toHaveAttribute("aria-expanded", "false");
 
     await user.click(trigger);
 
     expect(trigger).toHaveAttribute("aria-expanded", "true");
-    const link = screen.getByRole("link", { name: "원문 보기" });
+    // 제목 자체가 링크다 — 종전의 "원문 보기" 2단계가 1단계로 줄었다.
+    const link = screen.getByRole("link", { name: "공정위 예식장이용 표준약관(제10030호)" });
     expect(link).toHaveAttribute("href", "https://www.ftc.go.kr/standard-terms/10030");
   });
 
@@ -113,9 +126,98 @@ describe("체크리스트 근거 배지", () => {
     });
     render(<ChecklistTab categoryCode="VENUE" categoryMeta={CATEGORY_META} />);
 
-    await user.click(await screen.findByRole("button", { name: "근거 자세히 보기: 합의 · 소비자 상담 사례" }));
+    await user.click(await screen.findByRole("button", { name: "합의 근거 1개" }));
 
+    expect(screen.getByText("소비자 상담 사례")).toBeInTheDocument();
     expect(screen.getByText("팀에서 직접 정리한 자료라 원문 링크는 없어요.")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "원문 보기" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+});
+
+// ⚠️ RTL 렌더 결과의 **루트 노드 프로퍼티를 구조 분해로 받지 않는다** — 그 식별자 하나가
+// Tailwind 스캐너의 후보가 되어 같은 이름의 유틸리티 규칙이 산출 CSS 에 생긴다(유령 유틸리티
+// 게이트가 이미 한 번 잡았던 사고다 — scripts/lib/__tests__/ghost-candidates.test.mjs 머리말).
+// ⚠️ 같은 이유로 **이 주석에도 그 이름을 평문으로 적지 않는다** — 스캐너는 주석도 읽는다.
+// RTL 은 document.body 에 렌더하므로 문서에서 바로 센다.
+function pulseBlockCount(): number {
+  return document.querySelectorAll("span.animate-pulse").length;
+}
+
+// D21 — 재생성은 LLM 호출이라 수십 초가 걸린다. 종전엔 그동안 화면이 **옛 목록 그대로**였고
+// (바뀌는 건 12px 버튼 글자 하나) 어느 순간 통째로 갈렸다. 이제 지워질 항목 자리에만 자리표시가
+// 서고, 남을 항목은 남은 채로 기다린다.
+describe("체크리스트 — AI 재생성 중 부분 자리표시", () => {
+  const KEPT = makeItem({ id: "kept", item_type: "PREP", title: "예식장 답사 일정 잡기", status: "DOING" });
+  const REPLACED = makeItem({ id: "replaced", item_type: "PREP", title: "주차 대수 확인", status: "TODO" });
+
+  /** 재생성 응답을 붙잡아 두고 "기다리는 중" 화면을 그대로 관찰한다. */
+  function deferRegenerate() {
+    let finish: (() => void) | undefined;
+    regenerateMock.mockReturnValue(
+      new Promise((resolve) => {
+        finish = () => resolve({ ai_invocation_id: "inv-1", status: "SUCCESS", affected_domains: ["CHECKLIST"] });
+      }),
+    );
+    return () => finish?.();
+  }
+
+  async function startRegeneration() {
+    const user = userEvent.setup();
+    getChecklistItemsMock.mockResolvedValue({ items: [KEPT, REPLACED] });
+    render(<ChecklistTab categoryCode="VENUE" categoryMeta={CATEGORY_META} />);
+    await screen.findByText(KEPT.title);
+
+    await user.click(screen.getByRole("button", { name: "AI 체크리스트 다시 생성" }));
+    await user.click(await screen.findByRole("button", { name: "다시 생성" }));
+    return { user };
+  }
+
+  it("상태를 바꾼 항목은 남고, 지워질 항목 자리에만 자리표시가 선다", async () => {
+    const finish = deferRegenerate();
+    await startRegeneration();
+
+    expect(screen.getByText(KEPT.title)).toBeInTheDocument();
+    expect(screen.queryByText(REPLACED.title)).not.toBeInTheDocument();
+    // 자리표시는 장식이라 접근성 트리에 없다(Skeleton.tsx) — 개수는 DOM 으로 센다.
+    expect(pulseBlockCount()).toBe(1);
+
+    finish();
+    expect(await screen.findByText(REPLACED.title)).toBeInTheDocument();
+    expect(pulseBlockCount()).toBe(0);
+  });
+
+  it("무슨 일이 일어나는지·무엇이 남는지를 문장으로 알린다(D14 L3 문구 계층)", async () => {
+    const finish = deferRegenerate();
+    await startRegeneration();
+
+    expect(screen.getByText("AI가 체크리스트를 다시 만들고 있어요.")).toBeInTheDocument();
+    expect(screen.getByText(/상태를 바꾸거나 메모한 항목은 그대로 남아요/u)).toBeInTheDocument();
+
+    finish();
+    await screen.findByText(REPLACED.title);
+  });
+
+  it("기다리는 동안에는 항목 추가 폼을 감춘다 — 그 사이 추가한 항목은 서버가 지운다", async () => {
+    const finish = deferRegenerate();
+    await startRegeneration();
+
+    expect(screen.queryByRole("button", { name: "+ 항목 추가" })).not.toBeInTheDocument();
+
+    finish();
+    expect(await screen.findByRole("button", { name: "+ 항목 추가" })).toBeInTheDocument();
+  });
+
+  it("실패하면 자리표시를 걷고 원래 목록을 그대로 되돌려 놓는다", async () => {
+    const user = userEvent.setup();
+    regenerateMock.mockRejectedValue(new Error("boom"));
+    getChecklistItemsMock.mockResolvedValue({ items: [KEPT, REPLACED] });
+    render(<ChecklistTab categoryCode="VENUE" categoryMeta={CATEGORY_META} />);
+    await screen.findByText(KEPT.title);
+
+    await user.click(screen.getByRole("button", { name: "AI 체크리스트 다시 생성" }));
+    await user.click(await screen.findByRole("button", { name: "다시 생성" }));
+
+    expect(await screen.findByText(REPLACED.title)).toBeInTheDocument();
+    expect(pulseBlockCount()).toBe(0);
   });
 });

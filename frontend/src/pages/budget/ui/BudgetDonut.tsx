@@ -18,8 +18,11 @@
 // 뭉쳐 놨던 것 자체가 S5(리포트)와 여기(S6)가 "미배정"을 다른 정의로 계산하던 버그의 근본
 // 원인이었다(`entities/wedding/model/derive-budget-summary.ts` 머리말). "지불예정" 색은 결제
 // 유형 배지 전용이던 `--color-payment-interim`을 재사용한다 — 새 토큰을 만들지 않는다(이미
-// D8 절차를 거쳐 WCAG AA를 넘긴 기존 토큰의 재사용이지, 새 색을 지어내는 것이 아니다.
-// surface 6.66 · bg 6.16 · line 5.21, theme.css 참고 — 전부 4.5:1 이상).
+// D8 절차를 거쳐 WCAG AA를 넘긴 기존 토큰의 재사용이지, 새 색을 지어내는 것이 아니다).
+// ⚠️ **그 토큰의 값이 2026-08-29에 바뀌었다(D17)** — 결제 유형 배지가 「한 색상의 명도 3단계」로
+// 재설계되면서 `#2f5f8f` → `#194e7e`로 한 단계 짙어졌다. 색상은 그대로라 이 도넛의 계열 구분
+// (플럼=지불 완료 · 회색=배정 · 라인=미배정)은 영향받지 않는다. 참조는 여전히 토큰 이름으로만
+// 한다 — hex를 여기 박아 두면 다음에 값이 바뀔 때 조용히 갈린다.
 //
 // **총예산 인라인 수정을 이 컴포넌트가 직접 담당한다(UX 개편 2차, 2026-08-26, 사용자 지시).**
 // 원래 별도 "남은예산" 카드(`TotalBudgetCard.tsx`, 삭제됨)가 하던 일이다 — "총 예산 현황" 카드
@@ -37,21 +40,42 @@
 // 않는다(아래 도넛 마크업 주석 참고). Card.tsx의 `titleAction` 슬롯이 이 개편으로 새로 생겼다.
 //
 // **UX 개편 4차(2026-08-27, 사용자 지시) — 카드 제목 "예산 현황" → "총 예산 현황".**
-// "카테고리별 예산 현황"(AllocationOverview.tsx의 다른 카드)과 짝이 되도록 맞췄다 — 하나는
+// "카테고리별 예산 현황"(CategoryAllocationList.tsx)과 짝이 되도록 맞췄다 — 하나는
 // 전체 합계, 하나는 카테고리별 상세라는 관계가 제목만 보고도 드러난다. 같은 날 "집행"이라는
 // 말도 전부 "지불"로 바꿨다(아래 SERIES "지불 완료"/"지불 예정" 등).
-import { useState } from "react";
+// **UX 개편 6차(2026-08-29, 사용자 지시) — 총예산 수정을 카드 하단 펼침 패널로 옮겼다.**
+// 예전엔 카드 제목 옆(`titleAction`)에 입력칸+"만원"+저장+취소 네 요소를 가로로 늘어놨는데,
+// 430px 모바일에서 그 행이 줄바꿈해 좁았다. 온보딩 8단계가 같은 편집을 카드 아래 펼침 패널로
+// 하고 있어(Step8Allocation) 모양을 맞췄다 — 그 패널은 `shared/ui/DisclosurePanel` 로 올라가
+// 두 화면이 같은 컴포넌트를 쓴다. 제목 옆에는 펼침 트리거만 남는다.
+//
+// **열림 상태는 BudgetPage 가 소유한다** — 배분이 총예산을 넘었을 때 화면 아래 안내의
+// "총예산 금액을 조정할까요?" CTA 가 이 패널을 열어야 해서다. 초안(draftManwon)·저장 상태는
+// 여기 남는다.
+import { useEffect, useRef, useState } from "react";
 import type { BudgetBenchmarkSummary } from "@/entities/dashboard";
 import { updateMyWedding, type BudgetSummary } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
-import { manwonToWon, wonToManwon } from "@/shared/lib/money";
+import { AMOUNT_STEP_MANWON, manwonToWon, wonToManwon } from "@/shared/lib/money";
 import { safeExternalUrl } from "@/shared/lib/safe-url";
-import { Badge, Card, Money } from "@/shared/ui";
+import { Badge, Card, DisclosurePanel, IconChevronDown, Money, NumberInput } from "@/shared/ui";
 
 const INLINE_INPUT =
   "min-h-tap w-28 rounded-md border border-line bg-surface px-2.5 text-right text-base text-ink " +
   "[font-variant-numeric:tabular-nums] focus-visible:border-primary";
 const GHOST_BUTTON = "text-xs font-bold text-ink-soft transition-colors duration-150 hover:text-primary";
+
+// 펼침 트리거 — py-1 로 히트 영역을 24px 쪽으로 넓힌다(WCAG 2.5.8 AA). 글자 크기는 그대로 두고
+// 클릭 가능 높이만 키우는 이 수법의 선례는 Step2RegionBudget.tsx 의 MINI_TOGGLE 이다.
+const DISCLOSURE_TRIGGER =
+  "flex items-center gap-1 py-1 text-xs font-bold text-ink-soft transition-colors duration-150 hover:text-primary";
+// ⚠️ 조건부로 조립하지 않고 완성된 리터럴 두 개 중 하나를 그대로 고른다 — Tailwind 스캐너는
+// 소스를 평문으로 읽어 런타임 조립을 찾지 못하고, 빌드는 성공한 채 스타일만 조용히 사라진다.
+const CHEVRON = "transition-transform duration-150";
+const CHEVRON_OPEN = "rotate-180 transition-transform duration-150";
+
+/** 펼침 트리거(`aria-controls`)와 패널을 잇는다. 이 화면에 하나뿐이라 상수로 둔다. */
+const TOTAL_BUDGET_PANEL_ID = "budget-total-edit";
 
 interface Series {
   label: string;
@@ -79,36 +103,59 @@ export interface BudgetDonutProps {
   /** 대시보드에서 옮겨온 총예산 vs 지역 시세 — 해당 지역에 참가격 데이터가 없으면 null(하단
       비교 문구 자체를 그리지 않는다, 예전 BudgetBenchmarkCard.tsx와 같은 규칙). */
   benchmark: BudgetBenchmarkSummary | null;
+  /** 총예산 수정 패널 열림 — BudgetPage 가 소유한다(초과 안내의 CTA 가 이걸 연다, §머리말). */
+  isEditing: boolean;
+  onIsEditingChange: (open: boolean) => void;
 }
 
-export function BudgetDonut({ summary, onTotalBudgetSaved, benchmark }: BudgetDonutProps) {
+export function BudgetDonut({ summary, onTotalBudgetSaved, benchmark, isEditing, onIsEditingChange }: BudgetDonutProps) {
   const { total, paid, scheduled, allocated } = summary;
 
-  const [draft, setDraft] = useState<string | null>(null);
+  // 예전엔 `draft: string | null` 하나가 "편집 중인가"와 "입력값" 두 가지를 겸했다. 입력칸이
+  // `NumberInput` 으로 바뀌면서 값 쪽에도 null(빈 칸)이 필요해져 두 의미가 충돌한다 —
+  // 그래서 상태를 둘로 쪼갠다. "수정을 열었다"와 "칸을 비웠다"는 원래 다른 사실이다.
+  // ("열렸다" 쪽은 2026-08-29에 BudgetPage 로 올라갔다 — CTA 가 바깥에서 열어야 해서다.)
+  const [draftManwon, setDraftManwon] = useState<number | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  function startEdit() {
-    setDraft(String(wonToManwon(total)));
+  // 열림이 바깥에서도 켜지므로 초안 seeding 을 effect 로 옮겼다(예전엔 startEdit 안에 있었다).
+  //
+  // `total` 을 ref 로 읽는 이유 — 의존성에 넣으면 **패널이 열려 있는 동안 총액이 바뀔 때마다
+  // 사용자가 타이핑 중인 값을 덮어쓴다.** 여기서 필요한 건 "열리는 순간의 총액"뿐이다
+  // (NumberInput.tsx 의 `valueRef` 와 같은 수법).
+  const totalRef = useRef(total);
+  totalRef.current = total;
+  useEffect(() => {
+    if (!isEditing) return;
+    setDraftManwon(wonToManwon(totalRef.current));
     setSaveState("idle");
     setErrorMessage(null);
-  }
+  }, [isEditing]);
 
   function cancelEdit() {
-    setDraft(null);
+    onIsEditingChange(false);
+    setDraftManwon(null);
     setSaveState("idle");
     setErrorMessage(null);
   }
 
   async function handleSaveTotal() {
-    if (draft === null) return;
-    const nextTotal = manwonToWon(Number(draft));
+    // 빈 칸으로 저장을 누르면 0원이 아니라 아무 일도 하지 않는다 — 예전 `Number("")` 는 0이라
+    // 총예산이 조용히 0이 될 수 있었다(입력이 문자열이던 시절의 사각지대).
+    if (draftManwon === null) {
+      setSaveState("error");
+      setErrorMessage("총예산을 입력해 주세요.");
+      return;
+    }
+    const nextTotal = manwonToWon(draftManwon);
     setSaveState("saving");
     setErrorMessage(null);
     try {
       await updateMyWedding({ total_budget: nextTotal });
       onTotalBudgetSaved(nextTotal);
-      setDraft(null);
+      onIsEditingChange(false);
+      setDraftManwon(null);
       setSaveState("idle");
     } catch (err) {
       setSaveState("error");
@@ -138,40 +185,24 @@ export function BudgetDonut({ summary, onTotalBudgetSaved, benchmark }: BudgetDo
     `var(--color-ink-soft) ${scheduledEnd}% ${allocatedEnd}%,` +
     `var(--color-line) ${allocatedEnd}% 100%)`;
 
-  // 카드 제목 옆(titleAction)에 놓는 수정 트리거/폼 — 예전엔 아래 "총예산 …원 중" 행이 이 역할을
-  // 함께 했지만, 그 행 자체가 시세 비교 문구로 바뀌면서 트리거만 제목 옆으로 옮겼다.
-  const editTrigger =
-    draft === null ? (
-      <button type="button" onClick={startEdit} className={GHOST_BUTTON}>
-        수정
-      </button>
-    ) : (
-      <span className="flex flex-wrap items-center gap-1.5">
-        <input
-          type="number"
-          inputMode="numeric"
-          min={0}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          className={INLINE_INPUT}
-          aria-label="총예산(만원)"
-        />
-        <span className="text-xs text-ink-soft">만원</span>
-        <button
-          type="button"
-          onClick={() => void handleSaveTotal()}
-          disabled={saveState === "saving"}
-          className={GHOST_BUTTON}
-        >
-          {saveState === "saving" ? "저장 중…" : "저장"}
-        </button>
-        {/* 저장 진행 중엔 취소를 막는다 — 안 막으면 취소 후에도 진행 중이던 저장이 성공 시
-            되살아난다(레드팀 감사 HIGH, 예전 TotalBudgetCard.tsx와 같은 이유). */}
-        <button type="button" onClick={cancelEdit} disabled={saveState === "saving"} className={GHOST_BUTTON}>
-          취소
-        </button>
-      </span>
-    );
+  // 카드 제목 옆(titleAction)에는 **펼침 트리거만** 남는다 — 입력·저장·취소는 카드 하단
+  // 패널로 내려갔다(§머리말). 보이는 글자("수정")가 무엇을 펼치는지 말해 주지 않으므로 접근명을
+  // 따로 준다. 보이는 문자열을 접근명이 포함하므로 WCAG 2.5.3(Label in Name)도 지킨다.
+  const editTrigger = (
+    <button
+      type="button"
+      className={DISCLOSURE_TRIGGER}
+      aria-expanded={isEditing}
+      aria-controls={TOTAL_BUDGET_PANEL_ID}
+      aria-label="총예산 수정"
+      onClick={() => {
+        onIsEditingChange(!isEditing);
+      }}
+    >
+      수정
+      <IconChevronDown size={12} className={isEditing ? CHEVRON_OPEN : CHEVRON} />
+    </button>
+  );
 
   // source_url이 있어도 스킴 검증 없이 href에 그대로 꽂지 않는다(예전 BudgetBenchmarkCard.tsx와
   // 같은 원칙) — 값 자체는 백엔드에서 온 문자열이다.
@@ -180,7 +211,24 @@ export function BudgetDonut({ summary, onTotalBudgetSaved, benchmark }: BudgetDo
   return (
     <Card title="총 예산 현황" titleAction={editTrigger}>
       <div className="flex flex-col gap-3">
-        <div className="flex items-center gap-5">
+        {/* 🚨 [2026-08-29] 좁은 폭에서는 **세로로 쌓는다.** 종전엔 언제나 가로 한 줄이었고, 그때
+            범례 라벨이 「지/불/완/료」로 세로로 접혔다(사용자 리포트).
+
+            산술이 그대로 원인이다 — 320px 기기에서 카드 안쪽은 254px 인데
+              254 − 도넛 128(`size-32` + `shrink-0`, 안 눌린다) − `gap-5` 20 = **범례 열 106px**
+            이고, 그 106px 안에서 다시
+              점 10 + gap 8 + 라벨 + gap 8 + `Money`(`whitespace-nowrap`, 9자리면 ~106px)
+            라 **라벨 몫이 음수**가 된다. 라벨은 `min-w-0` 이라 0 까지 눌리고, 거기서
+            `overflow-wrap: break-word`(D19)가 어절보다 긴 것을 끊으므로 음절 단위로 접힌다.
+            375px 에서도 라벨 몫이 ~29px 이라 재현된다 — 320px 전용 결함이 아니었다.
+
+            **미디어 쿼리가 아니라 컨테이너 쿼리**를 쓴다. `Card` 가 이미 `@container` 라(그 파일
+            머리말: 같은 카드가 1열에 놓이든 3열에 놓이든 자기 폭만 보고 배치를 정한다) 이 카드가
+            대시보드식 다열 그리드에 들어가도 판정이 따라온다. `@sm`(24rem=384px)은 카드 자신의
+            폭 기준이라, 모바일 1열(254~309px)에서는 항상 세로 · 데스크톱 넓은 카드에서는 종전
+            가로 배치가 1px 도 안 바뀐다. 세로로 서면 범례가 254px 을 다 쓰므로 라벨 몫이 ~122px
+            이 되어 「지불 완료」가 한 줄에 들어간다. */}
+        <div className="flex flex-col items-center gap-4 @sm:flex-row @sm:items-center @sm:gap-5">
           {/* 도넛 테두리 자체는 장식이다 — 같은 정보를 옆 범례가 텍스트로 낸다. 가운데 라벨만 의미를 갖는다.
               ⚠️ 지름이 목업(112px)보다 크다. 목업의 캡션은 `.6rem`(9.6px)인데 **우리 타입 스케일의 하한은
               `text-xs`(12px)** 다 — 스케일을 지키면 같은 구멍(80px)에는 들어가지 않는다. 실제로 112px 로
@@ -196,7 +244,11 @@ export function BudgetDonut({ summary, onTotalBudgetSaved, benchmark }: BudgetDo
             </div>
           </div>
 
-          <div className="flex min-w-0 flex-1 flex-col gap-2">
+          {/* `w-full` 은 세로로 쌓였을 때의 몫이다 — 그때 이 칸은 `items-center` 아래의 교차축
+              아이템이라 지정이 없으면 콘텐츠 폭으로 줄어든다(라벨이 다시 눌린다). 가로 배치에서는
+              주축이 가로라 `@sm:flex-1` 의 `flex-basis: 0%` 가 이겨 아무 영향이 없다 —
+              그래서 `flex-1` 도 `@sm:` 뒤로 옮겼다(세로일 때 이 칸이 세로로 늘 이유가 없다). */}
+          <div className="flex w-full min-w-0 flex-col gap-2 @sm:flex-1">
             {SERIES.map((series) => (
               <div key={series.label} className="flex items-center gap-2 text-sm">
                 <span
@@ -211,13 +263,10 @@ export function BudgetDonut({ summary, onTotalBudgetSaved, benchmark }: BudgetDo
           </div>
         </div>
 
-        {saveState === "error" && (
-          <p role="alert" className="text-xs text-primary">
-            {errorMessage}
-          </p>
-        )}
         {/* "미배정" 범례는 위에서 0으로 클램프돼 있다 — 총예산보다 배정 합계가 더 많은 경우를
-            여기서 별도로 알린다(음수 "미배정"을 그대로 보여주면 오독된다는 기존 결정은 그대로 둔다). */}
+            여기서 별도로 알린다(음수 "미배정"을 그대로 보여주면 오독된다는 기존 결정은 그대로 둔다).
+            이건 **살아 움직이는 숫자**고, "저장이 막힌 이유 + 고치는 길"은 화면 아래
+            StatusCallout 이 맡는다 — 온보딩 8단계의 요약 카드/하단 블록과 정확히 같은 이중 구조다. */}
         {summary.unallocated < 0 && (
           <p className="text-xs font-bold text-primary">
             배정 합계가 총예산보다 {wonToManwon(Math.abs(summary.unallocated)).toLocaleString("ko-KR")}만원 더 많아요
@@ -246,6 +295,58 @@ export function BudgetDonut({ summary, onTotalBudgetSaved, benchmark }: BudgetDo
             )}
           </div>
         )}
+
+        {/* 카드 맨 아래 — 온보딩 8단계와 같은 자리다. 접혀 있어도 마운트를 유지해야 닫히는
+            애니메이션이 돌고, 그동안 `inert` 가 탭 순서를 막는다(DisclosurePanel 머리말). */}
+        <DisclosurePanel id={TOTAL_BUDGET_PANEL_ID} open={isEditing}>
+          <div className="flex flex-col gap-2">
+            {/* <label> 이 아니라 <div> 다 — 입력칸이 자기 `aria-label` 로 이름을 갖고 있고,
+                <label> 로 감싸면 jsx-a11y(label-has-associated-control)가 컴포넌트 너머의
+                <input> 을 못 봐서 잡는다. 온보딩의 TotalBudgetField 도 같은 이유로 <div> 다. */}
+            <div className="flex flex-col gap-1.5 text-sm font-bold text-ink">
+              총 예산
+              <span className="flex items-center gap-1.5">
+                <NumberInput
+                  step={AMOUNT_STEP_MANWON}
+                  min={0}
+                  value={draftManwon}
+                  onValueChange={setDraftManwon}
+                  className={INLINE_INPUT}
+                  // 온보딩의 TotalBudgetField 는 "총 예산(만원)"(띄어쓰기 있음)을 쓴다 — 두
+                  // 문자열이 각자 테스트에 굳어 있어 통일은 별건으로 남긴다.
+                  aria-label="총예산(만원)"
+                />
+                <span className="text-xs font-bold text-ink-soft">만원</span>
+              </span>
+            </div>
+            {/* `PATCH /weddings/me` 의 total_budget 변경은 개인화 LLM 을 재트리거한다
+                (01-endpoints.md:141 — "날짜 단독 변경이면 빠름, 그 외는 느림"). 예전에도 그랬지만
+                초과 안내의 CTA 가 이 경로를 전면에 내세우게 되어 미리 알린다. */}
+            <p className="text-xs text-ink-soft">총예산을 바꾸면 맞춤 추천을 다시 만드느라 잠시 걸릴 수 있어요.</p>
+            {/* flex-wrap + basis-full — 에러 문구는 서버 메시지를 그대로 싣는다. 감싸 주지
+                않으면 좁은 폭에서 저장·취소 버튼을 밀어낸다(WeddingDateEdit.tsx 의 같은 형태). */}
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => void handleSaveTotal()}
+                disabled={saveState === "saving"}
+                className={GHOST_BUTTON}
+              >
+                {saveState === "saving" ? "저장 중…" : "저장"}
+              </button>
+              {/* 저장 진행 중엔 취소를 막는다 — 안 막으면 취소 후에도 진행 중이던 저장이 성공 시
+                  되살아난다(레드팀 감사 HIGH, 예전 TotalBudgetCard.tsx와 같은 이유). */}
+              <button type="button" onClick={cancelEdit} disabled={saveState === "saving"} className={GHOST_BUTTON}>
+                취소
+              </button>
+              {saveState === "error" && (
+                <span role="alert" className="basis-full text-xs text-primary">
+                  {errorMessage}
+                </span>
+              )}
+            </div>
+          </div>
+        </DisclosurePanel>
       </div>
     </Card>
   );

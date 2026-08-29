@@ -160,8 +160,9 @@ export interface TotalAverageBenchmark {
 // #11 GET /categories(03_API_spec.md:244-257) — 개별 웨딩과 무관한 카테고리 상수. 온보딩 6단계
 // (카테고리별 예산 배분)가 이 응답으로 행을 그린다. **7개를 하드코딩하지 않는다** — 목업
 // (s1-onboarding.html:365-373)은 HOMENEW 추가(v4.0) 이전에 얼어붙어 7행뿐이지만 실제 ENUM은
-// 9개다(CLAUDE.md, `04_DB_spec.md` §3). `has_cost=false`인 카테고리(현재는 MEETING)만 "비용
-// 없음"으로 표시해야 그 판단도 하드코딩이 아니라 서버 값을 따른다.
+// 9개다(CLAUDE.md, `04_DB_spec.md` §3). 비용 유무도 `has_cost` 응답값을 따른다 — 한때 상견례가
+// 유일한 `has_cost=false`였지만 2026-08-29 유상으로 바뀌어(backend/app/core/categories.py) 지금
+// 9개는 전부 true다. 그래도 코드에 카테고리 이름을 박지 않는다.
 export interface CategoryConstant {
   code: string;
   name_ko: string;

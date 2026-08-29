@@ -63,7 +63,7 @@
 | `PaymentStatus` | `PLANNED` `PAID` `CANCELED` | |
 | `MilestoneStatus` | `TODO` `DONE` | 타임라인 |
 | `CaseType` | `GOOD` `BAD` | |
-| `Verdict` | `SUPPORTED` `WEAK` `GENERAL` | 상담 신뢰도 |
+| `Verdict` | `SUPPORTED` `WEAK` `GENERAL` `OUT_OF_SCOPE` | 상담 신뢰도. `OUT_OF_SCOPE`는 3 → 4로 늘어난 값(2026-08-29) |
 | **`ChatRole`** | `user` `assistant` | ⚠️ **소문자** |
 | `ChatRating` | `GOOD` `BAD` | |
 | **`ChatStage`** | `retrieve` `generate` `verify` | ⚠️ **소문자** |

@@ -13,25 +13,34 @@ const SECTION = "flex flex-col gap-1 border-b border-line py-3 last:border-b-0 l
 const LABEL = "text-xs font-bold text-ink-soft";
 const VALUE = "text-sm font-bold text-ink";
 const DEFAULTED_NOTE = "나중에 설정을 선택해서, 저희가 정한 기본값으로 시작해요.";
-const GUEST_COUNT_DEFAULTED_NOTE = "나중에 설정을 선택해서, 인원 수는 미정으로 저장돼요.";
+// 예산 배분만 다른 문구를 쓴다 — 여기 0원은 "저희가 정한 기본값"이 아니라 **사용자가 넣었던
+// 금액을 지운 결과**다(초과 상태로 "나중에 설정"을 누르면 OnboardingPage가 전부 0으로 되돌린다).
+// 같은 문구를 재활용하면 "우리가 알아서 잡아줬다"로 읽혀 사용자가 지워진 사실을 모른 채 넘어간다.
+// 8단계 초과 블록이 누르기 전에 한 번 경고하고, 이 문구가 누른 뒤 한 번 더 확인시킨다.
+const ALLOCATION_RESET_NOTE = "총예산을 넘어서 배분 금액을 비웠어요. 시작한 뒤 예산 화면에서 다시 나눌 수 있어요.";
 
 interface ReviewRowProps {
   label: string;
   value: string;
   isDefaulted?: boolean;
-  // 대부분의 필드는 "나중에 설정"이 실제 기본값을 채워 넣지만(취향/목표 등), 하객 수는 서버가
-  // NULL 로만 저장할 뿐 대신 채워주는 값이 없다 — 그 경우 공용 DEFAULTED_NOTE 문구("저희가
-  // 정한 기본값으로 시작해요")가 실제 동작과 어긋난다(레드팀 감사 라운드 2). 필요한 행만
-  // 이 prop 으로 문구를 바꿔치기한다.
-  defaultedNote?: string;
+  /** `isDefaulted` 대신 쓸 문구. 주면 이 문자열이 기본 안내를 대체한다. */
+  note?: string;
 }
 
-function ReviewRow({ label, value, isDefaulted, defaultedNote }: ReviewRowProps) {
+// 한때 하객 수만 문구를 바꿔치기하는 `defaultedNote` prop 이 있었다 — 서버가 guest_count 를
+// NULL 로만 저장해 "기본값으로 시작해요"가 거짓이었기 때문이다. 2026-08-28부터 하객 수도 실제
+// 기본값(200명)이 저장되므로 예외가 사라졌고, 그 prop 도 같이 걷어냈다(유일한 사용처였다).
+//
+// 같은 날 늦게 `note` 로 되돌아왔다. 이번 예외는 성격이 다르다 — 하객수 때는 **문구만** 사실과
+// 달랐지만(값은 어차피 기본값이었다), 예산 배분 0원은 "저희가 정한 기본값"이 아니라 **사용자가
+// 넣었던 값을 지운 결과**다. 두 사건을 한 문구로 덮으면 지워졌다는 사실 자체가 전달되지 않는다.
+function ReviewRow({ label, value, isDefaulted, note }: ReviewRowProps) {
+  const shown = note ?? (isDefaulted === true ? DEFAULTED_NOTE : null);
   return (
     <div className={SECTION}>
       <span className={LABEL}>{label}</span>
       <span className={VALUE}>{value}</span>
-      {isDefaulted === true && <p className={FIELD_NOTE}>{defaultedNote ?? DEFAULTED_NOTE}</p>}
+      {shown !== null && <p className={FIELD_NOTE}>{shown}</p>}
     </div>
   );
 }
@@ -54,6 +63,8 @@ export interface Step10ReviewProps {
   activeCategoryCount: number;
   totalCategoryCount: number;
   allocatedBudgetLabel: string;
+  /** 초과 상태로 "나중에 설정"을 눌러 배분 금액이 전부 0으로 되돌아갔다(OnboardingPage). */
+  isAllocationReset: boolean;
   customRequestLabel: string;
 }
 
@@ -75,6 +86,7 @@ export function Step10Review({
   activeCategoryCount,
   totalCategoryCount,
   allocatedBudgetLabel,
+  isAllocationReset,
   customRequestLabel,
 }: Step10ReviewProps) {
   return (
@@ -82,19 +94,18 @@ export function Step10Review({
       <ReviewRow label="결혼 예정일" value={weddingDateLabel} isDefaulted={isDateDefaulted} />
       <ReviewRow label="지역" value={regionLabel} />
       <ReviewRow label="총 예산" value={budgetLabel} isDefaulted={isBudgetDefaulted} />
-      <ReviewRow
-        label="예상 하객 수"
-        value={guestCountLabel}
-        isDefaulted={isGuestCountDefaulted}
-        defaultedNote={GUEST_COUNT_DEFAULTED_NOTE}
-      />
+      <ReviewRow label="예상 하객 수" value={guestCountLabel} isDefaulted={isGuestCountDefaulted} />
       <ReviewRow label="웨딩 취향" value={tasteLabel} isDefaulted={isTasteDefaulted} />
       <ReviewRow label="이번 준비 목표" value={goalsLabel} isDefaulted={isGoalsDefaulted} />
       <ReviewRow label="예식장 우선순위" value={venuePriorityLabel} />
       <ReviewRow label="스드메 우선순위" value={sdmPriorityLabel} />
       <ReviewRow label="지금까지 진행 상황" value={progressLabel} />
       <ReviewRow label="사용할 카테고리" value={`${activeCategoryCount.toString()}개 / 총 ${totalCategoryCount.toString()}개`} />
-      <ReviewRow label="예산 배분" value={allocatedBudgetLabel} />
+      <ReviewRow
+        label="예산 배분"
+        value={allocatedBudgetLabel}
+        note={isAllocationReset ? ALLOCATION_RESET_NOTE : undefined}
+      />
       {/* 다른 스킵 가능 필드(취향/목표)와 달리 이 필드엔 "저희가 정한 기본값"이 없다 — 비우면
           그냥 null로 저장된다(하객 수와 같은 부류). isDefaulted 대신 라벨 자체("작성 안 함")로
           충분히 전달돼 별도 안내 문구가 필요 없다. */}

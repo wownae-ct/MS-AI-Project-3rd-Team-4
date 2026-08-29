@@ -41,7 +41,15 @@ export const INPUT =
   "min-h-tap w-full rounded-md border border-line bg-surface px-3 text-base text-ink " +
   "placeholder:text-ink-soft focus-visible:border-primary";
 
-export const SELECT = INPUT;
+// 비활성 입력칸 — "미정" 토글을 켠 필드가 사라지지 않고 자리에 남을 때 쓴다(2026-08-28).
+// `disabled:opacity-50`·`disabled:cursor-not-allowed`는 이 저장소가 이미 버튼/입력에 쓰는 조합이라
+// (Button.tsx · ChatPanel.tsx) 새 토큰을 늘리지 않는다. 조건부로 조립하지 않고 완성된 문자열
+// 두 개 중 하나를 그대로 고르는 이 파일의 규범을 따른다.
+export const INPUT_DISABLED = `${INPUT} disabled:cursor-not-allowed disabled:opacity-50`;
+
+// [2026-08-29 D22] `SELECT = INPUT` 을 삭제했다. 2단계의 지역 드롭다운이 공용 `shared/ui/Select`
+// 로 옮겨가면서 참조가 사라졌다 — 팔레트에 죽은 값을 남기지 않는 이 저장소 관례(theme.css 가
+// 참조 없어진 soft 토큰을 지운 것과 같은 처리).
 
 // 9단계(자유 서술) 전용 — INPUT은 min-h-tap(한 줄 높이) 고정이라 여러 줄 입력엔 안 맞는다.
 // resize-none — 카드 폭이 이미 max-w-[430px]로 고정된 화면이라 가로 리사이즈 핸들이 레이아웃을
@@ -57,3 +65,11 @@ export const TEXTAREA =
 // 파일 전체를 평문으로 훑으므로, 주석 속 단어 하나가 그대로 산출 CSS 후보가 된다(바로 이 파일이
 // 겪은 사고 — 최초 수정 커밋이 설명 주석에 그 단어를 그대로 썼다가 이 게이트에 다시 잡혔다).
 export const FIELD_NOTE = "text-xs text-ink-soft";
+
+// [2026-08-29 D19] `FIELD_NOTE_KEEP` 을 삭제했다.
+//
+// 그 상수는 어절 단위 줄바꿈을 이 문구들에 **다시 걸어 주는 우회책**이었고, 존재 사유가 자기
+// 주석에 적혀 있었다 — *"그 규칙은 요소 선택자 기반이라 <div> 안의 <p>인 이 문구들은 상속받지
+// 못해서 유틸리티로 다시 건다."* D19 가 `styles.css` 의 조판 규칙을 `body` 로 올려 문서 전체가
+// 상속하게 만들었으므로 **이제 필요가 없다.** 호출부는 `FIELD_NOTE` 를 그대로 쓰면 된다.
+// (같은 이유로 `ChecklistItemRow.tsx` 의 `break-words` 손패치도 함께 지웠다.)

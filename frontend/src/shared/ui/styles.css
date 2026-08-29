@@ -41,6 +41,39 @@
 
     /* Base UI 요구사항 — iOS Safari 26+ (공식 quick-start) */
     position: relative;
+
+    /* 한국어 조판 — D19 (docs/design/decisions.md).
+       두 속성 다 **상속 속성**이라 여기 한 곳이면 폼 컨트롤까지 문서 전체를 덮는다.
+
+       ## 값 — `anywhere` 가 아니라 `break-word` 다
+
+       CSS Text L3 이 둘을 명시적으로 가른다 (1차):
+         break-word — "…are **not** considered when calculating min-content intrinsic sizes."
+         anywhere   — "…**are** considered when calculating min-content intrinsic sizes."
+       종전 규칙은 `keep-all` 로 min-content 를 「어절」로 올려놓고 바로 다음 줄의 `anywhere` 가
+       그것을 **1글자로 되돌리고 있었다.** 그래서 flex 행에서 폭 경쟁에 진 버튼·라벨·제목이
+       가로로 넘치는 대신 1글자 폭까지 눌려 「나/중/에/설/정」으로 **세로로 접혔다**
+       (사용자 리포트 2026-08-29). 두 선언이 서로를 상쇄해 규칙이 아무 일도 하지 않았다.
+       Badge.tsx 가 D16 에서 같은 현상을 기술하고 `shrink-0 whitespace-nowrap` 으로 막았는데,
+       그건 이 결함의 **증상을 한 컴포넌트에서** 막은 것이다. 원인은 여기 있었다.
+
+       ## 범위 — 요소 8종이 아니라 문서 전체다
+
+       종전엔 `h1~h6 · button · label · th` 에만 걸려 있었고 *"본문 전체에 걸면 좁은 화면에서
+       오버플로가 난다"* 를 사유로 적어 뒀다. **그 우려는 `anywhere` 를 짝으로 쓸 때만 성립한다** —
+       `break-word` 는 어절이 줄보다 길면 그 어절을 끊으므로 오버플로가 나지 않는다.
+       값을 고치는 순간 범위를 좁힐 이유가 사라졌고, 좁혀 둔 탓에 `<p>`·`<span>` 인 본문·안내
+       문구·에러 메시지·AI 답변이 전부 **음절 단위로 끊기고 있었다**(한글 음절은 UAX #14 에서
+       줄바꿈 기회를 갖는다). 그래서 두 결함을 한 결정으로 함께 닫는다 — 나누면 각각이
+       정당화되지 않는다.
+
+       ⚠️ 되돌린다면 값과 범위를 **함께** 되돌린다. 값만 `anywhere` 로 되돌리면 넓힌 범위 위에서
+       1글자 붕괴가 되살아나 지금보다 나쁜 상태가 된다.
+
+       ⚠️ 호출부에서 이 짝을 다시 걸지 않는다 — 그렇게 두던 우회책 2개(온보딩의 FIELD_NOTE_KEEP ·
+       ChecklistItemRow 의 손패치)를 D19 에서 삭제했다. 규칙이 옳은 층위에 있으면 필요가 없다. */
+    word-break: keep-all;
+    overflow-wrap: break-word;
   }
 
   /* Base UI 요구사항 — 향후 Dialog·Toast 포털이 body 직속에 붙는다.
@@ -49,21 +82,7 @@
     isolation: isolate;
   }
 
-  /* 한국어 조판 — 어절 중간에서 줄이 끊기는 것을 막는다.
-     본문 전체에 걸면 좁은 화면에서 오버플로가 나므로 제목·버튼·라벨 같은 UI 텍스트에만 적용하고,
-     overflow-wrap 으로 긴 URL·숫자열이 컨테이너를 밀어내는 경우를 받아낸다. */
-  h1,
-  h2,
-  h3,
-  h4,
-  h5,
-  h6,
-  button,
-  label,
-  th {
-    word-break: keep-all;
-    overflow-wrap: anywhere;
-  }
+  /* (한국어 조판 규칙은 위 `body` 로 올라갔다 — D19. 여기 있던 요소 8종 선택자는 중복이라 지웠다.) */
 
   /* 포커스 가시성 — docs/design/a11y.md §4 「포커스 링」.
      도입 전에는 CSS 전체에 :focus-visible 이 0건이었고 포커스 링이 UA 기본값에 의존했다.

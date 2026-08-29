@@ -409,10 +409,24 @@ onUnauthorized(invalidateSession);
 | **Edge** (데스크톱) | Tracking prevention **Balanced** | ✅ 지원 |
 | Chrome **시크릿 모드** | 서드파티 쿠키 차단 | ⚠️ 감지 후 안내 |
 | Edge **Strict** · 3P 쿠키 차단 토글 | 차단 | ⚠️ 감지 후 안내 |
-| Safari / iOS | ITP | ❌ 미지원 |
+| **Safari / iOS** | ITP | ✅ **지원** (2026-08-29 개정) |
 | Firefox | Total Cookie Protection | ❌ 미지원 |
 
 근거는 [ADR 0007 §C](../adr/0007-백엔드-연동-아키텍처를-확정한다.md)에 공식 원문으로 있다.
+
+### 4.1.1 🚨 Safari/iOS — 지원으로 뒤집혔다, 다만 이유를 모른다
+
+이 표의 Safari 행은 2026-08-29 까지 **❌ 미지원**이었다. 근거는 WebKit 의 *"ITP by default blocks all third-party cookies. There are no exceptions."* 였고 그 인용은 **지금도 정확하다.**
+
+뒤집힌 이유는 인용이 틀려서가 아니라 **전제를 실측하지 않았기 때문**이다. 그 문장에서 "이 제품은 아이폰에서 로그인할 수 없다"가 나오려면 프론트와 API 가 cross-site 여야 하는데, 배포에서 그게 계속 참인지 아무도 확인하지 않았다. 사용자 확인 결과 **아이폰에서 로그인과 이용이 실제로 유지되고 있다** → [ADR 0007 「개정 1」](../adr/0007-백엔드-연동-아키텍처를-확정한다.md).
+
+⚠️ **왜 되는지의 메커니즘은 아직 확인되지 않았다.** 배포 토폴로지가 same-site 로 바뀌었을 수도, 다른 경로일 수도 있다. **지원한다는 사실은 정해졌지만 그 이유를 모르는 채로 두면 인프라가 바뀔 때 조용히 깨진다** — §4.3 의 행동 판별(`getMe()` 프로브)이 그때도 사용자에게는 알려 주지만, 원인 추적은 여전히 우리 몫이다. 확인할 것:
+
+1. 배포본에서 프론트 오리진과 `VITE_API_BASE` 오리진의 **등록 가능 도메인이 같은가**(같으면 same-site 라 ITP 와 무관하다)
+2. 응답의 `Set-Cookie` 에 실제로 `SameSite=None; Secure` 가 붙는가
+3. iOS Safari 에서 `GET /auth/me` 가 로그인 며칠 뒤에도 200 인가 (ITP 의 7일 스토리지 삭제는 same-site 여도 적용되는 별개 장치다)
+
+**Firefox 는 미지원을 유지한다** — 확인된 사용 사례가 없다. 같은 실수를 반대 방향으로 반복하지 않으려는 것이다: 근거는 「문서상 막힌다」가 아니라 **실사용 확인**이어야 한다.
 
 ### 4.2 🔍 Edge InPrivate는 Chrome 시크릿과 다르다
 
@@ -446,7 +460,7 @@ UA 스니핑을 쓰지 않는 이유 셋:
 
 ---
 
-### 4.5 로딩·에러 화면 — 계약은 정하고 시각은 미정으로 남긴다
+### 4.5 로딩·에러 화면 — 로딩은 결정됐다(D14), 에러는 계약만 정해져 있다
 
 `staleTime`의 **기본값은 0**이다(공식: *"The default staleTime is 0, causing background reloads on every route match."*). 그리고 라우터는 **`defaultPendingComponent`가 없으면 펜딩 타이머를 시작조차 하지 않고 Suspense 경계도 만들지 않는다**(ADR 0005가 기록해 둔 사실).
 
@@ -455,10 +469,16 @@ UA 스니핑을 쓰지 않는 이유 셋:
 | 정한 것 | 미정 |
 |---|---|
 | 라우트마다 `staleTime`을 **명시한다** — 기본값 0에 기대지 않는다 | 각 라우트의 구체값(데이터 성격별) |
-| `defaultPendingComponent` · `defaultErrorComponent`를 **둔다** | 그 시각 디자인 |
+| `defaultPendingComponent` · `defaultErrorComponent`를 **둔다** | — (아래 참조) |
 | 로더는 `abortController.signal`을 전송 계층에 넘긴다(§1.2 #4-a) | — |
 
-🚨 **시각 디자인을 여기서 지어내지 않는다.** 로딩·에러 상태의 근거가 `design/layout.md`에 **0건**이고, 값을 발명하는 것은 이 저장소가 금지한 행위다. **디자인 오너 결정이 선행되어야 한다** — 그전까지는 접근성만 지키는 최소 형태(`role="status"` / `role="alert"` + 텍스트)로 둔다.
+> **2026-08-28 갱신 — 로딩의 시각 디자인은 더 이상 미정이 아니다.**
+>
+> 이 절은 원래 *"🚨 시각 디자인을 여기서 지어내지 않는다. … 디자인 오너 결정이 선행되어야 한다"* 로 닫혀 있었다. 그 결정이 나왔다 — [design/decisions.md D14](../design/decisions.md#d14-로딩-상태의-시각과-문구-체계를-정한다).
+>
+> `defaultPendingComponent` 는 `shared/ui/RoutePending.tsx` 로 **이미 등록돼 있다**(`app/router/router.tsx`). 등록 자체가 스위치였다 — 펜딩 컴포넌트가 없으면 라우터가 펜딩 세션을 아예 만들지 않아서, 위에 적힌 그 기계가 통째로 잠들어 있었다. 지금은 `defaultPendingMs: 1000` · `defaultPendingMinMs: 500` 이 동작하므로 **1초 안에 끝나는 전환에는 아무것도 뜨지 않는다.**
+>
+> **아직 미정인 것**: `defaultErrorComponent` 의 시각(에러 상태는 layout.md §9 에 계속 열려 있다) · 라우트별 `staleTime` 구체값. 에러는 그전까지 현행 최소 형태(`role="alert"` + 텍스트)를 유지한다.
 
 ---
 

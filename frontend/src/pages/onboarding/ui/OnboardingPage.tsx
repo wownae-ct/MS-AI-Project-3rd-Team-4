@@ -26,14 +26,15 @@ import {
   type TastePreference,
   type UserRole,
   type VenuePriority,
-  type WeddingCategoryUpdateInput,
 } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
 import { computeDefaultUnsurePrecision, computeUnsurePrecisionOptions } from "@/shared/lib/wedding-date";
-import { Button, Card, Page } from "@/shared/ui";
+import { Card, Loading, Page, SkeletonRows } from "@/shared/ui";
 import { buildReviewLabels } from "./build-review-labels";
 import {
   GeneratingOverlay,
+  GUEST_COUNT_UNSURE_DEFAULT,
+  OnboardingNav,
   STEP_HEADLINE,
   STEP_SUBTITLE,
   Step1RoleDate,
@@ -47,14 +48,18 @@ import {
   Step9CustomRequest,
   Step10Review,
   TOTAL_STEPS,
+  allocationRowsToCategoryUpdates,
+  useAllocationGuard,
   type Step,
   type UnsurePrecision,
 } from "./steps";
 import { useOnboardingData } from "./use-onboarding-data";
 
 // 3단계(취향)·4단계(목표)를 "나중에 설정"으로 건너뛸 때 백엔드에 실제로 보낼 기본값
-// (2026-08-26 사용자 지시 — 지어낸 값이 아니라 대화로 정한 값). 예산/하객수(2단계)는 이런
-// 고정값이 아니라 `*_unsure` 플래그 경로를 쓴다 — 그 값은 아래 파생 상수 블록 참고.
+// (2026-08-26 사용자 지시 — 지어낸 값이 아니라 대화로 정한 값). 2단계의 두 필드는 서로 다르게
+// 처리된다: 총예산은 고정값 없이 `total_budget_unsure` 플래그만 보내고 서버가 벤치마크로 채우지만,
+// 하객수는 서버에 그런 경로가 없어 프론트가 `GUEST_COUNT_UNSURE_DEFAULT`(200명)를 실어 보낸다
+// (2026-08-28 사용자 지시 — Step2RegionBudget.tsx의 상수 주석에 배경). 플래그는 둘 다 보낸다.
 const TASTE_DEFAULT: TastePreference = "BALANCED";
 const GOALS_DEFAULT: string[] = ["예산 초과 없이 준비", "계약서 꼼꼼히 확인"];
 
@@ -112,20 +117,22 @@ export function OnboardingPage() {
   const parsedTotalBudget = totalBudget === "" ? 0 : Number(totalBudget);
 
   // "나중에 설정" 기본값 파생 블록 (2026-08-26 사용자 지시) — 실제 state는 건드리지 않고,
-  // 제출/9단계 확인 화면에 쓸 "실제로 반영될 값"만 여기서 계산한다. 각 필드가 비어있는 채로
+  // 제출/10단계 확인 화면에 쓸 "실제로 반영될 값"만 여기서 계산한다. 각 필드가 비어있는 채로
   // 넘어왔다는 것 자체가 "건드리지 않았다"는 신호라 별도의 "건너뛴 단계" 추적 상태가 필요 없다
   // — 나중에 돌아가서 채우면 이 파생값도 자동으로 "실제 선택"으로 바뀐다.
   //
   // 🚨 이전엔 총예산/하객수를 비운 채로 "다음"만 눌러도 total_budget:0·guest_count:0이 그대로
   // 나갔다(실제 버그, 2026-08-26 발견) — 0은 "미정"이 아니라 진짜 0원/0명으로 해석된다. 아래
   // `isBudgetDefaulted`/`isGuestCountDefaulted`가 이 버그를 "나중에 설정" 여부와 무관하게 항상
-  // 닫는다.
+  // 닫는다. 하객수는 여기서 걸린 경우(명시적 미정 토글이든, 비워둬서 defaulted든) 똑같이
+  // `GUEST_COUNT_UNSURE_DEFAULT`로 나간다 — 두 경로가 다른 값을 저장하면 10단계 확인 화면이
+  // 보여준 값과 실제 저장값이 갈린다.
   const isBudgetDefaulted = !totalBudgetUnsure && totalBudget === "";
   const effectiveTotalBudgetUnsure = totalBudgetUnsure || isBudgetDefaulted;
   const isGuestCountDefaulted = !guestCountUnsure && guestCount === "";
   const effectiveGuestCountUnsure = guestCountUnsure || isGuestCountDefaulted;
   // 같은 부류의 버그 — "정확한 날짜"를 고르고 값은 비운 채로 "나중에 설정"(1단계에서 바로
-  // 9단계로 점프)을 누르면 isDateExact=true·weddingDate=""가 그대로 남는다. 이 조합으로
+  // 10단계로 점프)을 누르면 isDateExact=true·weddingDate=""가 그대로 남는다. 이 조합으로
   // 제출하면 wedding_date:"" 가 Pydantic date 강제 변환에서 422 로 튕긴다(레드팀 감사) — 다른
   // defaulted 필드들과 같은 패턴으로, "선택은 EXACT 지만 값이 없다"를 실제로는 미정 취급한다.
   const isDateDefaulted = isDateExact && weddingDate === "";
@@ -142,6 +149,18 @@ export function OnboardingPage() {
   const totalBudgetEstimate = effectiveTotalBudgetUnsure ? (benchmark?.median_price ?? 0) : parsedTotalBudget;
   const allocatedBudget = allocationRows.filter((row) => row.isActive).reduce((sum, row) => sum + row.plannedBudget, 0);
 
+  // 배분 초과 가드(2026-08-28 사용자 지시) — 술어·초기화·미정 해제를 한 곳이 소유한다.
+  // 근거와 배경은 use-allocation-guard.ts 머리말에 있다.
+  const { isOverAllocated, wasAllocationReset, handleAllocationRowsChange, handleTotalBudgetChange, handleSkipToReview } =
+    useAllocationGuard({
+      allocatedBudget,
+      totalBudgetEstimate,
+      setAllocationRows,
+      setTotalBudget,
+      setTotalBudgetUnsure,
+      goToReview: () => setStep(10),
+    });
+
   async function handleSubmit() {
     setError(null);
     setIsSubmitting(true);
@@ -153,14 +172,8 @@ export function OnboardingPage() {
       // 태우던 구조였다). 백엔드가 categories 필드를 받아 처음부터 정확한 활성 집합으로 한 번만
       // 생성하도록 바뀌는 게 전제(별도 세션 dev-35가 backend 쪽 구현). putWeddingCategories는
       // 이제 온보딩 이후 수정(예산 페이지 등)에만 쓰인다 — 여기서는 더 이상 호출하지 않는다.
-      const categoryUpdates: WeddingCategoryUpdateInput[] = allocationRows.map((row) => ({
-        category_code: row.categoryCode,
-        is_active: row.isActive,
-        planned_budget: row.isActive ? row.plannedBudget : 0,
-        display_order: row.displayOrder,
-        selected_options: row.isActive ? row.selectedOptions : null,
-        ...(row.isActive ? {} : { skip_reason: "온보딩에서 사용 안 함으로 표시" }),
-      }));
+      // 행→payload 변환은 그 역방향(categoriesToAllocationRows)과 같은 파일에 있다.
+      const categoryUpdates = allocationRowsToCategoryUpdates(allocationRows);
 
       try {
         await createWedding({
@@ -170,7 +183,7 @@ export function OnboardingPage() {
           total_budget: effectiveTotalBudgetUnsure ? undefined : parsedTotalBudget,
           total_budget_unsure: effectiveTotalBudgetUnsure,
           region_code: regionCode,
-          guest_count: effectiveGuestCountUnsure ? undefined : Number(guestCount),
+          guest_count: effectiveGuestCountUnsure ? GUEST_COUNT_UNSURE_DEFAULT : Number(guestCount),
           guest_count_unsure: effectiveGuestCountUnsure,
           taste_preference: effectiveTastePreference,
           venue_priority: venuePriority ?? undefined,
@@ -209,8 +222,6 @@ export function OnboardingPage() {
     }
   }
 
-  const stepDots = Array.from({ length: TOTAL_STEPS }, (_, i) => (i + 1) as Step);
-
   // isSubmitting 은 이미 handleSubmit 이 시작할 때 true, navigate 호출 직전 finally 에서만
   // false 로 돌아간다 — 그래서 성공 시에는 이 오버레이가 사라지는 순간과 라우트가 바뀌는 순간이
   // 거의 같아, 사용자 눈에 "오버레이 → 대시보드"로 자연스럽게 이어진다.
@@ -245,6 +256,9 @@ export function OnboardingPage() {
       title={STEP_HEADLINE[step]}
       subtitle={STEP_SUBTITLE[step]}
       width="max-w-[430px]"
+      // 온보딩은 셸이 아예 없다(layout.md §1) — 10단계를 통과하는 내내 앵커가 하나도 없었다.
+      // 상시 크롬과 같은 「소」 크기로만 둔다 — 이 열은 430px 이고 아래로 단계 점·카드가 이어진다. D15.
+      brand={22}
       // 최초 진입(1단계)만 끈다 — 문서 제목과 중복 낭독을 피한다(Page.tsx 규범). 이후 모든 단계
       // 전환은 헤드라인이 바뀌므로(Page.tsx의 focus effect가 title도 의존성으로 본다) 스크린
       // 리더가 화면이 바뀐 것을 알 수 있어야 한다(접근성 감사 2026-08-26, WCAG 4.1.3 관점).
@@ -257,7 +271,7 @@ export function OnboardingPage() {
         장식 요소이므로 role 대신 aria-hidden 으로 스크린리더에서 아예 뺀다.
       */}
       <div className="flex items-center gap-1.5" aria-hidden="true">
-        {stepDots.map((dot) => (
+        {Array.from({ length: TOTAL_STEPS }, (_, i) => (i + 1) as Step).map((dot) => (
           <span key={dot} className={`h-1 flex-1 rounded-pill ${dot <= step ? "bg-primary" : "bg-line"}`} />
         ))}
       </div>
@@ -309,36 +323,41 @@ export function OnboardingPage() {
         )}
         {step === 6 && <Step6Progress doneSoFar={doneSoFar} onDoneSoFarChange={setDoneSoFar} />}
         {step === 9 && <Step9CustomRequest customRequest={customRequest} onCustomRequestChange={setCustomRequest} />}
+        {/* `ReviewLabels`의 11개 필드 이름이 `Step10ReviewProps`와 그대로 일치한다 — 그러라고
+            만든 객체다(build-review-labels.ts 머리말). 한 줄씩 옮겨 적으면 필드가 늘 때마다
+            여기도 같이 고쳐야 하고, 빠뜨려도 타입이 잡아 주기 전까지는 조용하다. */}
         {step === 10 && (
           <Step10Review
-            weddingDateLabel={reviewLabels.weddingDateLabel}
+            {...reviewLabels}
             isDateDefaulted={isDateDefaulted}
-            regionLabel={reviewLabels.regionLabel}
-            budgetLabel={reviewLabels.budgetLabel}
             isBudgetDefaulted={isBudgetDefaulted}
-            guestCountLabel={reviewLabels.guestCountLabel}
             isGuestCountDefaulted={isGuestCountDefaulted}
-            tasteLabel={reviewLabels.tasteLabel}
             isTasteDefaulted={isTasteDefaulted}
-            goalsLabel={reviewLabels.goalsLabel}
             isGoalsDefaulted={isGoalsDefaulted}
-            venuePriorityLabel={reviewLabels.venuePriorityLabel}
-            sdmPriorityLabel={reviewLabels.sdmPriorityLabel}
-            progressLabel={reviewLabels.progressLabel}
             activeCategoryCount={activeCategoryCount}
             totalCategoryCount={allocationRows.length}
-            allocatedBudgetLabel={reviewLabels.allocatedBudgetLabel}
-            customRequestLabel={reviewLabels.customRequestLabel}
+            isAllocationReset={wasAllocationReset}
           />
         )}
         {(step === 7 || step === 8) &&
           (isLoadingCategories ? (
-            <p className="text-sm text-ink-soft">불러오는 중…</p>
+            // D14 L2 — 카테고리 토글/배분 목록 자리. 줄 수를 늘리지 않으려고 조각으로만 둔다.
+            <>
+              <SkeletonRows count={5} />
+              <Loading srOnly />
+            </>
           ) : categoriesError === null ? (
             step === 7 ? (
-              <Step7CategoryToggle rows={allocationRows} onRowsChange={setAllocationRows} />
+              <Step7CategoryToggle rows={allocationRows} onRowsChange={handleAllocationRowsChange} />
             ) : (
-              <Step8Allocation rows={allocationRows} onRowsChange={setAllocationRows} totalBudgetEstimate={totalBudgetEstimate} />
+              <Step8Allocation
+                rows={allocationRows}
+                onRowsChange={handleAllocationRowsChange}
+                totalBudgetEstimate={totalBudgetEstimate}
+                allocatedBudget={allocatedBudget}
+                isOverAllocated={isOverAllocated}
+                onTotalBudgetChange={handleTotalBudgetChange}
+              />
             )
           ) : (
             <p role="alert" className="rounded-md border border-line bg-primary-soft px-3 py-2 text-sm text-primary">
@@ -351,41 +370,18 @@ export function OnboardingPage() {
           </p>
         )}
 
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            {step > 1 && (
-              <Button variant="ghost" onClick={() => setStep((current) => (current - 1) as Step)}>
-                <span aria-hidden="true">←</span> 이전
-              </Button>
-            )}
-            {/* 모든 입력 단계(1~9)에 "나중에 설정"이 있다(2026-08-26 사용자 지시, 2026-08-28
-                9단계 자유 서술 추가로 범위가 자연스럽게 넓어졌다) — 목적지는 항상 10단계(확인)다.
-                몇 단계에서 눌렀든 남은 단계는 그냥 건너뛰고, 비워둔 필드는 10단계가 정한
-                기본값으로 채워진다(§ isXxxDefaulted 파생값 블록) — "다음"으로 하나씩 넘기는 것과
-                달리 여기선 중간 단계를 굳이 보여줄 필요가 없다. */}
-            {step < TOTAL_STEPS && (
-              <Button variant="ghost" onClick={() => setStep(10)}>
-                나중에 설정
-              </Button>
-            )}
-          </div>
-          {step < TOTAL_STEPS ? (
-            <Button
-              // 1단계에서 "정확한 날짜"를 고르고 값을 비운 채로는 다음으로 넘어가지 못하게 막는다
-              // — "나중에 설정"은 여전히 열려 있다(그 경우 isDateDefaulted 파생값이 안전하게
-              // 미정 취급한다). 값 없이 "다음"만 눌러 진행하면 결국 9단계 제출 시점에야 422로
-              // 알게 되던 문제를 여기서 먼저 막는다(레드팀 감사).
-              disabled={step === 1 && isDateDefaulted}
-              onClick={() => setStep((current) => (current + 1) as Step)}
-            >
-              다음
-            </Button>
-          ) : (
-            <Button disabled={isSubmitting} onClick={() => void handleSubmit()}>
-              시작하기
-            </Button>
-          )}
-        </div>
+        {/* 버튼 줄 자체는 OnboardingNav.tsx가 그린다(max-lines 상한으로 뽑아냄) — 다만 "다음"을
+            막는 술어는 여기와 useAllocationGuard가 계속 소유한다(그 파일 머리말). */}
+        <OnboardingNav
+          step={step}
+          isDateDefaulted={isDateDefaulted}
+          isOverAllocated={isOverAllocated}
+          isSubmitting={isSubmitting}
+          onBack={() => setStep((current) => (current - 1) as Step)}
+          onNext={() => setStep((current) => (current + 1) as Step)}
+          onSkipToReview={handleSkipToReview}
+          onSubmit={() => void handleSubmit()}
+        />
       </Card>
     </Page>
   );

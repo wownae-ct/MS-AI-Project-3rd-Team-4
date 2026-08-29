@@ -78,7 +78,21 @@ const EXPECTED_BARE_UTILITIES = {
   // ② 피할 수 없는 식별자 충돌 — 클래스로는 쓰지 않는데 그 단어가 소스에 있어 생성된다.
   //    각 25 B 남짓이라 이름을 비트는 값어치가 없다고 판단해 받아들인다.
   block: "Button 의 block prop 이름 — 구현은 w-full 이고 이 클래스는 쓰지 않는다",
+  // D17(배지 두 축) 이 들여왔다. block 과 같은 종류의 충돌이다 — 변이 **값**의 이름일 뿐,
+  // 이 클래스를 className 에 쓰지 않는다(구현은 border border-current bg-surface).
+  outline: "Badge 의 outline 변이 이름 — VARIANT 룩업의 키라 이름을 비틀 수 없다",
   static: "ErrorBoundary 의 static getDerivedStateFromError — JS 키워드라 피할 수 없다",
+  // D20(날짜 입력)이 들여왔다. `DateCalendar` 의 월 그리드는 진짜 `<table>` 이다 — div + role 로
+  // 흉내 내면 접근성 린트가 막고(비대화형 요소에 대화형 role 금지) 행·열 헤더 관계도 잃는다.
+  // 태그 이름이라 이름을 비틀 수단이 없다. `.table{display:table}` 한 줄이다.
+  table: "DateCalendar 의 월 그리드 <table> — HTML 태그 이름이라 피할 수 없다",
+  // ⚠️ 이 항목만 128 B 다(위 「25 B 남짓」의 예외 — .transform 은 --tw-rotate-*·--tw-skew-* 5개를
+  // 잇는 값이라 규칙이 길다). 그래도 받아들이는 이유: icons.tsx 의 IconThumbDown 은 IconThumbUp 과
+  // **같은 기하의 180° 점대칭**이고, 그 회전을 SVG `transform` 속성으로 낸다. 속성 이름이라 이름을
+  // 비틀 수단이 없다. CSS 클래스(rotate-180 origin-center)로 옮기면 이 단어는 사라지지만 아이콘의
+  // 방향이 CSS 로딩에 의존하게 된다 — 스타일이 늦거나 실패하면 「싫어요」가 「좋아요」 모양으로
+  // 보인다. 128 B 보다 그쪽이 나쁘다고 판단했다.
+  transform: "icons.tsx 의 <g transform> — 엄지 아이콘 180° 점대칭. SVG 속성 이름이라 피할 수 없다",
 };
 
 describe("bare 후보 중 CSS 를 만드는 것은 화이트리스트뿐이다", () => {

@@ -13,6 +13,8 @@
 | `styles.css` | **앱의 유일한 CSS 진입점.** `app/main.tsx` 가 이것 하나만 import 한다. Tailwind · 폰트 · `@source` · base 레이어 |
 | `theme.css` | `@theme` 디자인 토큰 — `docs/design/` 의 값 1:1 |
 | `Page` `Card` `Button` `Badge` `Money` `Progress` `Tabs` `ErrorBoundary` `icons` | 프리미티브 |
+| `NumberInput` `DateField` | 네이티브 입력 대체 — 각각 `type="number"` · `type="date"` 를 갈아끼웠다(그 파일 머리말에 **무엇을 잃고 어떻게 갚았는지** 표로 있다). `DateField` 의 그리드(`DateCalendar`)는 `React.lazy` 로 내린 별도 청크라 `index.ts` 로 내보내지 않는다 |
+| `Select` | 네이티브 `<select>` 대체(D22) — 위 둘과 같은 계열이고, 그 파일 머리말에 **무엇을 잃고 어떻게 갚았는지** 표로 있다(잃는 것은 모바일 OS 피커 하나다). 목록까지 직접 그리는 이유는 **열린 목록을 브라우저·OS 가 그려 닫힌 상자와 이질적이었기 때문**이다(사용자 리포트). APG 「Select-Only Combobox」. `field` 16px / `compact` 14px, 드롭다운 11곳이 쓰던 클래스 문자열 5종의 단일 소유자다 |
 | `index.ts` | 공개 API. 슬라이스 밖에서는 이 파일로만 접근한다 |
 
 CSS 는 사이드이펙트라 `index.ts` 로 재수출할 수 없다 — 그래서 `main.tsx` 가 경로로 직접 import 한다([layers.md §4.2](../../../docs/architecture/layers.md)).
@@ -28,24 +30,26 @@ CSS 는 사이드이펙트라 `index.ts` 로 재수출할 수 없다 — 그래�
 | bg / surface / line | `#F7F6F4` / `#FFFFFF` / `#E7E3DE` | `bg-surface` `border-line` | `bg` 는 base 레이어가 `body` 에 1회 적용 |
 | 라운드 sm / md / lg / pill | `8` / `10` / `16` / `999px` | `rounded-sm` `rounded-md` `rounded-lg` `rounded-pill` | **4단계가 전부다** — `--radius-*: initial` 로 Tailwind 기본 8단계를 폐기했다(D1). `rounded-2xl` 류는 생성되지 않는다. ⚠️ `rounded-full`(∞px)·`rounded-none`(0)은 폐기와 무관하게 살아남는다 — `full` 은 게이트가 잡고, 원형은 `rounded-pill` 로. 이 저장소에서 `rounded-md` 는 10px, `rounded-lg` 는 16px(카드) |
 | spacing xs~xl | `4/8/16/20/24px` | Tailwind 기본 `--spacing`(4px) 배수 | 정확히 표현된다 → **별도 토큰을 만들지 않았다**. ⚠️ 이 칸에 유틸리티명을 나열하지 않는다 — 스캐너가 읽어 유틸리티를 만든다(아래 「산문이 유틸리티를 만든다」) |
-| 터치 타겟 44px | — | `min-h-tap` | **WCAG AAA 2.5.5 + Apple HIG 44pt + KRDS 터치 44px 의 수렴.** WCAG **AA** 최저선은 24px(2.5.8). 근거 등급은 [a11y.md](../../../docs/design/a11y.md) §1 |
+| 터치 타겟 44px | — | `min-h-tap` `min-w-tap` | **WCAG AAA 2.5.5 + Apple HIG 44pt + KRDS 터치 44px 의 수렴.** WCAG **AA** 최저선은 24px(2.5.8). 근거 등급은 [a11y.md](../../../docs/design/a11y.md) §1. ⚠️ **44px 는 두 변 모두다** — 라벨 없는 아이콘 버튼은 높이만 잡으면 가로가 글리프 폭까지 줄어든다(AI 답변 평가 버튼이 실제로 28px 였다, D18) |
+| 밀도 낮춘 버튼 (시각 36px / 터치 44px) | — | `Button` 의 `size="sm"` | **44px 계약의 예외가 아니라 구현이다** — 상자를 36px 로 그리고 `::after` 가 위아래 4px 씩 넘쳐 히트 영역을 44px 로 되돌린다. 세로 공간이 곧 콘텐츠 면적인 화면용(AI상담 — `Page fill` 이라 컨트롤이 낮아진 만큼 대화창이 커진다). ⚠️ **짝이다**: `h-9` 만 남고 `after:*` 가 빠지면 타겟이 **조용히** 36px 이 된다(화면상 변화가 없어 눈으로 못 잡는다) — `Button.test.tsx` 가 고정한다. 폼 컨트롤은 같은 수법을 못 쓴다(`<input>` 에 의사요소가 없다) → `<label min-h-tap>` 안에 `h-9` 입력을 넣는다(`entities/chat/ui/ChatPanel.tsx`) |
 | 주 본문 (읽는 글) | — | `text-base`(16px) + `text-ink` | **원 디자인 문서의 공백을 메운 단계.** KRDS "본문 최소 16px" 권고와 일치 |
 | 보조 문구 | `~0.86rem` | `text-sm`(14px) + `text-ink-soft` | 원 디자인 문서의 Body("설명 텍스트, 보조 문구")가 이 자리다 |
 | 캡션·라벨 | — | `text-xs`(12px) + `text-ink-soft` | 짧은 것만 |
 | 헤드라인 | `~1.2–1.3rem` | `text-xl`(1.25rem) | 행간 1.4 |
-| **입력 필드** | — | **16px 미만 금지** | 근거: KRDS 16px + iOS Safari 자동 확대(**2차 자료** — Apple 1차 문서 미확인, [a11y.md](../../../docs/design/a11y.md) §2.3) |
+| **입력 필드** | — | **16px 미만 금지** | 근거: KRDS 16px + iOS Safari 자동 확대(**2차 자료** — Apple 1차 문서 미확인, [a11y.md](../../../docs/design/a11y.md) §2.3).<br>⚠️ 대상은 **텍스트 입력**이다. 드롭다운(`Select`)의 트리거는 `<button>` 이라 iOS 확대 조건 밖이고 이 계약의 적용 대상이 아니다(D22) — 콘텐츠 안에 홀로 놓이면 14px 를 쓴다 |
 
 ## 지켜야 할 규범
 
 규범의 원문과 근거는 [`docs/design/README.md`](../../../docs/design/README.md) 「현행 규범 요약」. 여기는 코드에서 지켜야 할 형태로 옮긴 것이다.
 
 1. **The One Accent Rule** — 베리 플럼은 배지 · 주요 버튼 · 강조 텍스트 · 진행률 채움에만. **배경 워시로 쓰지 않는다.**
+   - 예외는 **분류 색** 셋이다 — 업체 사례 `success`(D12) · 결제 유형 `payment-*`(D13→D17) · 웨딩 카테고리 `category-*`(D17). 셋 다 배지 하나씩에만 쓰고, 새 화면에 색이 필요하면 그 화면을 지목한 별도 결정을 먼저 쓴다. 카테고리 코드→클래스 매핑은 `category-badge.ts` 가 단일 출처다(호출부가 `entities/payment` 와 `pages/report` 양쪽이라 entity 에 둘 수 없다).
 2. **The Flat-By-Default Rule** — 그림자를 쓰지 않는다. 표면 구분은 1px 헤어라인 보더(`border-line`)로만. 호버도 그림자가 아니라 보더/배경의 옅은 변화로. **그림자는 `box-shadow` 하나가 아니다** — `shadow-*` · `inset-shadow-*` 는 `box-shadow`, `drop-shadow-*` 는 `--tw-drop-shadow*` 커스텀 속성 + `filter`, `text-shadow-*` 는 `text-shadow` 로 나간다. 네 계열 전부 금지 ([D10](../../../docs/design/decisions.md#d10-그림자-네임스페이스를-폐기하고-게이트를-파서로-다시-만든다)).
 3. **팔레트 밖 색 금지** — `theme.css` 가 `--color-*: initial` 로 Tailwind 기본 팔레트를 폐기해 **명명 유틸리티**(`bg-red-500` 류)는 없다. 그러나 **임의값(`bg-[#77354F]`)은 테마와 무관하게 그대로 컴파일된다** — Tailwind 에 이를 끄는 설정이 없다. 그래서 **빌드 게이트가 산출 CSS 의 색을 `theme.css` 화이트리스트와 대조해 막는다** ([D8](../../../docs/design/decisions.md#d8-팔레트-밖-색-서술을-사실에-맞게-고치고-게이트로-강제한다)).
 4. **semantic color(성공/경고/위험)를 지어내지 않는다** — 도입하지 않기로 닫았다 ([D6](../../../docs/design/decisions.md#d6-상태-색을-도입하지-않는다)). 상태는 보더 · 배경 톤 · 텍스트 · 형태로 표현한다.
 5. **`ring-*` 금지 — 링은 `outline-*` 로** — `ring-2` 류는 `box-shadow` 로, `ring-primary` 류는 `--tw-ring-color` 커스텀 속성으로 컴파일된다. **어떤 네임스페이스 폐기로도 막히지 않는다**(컴파일 실측). 게이트가 둘 다 잡는다. `outline-2 outline-offset-2 outline-primary` 를 쓴다 ([D9](../../../docs/design/decisions.md#d9-ring--를-금지어로-둔다)).
 6. **금액은 `Money`로만** — KRW 정수 · 콤마 · `tabular-nums` · 700. 화면마다 `toLocaleString` 을 직접 부르면 표기가 조용히 갈린다.
-7. **아이콘은 인라인 SVG** — 외부 아이콘 CDN 금지(self-hosting 원칙). 20개를 넘으면 라이브러리 도입을 재검토한다.
+7. **아이콘은 인라인 SVG** — 외부 아이콘 CDN 금지(self-hosting 원칙). 20개를 넘으면 라이브러리 도입을 재검토한다(현재 14종). **화면에 나가는 이모지·문자 글리프를 쓰지 않는다** — 폰트 글리프라 색 게이트의 사각지대이고, 코드포인트가 Wanted Sans 의 어느 `unicode-range` 조각에도 없어 OS 폰트로 폴백해 플랫폼마다 모양·폭·색이 달라진다 ([D18](../../../docs/design/decisions.md#d18-화면에-렌더되는-이모지문자-글리프를-자체-아이콘으로-대체한다)). 주석 안의 이모지는 화면에 나가지 않으므로 무관하다.
 8. **폰트는 self-host** — Wanted Sans Variable(OFL-1.1). 원 디자인 문서가 Pretendard 를 명시적으로 기각했다.
 9. **다크모드 없음** — 라이트 전용. 게이트가 `prefers-color-scheme` 을 막는다.
 

@@ -1,9 +1,10 @@
 // "+ 항목 추가" — 사용자 커스텀 체크리스트 항목(POST /checklist-items, origin=USER). 모달 없이
 // 인라인으로 펼치는 이 저장소 관례(AddPaymentRow.tsx)를 따른다. group_label 기본값은 item_type의
 // 그룹 라벨(ChecklistTab.tsx GROUP_LABEL)로 채워서, 굳이 고르지 않아도 자연스러운 값이 들어가게 한다.
-import { useState } from "react";
+import { useId, useState } from "react";
 import { CHECKLIST_TITLE_MAX_LENGTH, createChecklistItem, type ChecklistItemType, type ChecklistPriority } from "@/entities/checklist";
 import { ApiError } from "@/shared/api";
+import { Select } from "@/shared/ui";
 
 const ADD_BTN =
   "w-full rounded-sm border border-dashed border-line bg-transparent py-2.5 text-sm font-bold text-ink-soft";
@@ -16,12 +17,19 @@ const ITEM_TYPE_LABEL: Record<ChecklistItemType, string> = {
 };
 const PRIORITY_LABEL: Record<ChecklistPriority, string> = { high: "높음", mid: "보통", low: "낮음" };
 
+// [D22] `Select` 는 `{ value, label }` 목록을 받는다. 라벨 맵이 이미 단일 출처라 여기서 한 번만 옮긴다.
+const ITEM_TYPE_OPTIONS = Object.entries(ITEM_TYPE_LABEL).map(([value, label]) => ({ value, label }));
+const PRIORITY_OPTIONS = Object.entries(PRIORITY_LABEL).map(([value, label]) => ({ value, label }));
+
 interface AddChecklistItemRowProps {
   categoryCode: string;
   onAdded: () => void;
 }
 
 export function AddChecklistItemRow({ categoryCode, onAdded }: AddChecklistItemRowProps) {
+  // 같은 화면에 카테고리별로 여러 번 마운트될 수 있어 고정 id 를 쓰지 않는다(AddPaymentRow 와 같은 처리).
+  const itemTypeId = useId();
+  const priorityId = useId();
   const [open, setOpen] = useState(false);
   const [itemType, setItemType] = useState<ChecklistItemType>("PREP");
   const [title, setTitle] = useState("");
@@ -87,19 +95,18 @@ export function AddChecklistItemRow({ categoryCode, onAdded }: AddChecklistItemR
 
   return (
     <div className="flex flex-col gap-2 rounded-md border border-line bg-bg p-3">
-      <label className="flex flex-col gap-1 text-xs text-ink-soft">
+      {/* [D22] `<label>` 로 감싸지 않고 `htmlFor` 로 잇는다 — `Select` 는 래퍼 안에 컨트롤을
+          그리므로 감싸면 린터가 연결을 못 알아본다. `CostTab` 의 견적 칸(`NumberInput`)이 같은
+          이유로 이미 같은 배선을 쓴다. */}
+      <label className="flex flex-col gap-1 text-xs text-ink-soft" htmlFor={itemTypeId}>
         항목 유형
-        <select
-          className={FORM_INPUT}
+        <Select
+          id={itemTypeId}
+          className="w-full"
           value={itemType}
-          onChange={(e) => setItemType(e.target.value as ChecklistItemType)}
-        >
-          {Object.entries(ITEM_TYPE_LABEL).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
+          onValueChange={(next) => setItemType(next as ChecklistItemType)}
+          options={ITEM_TYPE_OPTIONS}
+        />
       </label>
       <input
         className={FORM_INPUT}
@@ -109,15 +116,15 @@ export function AddChecklistItemRow({ categoryCode, onAdded }: AddChecklistItemR
         maxLength={CHECKLIST_TITLE_MAX_LENGTH}
         onChange={(e) => setTitle(e.target.value)}
       />
-      <label className="flex flex-col gap-1 text-xs text-ink-soft">
+      <label className="flex flex-col gap-1 text-xs text-ink-soft" htmlFor={priorityId}>
         중요도
-        <select className={FORM_INPUT} value={priority} onChange={(e) => setPriority(e.target.value as ChecklistPriority)}>
-          {Object.entries(PRIORITY_LABEL).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
+        <Select
+          id={priorityId}
+          className="w-full"
+          value={priority}
+          onValueChange={(next) => setPriority(next as ChecklistPriority)}
+          options={PRIORITY_OPTIONS}
+        />
       </label>
       {error && (
         <p role="alert" className="text-xs text-primary">
