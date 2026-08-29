@@ -18,7 +18,7 @@ import {
 import type { CategoryConstant } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
 import { AMOUNT_STEP_WON } from "@/shared/lib/money";
-import { Badge, Card, Loading, Money, NumberInput, SkeletonRows } from "@/shared/ui";
+import { Badge, Card, Loading, Money, NumberInput, Select, SkeletonRows } from "@/shared/ui";
 
 interface CostTabProps {
   categoryCode: string;
@@ -134,6 +134,7 @@ export function CostTab({ categoryCode, categoryMeta }: CostTabProps) {
 
 // 라벨↔입력 연결용 고정 id. 이 위젯은 화면에 하나뿐이라(카테고리별 시세 비교 카드) 충돌이 없다.
 const BENCHMARK_AMOUNT_ID = "benchmark-amount";
+const BENCHMARK_ITEM_ID = "benchmark-item";
 
 function BenchmarkWidget({ categoryCode }: { categoryCode: string }) {
   const options = ITEM_CODE_OPTIONS[categoryCode] ?? FALLBACK_ITEM_CODE_OPTIONS;
@@ -166,19 +167,13 @@ function BenchmarkWidget({ categoryCode }: { categoryCode: string }) {
   return (
     <Card title="시세 비교">
       <div className="flex flex-wrap items-end gap-2">
-        <label className="flex flex-col gap-1 text-xs text-ink-soft">
+        {/* [D22] `field`(16px) 를 유지한다 — 바로 옆 형제가 `NumberInput`(16px) 인 입력 행이라,
+            여기만 14px 로 내리면 같은 줄에 두 크기가 섞인다. 위계 역전은 콘텐츠 안에 홀로 놓인
+            컨트롤에서 일어난다(Select.tsx 머리말).
+            `htmlFor` 로 잇는 이유는 바로 아래 견적 칸과 같다 — `Select` 도 래퍼 안에 컨트롤을 그린다. */}
+        <label htmlFor={BENCHMARK_ITEM_ID} className="flex flex-col gap-1 text-xs text-ink-soft">
           항목
-          <select
-            value={itemCode}
-            onChange={(e) => setItemCode(e.target.value)}
-            className="min-h-tap rounded-md border border-line bg-surface px-2 text-base text-ink"
-          >
-            {options.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+          <Select id={BENCHMARK_ITEM_ID} value={itemCode} onValueChange={setItemCode} options={options} />
         </label>
         {/* htmlFor 로 잇는다 — NumberInput 은 래퍼 안에 입력을 그리므로 label 이 감싸도
             린터가 연결을 알아보지 못하고, 무엇보다 라벨 클릭으로 포커스가 오는 동작을

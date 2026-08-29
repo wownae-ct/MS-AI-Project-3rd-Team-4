@@ -1,11 +1,78 @@
 // 입력 프리미티브 카탈로그. `ComponentsSection.tsx` 에서 갈라 둔 이유는 그 파일이 이미 300줄
 // 상한(.oxlintrc.json)에 가까워서다 — 내용이 다른 것이 아니라 자리가 없었다.
-import { useState } from "react";
+import { useId, useState } from "react";
 import { futureQuickPicks, todayISO } from "@/shared/lib/date";
-import { DateField } from "@/shared/ui";
+import { DateField, Select } from "@/shared/ui";
 import { Rule, Section } from "../doc-parts";
 
 const DEMO_INPUT = "min-h-tap w-full rounded-md border border-line bg-surface px-3 text-base text-ink";
+
+const DEMO_OPTIONS = [
+  { value: "VENUE", label: "예식장" },
+  { value: "SDM", label: "스드메" },
+  { value: "HONEYMOON", label: "신혼여행" },
+];
+
+export function SelectSection() {
+  const fieldId = useId();
+  const [category, setCategory] = useState("VENUE");
+  const [filter, setFilter] = useState("SDM");
+
+  return (
+    <Section
+      title="드롭다운"
+      hint="네이티브 select 를 대체합니다. 열린 목록도 닫힌 상자와 같은 디자인 시스템 안에 있습니다."
+    >
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-bold text-ink" htmlFor={fieldId}>
+            field — 전용 입력 폼 안 (보이는 라벨 16px)
+          </label>
+          <Select
+            id={fieldId}
+            className="w-full"
+            value={category}
+            onValueChange={setCategory}
+            options={DEMO_OPTIONS}
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-bold text-ink">compact — 콘텐츠 안 컨트롤 (보이는 라벨 14px)</span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold text-ink">카드 제목처럼 14px 인 이웃</span>
+            <Select
+              size="compact"
+              aria-label="예시 — 카테고리 필터"
+              value={filter}
+              onValueChange={setFilter}
+              options={DEMO_OPTIONS}
+            />
+          </div>
+        </div>
+
+        <Rule>
+          <span className="font-bold">목록까지 우리가 그립니다.</span> 네이티브 select 의 목록은
+          브라우저와 OS 가 그려 모서리·행 높이·하이라이트 색에 CSS 가 닿지 않습니다 — 닫힌 상자를
+          앱 스타일로 맞출수록 그 대비가 오히려 커집니다.
+        </Rule>
+        <Rule>
+          <span className="font-bold">compact 는 콘텐츠 안에 홀로 놓인 컨트롤 전용</span>입니다. 옆에
+          입력칸이 함께 서는 폼에서는 field 를 씁니다 — 한 줄에 두 크기가 섞이는 편이 더 나쁩니다.
+        </Rule>
+        <Rule>
+          <span className="font-bold">고르는 자리에서는 감추지 않습니다.</span> 팝업은 트리거 폭을
+          하한으로 내용까지 넓어지고, 그래도 넘치면 말줄임이 아니라 어절 단위로 접힙니다. 반대로
+          트리거는 한 줄로 줄입니다 — 값에 따라 행 높이가 출렁이면 목록 전체가 들썩입니다.
+        </Rule>
+        <Rule>
+          키보드로 전부 됩니다 — <span className="font-bold">↑↓ · Home/End · Enter · Esc · Tab</span>,
+          그리고 글자를 치면 그 항목으로 건너뜁니다. 닫힌 채로 치면 열지 않고 값만 바뀝니다(네이티브와 같습니다).
+        </Rule>
+      </div>
+    </Section>
+  );
+}
 
 export function DateFieldSection() {
   const [exact, setExact] = useState("");

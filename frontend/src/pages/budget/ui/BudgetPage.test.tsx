@@ -301,8 +301,9 @@ describe("예산 재배분 — 비활성 카테고리는 결제 선택지에서 
     // 백틱에 넣어 평문으로 적어 두었는데, 스캐너에게 백틱은 아무 의미가 없어 그대로 후보가 됐고
     // 게이트가 **두 개**를 잡았다(320px 전수 검사 중 발견). 그래서 지금은 그 낱말들을 아예
     // 적지 않는다 — 같은 규칙이 `shell-metrics.ts`·`onboarding-styles.ts` 머리말에도 있다.
-    const categoryFilter = screen.getByRole("combobox", { name: "카테고리 필터" });
-    expect(within(categoryFilter).getAllByRole("option").map((el) => el.textContent)).toEqual([
+    // [D22] 목록은 열었을 때만 존재하고 트리거의 자식이 아니다 — 자체 목록이라 형제로 붙는다.
+    await userEvent.click(screen.getByRole("combobox", { name: "카테고리 필터" }));
+    expect(screen.getAllByRole("option").map((el) => el.textContent)).toEqual([
       "전체 카테고리",
       "예식장",
     ]);
@@ -312,8 +313,8 @@ describe("예산 재배분 — 비활성 카테고리는 결제 선택지에서 
     await renderBudget(10_000_000, ROWS, CONSTANTS);
     await userEvent.click(screen.getByRole("button", { name: "+ 납부 항목 추가" }));
 
-    const select = screen.getByRole("combobox", { name: "카테고리" });
-    expect(within(select).getAllByRole("option").map((el) => el.textContent)).toEqual(["예식장"]);
+    await userEvent.click(screen.getByRole("combobox", { name: "카테고리" }));
+    expect(screen.getAllByRole("option").map((el) => el.textContent)).toEqual(["예식장"]);
   });
 });
 

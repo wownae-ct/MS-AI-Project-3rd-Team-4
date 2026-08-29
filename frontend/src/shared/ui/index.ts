@@ -33,6 +33,10 @@ export { RoutePending } from "./RoutePending";
 // 산술**을 써야 하는데 `shared` 는 `app` 을 볼 수 없다. 값이 갈리면 노치 아이폰에서 콘텐츠가
 // 고정바 밑으로 잘린다(실제로 잘리고 있었다 — 그 파일 머리말 §산술).
 export { SHELL_BOTTOM_INSET, SHELL_FILL_HEIGHT, SHELL_TOP_INSET } from "./shell-metrics";
+// 드롭다운 (D22) — 네이티브 `<select>` 를 감싼다. **보이는 라벨의 크기와 컨트롤의 `font-size` 가
+// 다른 값**이라는 것이 이 컴포넌트의 존재 이유다(그 파일 머리말). 11개 호출부가 서로 다른 클래스
+// 문자열 5종으로 갈라져 있던 것을 한 소유자로 모았다.
+export { Select, type SelectOption, type SelectProps } from "./Select";
 export { SkeletonRows, type SkeletonRowsProps, type SkeletonRowsVariant } from "./Skeleton";
 // 근거·출처 목록 (D16) — 채팅 인용 · 체크리스트 근거 · 업체사례 관련 사례가 같은 그릇을 쓴다.
 // entities 끼리는 서로를 import 할 수 없으므로 공유 지점은 여기뿐이다(safe-url·source-tier 와 같은 이유).
