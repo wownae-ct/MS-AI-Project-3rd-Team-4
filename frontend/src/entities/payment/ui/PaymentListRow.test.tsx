@@ -46,6 +46,34 @@ describe("PaymentListRow — 보기 모드", () => {
     expect(screen.getByText("계약금").className).toContain("payment-deposit");
   });
 
+  // D17 — 한 줄에 배지가 둘 붙는 유일한 자리다. 색(값)만이 아니라 **형태(계열)** 도 갈려야 한다:
+  // 결제 유형은 테두리, 카테고리는 채움. 둘 다 채움이 되면 어느 쪽이 무슨 축인지 흐려진다.
+  it("결제 유형 배지는 테두리 변이, 카테고리 배지는 채움 변이다", () => {
+    render(<PaymentListRow payment={payment({})} categoryLabel="예식장" onChanged={() => {}} />);
+    const paymentTypeBadge = screen.getByText("잔금");
+    expect(paymentTypeBadge.className).toContain("border-current");
+    expect(paymentTypeBadge.className).not.toContain("bg-payment");
+
+    const categoryBadge = screen.getByText("예식장");
+    expect(categoryBadge.className).not.toContain("border-current");
+    expect(categoryBadge.className).toContain("bg-category-venue-soft");
+  });
+
+  // 색은 표시 이름(categoryLabel)이 아니라 category_code 로 고른다 — 서버가 표시 문구를 바꿔도
+  // 색이 조용히 바뀌지 않아야 한다.
+  it("카테고리 배지 색은 표시 이름이 아니라 category_code 로 고른다", () => {
+    render(<PaymentListRow payment={payment({ category_code: "SDM" })} categoryLabel="아무 이름" onChanged={() => {}} />);
+    expect(screen.getByText("아무 이름").className).toContain("category-sdm");
+  });
+
+  // 백엔드가 10번째 카테고리를 추가해도 색을 지어내지 않고 기본 배지로 떨어진다.
+  it("모르는 category_code 는 기본 배지(primary 채움)로 떨어진다", () => {
+    render(<PaymentListRow payment={payment({ category_code: "NEW_ONE" })} categoryLabel="새 카테고리" onChanged={() => {}} />);
+    const badge = screen.getByText("새 카테고리");
+    expect(badge.className).toContain("bg-primary-soft");
+    expect(badge.className).not.toContain("bg-category");
+  });
+
   it("수정·삭제 버튼이 둘 다 있다", () => {
     render(<PaymentListRow payment={payment({})} onChanged={() => {}} />);
     expect(screen.getByRole("button", { name: "수정" })).toBeInTheDocument();

@@ -48,7 +48,11 @@ const ROW = "flex items-start gap-2 border-b border-line py-2 last:border-0";
 // 제목 전체가 링크다 — 종전 2단계(배지 → 상세 → 링크)를 1단계로 줄이고, 터치 타겟을 행 전폭으로
 // 넓힌다. line-clamp-2 는 전폭(약 760px)으로도 넘치는 예외적인 제목만 받는 안전망이다.
 const LINK = "flex min-h-tap items-center gap-1 text-xs text-ink underline hover:text-primary";
-const TIER_BADGE = "mt-0.5 bg-surface text-ink-soft";
+// 색과 여백을 나눠 둔다 — `Badge` 는 색을 `tone` 으로만 받는다. 색을 `className` 으로 넘기면
+// 기준 색과 명시도가 같아 산출 CSS 순서에 지고 조용히 무시된다(Badge.tsx 머리말의 실측).
+// 실제로 이 배지의 `text-ink-soft` 가 그 방식이라 D16 도입 이후 계속 primary 로 떠 있었다.
+const TIER_BADGE_SPACING = "mt-0.5";
+const TIER_BADGE_TONE = "bg-surface text-ink-soft";
 
 export interface SourceListItem {
   /** 목록 안에서 유일한 React key. 채팅·업체사례는 chunk_id, 체크리스트는 항목 id. */
@@ -144,7 +148,11 @@ function SourceRow({ item, noUrlNote }: { item: SourceListItem; noUrlNote: strin
   return (
     <li className={ROW}>
       {/* 티어는 짧고 고정된 어휘라 여기서는 배지가 맞는 그릇이다 — 잘릴 일이 없다(D16). */}
-      {tierLabel !== null && <Badge className={TIER_BADGE}>{tierLabel}</Badge>}
+      {tierLabel !== null && (
+        <Badge className={TIER_BADGE_SPACING} tone={TIER_BADGE_TONE}>
+          {tierLabel}
+        </Badge>
+      )}
       <div className="min-w-0 flex-1">
         {safeUrl === undefined ? (
           <>

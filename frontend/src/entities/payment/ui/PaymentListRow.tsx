@@ -31,6 +31,14 @@
 // (origin/backend 코드로 확인), 이 상태 전환도 삭제와 마찬가지로 별도 합계 보정 로직이 필요
 // 없다 — status가 바뀌는 순간 다음 조회부터 집계에 자동 반영된다.
 //
+// **배지 두 개의 색 체계(D17, 2026-08-29, 사용자 지시).** 이 행은 배지를 두 개 붙이는 유일한
+// 자리다 — 결제 유형(계약금/중도금/잔금/기타)과 카테고리(예식장/스드메/…). 둘 다 「채운 색
+// 알약」이면 한 줄에 13색이 섞여 어느 쪽이 무슨 축인지 흐려지므로 **형태로 계열을 가른다**:
+//   · 카테고리 = 채움(`Badge` 기본) + 서로 다른 색상 9종 — 순서 없는 명목형
+//   · 결제 유형 = 테두리(`variant="outline"`) + 한 색상의 명도 3단계 — 계약금→중도금→잔금 순서형
+// 카테고리 색은 `categoryLabel`(사람이 읽는 이름)이 아니라 `p.category_code`로 고른다 — 이미
+// 이 컴포넌트에 있는 값이라 **호출부 prop 이 늘지 않는다.**
+//
 // **삭제 확인도 모달이 아니라 인라인 전환**이다("OOO 삭제할까요?" + 삭제/취소) — 이 저장소엔
 // danger 색 토큰이 아예 없다(D6) — 새로 만들지 않고 기존 에러 문구와 같은 text-primary 굵은
 // 글씨만 쓴다. 삭제 확인엔 상태별 보조 문구도 붙는다(PAID: 총 지불액에서 빠진다는 안내 —
@@ -39,7 +47,7 @@
 import { useState } from "react";
 import { ApiError } from "@/shared/api";
 import { AMOUNT_STEP_WON } from "@/shared/lib/money";
-import { Badge, Money, NumberInput } from "@/shared/ui";
+import { Badge, categoryBadgeClass, Money, NumberInput } from "@/shared/ui";
 import { deletePayment, patchPayment } from "../api/payment";
 import type { Payment, PaymentPatchInput } from "../model";
 import { PAYMENT_TYPE_BADGE_CLASS, PAYMENT_TYPE_LABEL } from "./payment-labels";
@@ -211,8 +219,10 @@ export function PaymentListRow({ payment: p, categoryLabel, onChanged }: Payment
         {/* flex-wrap — 배지 2개가 이제 안 눌리므로(D16) 좁은 폭에서는 뒤따르는 텍스트가 다음
             줄로 내려가야 한다. 없으면 그 텍스트가 세로로 접힌다. */}
         <div className="flex flex-wrap items-center gap-2">
-          <Badge className={PAYMENT_TYPE_BADGE_CLASS[p.payment_type]}>{PAYMENT_TYPE_LABEL[p.payment_type] ?? p.payment_type}</Badge>
-          {categoryLabel !== undefined && <Badge>{categoryLabel}</Badge>}
+          <Badge variant="outline" tone={PAYMENT_TYPE_BADGE_CLASS[p.payment_type]}>
+            {PAYMENT_TYPE_LABEL[p.payment_type] ?? p.payment_type}
+          </Badge>
+          {categoryLabel !== undefined && <Badge tone={categoryBadgeClass(p.category_code)}>{categoryLabel}</Badge>}
           <span className="text-xs font-bold text-primary">수정 중</span>
         </div>
         <input className={ROW_INPUT} aria-label="항목명" value={draftName} onChange={(e) => setDraftName(e.target.value)} />
@@ -290,8 +300,10 @@ export function PaymentListRow({ payment: p, categoryLabel, onChanged }: Payment
         {/* flex-wrap + min-w-0 — 배지 2개가 이제 안 눌리므로(D16) 좁은 폭에서는 항목명이 다음
             줄로 내려가 거기서 전폭을 쓰고 잘린다. 종전엔 같은 줄에서 0px 까지 밀려 사라졌다. */}
         <div className="flex flex-wrap items-center gap-2">
-          <Badge className={PAYMENT_TYPE_BADGE_CLASS[p.payment_type]}>{PAYMENT_TYPE_LABEL[p.payment_type] ?? p.payment_type}</Badge>
-          {categoryLabel !== undefined && <Badge>{categoryLabel}</Badge>}
+          <Badge variant="outline" tone={PAYMENT_TYPE_BADGE_CLASS[p.payment_type]}>
+            {PAYMENT_TYPE_LABEL[p.payment_type] ?? p.payment_type}
+          </Badge>
+          {categoryLabel !== undefined && <Badge tone={categoryBadgeClass(p.category_code)}>{categoryLabel}</Badge>}
           <p className="min-w-0 truncate text-sm font-bold text-ink">{p.item_name}</p>
         </div>
         <p className="text-xs text-ink-soft">

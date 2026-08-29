@@ -18,8 +18,11 @@
 // 뭉쳐 놨던 것 자체가 S5(리포트)와 여기(S6)가 "미배정"을 다른 정의로 계산하던 버그의 근본
 // 원인이었다(`entities/wedding/model/derive-budget-summary.ts` 머리말). "지불예정" 색은 결제
 // 유형 배지 전용이던 `--color-payment-interim`을 재사용한다 — 새 토큰을 만들지 않는다(이미
-// D8 절차를 거쳐 WCAG AA를 넘긴 기존 토큰의 재사용이지, 새 색을 지어내는 것이 아니다.
-// surface 6.66 · bg 6.16 · line 5.21, theme.css 참고 — 전부 4.5:1 이상).
+// D8 절차를 거쳐 WCAG AA를 넘긴 기존 토큰의 재사용이지, 새 색을 지어내는 것이 아니다).
+// ⚠️ **그 토큰의 값이 2026-08-29에 바뀌었다(D17)** — 결제 유형 배지가 「한 색상의 명도 3단계」로
+// 재설계되면서 `#2f5f8f` → `#194e7e`로 한 단계 짙어졌다. 색상은 그대로라 이 도넛의 계열 구분
+// (플럼=지불 완료 · 회색=배정 · 라인=미배정)은 영향받지 않는다. 참조는 여전히 토큰 이름으로만
+// 한다 — hex를 여기 박아 두면 다음에 값이 바뀔 때 조용히 갈린다.
 //
 // **총예산 인라인 수정을 이 컴포넌트가 직접 담당한다(UX 개편 2차, 2026-08-26, 사용자 지시).**
 // 원래 별도 "남은예산" 카드(`TotalBudgetCard.tsx`, 삭제됨)가 하던 일이다 — "총 예산 현황" 카드
@@ -299,7 +302,9 @@ export function BudgetDonut({ summary, onTotalBudgetSaved, benchmark, isEditing,
                 (01-endpoints.md:141 — "날짜 단독 변경이면 빠름, 그 외는 느림"). 예전에도 그랬지만
                 초과 안내의 CTA 가 이 경로를 전면에 내세우게 되어 미리 알린다. */}
             <p className="text-xs text-ink-soft">총예산을 바꾸면 맞춤 추천을 다시 만드느라 잠시 걸릴 수 있어요.</p>
-            <div className="flex items-center gap-3">
+            {/* flex-wrap + basis-full — 에러 문구는 서버 메시지를 그대로 싣는다. 감싸 주지
+                않으면 좁은 폭에서 저장·취소 버튼을 밀어낸다(WeddingDateEdit.tsx 의 같은 형태). */}
+            <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
                 onClick={() => void handleSaveTotal()}
@@ -314,7 +319,7 @@ export function BudgetDonut({ summary, onTotalBudgetSaved, benchmark, isEditing,
                 취소
               </button>
               {saveState === "error" && (
-                <span role="alert" className="text-xs text-primary">
+                <span role="alert" className="basis-full text-xs text-primary">
                   {errorMessage}
                 </span>
               )}

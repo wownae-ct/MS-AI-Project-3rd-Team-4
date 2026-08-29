@@ -1,6 +1,9 @@
 // shared/ui public API (§6.1.1) — 스타일(styles.css)은 app 진입점에서 1회 import한다.
 // CSS 는 사이드이펙트라 여기서 재수출할 수 없다 (layers.md §4.2).
-export { Badge, type BadgeProps } from "./Badge";
+export { Badge, type BadgeProps, type BadgeVariant } from "./Badge";
+// 웨딩 카테고리 배지 색 (D17) — 비용 관리(entities/payment)와 리포트(pages/report)가 같은 매핑을
+// 써야 하는데 entities 끼리는 서로를 import 할 수 없다. 공유 지점은 여기뿐이다(SourceList 와 같은 이유).
+export { CATEGORY_BADGE_CLASS, categoryBadgeClass } from "./category-badge";
 // 브랜드 락업 (D15) — 셸(사이드바·모바일 상단바)과 셸 밖 화면(로그인·온보딩·생성 오버레이)이 함께 쓴다.
 export { Brand, type BrandProps } from "./Brand";
 export { Button, type ButtonProps, type ButtonVariant } from "./Button";
