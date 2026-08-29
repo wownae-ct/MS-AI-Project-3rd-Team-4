@@ -78,6 +78,9 @@ const EXPECTED_BARE_UTILITIES = {
   // ② 피할 수 없는 식별자 충돌 — 클래스로는 쓰지 않는데 그 단어가 소스에 있어 생성된다.
   //    각 25 B 남짓이라 이름을 비트는 값어치가 없다고 판단해 받아들인다.
   block: "Button 의 block prop 이름 — 구현은 w-full 이고 이 클래스는 쓰지 않는다",
+  // D17(배지 두 축) 이 들여왔다. block 과 같은 종류의 충돌이다 — 변이 **값**의 이름일 뿐,
+  // 이 클래스를 className 에 쓰지 않는다(구현은 border border-current bg-surface).
+  outline: "Badge 의 outline 변이 이름 — VARIANT 룩업의 키라 이름을 비틀 수 없다",
   static: "ErrorBoundary 의 static getDerivedStateFromError — JS 키워드라 피할 수 없다",
   // ⚠️ 이 항목만 128 B 다(위 「25 B 남짓」의 예외 — .transform 은 --tw-rotate-*·--tw-skew-* 5개를
   // 잇는 값이라 규칙이 길다). 그래도 받아들이는 이유: icons.tsx 의 IconThumbDown 은 IconThumbUp 과
