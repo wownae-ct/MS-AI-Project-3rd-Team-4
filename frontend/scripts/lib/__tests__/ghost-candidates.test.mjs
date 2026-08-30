@@ -48,6 +48,12 @@ describe("스캐너 후보에 유령이 없다", () => {
   it("주석이 만들던 방향 보더 유령이 없다 (D27 개정)", () => {
     expect(candidates.has("border-y")).toBe(false);
   });
+  // 2026-08-30 (고지 병합) — `Page.tsx` 의 `MAIN_FILL` 주석이 *"이 유틸리티를 쓰지 않는다"* 를
+  // 설명하려고 **그 이름을 적는 바람에** 규칙이 생겼다. 바로 위 항목과 같은 사고의 재발이다 —
+  // 「안 쓴다」고 적는 것과 「이름을 안 적는다」는 다르다. 주석은 이름 없이 다시 썼다.
+  it("주석이 만들던 간격 0 유령이 없다", () => {
+    expect(candidates.has("gap-0")).toBe(false);
+  });
   it("금지 토큰이 후보에 없다 — ring · 그림자 · 색 임의값", () => {
     const banned = [...candidates].filter((c) =>
       /^(?:[\w-]+:)*(?:(?:inset-)?ring(?:-|$)|(?:inset-shadow|drop-shadow|text-shadow|shadow)(?:-|$)|[\w-]+-\[#[0-9a-f]{3,8}\]$)/iu.test(c),
