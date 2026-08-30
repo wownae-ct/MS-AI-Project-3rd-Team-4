@@ -38,11 +38,15 @@ CHECKLIST 도메인이 80% 확률로 계속 BLOCKED됐다 — #129가 고친 건
 카테고리마다 기존 `validate_checklist_items`를 재사용해 카테고리 단위 SUCCESS/BLOCKED를
 낸다 — 검증 규칙 자체는 하나도 안 바뀐다.
 
-**TIMELINE은 이번 변경 대상에서 제외했다** — category_code=null인 범용 일정 개념이 있어
-"카테고리 하나만 요청하는 호출"이라는 패턴이 그대로 안 들어맞는다(범용 항목을 어느 카테고리
-호출에 넣을지 애매함). validate의 카테고리 커버리지 규칙이 TIMELINE에도 동일 적용되므로
-구조적 위험은 남아있지만, 이번 실측에서 TIMELINE이 실제로 같은 방식으로 재발하는지는
-확인하지 못했다 — 별도 설계·라이브 검증이 필요한 후속 과제로 남긴다(red-bug.md #9-11).
+**2026-08-30 2차 결정 — TIMELINE도 같은 카테고리 세분화를 적용한다.** #9-11 시점에는 TIMELINE을
+제외했다(category_code=null 범용 일정을 어느 카테고리 호출에 넣을지 애매해서). 그런데 같은 날
+TIMELINE 결정론화로 **범용 항목이 LLM 생성 대상에서 완전히 빠지면서 그 걸림돌 자체가
+사라졌다** — 이제 LLM이 만드는 타임라인 항목은 전부 실제 카테고리를 가지므로 CHECKLIST와
+똑같이 쪼갤 수 있다. #9-11이 "후속 과제로 남긴다"고 적었던 그 재발이 실제로 확인됐다:
+staging 실측에서 보호 항목이 **하나도 없는** 계정(test1431)도 GIFT/HOMENEW/HOMEWARE/HONEYMOON
+누락으로 BLOCKED됐다 — 보호 항목 dedup으로는 설명이 안 되는, #9-11과 완전히 같은 "일부
+카테고리만 만들고 멈춤" 실패다. TIMELINE은 폴백이 도메인 단위(all-or-nothing)여서 카테고리
+1개 실패의 대가가 CHECKLIST보다 훨씬 컸다(나머지 8개 카테고리의 LLM 결과까지 전부 폐기).
 
 폴백 병합도 도메인 단위(all-or-nothing)에서 카테고리 단위로 세분화했다
 (`app/services/personalization.py`) — 예전엔 CHECKLIST 9개 카테고리 중 1개만 실패해도 이미
@@ -72,6 +76,7 @@ from app.personalization.validation import (
     protected_titles_for_domain,
     validate_checklist_by_category,
     validate_personalization_draft,
+    validate_timeline_by_category,
 )
 from app.rag.retrieval import RetrievedChunk, retrieve
 
@@ -163,31 +168,39 @@ def _resolve_checklist_citations(
     return resolved
 
 
-async def _generate_domain_draft(
-    domain: str,
+async def _generate_timeline_category_draft(
+    category: str,
     profile: dict,
     protected_items: dict,
-    retry_feedback: dict[str, list[str]] | None,
-    contract_citations: list[RetrievedChunk],
+    retry_errors: list[str] | None,
     client,
     settings: Settings,
-) -> dict:
-    """단일 도메인(CHECKLIST 또는 TIMELINE)만 요청하는 독립 LLM 호출 1건 — generate_node가
-    두 도메인이 모두 대상일 때 이 코루틴 2개를 asyncio.gather로 동시에 돌린다(red-bug.md #9
-    §9-6~§9-9 실측: 결합 호출이 BLOCKED 급증의 근본 원인으로 확인됨)."""
-    prompt = build_generate_prompt(
-        [domain],
-        profile,
-        protected_items,
-        retry_feedback,
-        contract_citations if domain == "CHECKLIST" else None,
-    )
+) -> list[dict]:
+    """TIMELINE 카테고리 하나만 요청하는 독립 LLM 호출 1건(2026-08-30 2차, 위 모듈 docstring
+    참고) — `_generate_checklist_category_draft`와 완전히 같은 패턴이다. 두 함수를 하나로
+    합치지 않은 이유는 도메인별로 다른 게 세 가지 있어서다: 응답 키(`timeline_items` vs
+    `checklist_items`), DS3 인용 근거(CHECKLIST 전용), 그리고 인용 해석 후처리
+    (`_resolve_checklist_citations`, CHECKLIST 전용). 억지로 합치면 분기가 함수 안으로
+    들어와 오히려 읽기 나빠진다.
+
+    CHECKLIST와 마찬가지로 응답 파싱 직후 모든 항목의 category_code를 이 호출이 요청받은
+    카테고리로 무조건 덮어쓴다 — 프롬프트 출력 스키마에서 그 필드를 아예 뺐으므로
+    (prompts.py::_TIMELINE_OUTPUT_SCHEMA) 오타·카테고리 혼입이 구조적으로 불가능해진다.
+    이 레포가 세 번 재발시킨 "LLM이 category_code에 문자열 'null'을 냄" 버그 계열도 같은
+    이유로 애초에 발생할 수 없다."""
+    category_profile = {**profile, "active_categories": [category]}
+    retry_feedback = {"TIMELINE": retry_errors} if retry_errors else None
+    prompt = build_generate_prompt(["TIMELINE"], category_profile, protected_items, retry_feedback)
     response = await client.chat.completions.create(
         model=settings.azure_openai_chat_deployment,
         response_format={"type": "json_object"},
         messages=[{"role": "user", "content": prompt}],
     )
-    return json.loads(response.choices[0].message.content)
+    parsed = json.loads(response.choices[0].message.content)
+    items = parsed.get("timeline_items") or []
+    for item in items:
+        item["category_code"] = category
+    return items
 
 
 async def _generate_checklist_category_draft(
@@ -231,15 +244,14 @@ async def _generate_checklist_category_draft(
     return items
 
 
-# ② generate: TIMELINE(대상이면)은 기존처럼 도메인 단위 독립 호출, CHECKLIST(대상이면)는
-# 활성 카테고리 단위로 더 잘게 쪼갠 독립 호출 — 전부 asyncio.gather로 동시 요청한다
-# (2026-08-30 결정, red-bug.md #9-11 — 위 모듈 docstring 참고. TIMELINE은 범용 항목 개념
-# 때문에 이번 세분화 대상에서 제외, 기존 도메인 단위 그대로 유지). retry_count > 0(=validate
-# 재시도로 다시 들어온 경우, 2026-08-25 결정)이면 이번 패스에서 실제로 BLOCKED였던
-# 도메인/카테고리만 다시 호출하고, 이미 SUCCESS인 것은 state의 기존 draft를 그대로
-# carry-forward한다. DS3 RAG 근거(contract_citations)는 CHECKLIST 카테고리 중 하나라도 이번
-# 패스에 재생성 대상일 때만, gather로 병렬 호출을 보내기 전에 순차로 먼저 fetch한다 —
-# AsyncSession은 동시 사용이 안전하지 않으므로 DB 접근은 반드시 gather 이전에 끝낸다.
+# ② generate: 두 도메인 모두(대상이면) 활성 카테고리 단위로 쪼갠 독립 호출을 전부
+# asyncio.gather로 동시 요청한다 — CHECKLIST는 2026-08-30(red-bug.md #9-11), TIMELINE은
+# 같은 날 2차 결정으로 합류했다(위 모듈 docstring 참고). retry_count > 0(=validate 재시도로
+# 다시 들어온 경우, 2026-08-25 결정)이면 이번 패스에서 실제로 BLOCKED였던 카테고리만 다시
+# 호출하고, 이미 SUCCESS인 것은 state의 기존 draft를 그대로 carry-forward한다. DS3 RAG
+# 근거(contract_citations)는 CHECKLIST 카테고리 중 하나라도 이번 패스에 재생성 대상일 때만,
+# gather로 병렬 호출을 보내기 전에 순차로 먼저 fetch한다 — AsyncSession은 동시 사용이
+# 안전하지 않으므로 DB 접근은 반드시 gather 이전에 끝낸다.
 async def generate_node(state: PersonalizationState, config: RunnableConfig) -> dict:
     settings: Settings = config["configurable"].get("settings") or get_settings()
     async with traced_span(
@@ -250,24 +262,26 @@ async def generate_node(state: PersonalizationState, config: RunnableConfig) -> 
             return {"checklist_draft": None, "timeline_draft": None}
 
         is_retry = state.get("retry_count", 0) > 0
-        validation_errors = state.get("validation_errors") or {}
         checklist_category_status = state.get("checklist_category_status") or {}
         checklist_category_errors = state.get("checklist_category_errors") or {}
+        timeline_category_status = state.get("timeline_category_status") or {}
+        timeline_category_errors = state.get("timeline_category_errors") or {}
         active_categories: list[str] = state["profile"].get("active_categories") or []
 
-        domains_to_regenerate = [
-            domain
-            for domain in affected_domains
-            if domain == "TIMELINE" and (not is_retry or validation_errors.get(domain))
-        ]
-        checklist_categories_to_regenerate = (
-            [
+        def _categories_to_regenerate(domain: str, category_status: dict[str, str]) -> list[str]:
+            if domain not in affected_domains:
+                return []
+            return [
                 category
                 for category in active_categories
-                if not is_retry or checklist_category_status.get(category) == "BLOCKED"
+                if not is_retry or category_status.get(category) == "BLOCKED"
             ]
-            if "CHECKLIST" in affected_domains
-            else []
+
+        checklist_categories_to_regenerate = _categories_to_regenerate(
+            "CHECKLIST", checklist_category_status
+        )
+        timeline_categories_to_regenerate = _categories_to_regenerate(
+            "TIMELINE", timeline_category_status
         )
 
         contract_citations = (
@@ -289,21 +303,20 @@ async def generate_node(state: PersonalizationState, config: RunnableConfig) -> 
             )
             for category in checklist_categories_to_regenerate
         ]
-        domain_coros = [
-            _generate_domain_draft(
-                domain,
+        timeline_coros = [
+            _generate_timeline_category_draft(
+                category,
                 state["profile"],
                 state["protected_items"],
-                validation_errors if is_retry else None,
-                contract_citations,
+                timeline_category_errors.get(category) if is_retry else None,
                 client,
                 settings,
             )
-            for domain in domains_to_regenerate
+            for category in timeline_categories_to_regenerate
         ]
-        all_results = await asyncio.gather(*checklist_coros, *domain_coros)
+        all_results = await asyncio.gather(*checklist_coros, *timeline_coros)
         checklist_results = all_results[: len(checklist_coros)]
-        parsed_by_domain = dict(zip(domains_to_regenerate, all_results[len(checklist_coros) :]))
+        timeline_results = all_results[len(checklist_coros) :]
 
         checklist_draft = state["checklist_draft"]
         if "CHECKLIST" in affected_domains:
@@ -319,18 +332,19 @@ async def generate_node(state: PersonalizationState, config: RunnableConfig) -> 
                 for category in active_categories
                 for item in draft_by_category.get(category, [])
             ]
+        # TIMELINE도 CHECKLIST와 같은 carry-forward 구조다(2026-08-30 2차). 범용
+        # (category_code=null) 항목은 LLM이 아예 안 만들고 app/services/personalization.py가
+        # 결정론적으로 채우므로(TIMELINE 결정론화), 여기 draft에는 실제 카테고리 항목만 있다.
         timeline_draft = state["timeline_draft"]
-        if "TIMELINE" in domains_to_regenerate:
-            # 2026-08-30 결정(TIMELINE 결정론화) — category_code=null인 범용 항목을 LLM 생성
-            # 대상에서 아예 제외했으므로(prompts.py::_TIMELINE_RULES/_build_timeline_few_shot),
-            # 여기서 받는 항목은 전부 실제 카테고리를 가져야 정상이다. 예전엔 LLM이 종종
-            # category_code 자리에 문자열 "null"/"None"을 내는 걸 여기서 방어적으로 실제
-            # None으로 정규화했지만(_normalize_timeline_category_code, 2026-08-24 도입,
-            # 3번 재발), 이제 null 자체가 유효한 선택지가 아니므로 그 정규화를 계속 두면
-            # "진짜 잘못된 카테고리 문자열"을 조용히 검증 예외 항목(None)으로 둔갑시켜 버그를
-            # 숨기는 역효과만 남는다 — 제거하고 validate의 ENUM 검증이 그대로 잡게 둔다
-            # (app/services/personalization.py가 범용 항목 자체는 별도로 결정론적으로 채운다).
-            timeline_draft = parsed_by_domain["TIMELINE"].get("timeline_items") or []
+        if "TIMELINE" in affected_domains:
+            timeline_by_category = group_checklist_by_category(state["timeline_draft"] or [])
+            for category, items in zip(timeline_categories_to_regenerate, timeline_results):
+                timeline_by_category[category] = items
+            timeline_draft = [
+                item
+                for category in active_categories
+                for item in timeline_by_category.get(category, [])
+            ]
         return {"checklist_draft": checklist_draft, "timeline_draft": timeline_draft}
 
 
@@ -389,6 +403,14 @@ async def validate_node(state: PersonalizationState, config: RunnableConfig) -> 
             checklist_draft or [],
             protected_titles_for_domain(protected_items, "CHECKLIST"),
         )
+    timeline_category_status: dict[str, str] = {}
+    timeline_category_errors: dict[str, list[str]] = {}
+    if "TIMELINE" in state["affected_domains"]:
+        timeline_category_status, timeline_category_errors = validate_timeline_by_category(
+            active_categories,
+            timeline_draft or [],
+            protected_titles_for_domain(protected_items, "TIMELINE"),
+        )
 
     domain_errors = validate_personalization_draft(
         active_categories,
@@ -397,10 +419,17 @@ async def validate_node(state: PersonalizationState, config: RunnableConfig) -> 
         timeline_draft,
         protected_items,
     )
-    if "CHECKLIST" in domain_errors:
-        domain_errors["CHECKLIST"] = [
-            error for errors in checklist_category_errors.values() for error in errors
-        ]
+    # 도메인 레벨 에러는 카테고리별 판정의 요약으로 갈아끼운다 — 두 판정이 서로 다른 문구를
+    # 내면 ai_invocations.error_message(도메인 레벨)와 실제 폴백 결정(카테고리 레벨)이 어긋나
+    # 디버깅이 어려워진다.
+    for domain, category_errors in (
+        ("CHECKLIST", checklist_category_errors),
+        ("TIMELINE", timeline_category_errors),
+    ):
+        if domain in domain_errors:
+            domain_errors[domain] = [
+                error for errors in category_errors.values() for error in errors
+            ]
 
     validation_status = {
         domain: "BLOCKED" if errors else "SUCCESS" for domain, errors in domain_errors.items()
@@ -415,6 +444,8 @@ async def validate_node(state: PersonalizationState, config: RunnableConfig) -> 
         "timeline_draft": timeline_draft,
         "checklist_category_status": checklist_category_status,
         "checklist_category_errors": checklist_category_errors,
+        "timeline_category_status": timeline_category_status,
+        "timeline_category_errors": timeline_category_errors,
         "validation_status": validation_status,
         "validation_errors": domain_errors,
         "retry_count": retry_count,

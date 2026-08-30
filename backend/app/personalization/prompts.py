@@ -92,9 +92,8 @@ _CHECKLIST_RULES = """웨딩 프로필(활성 카테고리·우선순위·스타
 _TIMELINE_RULES = """아래 표준 카탈로그(few-shot)를 참고해 이 커플에게 맞는 타임라인을 만드세요.
 
 - 활성 카테고리에 해당하는 항목만 포함하세요. 비활성 카테고리 항목은 만들지 마세요.
-- category_code는 활성 카테고리 중 하나를 반드시 쓰세요(9개 ENUM 값 중 하나). 혼인신고·
-  결혼 날짜 확정처럼 특정 카테고리에 안 속하는 범용 일정은 이미 별도로 자동 추가되니
-  만들지 마세요 — 굳이 만들어도 category_code를 정할 수 없어 오류가 납니다.
+- 혼인신고·결혼 날짜 확정처럼 특정 카테고리에 안 속하는 범용 일정은 이미 별도로 자동
+  추가되니 만들지 마세요.
 - default_dday_offset_days는 본식 기준 며칠 전(음수)/후(양수)인지 정수로, -400~60 범위
   안에서만 쓰세요.
 - 예식 성수기로 분류되는 달(봄철·가을철 주말)에 본식일이 잡혀 있다면 인기 있는 예식장·
@@ -120,8 +119,8 @@ _TIMELINE_RULES = """아래 표준 카탈로그(few-shot)를 참고해 이 커�
 
 # 2026-08-30 결정(CHECKLIST category_code 강제주입, red-bug.md #24 후속) — 이 스키마에서
 # category_code 필드를 뺐다. CHECKLIST는 이제 카테고리 하나만 요청하는 호출로만 쓰이므로
-# (app/personalization/graph.py::_generate_checklist_category_draft, 결합 도메인 호출
-# 경로인 _generate_domain_draft는 이제 TIMELINE 전용) 어느 카테고리인지는 호출 시점에
+# (app/personalization/graph.py::_generate_checklist_category_draft — 2026-08-30 2차로
+# TIMELINE까지 카테고리 단위가 되면서 도메인 단위 호출 경로 자체가 없어졌다) 어느 카테고리인지는 호출 시점에
 # 코드가 이미 알고 있다 — 모델에게 다시 물어볼 이유가 없다. 예전엔 이 필드를 모델이 직접
 # 써야 했는데, 오타("HONEYMOON"→"HONEYOON")나 다른 카테고리 혼입 같은 실패가 실측으로
 # 확인됐다(staging 라이브 테스트, 60% BLOCKED 중 일부가 이 유형). 필드 자체를 안 물어보면
@@ -163,8 +162,14 @@ def build_contract_citation_menu(chunks: list) -> str | None:
     return "\n".join(lines)
 
 
-_TIMELINE_OUTPUT_SCHEMA = """타임라인 항목은 각각 이 필드만 채우세요:
-{"category_code": "...", "title": "...", "default_dday_offset_days": 정수}"""
+# 2026-08-30 2차 — CHECKLIST와 같은 이유로 이 스키마에서도 category_code를 뺐다
+# (_CHECKLIST_OUTPUT_SCHEMA 위 주석 참고). TIMELINE도 이제 카테고리 하나만 요청하는 호출로만
+# 쓰이므로(graph.py::_generate_timeline_category_draft) 어느 카테고리인지는 호출 시점에 코드가
+# 이미 안다 — graph.py가 파싱 직후 무조건 호출 카테고리로 덮어쓴다. 이 레포가 세 번 재발시킨
+# "LLM이 category_code에 문자열 'null'을 냄" 버그 계열이 구조적으로 불가능해지는 효과도 있다.
+_TIMELINE_OUTPUT_SCHEMA = """타임라인 항목은 각각 이 필드만 채우세요(category_code는 이미 정해져
+있으므로 쓰지 마세요):
+{"title": "...", "default_dday_offset_days": 정수}"""
 
 
 def _build_checklist_few_shot(active_categories: set[str] | None = None) -> str:

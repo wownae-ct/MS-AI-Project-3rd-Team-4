@@ -7,6 +7,7 @@ from app.personalization.validation import (
     validate_checklist_by_category,
     validate_checklist_items,
     validate_personalization_draft,
+    validate_timeline_by_category,
     validate_timeline_items,
 )
 
@@ -54,13 +55,53 @@ class TestCategoryMembership:
 
 
 class TestCategoryCoverage:
-    def test_missing_active_category_fails(self):
+    def test_missing_active_category_fails_when_no_protected_items(self):
+        # 이름에 "when_no_protected_items"를 넣은 이유: 2026-08-30 2차부터 protected도 커버로
+        # 세므로, 이 명제는 "보호 항목도 없을 때"만 참이다(아래 짝 테스트 참고).
         active = {"VENUE", "SDM"}
         items = [{"category_code": "VENUE", "title": "제목"}]
 
         errors = validate_checklist_items(active, items)
 
         assert any("SDM" in e for e in errors)
+
+    def test_category_covered_only_by_protected_items_passes(self):
+        # 이번 수정의 SSOT — staging 실패(test05)의 최소 재현. 새 초안이 protected와 제목이
+        # 전부 겹쳐 dedup으로 0건이 돼도, 그 보호 행은 재생성 후에도 화면에 남으므로
+        # "항목이 없다"가 아니다.
+        errors = validate_checklist_items({"VENUE"}, [], {("VENUE", "계약금 상한 확인")})
+
+        assert errors == []
+
+    def test_timeline_category_covered_only_by_protected_items_passes(self):
+        errors = validate_timeline_items({"VENUE"}, [], {("VENUE", "예식장 투어 시작")})
+
+        assert errors == []
+
+    def test_protected_item_in_another_category_does_not_cover_missing_category(self):
+        # 완화가 과도하게 새지 않는지 — VENUE 보호 항목이 SDM을 덮어주면 안 된다.
+        errors = validate_checklist_items(
+            {"VENUE", "SDM"},
+            [{"category_code": "VENUE", "title": "제목"}],
+            {("VENUE", "계약금 상한 확인")},
+        )
+
+        assert any("SDM" in e for e in errors)
+
+    def test_protected_title_with_null_category_covers_nothing(self):
+        # TIMELINE 범용 항목(category_code=None)은 어떤 활성 카테고리도 커버하지 못한다 —
+        # 초안 쪽 `is not None` 필터와 대칭이어야 한다.
+        errors = validate_timeline_items({"VENUE"}, [], {(None, "혼인신고")})
+
+        assert any("VENUE" in e for e in errors)
+
+    def test_protected_coverage_does_not_suppress_other_rules(self):
+        # 완화가 커버리지 규칙만 건드리고 나머지 규칙(제목 누락 등)은 그대로 잡아야 한다.
+        errors = validate_checklist_items(
+            {"VENUE"}, [{"category_code": "VENUE"}], {("VENUE", "계약금 상한 확인")}
+        )
+
+        assert any("title" in e or "제목" in e for e in errors)
 
     def test_domain_independence_checklist_covers_but_timeline_missing_only_fails_timeline(self):
         # Arrange: 체크리스트엔 활성 카테고리 SDM 항목이 있고 타임라인엔 없음
@@ -350,3 +391,39 @@ class TestValidateChecklistByCategory:
         status, _ = validate_checklist_by_category(active, items)
 
         assert status == {"VENUE": "SUCCESS", "SDM": "SUCCESS"}
+
+
+class TestValidateTimelineByCategory:
+    """2026-08-30 2차 — TIMELINE도 CHECKLIST와 같은 카테고리 단위 판정을 낸다. staging에서
+    보호 항목이 하나도 없는 계정(test1431)이 GIFT/HOMENEW/HOMEWARE/HONEYMOON 누락으로
+    BLOCKED된 실패가 근거 — 도메인 단위 폴백이라 그 1개 때문에 나머지 카테고리의 LLM 결과까지
+    전부 버려졌다."""
+
+    def test_one_missing_category_only_blocks_that_category(self):
+        items = [
+            {"category_code": "VENUE", "title": "예식장 투어", "default_dday_offset_days": -300}
+        ]
+
+        status, _ = validate_timeline_by_category({"VENUE", "SDM"}, items)
+
+        assert status == {"VENUE": "SUCCESS", "SDM": "BLOCKED"}
+
+    def test_category_covered_only_by_protected_is_success(self):
+        # 커버리지 완화가 카테고리 단위 판정 경로에도 실제로 전달되는지(전달 누락 회귀 방지).
+        status, _ = validate_timeline_by_category(
+            {"VENUE", "SDM"},
+            [{"category_code": "SDM", "title": "드레스 투어", "default_dday_offset_days": -200}],
+            {("VENUE", "예식장 투어 시작")},
+        )
+
+        assert status == {"VENUE": "SUCCESS", "SDM": "SUCCESS"}
+
+    def test_offset_out_of_range_only_blocks_its_own_category(self):
+        items = [
+            {"category_code": "VENUE", "title": "예식장 투어", "default_dday_offset_days": -300},
+            {"category_code": "SDM", "title": "드레스 투어", "default_dday_offset_days": -9999},
+        ]
+
+        status, _ = validate_timeline_by_category({"VENUE", "SDM"}, items)
+
+        assert status == {"VENUE": "SUCCESS", "SDM": "BLOCKED"}
