@@ -10,7 +10,7 @@ import userEvent from "@testing-library/user-event";
 // 대신한다). 컴포넌트는 `todayISO()`(KST)를 쓰는데 테스트만 UTC 로 재고 있어서, **KST
 // 00:00~08:59 에만** 하루가 어긋나 두 케이스가 깨졌다(그 시간대에 실제로 깨져서 발견했다).
 // 계산을 앱과 같은 함수로 통일한다 — 시각에 따라 결과가 갈리는 테스트를 남기지 않는다.
-import { todayISO } from "@/shared/lib/date";
+import { formatKorean, todayISO } from "@/shared/lib/date";
 import type { Payment } from "../model";
 import { PaymentListRow } from "./PaymentListRow";
 
@@ -40,6 +40,13 @@ function payment(overrides: Partial<Payment>): Payment {
     ...overrides,
   };
 }
+
+// [2026-08-30] 날짜 칸은 더 이상 텍스트 입력이 아니다 — 값을 이고 다니는 **트리거 버튼**이고,
+// 값을 만드는 길은 캘린더뿐이다(`shared/ui/DateField.tsx` 머리말 §개정). 접근명이
+// `"예정일, 2026년 11월 2일 (월)"` 꼴이라 라벨 완전일치로는 잡히지 않는다.
+const dateNameOf = (label: string) => new RegExp(`^${label},`, "u");
+const dateField = (label: string) => screen.getByRole("button", { name: dateNameOf(label) });
+const queryDateField = (label: string) => screen.queryByRole("button", { name: dateNameOf(label) });
 
 beforeEach(() => {
   patchPaymentMock.mockReset();
@@ -97,7 +104,7 @@ describe("PaymentListRow — 수정", () => {
     // 값은 콤마가 붙은 표시 문자열이다(2026-08-28) — 실제 값은 저장 시 콤마 없는 정수로 나간다.
     expect(screen.getByRole("spinbutton", { name: "금액(원)" })).toHaveValue("28,000,000");
     // PLANNED(paid_date 없음)는 예정일(due_date)을 편집 대상으로 쓴다.
-    expect(screen.getByLabelText("예정일")).toHaveValue("2026-11-02");
+    expect(dateField("예정일")).toHaveTextContent(formatKorean("2026-11-02"));
   });
 
   it("PAID 건은 결제일(paid_date)을 편집 대상으로 쓴다 — 예정일이 아니다", async () => {
@@ -110,8 +117,8 @@ describe("PaymentListRow — 수정", () => {
     );
     await user.click(screen.getByRole("button", { name: "수정" }));
 
-    expect(screen.getByLabelText("결제일")).toHaveValue("2026-08-20");
-    expect(screen.queryByLabelText("예정일")).not.toBeInTheDocument();
+    expect(dateField("결제일")).toHaveTextContent(formatKorean("2026-08-20"));
+    expect(queryDateField("예정일")).not.toBeInTheDocument();
   });
 
   it("저장 성공 시 patchPayment에 수정한 값을 보내고 onChanged를 호출한다", async () => {
@@ -183,9 +190,9 @@ describe("PaymentListRow — 상태 전환(PLANNED→PAID)", () => {
     await user.click(screen.getByRole("button", { name: "수정" }));
     await user.click(screen.getByLabelText("이미 결제했어요"));
 
-    expect(screen.queryByLabelText("예정일")).not.toBeInTheDocument();
+    expect(queryDateField("예정일")).not.toBeInTheDocument();
     const today = todayISO();
-    expect(screen.getByLabelText("결제일")).toHaveValue(today);
+    expect(dateField("결제일")).toHaveTextContent(formatKorean(today));
     expect(screen.getByText("저장하면 「지급완료」로 바뀝니다.")).toBeInTheDocument();
   });
 
@@ -214,7 +221,7 @@ describe("PaymentListRow — 상태 전환(PLANNED→PAID)", () => {
     await user.click(screen.getByLabelText("이미 결제했어요"));
     await user.click(screen.getByLabelText("이미 결제했어요"));
 
-    expect(screen.getByLabelText("예정일")).toHaveValue("2026-11-02");
+    expect(dateField("예정일")).toHaveTextContent(formatKorean("2026-11-02"));
   });
 });
 
@@ -236,7 +243,7 @@ describe("PaymentListRow — 상태 전환(PAID→CANCELED, 환불)", () => {
     await user.click(screen.getByRole("button", { name: "수정" }));
     await user.click(screen.getByLabelText("환불 처리(취소)"));
 
-    expect(screen.getByLabelText("결제일")).toBeDisabled();
+    expect(dateField("결제일")).toBeDisabled();
     expect(screen.getByText("저장하면 「취소됨」으로 바뀌고 총 지불액에서 빠집니다.")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "저장" }));

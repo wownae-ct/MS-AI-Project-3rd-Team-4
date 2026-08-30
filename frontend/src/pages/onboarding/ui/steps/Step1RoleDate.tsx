@@ -1,6 +1,6 @@
 // 1단계: 역할 + 결혼예정일. 시각 스펙 s1-onboarding.html:190-230.
 import type { UserRole, WeddingDatePrecision } from "@/entities/wedding";
-import { todayISO } from "@/shared/lib/date";
+import { todayISO, weddingQuickPicks } from "@/shared/lib/date";
 import type { UnsurePrecisionOption } from "@/shared/lib/wedding-date";
 import { DateField } from "@/shared/ui";
 import {
@@ -103,13 +103,17 @@ export function Step1RoleDate({
                 "내년 5월 토요일"을 고르려면 달력 앱을 따로 열어야 했다. 이제 월 그리드가 주말을
                 굵게 보여주고, 고르면 아래 힌트가 "2027년 5월 15일 (토) · 259일 뒤"로 확인해 준다.
                 `min` — 지나간 날짜를 결혼 **예정**일로 등록할 이유가 없다(대시보드의 수정 칸은
-                다르다: 이미 치른 결혼의 날짜를 고칠 수 있어야 해서 min 을 두지 않는다). */}
+                다르다: 이미 치른 결혼의 날짜를 고칠 수 있어야 해서 min 을 두지 않는다).
+                [2026-08-30] 빠른 선택은 `futureQuickPicks`(오늘·1주 뒤·1개월 뒤)가 아니라
+                **`weddingQuickPicks`(6·12·18개월 뒤)** 다 — 이 칸의 척도는 「곧 있을 일」이
+                아니라 준비 기간이다(그 함수 주석). */}
             <DateField
               className={INPUT}
               aria-label="결혼 예정일"
               min={todayISO()}
               value={weddingDate}
               onChange={onWeddingDateChange}
+              quickPicks={weddingQuickPicks(todayISO())}
             />
             {/* <form noValidate> + type="button" 뿐인 위저드라 HTML5 required 검증이 애초에
                 안 걸린다 — 값이 비어 있으면 "다음"으로 넘어가도 결국 제출 시점에야 422가

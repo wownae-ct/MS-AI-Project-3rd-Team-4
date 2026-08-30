@@ -75,7 +75,7 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // `<label>` 이 감싸는 것이 네이티브 입력이 아니라 컴포넌트라 htmlFor 로 이어 준다 —
+  // `<label>` 이 가리키는 것이 네이티브 입력이 아니라 컴포넌트라 htmlFor 로 이어 준다 —
   // 안 이으면 접근성 린트(label-has-associated-control)가 잡고, 실제로도 라벨 클릭이 죽는다.
   const dueDateId = useId();
   const paidDateId = useId();
@@ -269,8 +269,14 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
           paid_date 를 거부한다 — backend/app/schemas/payment.py:73-81). 둘 다 `clearable` 이다 —
           이 폼은 둘 중 하나만 채워도 저장되므로(handleSubmit 의 `!dueDate && !paidDate`) 잘못
           채운 칸을 비울 수단이 반드시 있어야 한다. 네이티브에서는 iOS 에 그 수단이 없었다. */}
-      <label className="flex flex-col gap-1" htmlFor={dueDateId}>
-        <span className={FIELD_NOTE}>납부 예정일{paidDate !== "" && "(선택 — 이미 결제했다면 비워둬도 돼요)"}</span>
+      {/* 🚨 [2026-08-30] `<label>` 이 이 두 칸을 **감싸고** 있었다. 이제 `DateField` 의 트리거가
+          `<button>` 이라(그 파일 머리말 §개정) 라벨 안쪽의 비대화형 자리를 누르면 그 클릭이
+          트리거로 전달된다 — **펼쳐진 캘린더의 빈 자리를 누르면 캘린더가 닫힌다.** 그래서
+          라벨을 형제로 내렸다. 라벨 클릭이 캘린더를 여는 거동은 `htmlFor` 로 그대로 산다. */}
+      <div className="flex flex-col gap-1">
+        <label className={FIELD_NOTE} htmlFor={dueDateId}>
+          납부 예정일{paidDate !== "" && "(선택 — 이미 결제했다면 비워둬도 돼요)"}
+        </label>
         <DateField
           id={dueDateId}
           className={FORM_INPUT}
@@ -280,9 +286,11 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
           quickPicks={futureQuickPicks(todayISO())}
           clearable
         />
-      </label>
-      <label className="flex flex-col gap-1" htmlFor={paidDateId}>
-        <span className={FIELD_NOTE}>결제일(이미 냈으면, 선택)</span>
+      </div>
+      <div className="flex flex-col gap-1">
+        <label className={FIELD_NOTE} htmlFor={paidDateId}>
+          결제일(이미 냈으면, 선택)
+        </label>
         <DateField
           id={paidDateId}
           className={FORM_INPUT}
@@ -293,7 +301,7 @@ export function AddPaymentRow({ categoryCode, categoryOptions, onAdded }: AddPay
           quickPicks={pastQuickPicks(todayISO())}
           clearable
         />
-      </label>
+      </div>
       {error && (
         <p role="alert" className="text-xs text-primary">
           {error}
