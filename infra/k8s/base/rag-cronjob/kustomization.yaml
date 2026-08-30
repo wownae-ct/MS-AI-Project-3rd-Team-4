@@ -32,7 +32,11 @@ configMapGenerator:
       - rag_corpus/DS3_FTC/dispute_resolution_2025_12_18.json
       - rag_corpus/DS3_FTC/venue_10030.json
       - rag_corpus/DS4_GOV/2024_wedding_service_support_plan.json
+      - rag_corpus/DS5_DUO/2017_duo_wedding_cost_survey.json
+      - rag_corpus/DS5_DUO/2021_duo_wedding_cost_survey.json
+      - rag_corpus/DS5_DUO/2022_duo_wedding_cost_survey.json
+      - rag_corpus/DS5_DUO/2023_duo_wedding_cost_survey.json
+      - rag_corpus/DS5_DUO/2024_duo_wedding_cost_survey.json
+      - rag_corpus/DS5_DUO/2025_duo_wedding_cost_survey.json
       - rag_corpus/DS5_DUO/2026_duo_wedding_cost_survey.json
       - rag_corpus/DS6_CHECK/checklist.json
-      - rag_corpus/DS8_UGC/threads_reviews_2026_08.json
-      - rag_corpus/DS8_UGC/threads_reviews_2026_08_p3.json
