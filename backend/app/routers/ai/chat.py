@@ -4,10 +4,10 @@
 RAG 로직(app/services/chat.py)으로 교체 완료. 05_RAG_design.md §7 이벤트 계약
 (token*→citations→verification→done)을 실제로 만족한다.
 
-세 엔드포인트 모두 get_current_wedding을 거쳐 wedding_id를 서비스 레이어까지 넘긴다 — 이전에는
-목록/전송 두 엔드포인트에 이 의존성이 아예 빠져 있어 세션 UUID만 알면 누구나 남의 상담 기록을
-읽고 프로젝트 Azure OpenAI 비용으로 메시지를 보낼 수 있었다(2026-08-24 chat_sessions v4.0
-재구현 중 발견)."""
+이 파일의 모든 엔드포인트가 예외 없이 get_current_wedding을 거쳐 wedding_id를 서비스 레이어까지
+넘긴다 — 이전에는 목록/전송 두 엔드포인트에 이 의존성이 아예 빠져 있어 세션 UUID만 알면 누구나
+남의 상담 기록을 읽고 프로젝트 Azure OpenAI 비용으로 메시지를 보낼 수 있었다(2026-08-24
+chat_sessions v4.0 재구현 중 발견). 엔드포인트를 새로 추가할 때도 이 규칙은 그대로다."""
 
 from uuid import UUID
 
@@ -36,6 +36,7 @@ from app.services.chat import (
     create_chat_session as create_chat_session_service,
 )
 from app.services.chat import (
+    delete_chat_session,
     get_chat_session,
     list_chat_messages,
     list_chat_sessions,
@@ -101,6 +102,17 @@ async def list_chat_messages_route(
 ) -> ChatMessageListOut:
     messages = await list_chat_messages(session, wedding.id, session_id)
     return ChatMessageListOut(messages=[_message_to_out(m) for m in messages])
+
+
+@router.delete("/chat/sessions/{session_id}", status_code=204)
+# rate limit을 안 거는 이유: LLM 호출이 없어 비용이 안 들고, 같은 성격의 선례인
+# DELETE /payments/{id}(app/routers/wedding/budget.py)도 안 걸려 있다.
+async def delete_chat_session_route(
+    session_id: UUID,
+    wedding: Wedding = Depends(get_current_wedding),  # noqa: B008
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> None:
+    await delete_chat_session(session, wedding.id, session_id)
 
 
 @router.post("/chat/sessions/{session_id}/messages")

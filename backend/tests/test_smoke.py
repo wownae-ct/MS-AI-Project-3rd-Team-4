@@ -22,7 +22,7 @@ from sqlalchemy import select
 from app.core.categories import CATEGORY_META
 from app.core.db import get_session_factory
 from app.core.timezone import today_kst
-from app.models import ChatSession
+from app.models import ChatMessage, ChatSession
 from app.services.chat import _touch_session_activity
 
 
@@ -216,6 +216,71 @@ class TestChatSessionsSmoke:
         listed = next(s for s in response.json()["sessions"] if s["id"] == session_id)
         assert listed["title"] == "위약금 조건이 궁금해요"
         assert listed["last_message_at"] is not None
+
+    async def test_delete_own_session_returns_204_and_removes_it_from_list(self, wedding_client):
+        created = await wedding_client.post("/chat/sessions", json={"category_code": "VENUE"})
+        session_id = created.json()["id"]
+
+        response = await wedding_client.delete(f"/chat/sessions/{session_id}")
+
+        assert response.status_code == 204
+        assert response.content == b""
+        listed = await wedding_client.get("/chat/sessions")
+        assert all(s["id"] != session_id for s in listed.json()["sessions"])
+
+    async def test_delete_same_session_twice_returns_404(self, wedding_client):
+        """프론트는 "다른 기기에서 먼저 지웠다"를 성공과 동일하게 흡수하는데, 그 분기를 HTTP
+        404가 아니라 봉투 안의 CHAT_SESSION_NOT_FOUND 코드로만 건다 — 상태코드뿐 아니라
+        03_API_spec.md §2 에러 포맷까지 함께 고정해야 그 흡수가 계속 동작한다."""
+        created = await wedding_client.post("/chat/sessions", json={"category_code": "VENUE"})
+        session_id = created.json()["id"]
+        await wedding_client.delete(f"/chat/sessions/{session_id}")
+
+        response = await wedding_client.delete(f"/chat/sessions/{session_id}")
+
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "CHAT_SESSION_NOT_FOUND"
+
+    async def test_delete_other_users_session_returns_404_and_leaves_it_intact(
+        self, wedding_client, make_wedding_client
+    ):
+        """404만 보면 "실제로는 지워놓고 404를 낸" 경우를 못 잡는다 — 원 소유자 목록에 세션이
+        그대로 남아 있는지까지 확인한다(get_chat_session이 wedding_id를 WHERE에 넣어 애초에
+        남의 행을 못 집는 구조인지 검증)."""
+        created = await wedding_client.post("/chat/sessions", json={"category_code": "VENUE"})
+        session_id = created.json()["id"]
+
+        other_client = await make_wedding_client()
+        response = await other_client.delete(f"/chat/sessions/{session_id}")
+
+        assert response.status_code == 404  # 403이면 안 된다 — 존재 여부 자체를 노출하게 됨
+        assert response.json()["error"]["code"] == "CHAT_SESSION_NOT_FOUND"
+        listed = await wedding_client.get("/chat/sessions")
+        assert any(s["id"] == session_id for s in listed.json()["sessions"])
+
+    async def test_delete_session_without_cookie_returns_401(self, client):
+        response = await client.delete(f"/chat/sessions/{uuid4()}")
+
+        assert response.status_code == 401
+
+    async def test_delete_session_cascades_its_messages(
+        self, wedding_client, make_assistant_message
+    ):
+        """세션이 사라지면 GET .../messages는 어차피 404라 API만으로는 "메시지도 지워졌는지"와
+        "세션만 지워졌는지"를 구분할 수 없다 — chat_messages 행을 직접 조회해 app/models/chat.py의
+        ondelete="CASCADE"가 실제로 동작하는지 확인한다(서비스가 메시지를 따로 안 지우고 DB에
+        맡기고 있으므로 이 가정이 깨지면 고아 메시지가 조용히 쌓인다)."""
+        session_id, message_id = await make_assistant_message(wedding_client)
+
+        response = await wedding_client.delete(f"/chat/sessions/{session_id}")
+
+        assert response.status_code == 204
+        messages = await wedding_client.get(f"/chat/sessions/{session_id}/messages")
+        assert messages.status_code == 404
+        assert messages.json()["error"]["code"] == "CHAT_SESSION_NOT_FOUND"
+        async with get_session_factory()() as session:
+            stmt = select(ChatMessage).where(ChatMessage.id == UUID(message_id))
+            assert (await session.execute(stmt)).scalar_one_or_none() is None
 
 
 class TestChatMessageRatingSmoke:
