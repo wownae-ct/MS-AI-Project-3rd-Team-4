@@ -14,6 +14,7 @@
 import { useState } from "react";
 import { updateMyWedding } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
+import { todayISO, weddingQuickPicks } from "@/shared/lib/date";
 import { DateField } from "@/shared/ui";
 
 // [D20] `w-40`(160px) 짜리 `<input type="date">` 였다. 그 폭은 네이티브 컨트롤의 서식 표시를
@@ -53,7 +54,10 @@ export function WeddingDateEditForm({ weddingDate, onSaved, onCancel }: WeddingD
   return (
     <span className="flex flex-wrap items-center gap-1.5">
       {/* min/max 를 두지 않는다 — 온보딩의 「결혼 예정일」과 달리 이 칸은 **이미 치른 결혼의
-          날짜를 고치는 경로**이기도 하다(서버가 근사 날짜를 채워 둔 경우의 정정 포함). */}
+          날짜를 고치는 경로**이기도 하다(서버가 근사 날짜를 채워 둔 경우의 정정 포함).
+          [2026-08-30] 빠른 선택은 온보딩의 그 칸과 같은 척도(6·12·18개월 뒤)를 쓴다 — 같은
+          값을 가리키는 두 자리가 서로 다른 칩을 내면 그것부터 설명해야 한다. 지난 날짜로
+          고치는 경로에서는 칩이 도움이 안 되지만, 그때는 그리드가 그대로 있다. */}
       <DateField
         value={draft}
         onChange={setDraft}
@@ -61,6 +65,7 @@ export function WeddingDateEditForm({ weddingDate, onSaved, onCancel }: WeddingD
         wrapClassName={INLINE_DATE_FIELD}
         className={INLINE_DATE_INPUT}
         aria-label="결혼식 날짜"
+        quickPicks={weddingQuickPicks(todayISO())}
       />
       <button
         type="button"
