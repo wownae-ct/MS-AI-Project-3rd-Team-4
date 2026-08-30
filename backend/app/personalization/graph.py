@@ -207,7 +207,13 @@ async def _generate_checklist_category_draft(
     만들 필요가 없기 때문이다 — 집합을 1개짜리로 주면 "이 카테고리만 보여주는 few-shot"이
     그대로 나온다. retry_errors는 이 카테고리만의 에러 리스트(도메인 전체가 아님)라 그대로
     {"CHECKLIST": retry_errors} 모양으로 감싸 build_generate_prompt의 기존 retry_feedback
-    인자를 그대로 재사용한다."""
+    인자를 그대로 재사용한다.
+
+    2026-08-30 결정(category_code 강제주입, red-bug.md #24 후속) — 응답 파싱 직후 모든
+    항목의 category_code를 무조건 `category`(이 호출이 요청받은 그 카테고리)로 덮어쓴다.
+    모델이 이 필드를 아예 안 받으므로(prompts.py::_CHECKLIST_OUTPUT_SCHEMA) 원래 값이 없거나
+    모델이 실수로 넣었어도 전부 무시된다 — 오타("HONEYMOON"→"HONEYOON")나 다른 카테고리
+    혼입 같은 실패가 확률이 아니라 구조적으로 불가능해진다."""
     category_profile = {**profile, "active_categories": [category]}
     retry_feedback = {"CHECKLIST": retry_errors} if retry_errors else None
     prompt = build_generate_prompt(
@@ -219,7 +225,10 @@ async def _generate_checklist_category_draft(
         messages=[{"role": "user", "content": prompt}],
     )
     parsed = json.loads(response.choices[0].message.content)
-    return parsed.get("checklist_items") or []
+    items = parsed.get("checklist_items") or []
+    for item in items:
+        item["category_code"] = category
+    return items
 
 
 # ② generate: TIMELINE(대상이면)은 기존처럼 도메인 단위 독립 호출, CHECKLIST(대상이면)는

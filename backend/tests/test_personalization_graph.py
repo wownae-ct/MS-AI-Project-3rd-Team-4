@@ -557,6 +557,34 @@ class TestChecklistCategoryFanOut:
         assert titles == {"웨딩홀 계약서 확인", "드레스 피팅"}
 
     @pytest.mark.asyncio
+    async def test_llm_category_code_is_ignored_and_overwritten_with_the_requested_category(self):
+        # 2026-08-30 결정(red-bug.md #24 후속) 회귀 — staging 라이브 테스트에서 LLM이
+        # "HONEYMOON"을 "HONEYOON"으로 오타 내거나 다른 카테고리를 섞어 내는 사례가 실측됐다.
+        # 이제 모델이 뭘 내든(오타·다른 카테고리·아예 누락) 무시하고 요청받은 카테고리로
+        # 무조건 덮어써야 한다.
+        state = _initial_state()
+        state["trigger"] = "MANUAL_REGENERATE"
+        state["requested_domains"] = ["CHECKLIST"]
+        state["profile"] = {"active_categories": ["HONEYMOON"]}
+        wrong_category = {
+            "checklist_items": [
+                {"category_code": "HONEYOON", "title": "여권 유효기간 확인"},
+                {"category_code": "VENUE", "title": "환전 계획 세우기"},
+                {"title": "여행자보험 가입"},  # category_code 아예 누락
+            ]
+        }
+        client = _client_with_checklist_categories_and_timeline(
+            checklist_by_category={"HONEYMOON": [wrong_category]},
+        )
+        with patch("app.personalization.graph.get_azure_openai_client", return_value=client):
+            graph = build_graph()
+            result = await graph.ainvoke(state, {"configurable": {"settings": _TEST_SETTINGS}})
+
+        assert result["checklist_category_status"] == {"HONEYMOON": "SUCCESS"}
+        assert all(item["category_code"] == "HONEYMOON" for item in result["checklist_draft"])
+        assert len(result["checklist_draft"]) == 3
+
+    @pytest.mark.asyncio
     async def test_one_blocked_category_is_retried_alone_success_category_not_recalled(self):
         # 이번 재발 버그의 핵심 회귀 — VENUE는 1차에 SUCCESS, SDM만 BLOCKED. VENUE 큐에
         # 응답을 1개만 넣어둬서, 재시도 때 VENUE가 다시 불리면 pop(0)이 StopIteration으로
