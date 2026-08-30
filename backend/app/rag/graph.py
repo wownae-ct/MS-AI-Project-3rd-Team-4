@@ -32,6 +32,7 @@ retrieve_node가 재시도 여부를 판단할 때 state["verdict"]가 아니라
 들어갈 위험이 없다."""
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from typing import TypedDict
 
@@ -51,10 +52,14 @@ from app.rag.generation import (
     verify_answer,
 )
 from app.rag.query_profile import profile_query
-from app.rag.retrieval import RetrievedChunk, retrieve
+from app.rag.retrieval import RetrievedChunk, retrieve_with_similarity
+from app.rag.scope_check import OUT_OF_SCOPE_ANSWER, OUT_OF_SCOPE_REASON
 
 # CRAG 재검색 루프의 상한. 무한루프/비용 폭증 방지가 목적이라 설정값으로 노출하지 않고 코드에
 # 고정한다(2026-08-24 결정 — "최대 재시도 1회로 상한").
+logger = logging.getLogger(__name__)
+
+
 _MAX_RETRIES = 1
 
 # 2026-08-26 챗 SSE 타임아웃 회귀 수정 — verify_answer/reformulate_query는 generate_node와
@@ -94,6 +99,10 @@ class ChatState(TypedDict):
     verdict: str  # verify_node의 판정: SUPPORTED/WEAK/GENERAL
     verification_reason: str  # 그 판정을 내린 이유 한 줄
     retry_count: int  # verify가 WEAK/GENERAL이라 retrieve로 되돌아간 횟수. 최대 _MAX_RETRIES(1).
+    # retrieve_node가 "검색 결과가 질문과 아예 무관하다"고 판정하면 True — generate/verify를
+    # 건너뛰고 곧바로 END로 간다(_route_after_retrieve). 스코프 가드(키워드, 그래프 진입 전)가
+    # 놓친 주제이탈을 검색 결과로 한 번 더 거르는 2차 방어선이다.
+    out_of_scope: bool
 
 
 # ① retrieve: 질문+카테고리로 하이브리드 검색(retrieval.py)을 돌려 근거 청크를 찾아온다.
@@ -135,17 +144,49 @@ async def retrieve_node(state: ChatState, config: RunnableConfig) -> dict:
                 reformulate_query(client, settings, state["query"], state["verification_reason"]),
                 writer,
             )
-        chunks = await retrieve(session, search_query, state["category_code"], settings)
+        outcome = await retrieve_with_similarity(
+            session, search_query, state["category_code"], settings
+        )
+        chunks = outcome.chunks
         # Phase 7 감사(Low) — 검색은 OpenAI 호출이 아니라 순수 DB 쿼리라 langfuse.openai
         # monkeypatch의 자동계측 대상이 아니다(generate/verify 노드와 달리 이 노드만 자기 span에
         # output을 직접 안 채우면 Langfuse UI에 "뭐가 검색됐는지"가 전혀 안 남는다). chunk_id만
         # 남기고 본문(content)은 싣지 않는다 — 디버깅엔 ID로 DB를 다시 찾아보면 충분하고, 본문까지
         # 실으면 payload만 커진다. 0건이어도(RAG_NO_CONTEXT) 빈 리스트를 명시적으로 남겨 "0건
         # 검색됨"과 "기록 안 됨"을 구분한다.
-        trace.update(output=[c.chunk_id for c in chunks])
+        # top_similarity를 함께 남긴다 — 컷오프 임계값(rag_min_similarity)을 나중에 실측으로
+        # 조정하려면 "실제 트래픽의 유사도 분포"가 있어야 하는데, 이걸 안 남기면 그때마다 질문을
+        # 다시 꺼내 임베딩부터 새로 돌려야 한다(2026-08-30에 실제로 그렇게 측정했다).
+        trace.update(
+            output={
+                "chunk_ids": [c.chunk_id for c in chunks],
+                "top_similarity": outcome.top_similarity,
+            }
+        )
         update: dict = {"context": chunks}
         if is_retry:
             update["retry_count"] = state.get("retry_count", 0) + 1
+
+        # 재시도(CRAG) 때는 판정하지 않는다 — 1차에서 이미 스코프를 통과한 질문이고, 재시도
+        # 검색어는 LLM이 재구성한 것이라 원 질문과 성격이 다를 수 있다. 여기서 또 자르면
+        # "1차는 통과했는데 2차에서 갑자기 주제이탈" 같은 이상한 상태가 된다.
+        if not is_retry and _is_out_of_scope(outcome.top_similarity, settings):
+            logger.info(
+                "chat scope cutoff: top_similarity=%.4f < %.2f, query=%r",
+                outcome.top_similarity,
+                settings.rag_min_similarity,
+                state["query"][:80],
+            )
+            writer({"type": "token", "delta": OUT_OF_SCOPE_ANSWER})
+            update.update(
+                {
+                    "context": [],  # 거절인데 인용을 붙이지 않는다
+                    "answer": OUT_OF_SCOPE_ANSWER,
+                    "verdict": "OUT_OF_SCOPE",
+                    "verification_reason": OUT_OF_SCOPE_REASON,
+                    "out_of_scope": True,
+                }
+            )
         return update
 
 
@@ -203,6 +244,24 @@ async def verify_node(state: ChatState, config: RunnableConfig) -> dict:
 # 상한 미만) retrieve로 되돌아가고, 아니면(SUPPORTED거나 이미 1회 재시도했으면) 끝낸다.
 # retrieve_node가 재시도 시에만 retry_count를 올리므로, 2차 verify 이후엔 결과가 뭐든
 # retry_count(1) < _MAX_RETRIES(1)가 거짓이 되어 무조건 END — 정확히 최대 1회로 종료가 보장된다.
+def _is_out_of_scope(top_similarity: float | None, settings: Settings) -> bool:
+    """전역 top-1 유사도가 임계값 미만이면 주제이탈로 본다.
+
+    None(코퍼스가 비어 있음)은 거절하지 않는다 — 색인이 아직 안 돌았거나 비어 있는 상황에서
+    모든 질문을 "주제이탈"로 만들면 원인 진단이 어려워진다. 그 경우는 기존 RAG_NO_CONTEXT
+    경로(검색 0건)가 처리한다.
+    """
+    if top_similarity is None:
+        return False
+    return top_similarity < settings.rag_min_similarity
+
+
+# retrieve → generate 는 평소엔 그냥 직진이지만, 스코프 컷오프에 걸리면 generate/verify를
+# 건너뛰고 곧바로 END로 간다 — LLM 호출 2회(생성·검증)를 통째로 아낀다.
+def _route_after_retrieve(state: ChatState) -> str:
+    return END if state.get("out_of_scope") else "generate"
+
+
 def _route_after_verify(state: ChatState) -> str:
     if state["verdict"] in ("WEAK", "GENERAL") and state.get("retry_count", 0) < _MAX_RETRIES:
         return "retrieve"
@@ -218,7 +277,9 @@ def build_graph() -> CompiledStateGraph:
     graph.add_node("generate", generate_node)
     graph.add_node("verify", verify_node)
     graph.set_entry_point("retrieve")
-    graph.add_edge("retrieve", "generate")
+    graph.add_conditional_edges(
+        "retrieve", _route_after_retrieve, {"generate": "generate", END: END}
+    )
     graph.add_edge("generate", "verify")
     graph.add_conditional_edges("verify", _route_after_verify, {"retrieve": "retrieve", END: END})
     return graph.compile()
