@@ -79,7 +79,6 @@ _CHECKLIST_RULES = """웨딩 프로필(활성 카테고리·우선순위·스타
 - 같은 카테고리 안에서 title이 겹치는 항목을 두 개 이상 만들지 마세요. 여러 항목이 필요하면
   각 title을 서로 다르게(구체적인 시기·대상·내용 등으로 구분) 쓰세요.
 - 활성 카테고리마다 최소 2개 이상 항목을 만드세요.
-- category_code는 활성 카테고리 안에서만 쓰세요.
 - 프로필의 selected_options는 카테고리 안에서도 사용자가 일부 옵션만 선택했다는 뜻입니다
   (예: SDM에서 ["드레스","메이크업"]만 선택 = 포토그래퍼 관련 항목은 제외). selected_options에
   없는 옵션과 관련된 항목은 만들지 마세요. 어떤 카테고리가 selected_options에 아예 없으면
@@ -116,9 +115,18 @@ _TIMELINE_RULES = """아래 표준 카탈로그(few-shot)를 참고해 이 커�
   필요하면 few-shot에 없는 항목을 프로필에 맞게 추가하세요. 활성 카테고리 커버리지·오프셋
   범위 같은 구조적 제약만 지키면 되고, few-shot과 내용이 대부분 동일할 필요는 전혀 없습니다."""
 
-_CHECKLIST_OUTPUT_SCHEMA = """체크리스트 항목은 각각 이 필드만 채우세요(그 외 필드는 응답에 포함하지
-마세요 — group_label/status는 서비스 레이어가 결정론적으로 채웁니다):
-{"category_code": "...", "item_type": "CONTRACT_TERM 또는 EXTRA_COST 또는 PREP", "title": "...",
+# 2026-08-30 결정(CHECKLIST category_code 강제주입, red-bug.md #24 후속) — 이 스키마에서
+# category_code 필드를 뺐다. CHECKLIST는 이제 카테고리 하나만 요청하는 호출로만 쓰이므로
+# (app/personalization/graph.py::_generate_checklist_category_draft, 결합 도메인 호출
+# 경로인 _generate_domain_draft는 이제 TIMELINE 전용) 어느 카테고리인지는 호출 시점에
+# 코드가 이미 알고 있다 — 모델에게 다시 물어볼 이유가 없다. 예전엔 이 필드를 모델이 직접
+# 써야 했는데, 오타("HONEYMOON"→"HONEYOON")나 다른 카테고리 혼입 같은 실패가 실측으로
+# 확인됐다(staging 라이브 테스트, 60% BLOCKED 중 일부가 이 유형). 필드 자체를 안 물어보면
+# 이 실패 클래스가 확률이 아니라 구조적으로 불가능해진다 — graph.py가 파싱 직후 모든 항목의
+# category_code를 무조건 호출 카테고리로 덮어쓴다.
+_CHECKLIST_OUTPUT_SCHEMA = """체크리스트 항목은 각각 이 필드만 채우세요(category_code는 이미 정해져
+있으므로 쓰지 마세요 — 그 외에도 group_label/status는 서비스 레이어가 결정론적으로 채웁니다):
+{"item_type": "CONTRACT_TERM 또는 EXTRA_COST 또는 PREP", "title": "...",
 "body": "...", "priority": "high 또는 mid 또는 low", "option_group": null 또는 "...",
 "tag": null 또는 "...", "source_ref_id": null 또는 [근거 자료] 번호}"""
 
