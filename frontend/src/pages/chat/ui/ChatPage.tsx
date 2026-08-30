@@ -19,7 +19,7 @@
 import { useState } from "react";
 import { ChatPanel } from "@/entities/chat";
 import { ReportButton } from "@/entities/feedback";
-import { IconArchive, Page } from "@/shared/ui";
+import { AI_CHAT_DISCLAIMER, AiDisclaimer, IconArchive, Page } from "@/shared/ui";
 import { ChatHistoryDrawer } from "./ChatHistoryDrawer";
 
 // 헤더의 「지난 대화」 아이콘 버튼.
@@ -155,6 +155,9 @@ export function ChatPage() {
         onSessionCreated={handleSessionCreated}
         renderReportAction={(messageId) => <ReportButton targetType="CHAT_MESSAGE" targetId={messageId} />}
       />
+      {/* 대화창 **아래**에 둔다 — 답변을 다 읽은 뒤 눈이 닿는 자리이고, 입력행 위로 올리면
+          `fill` 레이아웃에서 대화창 높이를 그만큼 먹는다. 스크롤과 무관하게 항상 보인다. */}
+      <AiDisclaimer>{AI_CHAT_DISCLAIMER}</AiDisclaimer>
       <ChatHistoryDrawer
         open={historyOpen}
         onOpenChange={setHistoryOpen}
