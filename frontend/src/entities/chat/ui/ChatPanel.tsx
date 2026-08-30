@@ -21,10 +21,11 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ApiError } from "@/shared/api";
 import { Button } from "@/shared/ui";
-import { createChatSession, getChatMessages, rateChatMessage, sendChatMessage } from "../api/chat";
-import type { ChatMessage, ChatStage, MessageRating } from "../model";
+import { getChatMessages, rateChatMessage } from "../api/chat";
+import type { ChatMessage, MessageRating } from "../model";
 import { MessageBubble } from "./MessageBubble";
-import { StreamingDraft, type DraftAssistantMessage } from "./StreamingDraft";
+import { StreamingDraft } from "./StreamingDraft";
+import { useChatStream } from "./use-chat-stream";
 import { useStickyScroll } from "./use-sticky-scroll";
 
 // 대화 표면 — **[2026-08-30] `shared/ui/Card` 를 쓰지 않는다.**
@@ -94,54 +95,17 @@ interface ChatPanelProps {
 
 export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderReportAction }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [draft, setDraft] = useState<DraftAssistantMessage | null>(null);
   const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [stage, setStage] = useState<ChatStage | null>(null);
-  // CRAG 재시도 루프(verify가 WEAK/GENERAL이면 최대 1회 retrieve→generate→verify를 다시 돎,
-  // 2026-08-24 백엔드 세션 인계) 진행 중 여부 — 화면에 남아 있는 답변이 아직 1차 결과라는 뜻이라
-  // StreamingDraft가 "다시 찾는 중" 안내를 붙이는 근거가 된다. 2차 첫 토큰이 도착하면 내린다.
-  const [retrying, setRetrying] = useState(false);
+  // 전송 1건 = SSE 스트림 1개. 그 상태 기계 전부(draft·stage·retrying·sending·error)는
+  // `use-chat-stream.ts` 가 갖는다 — 그 파일 머리말에 「동기 진실은 ref, setState 는 미러」
+  // 규약과 그것이 고친 버그(재생성한 답변에 근거가 안 붙던 문제)의 사정이 있다.
+  const chat = useChatStream({ sessionId, categoryCode, onSessionCreated, setMessages });
+  // 🚨 둘 다 `useCallback([])` 이라 아래 세션 effect 의 의존성에 넣어도 재실행을 유발하지 않는다 —
+  // `stickToBottom` 과 같은 사정이다(그 안정성이 깨지면 렌더마다 스트림이 abort 된다).
+  const { resetForSession, consumeSkipHistoryFetch } = chat;
   // 목록 스크롤 — 「사용자가 위로 올려 읽는 중이면 자동으로 내리지 않는다」가 이 훅의 전부다.
   // 사유와 ref/state 를 가른 근거는 `use-sticky-scroll.ts` 머리말에 있다.
-  const { listRef, onListScroll, awayFromBottom, jumpToBottom, stickToBottom } = useStickyScroll(messages, draft);
-  // sending state는 리렌더를 거쳐야 반영된다 — IME 조합 확정 시 Enter 키다운이 두 번 잡히는
-  // 경우처럼 handleSend가 짧은 틈 안에 두 번 호출되면 둘 다 sending===false를 보고 통과해
-  // SSE 스트림이 두 번 열린다(다른 세션이 실사용자 리포트로 재현·확인, 2026-08-24). 동기적으로
-  // 즉시 막아야 하므로 ref 락을 별도로 둔다.
-  const sendingRef = useRef(false);
-  // onDone에서 draft(스트리밍 누적분)를 부수효과 없이 읽기 위한 동기 미러 — onToken/onCitations/
-  // onVerification이 setDraft(updater)로 draft를 갱신할 때마다 같이 갱신한다. draft state를
-  // onDone 클로저에서 직접 읽으면 handleSend 호출 시점(스트림 시작 전 "{content:''}")의 값에
-  // 고정돼 스트리밍 중 쌓인 내용을 못 본다 — 그래서 원래 setDraft((cur)=>{setMessages(...); ...})
-  // 처럼 setState updater 안에서 최신 draft를 읽었는데, updater 안의 setMessages 호출 자체가
-  // StrictMode(app/main.tsx)의 "updater 순수성 검증을 위한 2회 호출"에 걸려 메시지가 두 번
-  // append되는 버그였다(사용자 리포트 2026-08-24, 재현: Enter/버튼 무관하게 매번). ref 미러는
-  // 대입만 하므로 두 번 호출돼도 같은 값이 다시 대입될 뿐 부수효과가 없다.
-  const draftRef = useRef<DraftAssistantMessage | null>(null);
-  // handleSend가 첫 메시지 전송 중 세션을 새로 만들면 onSessionCreated가 부모의 sessionId를
-  // 바꾸고, 그게 이 컴포넌트로 새 prop이 되어 내려오면서 아래 useEffect가 재실행된다. 그 시점엔
-  // 아직 sendChatMessage가 진행 중이라(백엔드가 user 메시지를 막 저장했거나 안 했거나 하는
-  // 경합 구간) getChatMessages가 빈 배열을 돌려줄 수 있고, 그걸로 setMessages를 덮어쓰면 방금
-  // 낙관적으로 넣은 사용자 질문 말풍선이 통째로 사라진다(사용자 리포트 2026-08-26 "유저의
-  // 질문이 사라져"). 이 플래그는 "방금 이 컴포넌트가 만든 세션이라 로컬 상태가 이미 정답"임을
-  // 표시해 그 1회의 히스토리 재조회만 건너뛴다 — 기존에 이미 있던 세션으로 진입할 때의 정상
-  // 히스토리 복원(effect 최초 실행)은 그대로 동작한다.
-  const skipNextHistoryFetchRef = useRef(false);
-  // CRAG 재시도가 예고된 상태 — 다음 토큰은 2차 답변의 첫 글자이므로 누적이 아니라 **교체**다.
-  // 예전엔 retry 이벤트를 받는 즉시 draft를 비웠는데, 그러면 2차 첫 토큰이 오기까지의 공백 동안
-  // 사용자가 읽던 1차 답변이 통째로 사라졌다(레드팀 감사 #16). 버리는 시점만 뒤로 미룬다.
-  const replaceOnNextTokenRef = useRef(false);
-  // 진행 중인 sendChatMessage SSE 스트림을 컴포넌트 언마운트 시 끊기 위한 컨트롤러 — 이전엔
-  // abort 수단이 전혀 없어, 하단 탭 이동으로 언마운트돼도 스트림이 조용히 계속 실행됐다
-  // (레드팀 감사 HIGH). 요청마다 새로 만들어 교체한다.
-  const abortControllerRef = useRef<AbortController | null>(null);
-  useEffect(() => {
-    return () => {
-      abortControllerRef.current?.abort();
-    };
-  }, []);
+  const { listRef, onListScroll, awayFromBottom, jumpToBottom, stickToBottom } = useStickyScroll(messages, chat.draft);
   // 평가(좋아요/싫어요) 연타 가드 — 메시지별 "가장 최근 요청" 일련번호. 응답이 보낸 순서와 다르게
   // 도착해도, 이 메시지에 대해 자신이 아직 최신 요청일 때만 실패 롤백을 적용한다(레드팀 감사:
   // 안 그러면 나중에 보낸 성공 결과를 먼저 보낸 요청의 실패 롤백이 덮어쓸 수 있다).
@@ -162,24 +126,12 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
     // 컴포넌트가 첫 메시지를 보내며 스스로 만든 세션"이라, 낙관적 user 말풍선과 진행 중인
     // 스트림이 그대로 살아 있어야 한다 — 여기서 리셋하면 2026-08-26에 이미 한 번 고쳤던
     // "유저의 질문이 사라져" 버그가 그대로 재발한다.
-    if (skipNextHistoryFetchRef.current) {
-      skipNextHistoryFetchRef.current = false;
-      return;
-    }
+    if (consumeSkipHistoryFetch()) return;
 
-    abortControllerRef.current?.abort();
-    // ⚠️ abort 되면 `sendChatMessage`는 **조용히 return** 한다(그 함수의 catch가 그렇게
-    // 설계돼 있다 — 언마운트용 계약). 그래서 handleSend의 상위 catch도, onError/onDone도
-    // 돌지 않는다. 여기서 직접 풀어 주지 않으면 입력창이 영구히 잠긴 채로 남는다.
-    sendingRef.current = false;
-    setSending(false);
+    // 진행 중이던 스트림 abort · 입력창 잠금 해제 · draft/stage/retrying/error 비우기까지
+    // 한 번에 한다(`use-chat-stream.ts`).
+    resetForSession();
     setMessages([]);
-    setDraft(null);
-    draftRef.current = null;
-    setError(null);
-    setStage(null);
-    setRetrying(false);
-    replaceOnNextTokenRef.current = false;
     ratingSeqRef.current.clear();
     // 스크롤 위치도 세션에 종속된 상태다 — A 대화에서 위로 올려 읽던 상태가 그대로 남으면 B 대화의
     // 히스토리가 도착해도 화면이 맨 위에 머물고 「맨 아래로」 버튼만 떠 있다.
@@ -198,137 +150,22 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
     return () => {
       cancelled = true;
     };
-    // `stickToBottom` 은 `useCallback([])` 로 안정적이라 이 effect 를 다시 돌리지 않는다 —
-    // 그 안정성이 깨지면 렌더마다 여기가 재실행돼 진행 중인 스트림이 abort 된다(그 훅의 주석 참고).
-  }, [sessionId, stickToBottom]);
+    // 세 콜백 모두 `useCallback([])` 로 안정적이라 이 effect 를 다시 돌리지 않는다 —
+    // 그 안정성이 깨지면 렌더마다 여기가 재실행돼 진행 중인 스트림이 abort 된다(각 훅의 주석 참고).
+  }, [sessionId, stickToBottom, resetForSession, consumeSkipHistoryFetch]);
 
-  async function handleSend() {
+  // 입력창 → 스트림. 전송 자체는 `use-chat-stream.ts` 가 하고 여기서는 이 화면에만 있는 두
+  // 가지를 얹는다 — 입력 비우기와 「맨 아래로 다시 붙이기」.
+  //
+  // ⚠️ IME 조합 확정 시 Enter 키다운이 두 번 잡히면 이 함수도 두 번 돈다. 두 번째 호출은 이미
+  // 비워진 `input` 을 보고 여기서 되돌아가고, 그마저 통과해도 훅 안의 `sendingRef` 락이 막는다.
+  function handleSend() {
     const content = input.trim();
-    if (!content || sendingRef.current) return;
-    sendingRef.current = true;
-
-    const localMessageId = `local-${Date.now()}`;
-    function markLocalMessageFailed() {
-      setMessages((msgs) => msgs.map((m) => (m.id === localMessageId ? { ...m, failed: true } : m)));
-    }
-
-    setError(null);
+    if (content === "") return;
     setInput("");
     // 내가 방금 보낸 질문은 위로 올려 읽던 중이었어도 반드시 보여야 한다 — 여기서 다시 붙인다.
     stickToBottom();
-    setMessages((cur) => [
-      ...cur,
-      { id: localMessageId, role: "user", content, created_at: new Date(0).toISOString() },
-    ]);
-    setSending(true);
-    setStage(null);
-    setRetrying(false);
-    replaceOnNextTokenRef.current = false;
-    const initialDraft = { content: "" };
-    setDraft(initialDraft);
-    draftRef.current = initialDraft;
-
-    const abortController = new AbortController();
-    abortControllerRef.current = abortController;
-
-    try {
-      let activeSessionId = sessionId;
-      if (!activeSessionId) {
-        const session = await createChatSession(categoryCode);
-        activeSessionId = session.id;
-        skipNextHistoryFetchRef.current = true;
-        onSessionCreated(session.id);
-      }
-
-      await sendChatMessage(
-        activeSessionId,
-        content,
-        {
-          onToken: (delta) => {
-            // ⚠️ ref 읽기·비우기는 반드시 updater **바깥**에서 한다. StrictMode(app/main.tsx)는
-            // updater를 순수성 검증용으로 두 번 부르는데, 안에서 비우면 두 번째 호출이
-            // replacing=false를 봐서 1차 답변이 지워지지 않고 2차가 뒤에 이어붙는다.
-            const replacing = replaceOnNextTokenRef.current;
-            if (replacing) {
-              replaceOnNextTokenRef.current = false;
-              setRetrying(false); // 2차 답변이 실제로 오기 시작했다 — "다시 찾는 중" 안내를 내린다.
-            }
-            setDraft((cur) => {
-              const base = replacing ? "" : (cur?.content ?? "");
-              const next = { ...cur, content: base + delta };
-              draftRef.current = next;
-              return next;
-            });
-          },
-          onCitations: (citations) => {
-            setDraft((cur) => {
-              const next = cur ? { ...cur, citations } : { content: "", citations };
-              draftRef.current = next;
-              return next;
-            });
-          },
-          onVerification: (verification) => {
-            setDraft((cur) => {
-              const next = cur ? { ...cur, verification } : { content: "", verification };
-              draftRef.current = next;
-              return next;
-            });
-          },
-          onStage: (nextStage) => {
-            setStage(nextStage);
-          },
-          onRetry: () => {
-            // draft를 **비우지 않는다** — 1차 답변은 2차 첫 토큰이 실제로 도착할 때 교체된다
-            // (위 onToken의 replacing 분기). 그때까지 사용자는 읽던 답변을 계속 볼 수 있고,
-            // StreamingDraft가 "다시 찾고 있어요" 안내를 그 아래에 붙인다. citations/
-            // verification은 항상 마지막 시도 결과 하나만 오므로 여기서 따로 지울 게 없다.
-            replaceOnNextTokenRef.current = true;
-            setStage(null);
-            setRetrying(true);
-          },
-          onDone: (payload) => {
-            const finalDraft = draftRef.current;
-            setMessages((msgs) => [
-              ...msgs,
-              {
-                id: payload.message_id,
-                role: "assistant",
-                content: finalDraft?.content ?? "",
-                citations: finalDraft?.citations,
-                verification: finalDraft?.verification,
-                created_at: new Date(0).toISOString(),
-              },
-            ]);
-            setDraft(null);
-            draftRef.current = null;
-            setStage(null);
-            setRetrying(false);
-            sendingRef.current = false;
-            setSending(false);
-          },
-          onError: (payload) => {
-            setError(payload.message);
-            markLocalMessageFailed();
-            setDraft(null);
-            draftRef.current = null;
-            setStage(null);
-            setRetrying(false);
-            sendingRef.current = false;
-            setSending(false);
-          },
-        },
-        abortController.signal,
-      );
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "메시지를 보내지 못했습니다.");
-      markLocalMessageFailed();
-      setDraft(null);
-      draftRef.current = null;
-      setStage(null);
-      setRetrying(false);
-      sendingRef.current = false;
-      setSending(false);
-    }
+    void chat.send(content);
   }
 
   // AI 답변에만 호출된다(greeting/draft는 MessageBubble에 onRate를 안 넘겨서 애초에 버튼이 안
@@ -349,7 +186,7 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
       if (ratingSeqRef.current.get(messageId) === seq) {
         setMessages((msgs) => msgs.map((m) => (m.id === messageId ? { ...m, user_rating: previous } : m)));
       }
-      setError(err instanceof ApiError ? err.message : "평가를 저장하지 못했습니다.");
+      chat.setError(err instanceof ApiError ? err.message : "평가를 저장하지 못했습니다.");
     }
   }
 
@@ -379,7 +216,7 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
           aria-relevant="additions text"
           className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto"
         >
-          {messages.length === 0 && !draft && (
+          {messages.length === 0 && !chat.draft && (
             // 첫 진입 안내를 회색 텍스트가 아니라 어시스턴트 말풍선으로 보여준다(사용자 요청,
             // 2026-08-24) — 실제 대화 내역이 아니라 화면에서만 합성한 안내라 id="greeting"으로
             // 구분하고 서버에 저장되지 않는다. MessageBubble을 그대로 재사용해 실제 답변 말풍선과
@@ -396,7 +233,7 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
           {messages.map((m) => (
             <MessageBubble key={m.id} message={m} onRate={handleRate} renderReportAction={renderReportAction} />
           ))}
-          {draft && <StreamingDraft draft={draft} stage={stage} retrying={retrying} />}
+          {chat.draft && <StreamingDraft draft={chat.draft} stage={chat.stage} retrying={chat.retrying} />}
         </div>
 
         {/* 스트리밍 중 위로 올려 읽는 동안 새 토큰이 계속 쌓이므로, 돌아갈 길을 한 번의 탭으로
@@ -408,9 +245,9 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
         )}
       </div>
 
-      {error && (
+      {chat.error && (
         <p role="alert" className="rounded-md border border-line bg-primary-soft px-3 py-2 text-sm text-primary">
-          {error}
+          {chat.error}
         </p>
       )}
 
@@ -451,10 +288,10 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.nativeEvent.isComposing) void handleSend();
+              if (e.key === "Enter" && !e.nativeEvent.isComposing) handleSend();
             }}
             placeholder="메시지를 입력하세요"
-            disabled={sending}
+            disabled={chat.sending}
             className="h-9 w-full min-w-0 rounded-md border border-line bg-surface px-3 text-base text-ink disabled:opacity-50"
           />
         </label>
@@ -463,7 +300,7 @@ export function ChatPanel({ categoryCode, sessionId, onSessionCreated, renderRep
             중앙 정렬하는 이 프로젝트의 표준 방식인데, 여기만 누락돼 입력창과 글자 위치가 안 맞아
             보였다(사용자 리포트, 아이폰 실기기). 직접 유틸리티를 추가하는 대신 공용 Button으로
             교체 — 새 위치에서 같은 버그가 재발할 여지 자체를 없앤다. */}
-        <Button size="sm" className="shrink-0" onClick={() => void handleSend()} disabled={sending || !input.trim()}>
+        <Button size="sm" className="shrink-0" onClick={handleSend} disabled={chat.sending || !input.trim()}>
           보내기
         </Button>
       </div>
