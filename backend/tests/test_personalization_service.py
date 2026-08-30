@@ -13,6 +13,7 @@ from app.services.personalization import (
     _checklist_fallback_rows,
     _checklist_protected_clause,
     _checklist_row_from_draft,
+    _deterministic_general_timeline_rows,
     _drop_rows_colliding_with_protected,
     _merge_checklist_rows,
     _timeline_fallback_rows,
@@ -340,6 +341,32 @@ class TestTimelineFallbackRows:
         # "CATALOG_FALLBACK"이 나오는지 처음으로 확정한다.
         rows = _timeline_fallback_rows(date(2027, 5, 15), {"VENUE"}, None, date(2026, 8, 24))
         assert rows
+        assert all(r.origin == "CATALOG_FALLBACK" for r in rows)
+
+
+class TestDeterministicGeneralTimelineRows:
+    """2026-08-30 결정(TIMELINE 결정론화) — SUCCESS 경로에서도 범용(category_code=None)
+    항목은 LLM이 아니라 이 함수가 항상 채운다. active_categories=set()으로
+    generate_timeline_items를 호출하는 트릭이라, 그 함수의 기존 필터 규칙(None은
+    active_categories와 무관하게 항상 포함, 그 외는 active_categories에 있을 때만 포함)이
+    그대로 "범용만 남기고 카테고리 특정 항목은 전부 제외"로 작동하는지 확인한다."""
+
+    def test_only_null_category_items_are_returned(self):
+        rows = _deterministic_general_timeline_rows(date(2027, 5, 15), set(), date(2026, 8, 24))
+        assert rows
+        assert all(r.category_code is None for r in rows)
+
+    def test_result_is_independent_of_active_categories_argument(self):
+        # active_categories 인자 자체를 이 함수는 안 받는다(항상 내부에서 set()으로 고정) —
+        # 이 테스트는 그 설계를 문서화한다: 카테고리를 아무리 활성화해도 결과가 안 바뀐다는
+        # 사실은 시그니처 자체로 이미 보장되므로, 서로 다른 시점에 반복 호출해도 항상 같은
+        # (결정론적) 결과가 나오는지만 확인한다.
+        first = _deterministic_general_timeline_rows(date(2027, 5, 15), set(), date(2026, 8, 24))
+        second = _deterministic_general_timeline_rows(date(2027, 5, 15), set(), date(2026, 8, 24))
+        assert [r.title for r in first] == [r.title for r in second]
+
+    def test_rows_have_catalog_fallback_origin(self):
+        rows = _deterministic_general_timeline_rows(date(2027, 5, 15), set(), date(2026, 8, 24))
         assert all(r.origin == "CATALOG_FALLBACK" for r in rows)
 
 

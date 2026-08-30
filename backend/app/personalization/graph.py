@@ -344,36 +344,17 @@ async def generate_node(state: PersonalizationState, config: RunnableConfig) -> 
             ]
         timeline_draft = state["timeline_draft"]
         if "TIMELINE" in domains_to_regenerate:
-            timeline_draft = [
-                _normalize_timeline_category_code(item)
-                for item in parsed_by_domain["TIMELINE"].get("timeline_items") or []
-            ]
+            # 2026-08-30 결정(TIMELINE 결정론화) — category_code=null인 범용 항목을 LLM 생성
+            # 대상에서 아예 제외했으므로(prompts.py::_TIMELINE_RULES/_build_timeline_few_shot),
+            # 여기서 받는 항목은 전부 실제 카테고리를 가져야 정상이다. 예전엔 LLM이 종종
+            # category_code 자리에 문자열 "null"/"None"을 내는 걸 여기서 방어적으로 실제
+            # None으로 정규화했지만(_normalize_timeline_category_code, 2026-08-24 도입,
+            # 3번 재발), 이제 null 자체가 유효한 선택지가 아니므로 그 정규화를 계속 두면
+            # "진짜 잘못된 카테고리 문자열"을 조용히 검증 예외 항목(None)으로 둔갑시켜 버그를
+            # 숨기는 역효과만 남는다 — 제거하고 validate의 ENUM 검증이 그대로 잡게 둔다
+            # (app/services/personalization.py가 범용 항목 자체는 별도로 결정론적으로 채운다).
+            timeline_draft = parsed_by_domain["TIMELINE"].get("timeline_items") or []
         return {"checklist_draft": checklist_draft, "timeline_draft": timeline_draft}
-
-
-_NULL_STRING_VALUES = {"null", "none", "None", "NULL", ""}
-
-
-def _normalize_timeline_category_code(item: dict) -> dict:
-    """prompts.py의 few-shot이 실제 JSON null을 그대로 보여줘도, LLM이 category_code 자리에
-    문자열 "null"/"None"/빈 문자열을 쓰는 사례가 few-shot 지시만으로는 반복적으로 재발했다
-    (2026-08-24 "범용"→"null" 버그, 그 수정 후에도 재발 — validate_node가 이 값을 ENUM 밖으로
-    BLOCKED 처리해 폴백 카탈로그로 떨어지는 원인). 프롬프트만으로 100% 방지가 안 되는 게
-    실측으로 확인된 이상, 파싱 단계에서 방어적으로 흡수한다 — validate는 여전히 순수 규칙
-    검증만 하고, "무엇을 null로 볼지"는 여기 한 곳에서만 결정한다."""
-    code = item.get("category_code")
-    if isinstance(code, str) and code.strip() in _NULL_STRING_VALUES:
-        # 2026-08-26 레드팀 감사 4라운드 항목 23 — 이 정규화가 발동하는 빈도가 무로깅이었다.
-        # 3번째 재발(2026-08-25, CLAUDE.md 기록)이 있었던 버그라, 발동 자체를 남겨둬야 4번째
-        # 재발을 조기에 감지할 수 있다.
-        logger.warning(
-            "LLM emitted null-like category_code string %r for timeline item %r — normalizing "
-            "to None",
-            code,
-            item.get("title"),
-        )
-        return {**item, "category_code": None}
-    return item
 
 
 def _dedup_domain_draft(

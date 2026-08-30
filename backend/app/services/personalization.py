@@ -382,10 +382,34 @@ def _timeline_fallback_rows(
     """BLOCKED/FAILED 폴백 — 기존 app/services/timeline.py::generate_timeline_items를 그대로
     재사용한다. 이 함수는 원래도 active_categories 파라미터로 필터링하는 기존 함수라 체크리스트
     폴백과 달리 새로 손댈 필요가 없다(각 dict에 origin="CATALOG_FALLBACK"도 이미 들어있음,
-    2026-08-28 origin='LLM' mislabel 수정 — 예전엔 이 자리도 "LLM"이었음)."""
+    2026-08-28 origin='LLM' mislabel 수정 — 예전엔 이 자리도 "LLM"이었음). 범용(category_code=
+    None) 항목도 이 함수가 이미 항상 포함하므로(generate_timeline_items의 필터 규칙 — None은
+    active_categories와 무관하게 항상 통과) 이 경로는 손댈 게 없다."""
     return [
         TimelineItem(**row)
         for row in generate_timeline_items(wedding_date, active_categories, done_so_far, today)
+    ]
+
+
+def _deterministic_general_timeline_rows(
+    wedding_date: date, done_categories: set[str], today: date
+) -> list[TimelineItem]:
+    """2026-08-30 결정(TIMELINE 결정론화) — category_code=None인 범용 일정(혼인신고·본식·
+    결혼 날짜 확정 등)은 LLM 생성 대상에서 제외했으므로(app/personalization/prompts.py::
+    _TIMELINE_RULES/_build_timeline_few_shot), SUCCESS 경로에서도 항상 이 함수로 별도 주입한다.
+    generate_timeline_items(active_categories=set())를 재사용한다 — 그 함수의 필터 규칙이
+    "category_code가 None이면 active_categories와 무관하게 항상 포함, None이 아니면
+    active_categories에 있을 때만 포함"이라, 빈 집합을 주면 카테고리 특정 항목은 전부 걸러지고
+    범용 항목만 남는다(별도 필터 로직을 새로 안 만들어도 된다). BLOCKED/FAILED 폴백
+    (_timeline_fallback_rows)은 이미 이 함수를 그대로 써서 범용 항목이 항상 포함돼 있었으므로
+    이 헬퍼가 필요한 건 SUCCESS 경로뿐이다.
+
+    반환된 행은 호출부(run_personalization)가 LLM이 만든 카테고리별 행과 합친 뒤
+    display_order를 다시 매긴다 — 카탈로그의 고정 display_order를 그대로 쓰면 LLM 쪽 순번과
+    번호가 겹칠 수 있다."""
+    return [
+        TimelineItem(**row)
+        for row in generate_timeline_items(wedding_date, set(), sorted(done_categories), today)
     ]
 
 
@@ -527,12 +551,20 @@ async def run_personalization(
             if "TIMELINE" in affected_domains:
                 if domain_statuses.get("TIMELINE") == "SUCCESS":
                     scale_factor = compute_prep_scale_factor(today, wedding.wedding_date)
-                    timeline_rows = [
+                    llm_timeline_rows = [
                         _timeline_row_from_draft(
                             wedding.wedding_date, done_categories, today, idx, item, scale_factor
                         )
                         for idx, item in enumerate(result["timeline_draft"] or [], start=1)
                     ]
+                    # 2026-08-30 결정 — 범용(category_code=None) 항목은 LLM 몫이 아니라 항상
+                    # 결정론적으로 채운다(_deterministic_general_timeline_rows 참고). 합친 뒤
+                    # display_order를 다시 매겨 카탈로그 고정 번호와 LLM 쪽 순번이 안 겹치게 한다.
+                    timeline_rows = llm_timeline_rows + _deterministic_general_timeline_rows(
+                        wedding.wedding_date, done_categories, today
+                    )
+                    for order, row in enumerate(timeline_rows, start=1):
+                        row.display_order = order
                 else:
                     logger.warning(
                         "Personalization TIMELINE BLOCKED for wedding_id=%s trigger=%s, "
