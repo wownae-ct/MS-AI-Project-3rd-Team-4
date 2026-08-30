@@ -1,0 +1,74 @@
+---
+dataset_code: DS5_DUO
+title: 듀오 2024 결혼비용 실태보고서
+source_tier: INDUSTRY
+source_org: 듀오(Duo)
+source_url: (미기록 — duo.co.kr 원 보고서 페이지, 정확한 URL 추후 보강 필요)
+license_note: 듀오 2024 결혼비용 실태보고서 원문(duo.co.kr 자사 발표 페이지)에서 사실관계(숫자)만 추출해 팀이 새로 재작성함. 저작권법 §28(공표된 저작물의 인용) 및 사실(수치) 자체는 저작물성이 약하다는 원칙에 따라 표현은 복제하지 않고 숫자만 인용, 출처("듀오 2024 결혼비용 실태보고서")를 매 청크 본문에 명시함. 원문 전체(스크래핑본)는 data/raw/DS5_DUO/2024_duo_wedding_cost_survey.txt에 보관(원문 자체는 RAG 코퍼스로 서빙하지 않음). "이바지" 항목은 메리맵 9개 카테고리(VENUE/SDM/MEETING/GIFT/HOMEWARE/INVITATION/HONEYMOON/HOMENEW/ETC) 어디에도 해당하지 않아 제외 (기존 DS5_DUO 2026판부터 이어진 결정). "주택" 항목은 2026-08-30부터 HOMENEW(신혼집) 카테고리로 매핑함 — 이전 2026판 license_note가 구 7개 카테고리(HOMENEW/ETC 신설 이전 v3.0 스코프) 기준으로 주택을 제외했던 건 스코프가 갱신된 v4.0(9개 카테고리) 기준으로는 stale한 판단이었음.
+category_codes: [VENUE, SDM, GIFT, HOMEWARE, HONEYMOON, HOMENEW]
+---
+
+<!-- chunk_index: 0, item_type: PREP -->
+듀오 2024 결혼비용 실태보고서에 따르면 2024년 신혼부부 총 결혼비용은 2억 9,748만원이었다.
+
+---
+
+<!-- chunk_index: 1, item_type: EXTRA_COST, category_code: VENUE -->
+듀오 2024 결혼비용 실태보고서에 따르면 예식홀 평균 비용은 1,283만원이다.
+
+---
+
+<!-- chunk_index: 2, item_type: EXTRA_COST, category_code: SDM -->
+듀오 2024 결혼비용 실태보고서에 따르면 웨딩패키지 평균 비용은 360만원이다.
+
+---
+
+<!-- chunk_index: 3, item_type: EXTRA_COST, category_code: GIFT -->
+듀오 2024 결혼비용 실태보고서에 따르면 예물 평균 비용은 673만원이다.
+
+---
+
+<!-- chunk_index: 4, item_type: EXTRA_COST, category_code: GIFT -->
+듀오 2024 결혼비용 실태보고서에 따르면 예단 평균 비용은 758만원이다.
+
+---
+
+<!-- chunk_index: 5, item_type: EXTRA_COST, category_code: HOMEWARE -->
+듀오 2024 결혼비용 실태보고서에 따르면 혼수 평균 비용은 1,564만원이다.
+
+---
+
+<!-- chunk_index: 6, item_type: EXTRA_COST, category_code: HONEYMOON -->
+듀오 2024 결혼비용 실태보고서에 따르면 신혼여행 평균 비용은 725만원으로, 전년(485만원) 대비 49.5% 상승했다.
+
+---
+
+<!-- chunk_index: 7, item_type: EXTRA_COST, category_code: HOMENEW -->
+듀오 2024 결혼비용 실태보고서에 따르면 신혼집 마련(주택) 비용은 전국 평균 2억 4,299만원으로, 전년(2억 7,977만원) 대비 약 3,000만원 감소했다.
+
+---
+
+<!-- chunk_index: 8, item_type: PREP, category_code: HOMENEW -->
+듀오 2024 결혼비용 실태보고서에 따르면 지역별 신혼집 마련 비용은 수도권 2억 5,911만원, 서울 2억 5,880만원, 영남 2억 3,097만원, 강원 2억 2,647만원, 충청 2억 1,012만원, 호남 2억 459만원이다.
+
+---
+
+<!-- chunk_index: 9, item_type: EXTRA_COST, category_code: VENUE -->
+듀오 2024 결혼비용 실태보고서에 따르면 작은 결혼식 예상 비용은 평균 758만원으로, 실제 예식비용 평균(1,643만원) 대비 약 885만원을 절약할 수 있다.
+
+---
+
+<!-- chunk_index: 10, item_type: PREP, category_code: HOMEWARE -->
+듀오 2024 결혼비용 실태보고서에 따르면 가장 중요한 혼수 품목은 냉장고/김치냉장고(83.3%), 세탁기(79.7%), 침대(71.4%), TV(61.1%), 에어컨(53.9%), 건조기(36.4%) 순이다.
+
+---
+
+<!-- chunk_index: 11, item_type: PREP, category_code: HOMENEW -->
+듀오 2024 결혼비용 실태보고서에 따르면 신혼집 점유 형태는 전세 45.9%, 자가 36.2%, 월세 7.9%, 반전세 5.6% 순이다.
+
+---
+
+<!-- chunk_index: 12, item_type: PREP, category_code: HOMENEW -->
+듀오 2024 결혼비용 실태보고서에 따르면 신혼 주택 유형은 아파트 77.5%, 빌라 12.0%, 일반 주택 6.8%, 오피스텔 3.3% 순이다.
+
+---
