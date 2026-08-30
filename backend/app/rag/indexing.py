@@ -3,7 +3,18 @@
 (app.rag.corpus.load_corpus) → Azure OpenAI 임베딩 → rag_documents/rag_chunks 전체 재구성.
 DS1_PRICE도 이 대상에 포함된다(2026-08-30 정정 — 이전 버전 이 docstring이 "DS1_PRICE 제외"라고
 잘못 적어뒀었으나, load_corpus는 애초에 데이터셋 코드로 필터링하는 로직이 없어 실제로는 계속
-포함되어 왔다. 아래 _embed_all의 "151개(DS1_PRICE 3청크 포함)" 주석과도 이제 일치한다).
+포함되어 왔다. 아래 _embed_all의 "213개(DS1_PRICE 3청크 포함)" 주석과도 이제 일치한다).
+
+DS8_UGC(Threads 실사용 후기)는 2026-08-30 코퍼스에서 제외했다 — 저작권 대응(원문 미저장,
+사실만 재작성)은 되어 있었지만 개인정보보호법·사생활 리스크가 남아있었고, VENUE/SDM은 이미
+다른 소스로 밀도가 높아(제외해도 각 87~89% 유지) 커버리지 손실이 미미해 리스크 대비 가치가
+낮다고 판단했다(docs/AI-Sessions/wiki/decisions/2026-08-30-ds5-duo-ds8-ugc-corpus-retention-decision.md).
+원본은 data/old/rag_corpus/DS8_UGC/에 보존.
+
+DS5_DUO도 같은 날 뉴스 재유통 인용(businesskorea 1건, 2026년판만) 대신 duo.co.kr 원 보고서
+2017/2021~2026년 7개년치(2018~2020은 평균 없이 최빈 가격구간만 있어 제외)로 갱신했다 —
+원문 스크래핑본은 data/raw/DS5_DUO/*.txt에 보관, 코퍼스에는 여전히 숫자만 재작성해 반영
+(license_note 참고). HOMENEW(신혼집) 카테고리는 이번에 처음 채워졌다.
 
 rag-reindex CronJob(infra/k8s/base/rag-cronjob/)이 `python -m app.rag.indexing`으로 실행한다.
 코퍼스는 이미 청크 단위로 정제돼 있어(05_RAG_design.md §3, 10_RAG_data_catalog.md) 여기서
@@ -46,9 +57,11 @@ async def _embed_all(
     달라 오프셋 계산이 틀리면 A 문서 청크에 B 문서 임베딩이 조용히 섞이는 버그가 생길 수
     있어(backend/old/rag/index/assemble.py와 동일한 이유), 개수 불일치를 명시적으로 검증한다."""
     client = get_azure_openai_client(settings)
-    # 문서 10개, 청크 151개(2026-08-24 DS1_PRICE 3청크 + DS8_UGC 2차 수집분 8청크 추가로
-    # 8개/140개에서 갱신)를 전부 한 줄로 펼쳐서 "한 번에" 임베딩 API를 호출한다 — 문서마다
-    # 따로따로 API를 부르면 요청 횟수가 늘어 느리고 비용도 더 든다(배치 처리).
+    # 문서 14개, 청크 213개(2026-08-30 DS8_UGC 2개 문서/17청크 제외 + DS5_DUO 1개 문서/7청크를
+    # 7개 문서/86청크로 교체 — 혼수 우선순위/신혼집 점유형태·유형 3종을 2021~2026년판에 추가한
+    # 2차 보강분(18청크) 포함, 8개/134개에서 갱신, 위 모듈 docstring 참고)를 전부 한 줄로 펼쳐서
+    # "한 번에" 임베딩 API를 호출한다 — 문서마다 따로따로 API를 부르면 요청 횟수가 늘어 느리고
+    # 비용도 더 든다(배치 처리).
     all_texts = [chunk.content for doc in documents for chunk in doc.chunks]
     all_embeddings = await embed_texts(
         client, all_texts, settings.azure_openai_embedding_deployment
