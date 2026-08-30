@@ -87,6 +87,36 @@ spec:
                     secretKeyRef:
                       name: backend-kv-secrets
                       key: AZURE_STORAGE_BLOB_ENDPOINT
+                # 2026-08-30 추가 — backend/deployment.yaml에는 Langfuse 계측(2026-08-24)이
+                # 들어갔지만 이 파일은 그때도 같이 갱신되지 않았다. 그 결과 `python -m
+                # app.rag.indexing`이 부르는 임베딩 API 호출이 Langfuse에 **한 건도 남지 않았다**
+                # (2026-08-30 라이브 확인: 이 CronJob의 env 8개 중 LANGFUSE_* 0개).
+                # app/rag/indexing.py의 _embed_all이 app/core/embeddings.py::get_azure_openai_client()
+                # — 계측 클라이언트로 바꿔치기되는 유일한 스위치 포인트 — 를 그대로 쓰므로,
+                # 이 4개만 주입하면 별도 앱 코드 변경 없이 임베딩 호출이 기록된다.
+                #
+                # 시크릿 배선은 이미 되어 있다 — secretproviderclass.yaml이 langfuse-public-key/
+                # langfuse-secret-key를 backend-kv-secrets로 투영하고 있어서(:24-28) 여기서
+                # 참조만 하면 된다. Key Vault/CSI 쪽에 추가 작업 없음.
+                #
+                # LANGFUSE_ENVIRONMENT는 backend와 같은 이유로 base에 두지 않는다 —
+                # staging/production이 서로 다른 값을 가져야 하고 base는 둘이 공유하는 계층이라,
+                # 각 오버레이의 kustomization.yaml이 patches로 추가한다(생략 시 앱 쪽 Settings
+                # 기본값 "local"로 폴백되어 두 환경 트레이스가 섞인다).
+                - name: LANGFUSE_ENABLED
+                  value: "true"
+                - name: LANGFUSE_HOST
+                  value: "https://jp.cloud.langfuse.com"
+                - name: LANGFUSE_PUBLIC_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: backend-kv-secrets
+                      key: LANGFUSE_PUBLIC_KEY
+                - name: LANGFUSE_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: backend-kv-secrets
+                      key: LANGFUSE_SECRET_KEY
               volumeMounts:
                 - name: kv-secrets
                   mountPath: /mnt/secrets

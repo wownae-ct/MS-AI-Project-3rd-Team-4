@@ -40,6 +40,30 @@ class Settings(BaseSettings):
     rag_tsvector_top_k: int = 4
     rag_context_top_k: int = 5
     rag_rrf_k: int = 60
+    # 검색 결과가 "질문과 아예 상관없는" 수준이면 generate/verify를 돌리지 않고 거절한다.
+    # 값의 근거는 라이브 실측(2026-08-30) — rag_chunks 전체를 대상으로 한 top-1 코사인 유사도
+    # 분포를 세 집단으로 나눠 재봤다:
+    #   · 명백한 주제이탈 12건("스파게티 맛집", "오늘 날씨", "퀵소트 짜줘" 등) → 최대 0.343
+    #   · 골든 질문 21건(scripts/run_rag_eval.py)                          → 최소 0.406
+    #   · 실사용자 질문 95건(중복 제거, chat_messages)                      → 0.30 미만 17건 중
+    #     13건이 무관 질문("눈누난나", 랜덤 타이핑, 프롬프트 인젝션 시도 등)
+    # 0.35로 잡으면 주제이탈 12/12를 다 막지만 실제 정상 질문("드레스 상담 받기 전에 뭐 알아야해?"
+    # 0.331, "웨딩업체 알아볼때 하는법" 0.311)까지 잘린다 — 서비스 본질을 훼손하므로 0.30을
+    # 택했다. 0.30~0.35 사이로 새는 소수(예: "제주도 맛집" 0.310)는 기존 generate가 "확인된
+    # 근거가 없습니다"로 거절하므로 방치가 아니다.
+    #
+    # 주의: 이 값은 **카테고리 필터를 적용하지 않은 전역 유사도**와 비교한다(retrieval.py의
+    # _GLOBAL_TOP_SIMILARITY_SQL). "이게 결혼 질문이긴 한가"는 사용자가 어느 카테고리 탭에
+    # 있든 같은 답이어야 하기 때문이다 — 실측상 세션 677개 중 593개(88%)가 category_code를
+    # 걸고 들어오는데, 필터를 건 채로 재면 VENUE 탭에서 던진 정상 SDM 질문이 주제이탈로
+    # 오판될 수 있다.
+    rag_min_similarity: float = 0.30
+
+    # 2026-08-31 — AI상담 프롬프트에 사용자 본인의 예산·일정·지출을 실을지
+    # (app/rag/chat_profile.py). 끄면 프롬프트가 이 기능 도입 전과 바이트 단위로 같아지므로,
+    # 데모 중 이상 동작이 보이면 코드 롤백 없이 env 하나로 즉시 되돌릴 수 있다. 기본값이 있어
+    # 새 필수 env가 아니다(필수 필드를 늘렸다가 파드가 부팅에서 죽은 전례가 있어 의도적).
+    chat_profile_enabled: bool = True
 
     # rag-reindex CronJob이 data/rag_corpus/를 이 경로에 마운트한다(infra/k8s/base/rag-cronjob/
     # cronjob.yaml: /app/data/rag_corpus, 컨테이너 WORKDIR이 /app이라 상대경로로 일치).

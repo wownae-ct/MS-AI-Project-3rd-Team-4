@@ -32,6 +32,7 @@ retrieve_node가 재시도 여부를 판단할 때 state["verdict"]가 아니라
 들어갈 위험이 없다."""
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from typing import TypedDict
 
@@ -48,13 +49,18 @@ from app.rag.generation import (
     NO_CONTEXT_REASON,
     build_chat_messages,
     reformulate_query,
+    resolve_followup_query,
     verify_answer,
 )
 from app.rag.query_profile import profile_query
-from app.rag.retrieval import RetrievedChunk, retrieve
+from app.rag.retrieval import RetrievedChunk, retrieve_with_similarity
+from app.rag.scope_check import OUT_OF_SCOPE_ANSWER, OUT_OF_SCOPE_REASON
 
 # CRAG 재검색 루프의 상한. 무한루프/비용 폭증 방지가 목적이라 설정값으로 노출하지 않고 코드에
 # 고정한다(2026-08-24 결정 — "최대 재시도 1회로 상한").
+logger = logging.getLogger(__name__)
+
+
 _MAX_RETRIES = 1
 
 # 2026-08-26 챗 SSE 타임아웃 회귀 수정 — verify_answer/reformulate_query는 generate_node와
@@ -94,6 +100,26 @@ class ChatState(TypedDict):
     verdict: str  # verify_node의 판정: SUPPORTED/WEAK/GENERAL
     verification_reason: str  # 그 판정을 내린 이유 한 줄
     retry_count: int  # verify가 WEAK/GENERAL이라 retrieve로 되돌아간 횟수. 최대 _MAX_RETRIES(1).
+    # retrieve_node가 "검색 결과가 질문과 아예 무관하다"고 판정하면 True — generate/verify를
+    # 건너뛰고 곧바로 END로 간다(_route_after_retrieve). 스코프 가드(키워드, 그래프 진입 전)가
+    # 놓친 주제이탈을 검색 결과로 한 번 더 거르는 2차 방어선이다.
+    out_of_scope: bool
+    # 대화 이력 [(role, content), ...] — 최신이 뒤. 후속 질문 해소에만 쓴다(생성 프롬프트엔
+    # 안 들어간다). app/services/chat.py 가 직전 몇 턴만 잘라서 채운다.
+    history: list[tuple[str, str]]
+    # 후속 질문을 "그 자체로 이해되는 형태"로 다시 쓴 것. 해소가 일어났을 때만 채워지고,
+    # 그때는 검색어와 생성 프롬프트의 질문이 모두 이 값이 된다(원 질문은 query에 그대로 남아
+    # DB 저장·트레이스에 쓰인다).
+    resolved_query: str
+    # 사용자 본인의 예산·일정·지출·진행률을 한글로 렌더한 블록(app/rag/chat_profile.py,
+    # 2026-08-31). generate와 verify **둘 다** 이 값을 받아야 한다 — verify만 못 보면 프로필
+    # 기반 문장이 "근거 없음"으로 판정돼 CRAG 재시도가 상시 발동한다(generation.py::
+    # verify_answer docstring 참고). 웨딩이 없거나 활성 카테고리가 0개면 빈 문자열.
+    #
+    # ⚠️ 읽을 때는 반드시 `state.get("profile_block")` — scripts/run_rag_eval.py가 2개 키만
+    # 담은 부분 state로 ainvoke하므로 `state["profile_block"]`이면 KeyError로 깨진다
+    # (이 파일 상단 docstring이 이미 경고한 함정).
+    profile_block: str
 
 
 # ① retrieve: 질문+카테고리로 하이브리드 검색(retrieval.py)을 돌려 근거 청크를 찾아온다.
@@ -135,17 +161,102 @@ async def retrieve_node(state: ChatState, config: RunnableConfig) -> dict:
                 reformulate_query(client, settings, state["query"], state["verification_reason"]),
                 writer,
             )
-        chunks = await retrieve(session, search_query, state["category_code"], settings)
+        outcome = await retrieve_with_similarity(
+            session, search_query, state["category_code"], settings
+        )
+        chunks = outcome.chunks
         # Phase 7 감사(Low) — 검색은 OpenAI 호출이 아니라 순수 DB 쿼리라 langfuse.openai
         # monkeypatch의 자동계측 대상이 아니다(generate/verify 노드와 달리 이 노드만 자기 span에
         # output을 직접 안 채우면 Langfuse UI에 "뭐가 검색됐는지"가 전혀 안 남는다). chunk_id만
         # 남기고 본문(content)은 싣지 않는다 — 디버깅엔 ID로 DB를 다시 찾아보면 충분하고, 본문까지
         # 실으면 payload만 커진다. 0건이어도(RAG_NO_CONTEXT) 빈 리스트를 명시적으로 남겨 "0건
         # 검색됨"과 "기록 안 됨"을 구분한다.
-        trace.update(output=[c.chunk_id for c in chunks])
+        # top_similarity를 함께 남긴다 — 컷오프 임계값(rag_min_similarity)을 나중에 실측으로
+        # 조정하려면 "실제 트래픽의 유사도 분포"가 있어야 하는데, 이걸 안 남기면 그때마다 질문을
+        # 다시 꺼내 임베딩부터 새로 돌려야 한다(2026-08-30에 실제로 그렇게 측정했다).
+        trace.update(
+            output={
+                "chunk_ids": [c.chunk_id for c in chunks],
+                "top_similarity": outcome.top_similarity,
+            }
+        )
         update: dict = {"context": chunks}
         if is_retry:
             update["retry_count"] = state.get("retry_count", 0) + 1
+
+        # ── 스코프 판정 (1차 검색에서만) ──────────────────────────────────────────────
+        #
+        # 아래 두 블록 모두 `not is_retry` 로 묶여 있다. 재시도(CRAG)는 1차에서 이미 스코프를
+        # 통과한 질문이고 검색어도 LLM이 재구성한 것이라, 여기서 또 자르면 "1차는 통과했는데
+        # 2차에서 갑자기 주제이탈" 같은 이상한 상태가 된다.
+
+        # ① 거절하기 전에 **한 번 더 기회를 준다** —
+        # 생략형 후속 질문("그럼 스드메는?" 단독 0.199)은 주제를 벗어난 게 아니라 문장이 짧아
+        # 벡터가 흐려진 것이라, 생략된 대상을 채우면 정상 점수로 돌아온다(0.434 실측).
+        #
+        # 순서가 중요하다 — **먼저 재보고 미달일 때만** 해소한다. 대부분의 질문은 그냥 통과하므로
+        # LLM 호출이 아예 없고, 비용은 어차피 거절될 뻔한 소수에만 붙는다(그마저도 거절 대신
+        # 답변으로 이어지면 원래 쓸 예정이던 generate+verify 2회보다 싸다).
+        resolved_query = ""
+        if (
+            not is_retry
+            and _is_out_of_scope(outcome.top_similarity, settings)
+            and state.get("history")
+        ):
+            client = get_azure_openai_client(settings)
+            resolved = await _await_with_heartbeat(
+                resolve_followup_query(client, settings, state["history"], state["query"]),
+                writer,
+            )
+            if resolved != state["query"]:
+                retry_outcome = await retrieve_with_similarity(
+                    session, resolved, state["category_code"], settings
+                )
+                logger.info(
+                    "followup resolved: %.4f -> %.4f, %r -> %r",
+                    outcome.top_similarity,
+                    retry_outcome.top_similarity,
+                    state["query"][:40],
+                    resolved[:60],
+                )
+                # 해소해도 여전히 미달이면 진짜 주제 이탈이다 — 실측상 "스파게티 맛집 알려줘"는
+                # 재작성 뒤에도 0.198 로 남았다(주제를 바꾸지 말라는 프롬프트 규칙 덕분이다).
+                if not _is_out_of_scope(retry_outcome.top_similarity, settings):
+                    outcome = retry_outcome
+                    chunks = retry_outcome.chunks
+                    resolved_query = resolved
+                    update["context"] = chunks
+                    update["resolved_query"] = resolved
+                    trace.update(
+                        output={
+                            "chunk_ids": [c.chunk_id for c in chunks],
+                            "top_similarity": retry_outcome.top_similarity,
+                            "resolved_query": resolved,
+                        }
+                    )
+
+        # ② 그래도 미달이면 거절한다 — generate/verify를 건너뛰고 곧바로 END로 간다.
+        if (
+            not is_retry
+            and not resolved_query
+            and _is_out_of_scope(outcome.top_similarity, settings)
+        ):
+            logger.info(
+                "chat scope cutoff: top_similarity=%.4f < %.2f, query=%r",
+                outcome.top_similarity,
+                settings.rag_min_similarity,
+                state["query"][:80],
+            )
+            writer({"type": "token", "delta": OUT_OF_SCOPE_ANSWER})
+            update.update(
+                {
+                    "context": [],  # 거절인데 인용을 붙이지 않는다
+                    "answer": OUT_OF_SCOPE_ANSWER,
+                    "verdict": "OUT_OF_SCOPE",
+                    "verification_reason": OUT_OF_SCOPE_REASON,
+                    "out_of_scope": True,
+                }
+            )
         return update
 
 
@@ -168,7 +279,14 @@ async def generate_node(state: ChatState, config: RunnableConfig) -> dict:
         client = get_azure_openai_client(settings)
         stream = await client.chat.completions.create(
             model=settings.chat_rag_deployment,
-            messages=build_chat_messages(state["category_code"], state["context"], state["query"]),
+            messages=build_chat_messages(
+                state["category_code"],
+                state["context"],
+                # 해소된 질문이 있으면 그걸 쓴다 — 원 질문("그럼 스드메는?")만 주면 생성 모델도
+                # "그럼"이 뭘 가리키는지 알 수 없다(이 채팅은 이력을 프롬프트에 넣지 않는다).
+                state.get("resolved_query") or state["query"],
+                state.get("profile_block") or None,
+            ),
             stream=True,  # 완성된 답변을 한 번에 안 받고, 글자 조각(delta) 단위로 하나씩 받는다
         )
         answer_parts: list[str] = []
@@ -194,7 +312,14 @@ async def verify_node(state: ChatState, config: RunnableConfig) -> dict:
 
         client = get_azure_openai_client(settings)
         verdict, reason = await _await_with_heartbeat(
-            verify_answer(client, settings, state["context"], state["answer"]), writer
+            verify_answer(
+                client,
+                settings,
+                state["context"],
+                state["answer"],
+                state.get("profile_block") or None,
+            ),
+            writer,
         )
         return {"verdict": verdict, "verification_reason": reason}
 
@@ -203,6 +328,24 @@ async def verify_node(state: ChatState, config: RunnableConfig) -> dict:
 # 상한 미만) retrieve로 되돌아가고, 아니면(SUPPORTED거나 이미 1회 재시도했으면) 끝낸다.
 # retrieve_node가 재시도 시에만 retry_count를 올리므로, 2차 verify 이후엔 결과가 뭐든
 # retry_count(1) < _MAX_RETRIES(1)가 거짓이 되어 무조건 END — 정확히 최대 1회로 종료가 보장된다.
+def _is_out_of_scope(top_similarity: float | None, settings: Settings) -> bool:
+    """전역 top-1 유사도가 임계값 미만이면 주제이탈로 본다.
+
+    None(코퍼스가 비어 있음)은 거절하지 않는다 — 색인이 아직 안 돌았거나 비어 있는 상황에서
+    모든 질문을 "주제이탈"로 만들면 원인 진단이 어려워진다. 그 경우는 기존 RAG_NO_CONTEXT
+    경로(검색 0건)가 처리한다.
+    """
+    if top_similarity is None:
+        return False
+    return top_similarity < settings.rag_min_similarity
+
+
+# retrieve → generate 는 평소엔 그냥 직진이지만, 스코프 컷오프에 걸리면 generate/verify를
+# 건너뛰고 곧바로 END로 간다 — LLM 호출 2회(생성·검증)를 통째로 아낀다.
+def _route_after_retrieve(state: ChatState) -> str:
+    return END if state.get("out_of_scope") else "generate"
+
+
 def _route_after_verify(state: ChatState) -> str:
     if state["verdict"] in ("WEAK", "GENERAL") and state.get("retry_count", 0) < _MAX_RETRIES:
         return "retrieve"
@@ -218,7 +361,9 @@ def build_graph() -> CompiledStateGraph:
     graph.add_node("generate", generate_node)
     graph.add_node("verify", verify_node)
     graph.set_entry_point("retrieve")
-    graph.add_edge("retrieve", "generate")
+    graph.add_conditional_edges(
+        "retrieve", _route_after_retrieve, {"generate": "generate", END: END}
+    )
     graph.add_edge("generate", "verify")
     graph.add_conditional_edges("verify", _route_after_verify, {"retrieve": "retrieve", END: END})
     return graph.compile()
