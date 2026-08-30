@@ -12,7 +12,7 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { invalidateSession, logout } from "@/entities/session";
-import { Badge, Button, Card, Page } from "@/shared/ui";
+import { BackLink, Badge, Button, Card, Page } from "@/shared/ui";
 
 // 이 화면이 유일한 호출자다 — AppShell.tsx가 로그아웃 버튼을 직접 갖고 있던 예전엔 이 로직이
 // 그쪽 useLogout()에 있었지만, 로그아웃 자체가 이 화면으로만 옮겨온 지금은 공유할 두 번째
@@ -45,7 +45,11 @@ export function SettingsPage() {
   const { pending, handleLogout } = useLogout();
 
   return (
-    <Page title="설정">
+    // 「뒤로」이지 브레드크럼브가 아니다 (D25) — 이 화면은 **부모가 없다.** 톱니바퀴는 5개 탭 어디서든
+    // 눌리므로 「홈 › 설정」은 지어낸 계층이고, 예산 탭에서 들어온 사용자를 홈으로 보내면 문맥을 잃는다.
+    // 종전엔 돌아가는 길이 아예 없었다 — 탭바에 설정 항목이 없고 어느 탭에도 aria-current 가 붙지
+    // 않아, 사용자가 자기가 어디 있었는지 스스로 기억해 탭을 눌러야 했다.
+    <Page title="설정" nav={<BackLink />}>
       <Card title="계정">
         <div className="flex flex-col gap-2">
           <Button

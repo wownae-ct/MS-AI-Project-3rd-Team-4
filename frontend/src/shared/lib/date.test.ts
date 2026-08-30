@@ -11,6 +11,7 @@ import {
   parseISO,
   pastQuickPicks,
   futureQuickPicks,
+  weddingQuickPicks,
   startOfMonth,
   todayISO,
   weekdayIndex,
@@ -189,6 +190,15 @@ describe("빠른 선택", () => {
       { label: "오늘", value: "2026-08-29" },
       { label: "1주 뒤", value: "2026-09-05" },
       { label: "1개월 뒤", value: "2026-09-29" },
+    ]);
+  });
+
+  // 결혼식 칩은 **척도가 다르다** — 준비 기간이 반년~한 해 반이라 개월 단위로 나눈다.
+  it("결혼식 칩은 6·12·18개월 뒤다", () => {
+    expect(weddingQuickPicks("2026-08-29")).toEqual([
+      { label: "6개월 뒤", value: "2027-02-28" }, // 말일 접기 — 2월엔 29일이 없다(2027 은 평년)
+      { label: "12개월 뒤", value: "2027-08-29" },
+      { label: "18개월 뒤", value: "2028-02-29" }, // 2028 은 윤년이라 29일이 산다
     ]);
   });
 

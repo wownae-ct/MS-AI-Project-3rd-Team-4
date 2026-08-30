@@ -13,8 +13,8 @@
 | `styles.css` | **앱의 유일한 CSS 진입점.** `app/main.tsx` 가 이것 하나만 import 한다. Tailwind · 폰트 · `@source` · base 레이어 |
 | `theme.css` | `@theme` 디자인 토큰 — `docs/design/` 의 값 1:1 |
 | `Page` `Card` `Button` `Badge` `Money` `Progress` `Tabs` `ErrorBoundary` `icons` | 프리미티브 |
-| `NumberInput` `DateField` | 네이티브 입력 대체 — 각각 `type="number"` · `type="date"` 를 갈아끼웠다(그 파일 머리말에 **무엇을 잃고 어떻게 갚았는지** 표로 있다). `DateField` 의 그리드(`DateCalendar`)는 `React.lazy` 로 내린 별도 청크라 `index.ts` 로 내보내지 않는다 |
-| `Select` | 네이티브 `<select>` 대체(D22) — 위 둘과 같은 계열이고, 그 파일 머리말에 **무엇을 잃고 어떻게 갚았는지** 표로 있다(잃는 것은 모바일 OS 피커 하나다). 목록까지 직접 그리는 이유는 **열린 목록을 브라우저·OS 가 그려 닫힌 상자와 이질적이었기 때문**이다(사용자 리포트). APG 「Select-Only Combobox」. `field` 16px / `compact` 14px, 드롭다운 11곳이 쓰던 클래스 문자열 5종의 단일 소유자다 |
+| `NumberInput` `DateField` | 네이티브 입력 대체 — 각각 `type="number"` · `type="date"` 를 갈아끼웠다(그 파일 머리말에 **무엇을 잃고 어떻게 갚았는지** 표로 있다). `DateField` 는 **칠 수 없다** — 값을 만드는 길이 캘린더뿐이라 칸이 `<button>` 트리거다. **날짜를 골라도 닫히지 않는다** — 닫는 길은 「닫기」·Esc·상자 밖 누르기 셋뿐이다. 그리드(`DateCalendar`)는 `React.lazy` 로 내린 별도 청크라 `index.ts` 로 내보내지 않는다. 빠른 선택 칩은 칸의 척도에 맞춰 셋으로 갈린다 — `futureQuickPicks`(오늘·1주·1개월) · `weddingQuickPicks`(6·12·18개월) · `pastQuickPicks`(오늘·어제) |
+| `Select` | 네이티브 `<select>` 대체(D22) — 위 둘과 같은 계열이고, 그 파일 머리말에 **무엇을 잃고 어떻게 갚았는지** 표로 있다(잃는 것은 모바일 OS 피커 하나다). 목록까지 직접 그리는 이유는 **열린 목록을 브라우저·OS 가 그려 닫힌 상자와 이질적이었기 때문**이다(사용자 리포트). APG 「Select-Only Combobox」. `field` 16px / `compact` 14px, 드롭다운 11곳이 쓰던 클래스 문자열 5종의 단일 소유자다.<br>**열린 목록도 같은 크기를 쓴다** — 조상에서 상속하지 않는다(D26). `compact` 는 상자만 36px 이고 **터치 타겟은 44px** 다(의사요소로 되돌린다 — `Button` 의 `sm` 과 같은 짝). 선택 표시는 색 + **굵기**이고 체크 아이콘은 쓰지 않는다 |
 | `index.ts` | 공개 API. 슬라이스 밖에서는 이 파일로만 접근한다 |
 
 CSS 는 사이드이펙트라 `index.ts` 로 재수출할 수 없다 — 그래서 `main.tsx` 가 경로로 직접 import 한다([layers.md §4.2](../../../docs/architecture/layers.md)).

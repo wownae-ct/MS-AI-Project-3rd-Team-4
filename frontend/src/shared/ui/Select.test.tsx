@@ -53,6 +53,62 @@ describe("Select", () => {
     expect(screen.getByRole("option", { name: "진행 중" })).toHaveAttribute("aria-selected", "false");
   });
 
+  // D26 — 체크 아이콘을 걷어낸 뒤(사용자 요청) **굵기가 색 아닌 유일한 시각 채널**이다.
+  // 위 aria 계약은 스크린리더만 덮는다. 이 둘은 함께 있어야 1.4.1 을 만족한다.
+  it("선택 항목만 굵다 — 아이콘을 대신하는 시각 채널이다(WCAG 1.4.1)", async () => {
+    renderSelect();
+    await userEvent.click(trigger());
+    expect(screen.getByRole("option", { name: "할 일" })).toHaveClass("font-bold");
+    expect(screen.getByRole("option", { name: "진행 중" })).not.toHaveClass("font-bold");
+  });
+
+  it("항목에 체크 아이콘을 그리지 않는다 — 라벨 텍스트만 남는다", async () => {
+    renderSelect();
+    await userEvent.click(trigger());
+    for (const option of screen.getAllByRole("option")) {
+      expect(option.querySelectorAll("svg")).toHaveLength(0);
+    }
+    // 접근명이 아니라 **보이는 내용**을 본다 — 접근명은 아이콘이 있어도 같았다.
+    expect(screen.getAllByRole("option").map((el) => el.textContent)).toEqual(["할 일", "진행 중", "완료"]);
+  });
+
+  // D26 — 초판은 팝업에 크기가 없어 **호출부 조상**에서 상속했다(`Card` 제목 행 안에서 16px,
+  // 캡션 라벨 안에서 12px). 자리마다 다르게 떠서 호출부로는 못 고친다. 목록은 트리거를 따라간다.
+  it("목록 글자 크기가 트리거를 따라간다 — 조상에서 상속하지 않는다", async () => {
+    const { unmount } = render(
+      // 조상이 12px 인 자리를 재현한다 — 고치기 전이면 목록이 이 값을 물려받는다.
+      <div className="text-xs">
+        <Select value="TODO" onValueChange={() => {}} options={OPTIONS} aria-label="상태" />
+      </div>,
+    );
+    await userEvent.click(trigger());
+    expect(screen.getByRole("listbox")).toHaveClass("text-base");
+    unmount();
+
+    renderSelect({ size: "compact" });
+    await userEvent.click(trigger());
+    expect(screen.getByRole("listbox")).toHaveClass("text-sm");
+  });
+
+  // 🚨 짝 계약 — `Button.test.tsx` 의 `sm` 과 같은 장치다. 조각 하나가 빠져도 **화면에는 아무
+  // 변화가 없고** 터치 타겟만 조용히 36px 이 된다(a11y.md §1.5 의 44px 계약).
+  it("compact 는 36px 상자와 44px 히트 영역을 **함께** 갖는다", () => {
+    const { unmount } = render(
+      <Select size="compact" value="TODO" onValueChange={() => {}} options={OPTIONS} aria-label="상태" />,
+    );
+    expect(trigger().className).toContain("h-9");
+    expect(trigger().className).toContain("relative");
+    expect(trigger().className).toContain("after:absolute");
+    expect(trigger().className).toContain("after:inset-x-0");
+    expect(trigger().className).toContain("after:-inset-y-1");
+    unmount();
+
+    // field 는 형제 <input> 과 높이를 맞춰야 하므로 44px 그대로다.
+    renderSelect();
+    expect(trigger().className).toContain("min-h-tap");
+    expect(trigger().className).not.toContain("h-9");
+  });
+
   describe("키보드 — APG Select-Only Combobox", () => {
     it("↓ 로 열고 ↓↑ 로 활성 항목을 옮긴 뒤 Enter 로 고른다", async () => {
       const onValueChange = renderSelect();

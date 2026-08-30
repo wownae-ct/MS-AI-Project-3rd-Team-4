@@ -9,7 +9,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { getCategories, getWeddingCategories, type CategoryConstant } from "@/entities/wedding";
-import { Card, Page, Tabs } from "@/shared/ui";
+import { Breadcrumb, Card, Page, Tabs } from "@/shared/ui";
 import { ChecklistTab } from "./ChecklistTab";
 import { CostTab } from "./CostTab";
 
@@ -73,13 +73,26 @@ export function CategoryPage({ categoryCode }: CategoryPageProps) {
   // 없음" 경로를 탄다. 이 줄을 고칠 때 그 테스트를 함께 본다.
   const title = categoryMeta?.name_ko ?? (settled ? categoryCode : GENERIC_TITLE);
 
+  // 이 화면이 앱에서 **유일한 하위 화면**이다 — layout.md §1 의 *"카테고리 상세는 독립 탭이 아니라
+  // 홈 탭에 귀속되는 하위 화면"* 계약을 처음으로 화면에 드러낸다(D25). 그전까지 그 계층을 아는
+  // 것은 `NavItem` 의 활성 판정(홈 탭이 `/category` 에서도 켜진다)뿐이었고, 그건 오히려 **역효과**
+  // 였다 — 홈 탭에 `aria-current="page"` 가 붙어 「현재 위치」로 읽히므로 눌러서 나가라는 어포던스가
+  // 되지 못했다.
+  //
+  // `title` 을 그대로 쓴다 — 조회 중/폴백 3분기를 이미 위 한 줄이 낸다. 여기서 다시 갈래를 만들면
+  // 제목과 브레드크럼브가 서로 다른 이름을 말하는 순간이 생긴다.
+  const breadcrumb = <Breadcrumb ancestors={[{ label: "홈", to: "/" }]} current={title} />;
+
   // 대시보드의 카테고리 행은 활성만 링크로 내므로 여기 도달하는 길은 북마크·뒤로가기·주소 직접
   // 입력뿐이다. 그래도 탭을 그대로 그리면 **정상 화면 모양의 빈 체크리스트**가 되어(개인화가
   // 애초에 이 카테고리 항목을 만들지 않는다) "아직 안 온 건가"와 구분되지 않는다. 탭을 아예
   // 렌더하지 않으므로 체크리스트·업체사례·납부 내역 조회도 나가지 않는다.
   if (isDeactivated) {
     return (
-      <Page title={title}>
+      // 브레드크럼브가 생겨도 아래 「대시보드로 돌아가기」는 **남긴다.** 그건 내비게이션 크롬이 아니라
+      // 안내 문장의 다음 행동(본문 CTA)이고, 브레드크럼브는 어디까지나 보조 수단이다(NN/g).
+      // 지우면 이 화면에서 사용자가 읽던 흐름의 끝이 사라진다.
+      <Page title={title} nav={breadcrumb}>
         <Card>
           <div className="flex flex-col gap-2">
             <p className="text-sm font-bold text-ink">사용 안 함으로 설정한 카테고리예요.</p>
@@ -96,7 +109,7 @@ export function CategoryPage({ categoryCode }: CategoryPageProps) {
   }
 
   return (
-    <Page title={title} subtitle="체크리스트 · 비용을 한 곳에서 봅니다.">
+    <Page title={title} subtitle="체크리스트 · 비용을 한 곳에서 봅니다." nav={breadcrumb}>
       <Tabs.Root defaultValue="checklist">
         <Tabs.List label="카테고리 상세 탭">
           <Tabs.Tab value="checklist">체크리스트</Tabs.Tab>

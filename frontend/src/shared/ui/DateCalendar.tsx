@@ -24,9 +24,16 @@
 // 이동은 **로빙 탭인덱스** — 포커스 가능한 셀이 항상 하나뿐이라 Tab 한 번에 그리드를 빠져나간다
 // (42개를 Tab 으로 지나가게 두지 않는다).
 //
-// ⚠️ **DOM 포커스는 키보드로 움직였을 때만 옮긴다.** 마운트 직후 1회는 옮긴다(열자마자 방향키가
+// ⚠️ **DOM 포커스는 키보드로 움직였을 때만 옮긴다.** 열릴 때 1회는 옮긴다(열자마자 방향키가
 // 들어야 한다). 그러나 ‹ › 버튼이나 연·월 셀렉트로 달을 바꿀 때 포커스까지 그리드로 끌고 가면
 // **키보드 사용자가 ‹ 를 한 번 누른 뒤 그 버튼을 잃는다.** 그래서 `moveFocusRef` 로 갈랐다.
+//
+// ## `open` 을 왜 받는가 — 접힌 채 살아 있기 때문이다
+//
+// 호출부(`DateField`)는 여닫기 전환을 위해 **첫 열림 이후 이 컴포넌트를 떼지 않는다**(그 파일
+// 머리말 §여닫기). 그래서 「마운트 = 열림」이 더 이상 성립하지 않는다. 다시 열 때마다 보이는
+// 달과 포커스 대상을 `value` 기준으로 되돌리지 않으면 **지난번에 둘러보던 달이 그대로 뜬다** —
+// 고를 날짜와 무관한 달을 보여 주는 셈이라, 종전 조건부 렌더가 공짜로 주던 것을 잃는다.
 //
 // ## 시각 — 새 값을 만들지 않는다
 //
@@ -87,10 +94,15 @@ const WEEKDAY_CELL_WEEKEND = "h-8 text-xs font-bold text-ink";
  * (a11y.md §1.1 표: AA 최저선 24px · AAA 44px 은 권고). AAA 를 이 자리에서 지키려면 인라인
  * 패널이 아니라 화면을 덮는 오버레이여야 하는데, 그건 이 컴포넌트의 배치 결정을 통째로 뒤집는
  * 별건이다. **여백을 조금 깎아 34px 로 만드는 식의 절충은 하지 않는다** — AAA 도 못 넘기면서
- * 선택 알약(rounded-pill)이 서로 붙어 보이는 비용만 치른다. */
+ * 선택 표시가 서로 붙어 보이는 비용만 치른다.
+ *
+ * ⚠️ 위 폭 산술이 셀의 라운드를 정한 근거이기도 하다 — 가로 30~38px · 세로 44px 인 상자에
+ * 999px 을 주면 세로로 긴 타원이 된다(`date-cell-style.ts` §라운드). */
 const GRID_TABLE = "w-full table-fixed border-collapse";
+/** 🚨 [2026-08-30] `rounded-pill` 이었다 — 사용자 리포트 *"라운드가 너무 둥금"*.
+ *  이 패널의 다른 컨트롤이 전부 `rounded-md` 라, 칩만 알약이면 그 하나가 튄다. */
 const CHIP =
-  "min-h-tap rounded-pill border border-line bg-surface px-3 text-sm font-bold text-ink-soft " +
+  "min-h-tap rounded-md border border-line bg-surface px-3 text-sm font-bold text-ink-soft " +
   "transition-colors duration-150 hover:border-primary hover:text-primary";
 const FOOTER_ROW = "flex items-center justify-end gap-2 border-t border-line pt-2";
 const FOOTER_BUTTON =
@@ -112,6 +124,11 @@ export interface DateCalendarProps {
   markedLabel?: string;
   /** 월 라벨과 그리드를 잇는 id. 화면 안에서 유일해야 한다. */
   labelId: string;
+  /**
+   * 지금 펼쳐져 있는가(기본 `true`). 호출부가 접힌 채로 이 컴포넌트를 남겨 두므로 필요하다 —
+   * 머리말 §`open` 을 왜 받는가. 패널 안쪽만 보는 테스트는 그대로 기본값에 기댄다.
+   */
+  open?: boolean;
 }
 
 export function DateCalendar({
@@ -125,6 +142,7 @@ export function DateCalendar({
   markedDate,
   markedLabel,
   labelId,
+  open = true,
 }: DateCalendarProps) {
   const today = todayISO();
   const [focused, setFocused] = useState(() => (value === "" ? clampISO(today, min, max) : value));
@@ -134,12 +152,46 @@ export function DateCalendar({
   const panelRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLTableElement>(null);
   const moveFocusRef = useRef(true);
+  const wasOpenRef = useRef(false);
 
+  // ① **열리는 순간 1회** — 보이는 달과 포커스 대상을 `value` 로 되돌린다(머리말 §`open`).
+  // `wasOpenRef` 로 「열림 전이」만 걸러 낸다. 열린 채로 값이 바뀌는 것은 ② 가 맡는다 —
+  // 그쪽은 DOM 포커스를 건드리지 않아야 하기 때문에 한 곳에서 처리할 수 없다.
+  // ⚠️ 이 effect 가 포커스 effect **앞에** 있어야 한다 — 같은 커밋에서 순서대로 돌아야
+  // `moveFocusRef` 를 세운 뒤에 포커스가 걸린다.
+  useEffect(() => {
+    if (!open) {
+      wasOpenRef.current = false;
+      return;
+    }
+    if (wasOpenRef.current) return;
+    wasOpenRef.current = true;
+    const base = value === "" ? clampISO(today, min, max) : value;
+    setFocused(base);
+    setViewMonth(startOfMonth(base));
+    moveFocusRef.current = true;
+  }, [open, value, min, max, today]);
+
+  // ② **열린 채로 값이 바뀌면** 보이는 달과 로빙 대상이 그 값을 따라간다. 날짜를 골라도 패널이
+  // 닫히지 않게 되면서(2026-08-30) 필요해졌다 — 앞뒤 달의 날을 고르면 그 달로 넘어가야 하고,
+  // 로빙 탭인덱스도 방금 고른 칸에 있어야 다음 방향키가 거기서 출발한다.
+  //
+  // ⚠️ **DOM 포커스는 옮기지 않는다.** 빠른 선택 칩을 누른 사람의 포커스를 그리드로 끌고 가면
+  // 다음 Tab 이 어디서 출발할지 예측할 수 없다 — 머리말이 못 박은 「포커스는 키보드로 움직였을
+  // 때만」의 연장이다.
+  useEffect(() => {
+    if (!open || value === "") return;
+    setFocused(value);
+    setViewMonth(startOfMonth(value));
+  }, [open, value]);
+
+  // `open` 도 의존성이다 — 지난번과 같은 날짜로 되돌아가 `focused` 가 그대로일 때도
+  // 다시 열렸다는 사실만으로 포커스가 걸려야 한다.
   useEffect(() => {
     if (!moveFocusRef.current) return;
     moveFocusRef.current = false;
     gridRef.current?.querySelector<HTMLButtonElement>(`[data-date="${focused}"]`)?.focus();
-  }, [focused]);
+  }, [focused, open]);
 
   const viewParsed = parseISO(viewMonth);
   const viewYear = viewParsed?.year ?? Number(today.slice(0, 4));
@@ -160,10 +212,20 @@ export function DateCalendar({
     moveFocusTo(addMonths(focused, amount), false);
   }
 
+  /**
+   * 날짜를 정한다. **닫지 않는다.**
+   *
+   * 🚨 [2026-08-30 사용자 지시] 종전엔 셀을 누르는 즉시 `onClose()` 가 따라 붙었다. 그러면
+   * 잘못 누른 날을 고치려고 다시 열어야 하고, 「골랐다」는 사실을 그리드에서 확인할 틈도 없이
+   * 패널이 사라진다(모바일에서는 손가락이 그 자리를 가리고 있어 더 그렇다). 이제 닫는 길은
+   * **「닫기」 · Esc · 상자 밖 누르기** 셋뿐이다 — 닫기는 언제나 사용자가 정한다.
+   *
+   * 빠른 선택 칩도 같은 규칙을 쓴다. 「6개월 뒤」가 며칠인지는 눌러 봐야 알고, 그 확인이
+   * 그리드에서 이뤄져야 한다.
+   */
   function pick(iso: string) {
     if (!isWithinRange(iso, min, max)) return;
     onSelect(iso);
-    onClose();
   }
 
   // 패널 전체의 키 처리. **JSX prop 이 아니라 imperative 리스너**인 이유가 둘이다 —

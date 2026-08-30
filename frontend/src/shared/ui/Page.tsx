@@ -90,6 +90,23 @@ export interface PageProps {
    * 락업 높이만큼 어긋난다. 현재 `fill` 사용처는 셸 안의 AI상담뿐이라 실제 충돌은 없다.
    */
   brand?: number;
+  /**
+   * 제목 **위**의 내비 줄 — `Breadcrumb`(계층 · 조상 링크) 또는 `BackLink`(히스토리 뒤로) 하나 (D25).
+   *
+   * `brand` 와 같은 이유로 prop 이다 — 이 컴포넌트가 `<header>`(h1)를 첫 자식으로 내므로 호출부는
+   * `children` 으로 제목 위에 아무것도 놓을 수 없다.
+   *
+   * **화면당 하나만 넣는다.** 두 컴포넌트는 뜻이 갈린다(위치 vs 히스토리) — 계층이 있는 화면은
+   * 브레드크럼브의 조상 링크가 이미 「위로」를 겸하므로 뒤로를 함께 두면 같은 일을 하는 컨트롤이
+   * 둘이 된다. 그래서 슬롯도 하나다.
+   *
+   * ⚠️ `brand` 와 함께 쓰지 않는다 — `brand` 는 **셸 밖 화면**(로그인 · 온보딩) 전용이고 그 화면들엔
+   * 돌아갈 상위 화면이 없다. 반대로 이 슬롯은 셸 안 화면 전용이다.
+   * ⚠️ `fill` 과도 함께 쓰지 않는다 — `brand` 와 **같은 사유**다(`CONTAINER_FILL` 의 높이 계산이
+   * 헤더 높이를 상수로 가정한다). 현재 `fill` 사용처는 AI상담 하나이고 그건 최상위 탭이라
+   * 이 슬롯을 쓰지 않는다.
+   */
+  nav?: ReactNode;
 }
 
 export function Page({
@@ -101,6 +118,7 @@ export function Page({
   width = DEFAULT_WIDTH,
   fill = false,
   brand,
+  nav,
 }: PageProps) {
   const titleRef = useRef<HTMLHeadingElement>(null);
 
@@ -114,6 +132,18 @@ export function Page({
     if (focusOnMount) titleRef.current?.focus();
   }, [focusOnMount, title]);
 
+  const header = (
+    <header className="flex items-start justify-between gap-4">
+      <div className="flex min-w-0 flex-col gap-1">
+        <h1 ref={titleRef} tabIndex={-1} className="text-xl font-bold text-ink outline-none md:text-2xl">
+          {title}
+        </h1>
+        {subtitle !== undefined && <p className="text-sm text-ink-soft">{subtitle}</p>}
+      </div>
+      {actions}
+    </header>
+  );
+
   return (
     <div className={`${fill ? CONTAINER_FILL : CONTAINER} ${width}`}>
       {/* `self-start` — 이 컨테이너는 `flex flex-col` 이라 기본 `align-items: stretch` 다. img 는
@@ -121,15 +151,10 @@ export function Page({
           기대지 않고 명시한다. */}
       {brand !== undefined && <Brand size={brand} className="self-start" />}
 
-      <header className="flex items-start justify-between gap-4">
-        <div className="flex min-w-0 flex-col gap-1">
-          <h1 ref={titleRef} tabIndex={-1} className="text-xl font-bold text-ink outline-none md:text-2xl">
-            {title}
-          </h1>
-          {subtitle !== undefined && <p className="text-sm text-ink-soft">{subtitle}</p>}
-        </div>
-        {actions}
-      </header>
+      {/* `nav` 를 안 넘긴 화면은 **지금까지와 바이트 단위로 같은 트리**를 낸다 — 래퍼가 생기지 않는다.
+          넘긴 화면만 `gap-2`(8px) 래퍼로 묶는다: 컨테이너의 `gap-5`(20px)를 그대로 쓰면 내비 줄이
+          제목에서 떨어져 나가 **별개의 블록**처럼 보인다. 브레드크럼브는 제목의 일부로 읽혀야 한다. */}
+      {nav === undefined ? header : <div className="flex flex-col gap-2">{nav}{header}</div>}
 
       <main id={PAGE_CONTENT_ID} className={fill ? MAIN_FILL : MAIN}>
         {children}
