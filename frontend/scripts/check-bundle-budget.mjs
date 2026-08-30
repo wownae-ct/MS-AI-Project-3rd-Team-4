@@ -30,6 +30,7 @@ import { checkDeployConfig } from "./lib/deploy-config.mjs";
 const ROOT = resolve(import.meta.dirname, "..");
 const ASSETS_DIRECTORY = join(ROOT, "dist", "assets");
 const THEME_PATH = join(ROOT, "src", "shared", "ui", "theme.css");
+const STYLES_PATH = join(ROOT, "src", "shared", "ui", "styles.css");
 const SOURCE_DIRECTORY = join(ROOT, "src");
 const DEPLOY_CONFIG_PATH = join(ROOT, "dist", "staticwebapp.config.json");
 
@@ -266,7 +267,86 @@ const BUDGETS = [
   // (`shared/ui/index.ts` 의 D25 주석에 표가 있다).
   //
   // 여유는 43 B 다(이 파일의 관례 폭 안).
-  { key: "jsGzip", limit: 181_000, measured: 180_957, label: "JS 합계 (gzip)" },
+  // ── 2026-08-30 AI 생성물 고지(법적 리스크 대응)로 181,000 → 181,500 ──────────────────────
+  // 클린 빌드 3회 연속 **181,396 B** (종전 실측 180,957 → +439 B). 회귀가 아니라 의도한 기능이다.
+  //
+  // 증가분의 정체: `shared/ui/AiDisclaimer.tsx`(컴포넌트 + 고지 문구 2종 상수) 하나와 이를 부르는
+  // 세 화면(AI상담·체크리스트·타임라인)의 배선. 문구가 한글 2줄씩이라 gzip 후에도 바이트가
+  // 남는다 — 이 증가분의 대부분은 코드가 아니라 **문구**다.
+  //
+  // 줄일 수 있었는데 하지 않은 것: 문구를 백엔드가 내려주면 번들에서 사라진다. 기각한 이유는
+  // ① 고지가 네트워크 상태에 의존하게 된다(응답이 늦거나 실패하면 고지 없이 화면이 뜬다)
+  // ② 지금은 정적 문자열인데 이를 위해 API 하나와 그 실패 경로가 새로 생긴다.
+  // 법적 방어 장치를 조건부로 만드는 대가로는 439 B 가 싸다(AiDisclaimer.tsx 머리말 §왜 UI 층에 두는가).
+  //
+  // **초기 청크(jsChunkGzip)는 98,530 B 로 한도 99,550 을 그대로 지킨다** — 이번에 움직인 건
+  // 합계뿐이다. 세 화면 중 AI상담·타임라인은 lazy 라우트라 초기 경로에 없다.
+  //
+  // 여유는 104 B 다(이 파일의 관례 폭 안 — 이 줄이 또 움직이면 그게 신호다).
+  // ── 2026-08-30 AI상담 모바일 개편 + 지난 대화 삭제로 181,000 → 181,950 ────────────────────
+  // 실측 180,957 → 181,883 (증가 926 B). **기준선을 다시 재서 확인했다** — 이 브랜치의 다른
+  // 미커밋 변경(`NumberInput.tsx` · `styles.css`)을 stash 하고 빌드하니 정확히 180,957 B 가
+  // 나왔다. 즉 926 B 는 전부 이번 변경분이고 다른 세션의 몫이 섞여 있지 않다.
+  //
+  // 늘어난 것 셋 — 전부 초기 청크가 아니라 `/chat` 라우트 청크에 들어간다:
+  //   · `pages/chat/ui/ChatHistoryRow.tsx`(신규) — 삭제 확인까지 3갈래 렌더 + 클래스 리터럴 8개
+  //   · `entities/chat/ui/use-sticky-scroll.ts`(신규) — 스트리밍 중 스크롤 잠김 해제
+  //   · `deleteChatSession` + 드로어의 삭제 상태 기계
+  //
+  // **한도를 올리기 전에 두 가지를 재 봤다**(위 항목들이 세운 관례):
+  //   ① 위 두 신규 파일은 이미 라우트 분할 뒤에 있다 — `/chat` 은 첫 화면이 아니라 lazy 다.
+  //      더 쪼갤 경계가 없다(삭제 UI 를 또 lazy 로 내리면 드로어를 여는 순간 왕복이 하나 는다).
+  //   ② `ChatHistoryRow` 를 드로어에 도로 합치는 안 — 바이트는 거의 같고(같은 코드가 한 파일로
+  //      갈 뿐) `eslint/max-lines` 를 넘긴다. 이득이 없다.
+  // 남는 것은 기능 추가분 그 자체다. 여유는 관례대로 **67 B 로 좁게** 유지한다.
+  //
+  // 앞선 항목들의 조언은 여전히 유효하다 — 다음에 이 줄을 또 올려야 하면 `LoginPage` 정적
+  // import(2026-08-22)를 다시 재는 편이 낫다.
+  // ── 2026-08-30 D27 개정(전폭 블리드 → 12px 여백)으로 181,883 → 181,831 · **한도는 그대로** ──
+  // 클래스 순감으로 **52 B 줄었다** — 표면 리터럴에서 음수 마진·조건부 테두리 4종이 빠졌고,
+  // 그중 30 B 는 **주석이 만들던 유령 규칙 1개**가 사라진 몫이다(그 사고는
+  // `scripts/lib/__tests__/ghost-candidates.test.mjs` 가 이름으로 고정한다 — 산출 CSS 선언도
+  // 693 → 687 로 함께 줄었다).
+  // 한도를 같이 내리지 않는 이유: 남는 여유가 119 B 라 이 파일의 관례 폭(43~98 B)에서 크게
+  // 벗어나지 않고, 50 B 단위를 좇아 한도를 움직이면 다음 측정 때 또 움직여야 한다.
+  // ── 2026-08-30 두 갈래 병합(고지 + AI상담 개편) ────────────────────────────────────────────
+  // 🚨 **위 두 항목의 실측값은 어느 쪽도 단독으로는 병합본에 맞지 않는다.** 둘이 `frontend` 와
+  // `fix/frontend` 로 갈라져 각자 같은 기준선(180,957 B)에서 잰 값이라, 합치면 두 증가분이 함께
+  // 들어온다(고지 +439 · AI상담 개편 +874). 그래서 한도·실측을 **병합본에서 다시 재서** 넣는다 —
+  // 위 두 블록은 각 변경이 얼마를 썼는지 남기려고 그대로 보존한다.
+  //
+  // 병합본 실측 **182,282 B**. 두 증가분의 단순 합(180,957 + 439 + 874 = 182,270)보다 **12 B 크다** —
+  // 두 변경이 같은 청크에 얹히며 생기는 오차라 유의미하지 않지만, 「합쳐서 재야 한다」는 위 경고가
+  // 실제로 맞다는 증거로 남긴다.
+  // ↪ 곧이어 고지 이중 여백을 걷으며(`Page.tsx` 의 `MAIN_FILL`) **182,247 B** 로 내려왔다 —
+  //   클래스 하나가 빠졌고, 그 주석이 만들던 유령 규칙 1개도 함께 지웠다.
+  //   여유는 관례대로 **153 B** 로 좁게 유지한다.
+  // ── 2026-08-31 AI상담 스트림 종료 계약 수정으로 182,400 → 182,700 ─────────────────────────
+  // 실측 182,247 → 182,636 (증가 389 B). 회귀가 아니라 **버그 수정분 그 자체**다. 늘어난 것 셋은
+  // 전부 `/chat` 라우트 청크 안이다(`entities/chat` 바깥은 1바이트도 안 건드렸다):
+  //   · `use-chat-stream.ts` 의 `reconcileAnswer` — `done`/`error` 없이 스트림이 닫히거나
+  //     업스트림 오류 뒤에도 서버에 저장된 답변을 가져와 붙인다(chat-streaming.md §5 의 계약이
+  //     구현돼 있지 않았다 — 종전엔 입력창이 영구히 잠겼다).
+  //   · 세션 생성 경합·전환 후 에러 누출·화해 결과의 대화 간 유출을 막는 `signal.aborted` 가드 5개.
+  //   · `api/chat.ts` 파서 하드닝 — 프레임별 JSON 가드 + CRLF/CR 정규화(§3.1 #1).
+  // `use-chat-stream.ts` 분리 자체는 **바이트 중립**이다(같은 코드가 파일만 갈렸다).
+  //
+  // ⚠️ 기준선은 `fix/frontend` 단독 실측(181,831 → 182,266 · 증가 435 B)이 아니라 **병합본**이다 —
+  // 바로 위 항목이 「합쳐서 재야 한다」고 남긴 그 경고 그대로다. 같은 청크에 얹히며 46 B 가 함께
+  // 압축돼 증가분이 435 → 389 B 로 줄었다.
+  //
+  // **한도를 올리기 전에 재 본 것**(이 파일의 관례): 셋 다 이미 lazy 인 `/chat` 뒤에 있어 더
+  // 쪼갤 경계가 없고, 어느 하나도 「없어도 되는 편의」가 아니다 — 빠지면 입력창이 잠기거나
+  // 서버에 저장된 답변이 화면에서 사라진다. 여유는 관례대로 **64 B 로 좁게** 둔다 — 다음에 이
+  // 줄을 또 올려야 하면 `LoginPage` 정적 import(2026-08-22 항목)부터 재는 편이 낫다.
+  // ── 2026-08-31 CI 실측 정정 — 위 182,636 B는 병합 브랜치의 CI 실측이 아니었다 ──────────────
+  // `frontend` HEAD(e5e680f, 위 커밋이 merge된 뒤)에 대한 실제 CI 빌드는 **182,711 B** — 한도
+  // 182,700 을 11 B 초과해 게이트가 막았다. 같은 커밋을 WSL에서 Windows Node 24.15.0으로 그대로
+  // 재현해도 182,711 B로 CI와 정확히 일치한다 — 코드가 아니라 위 182,636 B 자체가 CI 실측이
+  // 아니었던 것으로 보인다(로컬 lockfile/툴체인 차이 추정, 정확한 원인은 확인 못 했다). 기능
+  // 증가분의 정당성은 위 항목이 이미 밝혔다 — 여기서는 숫자만 실제 CI 실측에 맞춘다. 여유는
+  // 관례대로 **64 B 로 좁게** 유지한다.
+  { key: "jsGzip", limit: 182_775, measured: 182_711, label: "JS 합계 (gzip)" },
   // ── 2026-08-22 S2 대시보드 구현으로 92,000 → 96,000 ────────────────────────────────────────
   // 예고된 마찰이 실제로 걸렸다(88,847 → 92,821, 초과 821 B). 올리기 전에 먼저 물어야 하는 질문은
   // **"첫 화면이 정말 초기 청크에 있어야 하는가"** 였고(ADR 0005 §결정 3), 브라우저 실측으로 답했다.
@@ -446,6 +526,7 @@ const BUDGETS = [
 
 const NORM_LABELS = {
   retirement: "폐기 유지 — theme.css 의 필수 `-*: initial` 선언 6종",
+  "base-rule": "base 레이어 필수 규칙 — 모바일 확대 계약 (D24 · a11y.md §2.5 · §2.6)",
   shadow: "그림자·링 금지 — 「The Flat-By-Default Rule」 · D9 · D10",
   color: "팔레트 밖 색 금지 — 「The One Accent Rule」 · D8",
   radius: "라운드 토큰 밖 금지 — D1",
@@ -459,6 +540,30 @@ const NORM_LABELS = {
  * 이 목록을 고치려면 docs/design/namespaces.md 를 먼저 고친다 — 순서는 폐기 선언 먼저, 이 목록 나중.
  */
 const REQUIRED_RETIREMENTS = ["--color", "--radius", "--shadow", "--drop-shadow", "--inset-shadow", "--text-shadow"];
+
+/**
+ * base 레이어 필수 규칙 — D24 (docs/design/decisions.md) · a11y.md §2.5 · §2.6.
+ *
+ * 위 폐기 유지 검사와 **같은 종류의 장치**다. 두 규칙 다 「지워도 빌드가 통과하고 화면도 멀쩡한데
+ * 모바일에서만 조용히 나빠지는」 성질이라, 사람이 기억하게 두지 않는다.
+ *   · 16px 하한이 사라지면 → 클래스를 안 준 입력칸이 바깥 라벨의 14px 을 물려받아 iOS 가 포커스에서 확대한다.
+ *     그 계약은 예전에 호출부마다 손으로 지켰고, 실제로 5곳이 조용히 어겨져 있었다(a11y.md §5).
+ *   · 더블탭 억제가 사라지면 → 입력칸을 두 번 탭하는(캐럿 이동) 흔한 조작이 다시 확대로 해석된다.
+ *
+ * 산출 CSS 가 아니라 **소스**를 보는 이유는 lib/source-norms.mjs 머리말과 같다 — 산출물만 보면
+ * 고칠 위치를 알려 줄 수 없고, minifier 의 재배치·병합에 흔들린다.
+ * 주석은 먼저 걷어낸다 — 주석에 적힌 선언이 게이트를 만족시키면 검사가 통째로 무의미해진다.
+ */
+const REQUIRED_BASE_RULES = [
+  {
+    pattern: /\binput\b[^{}]*\{[^{}]*font-size\s*:\s*1rem/u,
+    hint: "`input, textarea, select { font-size: 1rem }` 이 없다 — 클래스를 안 준 입력칸이 조상의 14px 을 물려받아 iOS 가 포커스에서 확대한다 (a11y.md §2.5)",
+  },
+  {
+    pattern: /touch-action\s*:\s*manipulation/u,
+    hint: "`touch-action: manipulation` 이 없다 — 컨트롤 위 더블탭 확대가 되살아난다 (a11y.md §2.6)",
+  },
+];
 
 const FONT_EXTENSIONS = new Set([".woff2", ".woff", ".ttf", ".otf"]);
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx"]);
@@ -500,6 +605,15 @@ function readTheme() {
   const retired = new Set([...text.matchAll(/(--[a-z-]+)-\*\s*:\s*initial/gu)].map((m) => m[1]));
 
   return { palette, paletteSize, radii, retired };
+}
+
+/**
+ * styles.css 를 주석 없이 읽는다 — `REQUIRED_BASE_RULES` 의 대조 대상.
+ * readTheme 과 같은 이유로 주석을 먼저 걷어낸다(그쪽은 예시 hex 가 화이트리스트에 섞이는 것,
+ * 여기는 주석에 적힌 선언이 게이트를 만족시키는 것).
+ */
+function readBaseRules() {
+  return readFileSync(STYLES_PATH, "utf8").replaceAll(/\/\*[\s\S]*?\*\//gu, "");
 }
 
 function collectAssets() {
@@ -587,6 +701,17 @@ for (const namespace of REQUIRED_RETIREMENTS) {
       norm: "retirement",
       where: relative(ROOT, THEME_PATH).replaceAll("\\", "/"),
       value: `${namespace}-*: initial; 이 없다 — Tailwind 기본 ${namespace} 토큰이 되살아난다`,
+    });
+  }
+}
+
+const baseRulesText = readBaseRules();
+for (const { pattern, hint } of REQUIRED_BASE_RULES) {
+  if (!pattern.test(baseRulesText)) {
+    violations.push({
+      norm: "base-rule",
+      where: relative(ROOT, STYLES_PATH).replaceAll("\\", "/"),
+      value: hint,
     });
   }
 }

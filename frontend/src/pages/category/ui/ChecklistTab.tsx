@@ -17,7 +17,7 @@ import { RegenerateButton } from "@/entities/personalization";
 import { getVendorCases, type VendorCasesResponse } from "@/entities/vendor-case";
 import type { CategoryConstant } from "@/entities/wedding";
 import { ApiError } from "@/shared/api";
-import { Card, Loading, SkeletonRows, StatusCallout } from "@/shared/ui";
+import { AI_PLAN_DISCLAIMER, AiDisclaimer, Card, Loading, SkeletonRows, StatusCallout } from "@/shared/ui";
 import { AddChecklistItemRow } from "./AddChecklistItemRow";
 import { ChecklistItemRow } from "./ChecklistItemRow";
 import { VendorCaseSection } from "./VendorCaseSection";
@@ -303,6 +303,11 @@ export function ChecklistTab({ categoryCode, categoryMeta }: ChecklistTabProps) 
       {/* 재생성 중에는 추가 폼을 감춘다 — 서버가 재생성 시작 시점에 보호되지 않은 항목을
           (직접 추가한 것까지) 지우므로, 그 사이에 추가한 항목이 방금 만들었는데 조용히 사라진다. */}
       {!regenerating && <AddChecklistItemRow categoryCode={categoryCode} onAdded={refetchItems} />}
+
+      {/* 체크리스트 항목에는 이미 출처 배지(source_tier/label/url)가 붙지만, 그건 "이 항목의 근거가
+          어디냐"이지 "이 목록을 누가 만들었냐"가 아니다. 공식 출처 배지가 붙은 항목일수록 오히려
+          확정된 사실로 읽히기 쉬워, 화면 단위 고지가 따로 필요하다. */}
+      <AiDisclaimer>{AI_PLAN_DISCLAIMER}</AiDisclaimer>
     </div>
   );
 }

@@ -82,7 +82,13 @@ export interface NumberInputProps {
   min?: number;
   max?: number;
   disabled?: boolean;
-  /** 입력칸 자체의 클래스. 지금까지 각 화면이 `<input>` 에 직접 주던 그 값이다. */
+  /**
+   * 입력칸 자체의 클래스. 지금까지 각 화면이 `<input>` 에 직접 주던 그 값이다.
+   *
+   * 글자 크기는 **안 줘도 안전하다** — `shared/ui/styles.css` 의 base 레이어가 폼 컨트롤 바닥을
+   * 16px 로 깐다(D24). 종전엔 이 슬롯을 비우면 바깥 라벨의 14px 을 물려받아 iOS 가 포커스에서
+   * 확대했다(a11y.md §5 「가장 먼저 볼 함정」). **16px 아래로 내리는 것은 여전히 금지다** — §2.5.
+   */
   className?: string;
   /**
    * 래퍼(입력칸+스피너를 묶는 상자)의 클래스.

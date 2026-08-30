@@ -23,7 +23,7 @@ import { getTimelineItems, isTimelineItemKept, type TimelineItem } from "@/entit
 import { getMyWedding, getWeddingCategories } from "@/entities/wedding";
 import { RegenerateButton, type RegenerateImpact } from "@/entities/personalization";
 import { ApiError } from "@/shared/api";
-import { Card, Loading, Page, SkeletonRows, StatusCallout } from "@/shared/ui";
+import { AI_PLAN_DISCLAIMER, AiDisclaimer, Card, Loading, Page, SkeletonRows, StatusCallout } from "@/shared/ui";
 import { AddTimelineItemRow } from "./AddTimelineItemRow";
 import { groupTimelineItemsByPhase, type TimelinePhaseGroup } from "./group-by-phase";
 import { TimelineItemRow } from "./TimelineItemRow";
@@ -220,6 +220,11 @@ export function TimelinePage() {
             onAdded={refetchItems}
           />
         )}
+
+        {/* 목록 **아래**에 둔다 — 위에 두면 매 방문마다 고지가 먼저 읽혀 화면의 목적(할 일 확인)을
+            가린다. 사용자가 직접 추가한 항목은 AI 생성물이 아니지만, 목록 전체를 "AI가 짠 계획"으로
+            읽는 것이 실제 오해의 방향이라 화면 단위로 한 번만 고지한다. */}
+        <AiDisclaimer>{AI_PLAN_DISCLAIMER}</AiDisclaimer>
       </div>
     </Page>
   );
