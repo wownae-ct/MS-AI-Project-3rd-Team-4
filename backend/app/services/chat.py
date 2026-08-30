@@ -36,8 +36,10 @@ from app.core.db import get_session_factory
 from app.core.errors import api_error
 from app.core.sse import sse_comment as _sse_comment
 from app.core.sse import sse_event as _sse
+from app.core.timezone import today_kst
 from app.core.tracing import score_trace, traced_span
 from app.models import ChatMessage, ChatSession, Wedding
+from app.rag.chat_profile import load_chat_profile, render_chat_profile_block
 from app.rag.graph import ChatState, build_graph
 from app.rag.query_profile import profile_query
 from app.rag.scope_check import OUT_OF_SCOPE_ANSWER, OUT_OF_SCOPE_REASON, looks_out_of_scope
@@ -341,6 +343,9 @@ async def stream_chat_response(
             "out_of_scope": False,
             "history": history,
             "resolved_query": "",
+            # 2026-08-31 — out_of_scope 판정 이후에만 채운다(아래). 스코프 가드의 존재 이유가
+            # "무관한 요청엔 비용을 아예 안 쓴다"라 그 앞에서 DB를 5~6회 때리면 안 된다.
+            "profile_block": "",
         }
         config = {"configurable": {"session": session, "settings": settings}}
 
@@ -362,6 +367,22 @@ async def stream_chat_response(
         # "검색 결과 0건 → 거절" 경로가 벡터 검색에 유사도 임계값이 없어 사실상 거의 발동하지
         # 않았고, 프롬프트 규칙만으로는 태스크성 무관 요청("소설 써줘")이 새는 게 확인됐다.
         out_of_scope = looks_out_of_scope(payload.content)
+        # 2026-08-31 — 사용자 본인의 예산·일정·지출을 프롬프트에 실어 "내 예산에서 이거
+        # 무리인가요?"에 답할 수 있게 한다(app/rag/chat_profile.py). 스코프 거절이면 그래프
+        # 자체를 안 타므로 조회도 건너뛴다. settings.chat_profile_enabled는 데모 중 이상 동작
+        # 시 즉시 끄기 위한 킬 스위치 — 끄면 프롬프트가 이 기능 도입 전과 바이트 단위로 같아진다.
+        if not out_of_scope and settings.chat_profile_enabled:
+            wedding = await session.get(Wedding, wedding_id)
+            if wedding is not None:
+                profile = await load_chat_profile(session, wedding, today_kst())
+                initial_state["profile_block"] = render_chat_profile_block(profile) or ""
+            if not initial_state["profile_block"]:
+                # 자동 생략이 발동하면 로그를 남긴다(이 레포의 "자동 교정/폴백은 반드시 로깅"
+                # 관례) — 활성 카테고리 0개 같은 경우가 얼마나 흔한지 봐야 판단할 수 있다.
+                logger.info(
+                    "Chat profile block omitted for wedding_id=%s (no wedding or no active categories)",
+                    wedding_id,
+                )
         async with traced_span(
             "chat",
             settings=settings,
