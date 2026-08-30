@@ -16,13 +16,15 @@ from app.services.timeline import (
 
 
 class TestGenerateTimelineItems:
-    def test_returns_all_58_items_when_original_7_categories_active(self):
-        # 2026-08-24 버그 수정으로 MEETING 2개·GIFT 1개가 추가돼(few-shot 표본 보강) 이 7개
-        # 카테고리(ETC/HOMENEW 제외) 기준 총계가 55 → 58로 바뀌었다 — app/core/timeline_catalog.py
-        # 모듈 docstring "버그 수정 2" 참고.
+    def test_returns_all_72_items_when_original_7_categories_active(self):
+        # app/core/timeline_catalog.py가 2026-08-24(55→58) 이후 2026-08-30 상세도 보강(68→84)과
+        # 실무 지식 추가 보강(84→87)을 거치며 계속 늘었다 — 이 7개 카테고리(ETC/HOMENEW 제외)
+        # 기준 실측값(generate_timeline_items() 직접 호출로 확인, 하드코딩 추정 아님)은 지금 72다.
+        # ETC/HOMENEW 전용으로 추가된 항목(대출 한도 조회 등)은 이 7개 집합에 안 잡히므로 이번
+        # 실무 지식 보강으로는 안 늘었다.
         active = {"MEETING", "VENUE", "SDM", "GIFT", "HOMEWARE", "INVITATION", "HONEYMOON"}
         rows = generate_timeline_items(date(2027, 5, 15), active, None, date(2026, 8, 24))
-        assert len(rows) == 58
+        assert len(rows) == 72
 
     def test_universal_items_always_included_even_with_no_active_categories(self):
         rows = generate_timeline_items(date(2027, 5, 15), set(), None, date(2026, 8, 24))
