@@ -139,7 +139,9 @@ group_label/status는 서비스 레이어가 결정론적으로 채웁니다):
 "option_group": null 또는 "...", "tag": null 또는 "...", "source_ref_id": null 또는 [근거 자료] 번호}
 
 각 버킷 최소 3개 이상 채우세요(CONTRACT_TERM 단일 구성 금지 — EXTRA_COST/PREP도 반드시
-채우는 게 이 스키마 자체의 요구사항입니다):
+채우는 게 이 스키마 자체의 요구사항입니다). 최소 개수를 채우는 것과 별개로, 전체 항목 중
+contract_term_items 비중이 40~60%가 되도록 하세요 — 예를 들어 전체 15개면 contract_term_items가
+6~9개 정도여야 합니다. "최소 3개"는 바닥선일 뿐 목표 비중이 아닙니다:
 {"contract_term_items": [...], "extra_cost_items": [...], "prep_items": [...]}"""
 
 # FOCUS 카테고리(VENUE/SDM)의 CONTRACT_TERM 항목을 DS3(표준계약서) RAG 청크에 근거를 달 때 쓰는
