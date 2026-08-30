@@ -6,9 +6,8 @@ SeSAC MS AI 엔지니어 4기 3차 프로젝트 (2인 팀). 예식장·스드메
 이은 **2차 주제 전환**(2026-08-20)으로, 인프라·협업 구조는 그대로 두고 주제만 다시 바꿨다.
 
 **2026-08-28: `backend`·`frontend`가 `main`으로 승격 완료.** 이제 `main`이 실제 배포 대상
-코드를 담고 있다(아래 "배포 현황" 참고). 각 브랜치별 상세 내용은 해당 브랜치의 README 참고 —
-`backend` README, `frontend` README(GitHub에서 해당 브랜치로 전환한 뒤 루트 README를 보면
-된다).
+코드를 담고 있다(아래 "배포 현황" 참고). 영역별 상세 내용은 [`backend/README.md`](backend/README.md),
+[`frontend/README.md`](frontend/README.md) 참고 — 어느 브랜치에서 보든 같은 트리 안에 있다.
 
 ## 주요 기능
 
@@ -30,9 +29,9 @@ CRUD API + RAG 상담 1개 엔드포인트 + 체크리스트/타임라인 개인
 
 | 레이어 | 위치 | 역할 |
 |---|---|---|
-| Routers | `backend/app/routers/{system,wedding,ai}/` + `auth.py` | 도메인별 서브패키지로 재구성(2026-08-26) — 37개 엔드포인트(OpenAPI 노출 35개; OAuth 리다이렉트 2개는 스키마 비노출) |
+| Routers | `backend/app/routers/{system,wedding,ai}/` + `auth.py` | 도메인별 서브패키지로 재구성(2026-08-26) — 38개 엔드포인트(OpenAPI 노출 36개; OAuth 리다이렉트 2개는 스키마 비노출) |
 | Services | `backend/app/services/` | 비즈니스 로직 |
-| Models | `backend/app/models/` | SQLAlchemy 2.0 async, 15개 테이블 |
+| Models | `backend/app/models/` | SQLAlchemy 2.0 async, 16개 테이블(코퍼스 재색인 스킵용 `rag_index_state` 포함) |
 | RAG | `backend/app/rag/` | indexing(오프라인 색인) / retrieval(하이브리드 검색+RRF) / graph(LangGraph 3노드, CRAG 조건부 재시도 ≤1회) |
 | Personalization | `backend/app/personalization/` + `services/personalization.py` | 체크리스트/타임라인 전담 LangGraph 3노드, 카탈로그 폴백, 조건부 재시도 ≤1회 |
 | Frontend | `frontend/src/` | React 19 + Vite + TS, FSD 구조. S0~S6 전 화면 + 설정(⚙️)/AI상담 실구현 |
@@ -46,8 +45,11 @@ backend/    FastAPI(app/main.py) + SQLAlchemy 2.0 async 모델(app/models/) + Al
 frontend/   React 19 + Vite + TS. S0~S6 전 화면 + 설정(⚙️)/AI상담 화면까지 실구현 완료. 백엔드와
             같은 AKS Ingress 아래 same-origin으로 배포(2026-08-26, 서드파티 쿠키 차단 우회) —
             Azure Static Web Apps 배포는 PR 프리뷰/로컬 크로스오리진 검증용으로 별도 병행
-data/       RAG 코퍼스(DS1_PRICE~DS8_UGC — 참가격/소비자원 사례/표준계약서/정부정책/설문/
-            체크리스트/타임라인/UGC, 10문서/151청크). data/old/에 이전 주제 코퍼스 아카이브
+data/       RAG 코퍼스(DS1_PRICE~DS6_CHECK — 참가격/소비자원 사례/표준계약서/정부정책/
+            듀오 결혼비용 통계(7개년)/체크리스트, 14문서/213청크). DS7_TIMELINE은 코퍼스가
+            아니라 backend/app/core/timeline_catalog.py 상수로 존재. DS8_UGC(Threads 후기)는
+            개인정보 리스크로 2026-08-30 코퍼스에서 제외 — data/old/에 이전 주제 코퍼스와
+            함께 보존
 db/         vendor_case/price_benchmark 콘텐츠 시드 로더 스크립트만 남음 — checklist/timeline은
             공유 마스터 시드 없이 개인화 에이전트가 웨딩별로 생성. 스키마 자체는
             backend/app/models/ + backend/alembic/에 있음
