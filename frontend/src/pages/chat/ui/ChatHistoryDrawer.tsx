@@ -16,15 +16,23 @@
 // 목록 + 바깥 클릭으로 닫힘이라 계약이 다르다. 호출부가 하나뿐이라 지금 `shared/ui`로
 // 일반화할 근거도 없다 — 그래서 `pages/chat` 안에 둔다.
 //
-// **읽기 전용이다.** 백엔드에 세션 삭제·이름변경 엔드포인트가 없다
-// (`backend/app/routers/ai/chat.py`는 생성/목록/메시지조회/메시지전송/피드백 5개뿐).
+// **[2026-08-30] 더 이상 읽기 전용이 아니다.** 이 머리말은 오래 *"백엔드에 세션 삭제·이름변경
+// 엔드포인트가 없다"* 로 그 사실을 정당화해 왔다. 사용자 요청(2026-08-30 「지난 대화기록을 삭제하는
+// 기능이 필요」)으로 **삭제만** 열었다 — 각 행이 자기 대화를 지운다(`ChatHistoryRow.tsx`).
+// 이름변경은 여전히 없다.
+// 🚨 백엔드 엔드포인트는 구현됐지만 **아직 머지·배포 전이다**(회신 2026-08-30, `fix/backend`).
+// 계약 전문은 `docs/backend-analysis/BACKEND_REQUEST-2026-08-30-chat-session-delete.md`.
+// 배포 순서가 뒤집히면 삭제가 실패 문구를 내는데, 그건 조용히 성공한 척하지 않는다는 뜻이라
+// 안전한 실패다 — 아래 `confirmDelete` 의 `CHAT_SESSION_NOT_FOUND` 분기 주석 참고.
 //
 // 규범 준수 (docs/design/README.md): 그림자 없음 — 표면 구분은 1px 헤어라인 보더로만.
 // 배경 가림막은 **요소 불투명도**로 만든다(D7 — 슬래시 알파는 산출 CSS가 8자리 hex로 접혀
 // 팔레트 게이트에 걸린다). 화면에 문자 글리프를 렌더하지 않는다(D18) — 라벨은 전부 낱말이다.
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { listChatSessions, type ChatSessionSummary } from "@/entities/chat";
+import { deleteChatSession, listChatSessions, type ChatSessionSummary } from "@/entities/chat";
+import { ApiError } from "@/shared/api";
 import { Button, SkeletonRows } from "@/shared/ui";
+import { ChatHistoryRow } from "./ChatHistoryRow";
 
 // 닫혔을 때 숨기는 책임을 저자 스타일이 진다 — UA 기본 시트의 `dialog:not([open]){display:none}`
 // 은 저자 스타일보다 **항상** 약하다(특이도가 아니라 캐스케이드 오리진 문제라 더 구체적인
@@ -36,35 +44,6 @@ import { Button, SkeletonRows } from "@/shared/ui";
 const POPUP =
   "hidden open:flex fixed top-0 left-0 z-50 m-0 h-dvh max-h-none w-[min(20rem,calc(100vw-3rem))] " +
   "max-w-none flex-col gap-3 border-r border-line bg-surface p-4 backdrop:bg-ink backdrop:opacity-40";
-
-// 두 리터럴은 **선택 상태를 두 채널로** 알린다(WCAG 1.4.1 — 색 하나로만 상태를 전달하지
-// 않는다): 테두리·바탕 + 제목 굵기. `MessageBubble.tsx` 의 평가 버튼이 쓰는 것과 같은 조합이다.
-const ROW =
-  "flex min-h-tap w-full cursor-pointer flex-col items-start gap-0.5 rounded-md border border-transparent " +
-  "px-3 py-2 text-left transition-colors duration-150 hover:border-line hover:bg-bg";
-const ROW_CURRENT =
-  "flex min-h-tap w-full cursor-pointer flex-col items-start gap-0.5 rounded-md border border-primary " +
-  "bg-primary-soft px-3 py-2 text-left transition-colors duration-150";
-const ROW_TITLE = "w-full truncate text-sm text-ink";
-const ROW_TITLE_CURRENT = "w-full truncate text-sm font-bold text-primary";
-
-// 모듈 스코프에 한 번만 만든다 — `Intl.DateTimeFormat` 생성은 렌더마다 할 만큼 싸지 않다
-// (`shared/ui/Money.tsx` 와 같은 처리).
-//
-// 연도를 넣지 않는다 — 목록은 최근 순이고 사용자가 실제로 스캔하는 것은 "며칠 전인가"다.
-// 해를 넘긴 대화가 쌓이면 그때 다시 볼 문제이지, 지금 넣으면 모든 행이 길어지기만 한다.
-const SESSION_DATE = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric" });
-
-function formatSessionDate(session: ChatSessionSummary): string {
-  // `last_message_at` 이 우선이고 없으면 생성 시각 — 백엔드 정렬 기준(`last_message_at desc
-  // nulls_last, created_at desc`)과 같은 순서로 고른다. 표시와 정렬이 다른 값을 보면 목록이
-  // 뒤죽박죽으로 보인다.
-  const raw = session.last_message_at ?? session.created_at;
-  const parsed = new Date(raw);
-  // 서버가 보낸 문자열을 브라우저가 못 읽는 경우까지 화면이 깨지진 않게 한다 — 날짜는 보조
-  // 정보이고 제목이 본체다.
-  return Number.isNaN(parsed.getTime()) ? "" : SESSION_DATE.format(parsed);
-}
 
 /**
  * 메시지가 하나도 없는 세션은 목록에서 뺀다.
@@ -85,6 +64,14 @@ export interface ChatHistoryDrawerProps {
   currentSessionId: string | null;
   onSelect: (sessionId: string) => void;
   onNewSession: () => void;
+  /**
+   * 대화 1건이 실제로 삭제됐다 (2026-08-30).
+   *
+   * 🚨 **부모가 반드시 처리해야 한다.** 지운 것이 지금 화면에 열려 있는 대화였다면 그 화면은
+   * 이미 존재하지 않는 세션을 보고 있는 것이고, 다음 전송이 404 로 죽는다. `ChatPage` 가
+   * 그때 세션을 비우고 sessionStorage 미러까지 지운다.
+   */
+  onDeleted: (sessionId: string) => void;
 }
 
 export function ChatHistoryDrawer({
@@ -93,6 +80,7 @@ export function ChatHistoryDrawer({
   currentSessionId,
   onSelect,
   onNewSession,
+  onDeleted,
 }: ChatHistoryDrawerProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [sessions, setSessions] = useState<ChatSessionSummary[] | null>(null);
@@ -100,6 +88,11 @@ export function ChatHistoryDrawer({
   // 재조회 트리거 — 실패 후 "다시 시도"가 같은 effect를 다시 돌리게 한다. 조회 로직을 effect
   // 밖으로 빼서 두 곳에서 부르면 취소(cancelled) 처리를 두 번 적어야 한다.
   const [attempt, setAttempt] = useState(0);
+  // 삭제 확인 중인 행 — **id 하나**로 들고 있는 것이 곧 「한 번에 하나만 펼쳐진다」는 계약이다
+  // (행이 각자 들고 있으면 여러 줄이 동시에 되묻는 상태가 될 수 있다).
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -115,6 +108,11 @@ export function ChatHistoryDrawer({
     let cancelled = false;
     setSessions(null);
     setFailed(false);
+    // 열 때마다 삭제 확인 상태도 함께 초기화한다 — 닫으면서 되묻는 화면을 두고 나갔다면 다시
+    // 열었을 때 그 상태가 되살아나면 안 된다.
+    setPendingDeleteId(null);
+    setDeletingId(null);
+    setDeleteError(null);
     listChatSessions()
       .then((res) => {
         if (!cancelled) setSessions(res.sessions.filter(hasContent));
@@ -131,6 +129,50 @@ export function ChatHistoryDrawer({
 
   function close() {
     onOpenChange(false);
+  }
+
+  function askDelete(sessionId: string) {
+    setPendingDeleteId(sessionId);
+    setDeleteError(null);
+  }
+
+  function cancelDelete() {
+    setPendingDeleteId(null);
+    setDeleteError(null);
+  }
+
+  async function confirmDelete(sessionId: string) {
+    setDeletingId(sessionId);
+    setDeleteError(null);
+    try {
+      await deleteChatSession(sessionId);
+      removeSession(sessionId);
+    } catch (err) {
+      // 이미 서버에서 사라진 대화를 지우려 한 것뿐이라면 사용자가 원한 결과는 이미 이뤄져 있다 —
+      // 에러를 보여 봐야 「지워졌는데 실패했다고 한다」가 된다. 목록에서 빼는 것으로 끝낸다.
+      // ⚠️ 이 분기는 **백엔드가 낸 봉투 코드**로만 걸린다. 엔드포인트 자체가 없을 때의 404 는
+      // `{"detail":"Not Found"}` 라 봉투가 없어 `UNKNOWN_ERROR` 로 떨어지고 아래로 간다 —
+      // 미배포 상태를 「삭제 성공」으로 오인하지 않는다.
+      if (err instanceof ApiError && err.code === "CHAT_SESSION_NOT_FOUND") {
+        removeSession(sessionId);
+        return;
+      }
+      // 조용히 삼키지 않는다(이 저장소 관례) — 행은 되묻는 상태 그대로 두고 사유만 덧붙인다.
+      setDeleteError(err instanceof ApiError ? err.message : "대화를 삭제하지 못했어요. 다시 시도해 주세요.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  // 목록을 다시 조회하지 않고 **낙관적으로 제거**한다 — 드로어가 열린 채라 재조회는 목록 전체를
+  // 스켈레톤으로 되돌려 깜빡인다. 불변 갱신이므로 원본 배열을 건드리지 않는다.
+  function removeSession(sessionId: string) {
+    setSessions((cur) => cur?.filter((s) => s.id !== sessionId) ?? null);
+    setPendingDeleteId(null);
+    setDeleteError(null);
+    // 드로어는 **닫지 않는다** — 연속 삭제가 자연스럽다(`onSelect`/`onNewSession` 이 닫는 것과
+    // 다른 점이다: 그 둘은 대화 화면으로 돌아가는 행동이고, 삭제는 목록 안에서 끝나는 행동이다).
+    onDeleted(sessionId);
   }
 
   // 바깥(가림막) 클릭으로 닫는다 — 파괴적 행동이 아니라 훑어보는 목록이라 쉽게 빠져나갈 수
@@ -189,23 +231,20 @@ export function ChatHistoryDrawer({
           <p className="text-sm text-ink-soft">아직 나눈 대화가 없어요.</p>
         )}
 
-        {sessions?.map((session) => {
-          const isCurrent = session.id === currentSessionId;
-          return (
-            <button
-              key={session.id}
-              type="button"
-              // 목록 안의 "지금 여기" 표시는 `aria-current` 다 — `aria-selected` 는 탭·목록상자
-              // 같은 특정 role 안에서만 뜻이 있다.
-              aria-current={isCurrent ? "true" : undefined}
-              onClick={() => onSelect(session.id)}
-              className={isCurrent ? ROW_CURRENT : ROW}
-            >
-              <span className={isCurrent ? ROW_TITLE_CURRENT : ROW_TITLE}>{session.title ?? "새 대화"}</span>
-              <span className="text-xs text-ink-soft">{formatSessionDate(session)}</span>
-            </button>
-          );
-        })}
+        {sessions?.map((session) => (
+          <ChatHistoryRow
+            key={session.id}
+            session={session}
+            isCurrent={session.id === currentSessionId}
+            confirming={pendingDeleteId === session.id}
+            deleting={deletingId === session.id}
+            error={pendingDeleteId === session.id ? deleteError : null}
+            onSelect={onSelect}
+            onAskDelete={askDelete}
+            onCancelDelete={cancelDelete}
+            onConfirmDelete={(id) => void confirmDelete(id)}
+          />
+        ))}
       </div>
 
       <Button block onClick={onNewSession}>

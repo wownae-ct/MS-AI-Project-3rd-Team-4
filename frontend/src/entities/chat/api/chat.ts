@@ -24,10 +24,31 @@ export function createChatSession(categoryCode?: string): Promise<ChatSession> {
 // 준다(백엔드가 `last_message_at desc nulls_last, created_at desc`로 정렬해서 보내므로
 // 프론트에서 다시 정렬하지 않는다 — 두 곳에 정렬 규칙을 두면 조용히 갈린다).
 //
-// 삭제·이름변경 엔드포인트는 없다(`backend/app/routers/ai/chat.py`는 생성/목록/메시지조회/
-// 메시지전송/피드백 5개뿐) — 그래서 목록 UI도 읽기 전용이다.
+// 이름변경 엔드포인트는 아직 없다 — 목록의 제목은 백엔드가 첫 질문에서 유도한 값이다.
 export function listChatSessions(): Promise<ChatSessionListResponse> {
   return apiFetch("/api/v1/chat/sessions") as Promise<ChatSessionListResponse>;
+}
+
+/**
+ * 지난 대화 1건 삭제 (사용자 요청 2026-08-30).
+ *
+ * 백엔드가 요청한 계약 그대로 구현했다(회신 2026-08-30) — 성공 204 · 실패는 **봉투 형식의**
+ * 404 `CHAT_SESSION_NOT_FOUND`(없음 · 남의 것 · 이미 지워짐 전부). 메시지는 DB 의
+ * `ondelete="CASCADE"` 가 함께 지운다. 계약 전문과 판단 근거는
+ * `docs/backend-analysis/BACKEND_REQUEST-2026-08-30-chat-session-delete.md`.
+ *
+ * 🚨 **배포는 백엔드가 먼저다.** 그쪽이 나가기 전에 이 함수를 부르면 FastAPI 기본
+ * 404(`{"detail":"Not Found"}`)가 오는데, 그 바디엔 `error` 봉투가 없어
+ * `parseApiError`(shared/api/errors.ts)가 `UNKNOWN_ERROR` 로 떨어뜨린다 — 화면엔 「서버 응답을
+ * 해석할 수 없습니다 (HTTP 404).」가 뜬다. **조용히 성공한 척하지 않는다**는 뜻이라 안전한
+ * 실패이긴 하지만 사용자에게 보여 줄 문구는 아니다(드로어의 `CHAT_SESSION_NOT_FOUND` 흡수가
+ * **봉투 안의 코드로만** 걸리게 돼 있는 이유가 이것이다 — 미배포 404 를 삭제 성공으로 오인하지 않는다).
+ *
+ * 성공은 204(바디 없음)라 반환값이 `void` 다 — `entities/payment/api/payment.ts` 의
+ * `deletePayment` 와 같은 모양이고, `client.ts::readBody` 가 204 를 `undefined` 로 처리한다.
+ */
+export function deleteChatSession(sessionId: string): Promise<void> {
+  return apiFetch(`/api/v1/chat/sessions/${sessionId}`, { method: "DELETE" }) as Promise<void>;
 }
 
 export function getChatMessages(sessionId: string): Promise<ChatMessagesResponse> {
@@ -69,10 +90,21 @@ function dispatchSseFrame(frame: string, handlers: SendMessageHandlers): void {
   const lines = frame.split("\n");
   const eventLine = lines.find((line) => line.startsWith("event:"));
   const dataLine = lines.find((line) => line.startsWith("data:"));
+  // `:` 로 시작하는 주석 줄(백엔드의 heartbeat — app/core/sse.py::sse_comment)은 event/data 가
+  // 없어 여기서 걸러진다. 명세 §9.2.6 이 요구하는 「빈 data 는 디스패치하지 않는다」도 같다.
   if (!eventLine || !dataLine) return;
 
   const eventType = eventLine.slice("event:".length).trim();
-  const data: unknown = JSON.parse(dataLine.slice("data:".length).trim());
+  // 🚨 프레임 하나가 깨져도 **그 프레임만** 버린다. 종전엔 이 JSON.parse 가 무방비라 예외가
+  // 호출부의 read 루프 밖으로 튀어 **스트림 전체가 죽었다** — 이미 화면에 흐르던 답변까지
+  // 통째로 사라지고 「메시지를 보내지 못했습니다」만 남는다. 백엔드가 만드는 프레임은 항상
+  // 정상이지만, 중간 프록시가 끼워 넣는 바이트까지 우리가 보장할 수는 없다.
+  let data: unknown;
+  try {
+    data = JSON.parse(dataLine.slice("data:".length).trim());
+  } catch {
+    return;
+  }
 
   switch (eventType) {
     case "token":
@@ -136,8 +168,13 @@ export async function sendChatMessage(
     }
 
     const reader = res.body.getReader();
+    // 🚨 인스턴스 **하나**를 스트림 수명 동안 유지한다 — 청크가 UTF-8 문자 중간에서 끊기는 일은
+    // 한글에서 반드시 일어나고, 매 청크 새로 만들면 `stream: true` 를 줘도 깨진다
+    // (docs/architecture/chat-streaming.md §3.2 #7).
     const decoder = new TextDecoder();
     let buffer = "";
+    // CRLF 가 청크 경계에 걸렸을 때 다음 청크로 넘기는 한 글자 — 아래 정규화 주석 참고.
+    let pendingCr = "";
 
     let streamDone = false;
     while (!streamDone) {
@@ -145,7 +182,20 @@ export async function sendChatMessage(
       // eslint-disable-next-line no-await-in-loop
       const { done, value } = await reader.read();
       streamDone = done;
-      buffer += decoder.decode(value, { stream: true });
+      // 줄바꿈을 LF 로 정규화한다 — 명세는 CRLF·CR·LF 셋을 모두 줄 구분자로 요구하는데
+      // (chat-streaming.md §3.1 #1) 아래 분해는 LF 만 안다. 백엔드는 LF 만 보내지만 중간
+      // 프록시까지 그렇다는 보장은 없고, 그때 프레임이 통째로 안 쪼개져 답변이 멈춘 것처럼 보인다.
+      // ⚠️ `data:` 페이로드는 JSON 한 줄이라 문자열 안의 개행은 `\n` **두 글자**로 이스케이프돼
+      // 있다 — 여기서 실제 CR/LF 바이트를 건드려도 내용은 1바이트도 바뀌지 않는다.
+      let chunk = pendingCr + decoder.decode(value, { stream: true });
+      pendingCr = "";
+      // 🚨 청크가 `\r` 로 끝나면 그 한 글자는 판단을 미룬다. 여기서 LF 로 바꿔 버리면 다음
+      // 청크의 첫 LF 와 만나 `\n\n` 이 되어 **프레임을 한가운데서 자른다**(CRLF 는 줄바꿈 하나다).
+      if (!streamDone && chunk.endsWith("\r")) {
+        pendingCr = "\r";
+        chunk = chunk.slice(0, -1);
+      }
+      buffer += chunk.replaceAll("\r\n", "\n").replaceAll("\r", "\n");
 
       const frames = buffer.split("\n\n");
       buffer = frames.pop() ?? "";

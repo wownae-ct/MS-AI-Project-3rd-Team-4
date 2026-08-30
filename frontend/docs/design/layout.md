@@ -43,7 +43,7 @@ tabHome active = (screen === 'dashboard' || screen === 'category')
 | `/timeline` | S4 타임라인 | 있음 | 타임라인 | — | `max-width: 640px` 단일 열 |
 | `/budget` | S6 예산 재배분 | 있음 | 예산 | — | `max-width: 720px` |
 | `/report` | S5 리포트 | 있음 | 리포트 | — | `repeat(auto-fit, minmax(260px, 1fr))` |
-| `/chat` | AI상담 | 있음 | AI상담 | — | `max-w-3xl` · `fill` |
+| `/chat` | AI상담 | 있음 | AI상담 | — | `max-w-3xl` · `fill` · **모바일 여백 12px** ([D27](decisions.md#d27-모바일-ai상담의-여백을-깎아-대화창을-넓힌다)) |
 | `/settings` | 설정 | 있음 | — (탭 없음) | **뒤로** | 기본 |
 | `/style-guide` | 디자인 시스템 | 있음 | — (보조 메뉴) | **뒤로** | 기본 |
 
@@ -59,6 +59,7 @@ tabHome active = (screen === 'dashboard' || screen === 'category')
 
 - 하단 탭바 4개: 홈 · 타임라인 · 예산 · 리포트
 - 콘텐츠 스크롤 영역 패딩 — 화면 스펙 원값은 `14px 18px 26px` 이지만 **구현은 spacing 스케일로 정규화했다**: `Page.tsx` 의 `px-4 py-6`(16 / 24px). 14·18·26 은 스케일 밖이라 임의값이 되고, 그러면 라운드·색과 같은 이유로 토큰 밖 값이 늘어난다
+  - ⚠️ **`fill` 화면은 예외다** — `px-3 py-2`(12 / 8px). 그 화면은 **페이지가 스크롤되지 않아** 뷰포트 높이가 곧 예산이고, 여기서 아낀 세로 여백이 그대로 콘텐츠가 된다([D27](decisions.md#d27-모바일-ai상담의-여백을-깎아-대화창을-넓힌다)). 가로 12px 은 그 화면의 대화 표면이 **자기 바깥 여백으로 그대로 쓰는 값**이다 — 표면이 음수 마진으로 이 패딩을 상쇄해 화면 끝까지 흐르게 하지 않는다(D27 §개정: 카드를 둘러싼 `bg` 면적이 0 이 되면 1.28:1 헤어라인만 남아 카드가 사라진다). 위 값은 **스크롤되는 화면**(=`fill` 아닌 전부)의 값이고 그쪽은 안 바뀌었다
 - 비활성 탭 라벨은 **`ink-soft`** — 화면 스펙의 `#A39C96`은 대비 2.71:1로 기각했다([a11y.md](a11y.md) §3.2)
 
 ### 3.1 아이콘 + 텍스트 라벨 병기, 상시 표시
@@ -86,6 +87,11 @@ padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
 ⚠️ **`viewport-fit=cover` 없이 `env()`만 쓰면 값이 항상 0이다.** 둘 중 하나만으로는 동작하지 않는다 ([MDN env()](https://developer.mozilla.org/en-US/docs/Web/CSS/env) · [MDN viewport](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/meta/name/viewport), 1차).
 
 ⚠️ `user-scalable` · `maximum-scale`은 **넣지 않는다** — WCAG 1.4.4 위반([a11y.md](a11y.md) §2.4).
+
+↪ 「모바일에서 화면이 확대된다」는 리포트가 오면 **여기를 고치지 않는다.** 확대에는 경로가 셋
+있고 그중 둘만이 오작동이다 — [a11y.md §2.6](a11y.md) 의 표가 어느 것을 끄고 어느 것을
+남기는지 정한다([D24](decisions.md#d24-모바일의-의도치-않은-확대만-끈다--더블탭은-컨트롤에서만-포커스-확대는-기본값으로)).
+실제 원인은 대개 이 메타 태그가 아니라 `touch-action`(더블탭) 또는 입력 폰트 크기(포커스)다.
 
 ## 4. 데스크톱 (기준 1160px)
 
