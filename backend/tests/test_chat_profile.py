@@ -25,7 +25,7 @@ def _profile(**overrides) -> ChatProfile:
     base = {
         "wedding_date": date(2027, 5, 14),
         "wedding_date_precision": "EXACT",
-        "d_day": -256,
+        "d_day": 268,
         "total_budget": 30_000_000,
         "total_budget_unsure": False,
         "guest_count": 200,
@@ -74,6 +74,25 @@ class TestNoMarkdown:
             stripped = line.strip()
             assert not stripped.startswith(("-", "*", "#", "1.", "2."))
         assert "**" not in block
+
+
+class TestDDayNotation:
+    """compute_d_day는 "양수 = 남은 일수"인데 한국식 D-day 표기는 정반대다 — 부호를 그대로
+    쓰면 "268일 남음"이 "268일 지남"으로 뒤집힌다(스테이징 검증에서 D+268로 실제 발생)."""
+
+    def test_future_wedding_uses_minus_notation(self):
+        block = render_chat_profile_block(_profile(d_day=268))
+
+        assert "D-268" in block
+        assert "D+268" not in block
+
+    def test_wedding_day_itself(self):
+        assert "D-DAY" in render_chat_profile_block(_profile(d_day=0))
+
+    def test_past_wedding_uses_plus_notation(self):
+        block = render_chat_profile_block(_profile(d_day=-3))
+
+        assert "D+3" in block
 
 
 class TestUncertainValuesAreNotStatedAsFact:
