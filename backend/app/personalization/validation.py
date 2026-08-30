@@ -221,3 +221,46 @@ def validate_personalization_draft(
             protected_titles_for_domain(protected_items, "TIMELINE"),
         )
     return result
+
+
+def group_checklist_by_category(items: list[dict]) -> dict[str, list[dict]]:
+    """category_code별로 항목을 묶는다. `app/personalization/graph.py`의 generate_node(재시도
+    시 이미 성공한 카테고리를 carry-forward하려고 이전 draft를 다시 카테고리별로 나눠야 함)와
+    이 아래의 `validate_checklist_by_category` 둘 다 이 함수를 쓴다 — 묶는 로직이 두 곳에
+    따로 있으면 한쪽만 고치고 잊어버리는 드리프트가 생기기 쉽다."""
+    grouped: dict[str, list[dict]] = {}
+    for item in items:
+        grouped.setdefault(item.get("category_code"), []).append(item)
+    return grouped
+
+
+def validate_checklist_by_category(
+    active_categories: set[str], items: list[dict], protected_titles: set[tuple] | None = None
+) -> tuple[dict[str, str], dict[str, list[str]]]:
+    """카테고리별로 독립적인 SUCCESS/BLOCKED를 낸다(2026-08-30 결정, red-bug.md #9-11).
+
+    2026-08-29(#129)가 도메인(CHECKLIST/TIMELINE) 결합 호출을 쪼갠 뒤에도, CHECKLIST 단독
+    호출 하나가 여전히 활성 카테고리 전부(최대 9개)를 한 응답에 커버해야 하는 구조는 그대로라
+    "일부 카테고리만 만들고 스스로 다 했다고 판단"하는 실패가 남아 있었다(staging 실측:
+    배포 이후 CHECKLIST 도메인 80% 확률로 BLOCKED). 근본 수정은 generate 쪽에서 카테고리
+    단위로 독립 LLM 호출을 보내는 것(graph.py::_generate_checklist_category_draft)이고,
+    여기 validate 쪽은 그 결과를 판정할 때 "도메인 전체가 SUCCESS냐"가 아니라 "카테고리
+    하나하나가 SUCCESS냐"를 봐야 `app/services/personalization.py`가 실패한 카테고리만
+    카탈로그로 채우고 성공한 카테고리의 LLM 결과는 살릴 수 있다.
+
+    `validate_checklist_items`를 고치지 않고 그대로 재사용한다 — "활성 카테고리 1개짜리
+    도메인"으로 카테고리마다 한 번씩 돌리는 것만으로 카테고리 단위 판정을 얻을 수 있다
+    (규칙 (2) 커버리지가 `active_categories - covered`라 집합을 1개짜리로 주면 자동으로
+    그 카테고리 하나만의 커버리지를 본다). 제목 중복 규칙은 애초에 같은 카테고리 안에서만
+    성립하므로(규칙 (4) 문서 참고), 카테고리별로 나눠 검사해도 전체를 한 번에 검사한 것과
+    결과가 같다."""
+    grouped = group_checklist_by_category(items)
+    status: dict[str, str] = {}
+    errors: dict[str, list[str]] = {}
+    for category in active_categories:
+        category_errors = validate_checklist_items(
+            {category}, grouped.get(category, []), protected_titles
+        )
+        status[category] = "BLOCKED" if category_errors else "SUCCESS"
+        errors[category] = category_errors
+    return status, errors
