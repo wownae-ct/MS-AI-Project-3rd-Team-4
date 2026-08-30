@@ -62,6 +62,31 @@ _CATEGORY_SCOPE_RULES_TEMPLATE = """
 7. 사용자가 카테고리 "{category_code}"에 대해 질문하고 있습니다. 답변도 이 카테고리에 맞게 하세요.
 8. 참고 자료가 지금 질문 카테고리("{category_code}")가 아닌 다른 카테고리의 내용이라면, 그 내용을 지금 카테고리에도 그대로 적용되는 것처럼 일반화해서 단정하지 마세요. 다른 카테고리 사례를 참고할 땐 그 사실을 명확히 밝히거나, 확실하지 않으면 언급을 생략하세요."""
 
+# 2026-08-31 — 프로필이 있을 때만 붙는 규칙. 기존 규칙 1~8을 **다시 쓰지 않고 관할만 좁히는**
+# 방식을 택했다: 규칙 1("컨텍스트에 있는 내용만")을 통째로 재작성하면 프로필이 없는 모든 기존
+# 상담의 동작까지 바뀌어 회귀 범위가 서비스 전체가 된다. 아래처럼 "규칙 1의 컨텍스트란 참고
+# 자료를 뜻한다"고 뒤에서 한정하면, 프로필이 없을 땐 이 블록 자체가 안 붙어 기존 동작이
+# 바이트 단위로 보존된다.
+#
+# 번호를 9부터 시작하는 이유: 카테고리 지정 상담이면 8번까지 쓰였고, 전역 상담이면 6번까지만
+# 쓰였다 — 겹치지 않게 넉넉히 띄운다(모델은 번호의 연속성보다 내용을 본다).
+_PROFILE_RULES_TEMPLATE = """
+
+[사용자 정보 — 이 사용자 본인의 웨딩 상황입니다]
+{profile_block}
+
+9. 위 [사용자 정보]는 사용자가 앱에 직접 입력해 저장된 **확정 사실**입니다. 규칙 1번이 말하는
+   "컨텍스트"는 참고 자료를 뜻하며, [사용자 정보]는 그와 별개의 근거원입니다 — 사용자 본인의
+   예산·일정·지출·진행률을 물으면 [사용자 정보]에 있는 값으로 답하세요. 규칙 2번의 "금액을
+   단정하지 마세요"는 **업체 가격**에 대한 규칙이며, 사용자 본인의 예산 금액에는 적용되지
+   않습니다.
+10. 반대로 [사용자 정보]의 수치를 일반적 사실인 것처럼 말하지 마세요. "보통 이 정도 듭니다"
+   같은 일반론은 [참고 자료]에 있을 때만 말할 수 있습니다.
+11. [사용자 정보]는 출처 등급(공식 통계/뉴스/업계 조사/커뮤니티 경험담)이 없습니다. 규칙 4번의
+   출처 등급 언급은 [참고 자료]를 인용했을 때만 하고, [사용자 정보]에 등급을 붙이지 마세요.
+12. 사용자가 묻지 않은 금액·날짜를 먼저 나열하지 마세요. [사용자 정보]는 답을 사용자 상황에
+   맞게 조정하는 데 쓰고, 필요한 값만 자연스럽게 언급하세요."""
+
 _USER_PROMPT_TEMPLATE = """{context_block}
 
 사용자 질문: {query}
@@ -81,6 +106,20 @@ _VERIFY_PROMPT_TEMPLATE = """아래는 사용자 질문에 대한 답변과, 답
 - SUPPORTED: 참고 자료로 명확히 뒷받침됨
 - WEAK: 부분적으로만 연결됨
 - GENERAL: 참고 자료 근거 없이 일반론으로 답함"""
+
+# 2026-08-31 — verify 프롬프트 **뒤에** 덧붙는다(앞이 아니라 뒤). 판정 기준 3줄
+# (SUPPORTED/WEAK/GENERAL 정의) 다음에 예외를 선언해야, 기존 기준을 재작성하지 않고도
+# "이건 검증 대상이 아니다"만 추가로 알릴 수 있다. profile_block이 없으면 이 문자열 자체가
+# 안 붙어 프롬프트가 변경 전과 바이트 단위로 동일하다.
+_VERIFY_PROFILE_NOTE_TEMPLATE = """
+
+참고 — 아래는 이 사용자가 앱에 직접 입력해 저장한 본인 정보입니다. 답변이 이 값들(본인 예산·
+일정·지출·진행률)을 인용한 부분은 **검증 대상이 아닙니다**. 참고 자료로 뒷받침되어야 하는 것은
+일반적 사실 주장(시세, 계약 조건, 업계 관행 등)뿐입니다. 본인 정보를 인용했다는 이유로 WEAK나
+GENERAL을 주지 마세요.
+
+[사용자 본인 정보]
+{profile_block}"""
 
 _REFORMULATE_QUERY_PROMPT_TEMPLATE = """아래는 사용자의 원래 질문과, 그 질문에 대한 답변이 왜
 근거 부족(WEAK/GENERAL) 판정을 받았는지의 이유입니다. 검색 엔진에 다시 넣을 새로운 검색 질의를
@@ -104,14 +143,27 @@ def build_context_block(chunks: list[RetrievedChunk]) -> str:
 
 
 def build_chat_messages(
-    category_code: str | None, chunks: list[RetrievedChunk], query: str
+    category_code: str | None,
+    chunks: list[RetrievedChunk],
+    query: str,
+    profile_block: str | None = None,
 ) -> list[dict[str, str]]:
     """OpenAI API가 요구하는 형식(system 역할 1개 + user 역할 1개)으로 프롬프트를 조립한다.
     system엔 "지켜야 할 규칙"(카테고리 무관 전역 상담이면 4개, 카테고리 지정 상담이면 6개),
-    user엔 "참고 자료 + 실제 질문"을 담는다."""
+    user엔 "참고 자료 + 실제 질문"을 담는다.
+
+    profile_block(2026-08-31)은 사용자 본인의 예산·일정·진행률이다(app/rag/chat_profile.py).
+    **기본값 None이면 프롬프트가 이 변경 전과 바이트 단위로 동일**하다 — 골든 질문 평가
+    (scripts/run_rag_eval.py)와 기존 테스트가 무회귀로 돌아야 하기 때문이다.
+
+    프로필을 system에 넣는 이유: user 메시지의 "참고 자료" 옆에 붙이면 모델이 프로필을 검색
+    근거로 오인해 규칙 1번(컨텍스트 밖 내용 금지)이 흔들린다 — 두 근거원의 **관할이 다르다**는
+    걸 규칙과 같은 위치에서 선언해야 경계가 유지된다."""
     system_prompt = _SYSTEM_PROMPT_TEMPLATE
     if category_code is not None:
         system_prompt += _CATEGORY_SCOPE_RULES_TEMPLATE.format(category_code=category_code)
+    if profile_block:
+        system_prompt += _PROFILE_RULES_TEMPLATE.format(profile_block=profile_block)
     return [
         {"role": "system", "content": system_prompt},
         {
@@ -124,12 +176,24 @@ def build_chat_messages(
 
 
 async def verify_answer(
-    client: AsyncAzureOpenAI, settings: Settings, chunks: list[RetrievedChunk], answer: str
+    client: AsyncAzureOpenAI,
+    settings: Settings,
+    chunks: list[RetrievedChunk],
+    answer: str,
+    profile_block: str | None = None,
 ) -> tuple[str, str]:
     """답변을 쓴 것과 별개의 LLM 호출로, "이 답변이 방금 준 근거 자료로 실제 뒷받침되는가?"를
     다시 채점시킨다 — 같은 모델이라도 답변을 쓸 때와 검증할 때 역할을 분리해서, 스스로 지어낸
     내용에 스스로 속지 않고 어느 정도 걸러낼 수 있게 한다. response_format으로 JSON만 답하게
-    강제해서("SUPPORTED"/"WEAK"/"GENERAL" + 이유) 파싱이 항상 안전하다."""
+    강제해서("SUPPORTED"/"WEAK"/"GENERAL" + 이유) 파싱이 항상 안전하다.
+
+    **profile_block을 여기에도 넘기는 것이 필수다(2026-08-31).** generate에만 프로필을 주고
+    verify는 청크만 보게 두면, "총예산 3,000만원 기준으로는…" 같은 문장이 검증 입장에서
+    정의상 근거 없음이 되어 **WEAK/GENERAL이 결정론적으로 나온다**. 그러면
+    `_route_after_verify`가 CRAG 재검색을 발동시키는데, ChatState의 context는 덮어쓰기 채널이라
+    **1차의 좋은 컨텍스트가 2차의 무관한 컨텍스트로 교체되고**, 프론트는 `retry` 이벤트를 받아
+    이미 스트리밍된 답변을 지우고 다시 그린다. 결과적으로 개인화가 잘 될수록 답변이 지워지고
+    "근거 없음" 배지가 붙는, 정확히 반대인 시스템이 된다. 검증자도 같은 근거원을 봐야 한다."""
     response = await client.chat.completions.create(
         model=settings.chat_rag_deployment,
         response_format={"type": "json_object"},
@@ -138,6 +202,11 @@ async def verify_answer(
                 "role": "user",
                 "content": _VERIFY_PROMPT_TEMPLATE.format(
                     context_block=build_context_block(chunks), answer=answer
+                )
+                + (
+                    _VERIFY_PROFILE_NOTE_TEMPLATE.format(profile_block=profile_block)
+                    if profile_block
+                    else ""
                 ),
             }
         ],

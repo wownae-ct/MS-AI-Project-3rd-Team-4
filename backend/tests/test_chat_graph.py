@@ -86,6 +86,7 @@ def _initial_state() -> dict:
         "out_of_scope": False,
         "history": [],
         "resolved_query": "",
+        "profile_block": "",
     }
 
 
@@ -349,3 +350,28 @@ class TestRetrieveSpanRecordsChunkIds:
             "chunk_ids": [2, 3],
             "top_similarity": _PASSING_SIMILARITY,
         }
+
+
+class TestPartialStateCompatibility:
+    """scripts/run_rag_eval.py(골든 21문항 평가)는 `{"query", "category_code"}` 2개 키만 담은
+    **부분 state**로 ainvoke한다 — 이 파일 상단 graph.py docstring이 경고한 함정이다.
+    새 state 키를 `state["..."]`로 읽으면 그 스크립트가 KeyError로 깨진다."""
+
+    async def test_graph_runs_with_only_query_and_category_code(self):
+        client = _stream_client("답변")
+        with (
+            patch("app.rag.graph.get_azure_openai_client", return_value=client),
+            patch(
+                "app.rag.graph.retrieve_with_similarity",
+                AsyncMock(return_value=_outcome(_chunk(1))),
+            ),
+            patch("app.rag.graph.verify_answer", AsyncMock(return_value=("SUPPORTED", "이유"))),
+        ):
+            graph = build_graph()
+            result = await graph.ainvoke(
+                {"query": "예식장 계약 주의점", "category_code": "VENUE"},
+                # run_rag_eval.py와 동일하게 session도 함께 넘긴다(retrieve_node가 쓴다).
+                {"configurable": {"settings": _TEST_SETTINGS, "session": MagicMock()}},
+            )
+
+        assert result["verdict"] == "SUPPORTED"

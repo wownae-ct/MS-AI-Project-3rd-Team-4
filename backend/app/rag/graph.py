@@ -111,6 +111,15 @@ class ChatState(TypedDict):
     # 그때는 검색어와 생성 프롬프트의 질문이 모두 이 값이 된다(원 질문은 query에 그대로 남아
     # DB 저장·트레이스에 쓰인다).
     resolved_query: str
+    # 사용자 본인의 예산·일정·지출·진행률을 한글로 렌더한 블록(app/rag/chat_profile.py,
+    # 2026-08-31). generate와 verify **둘 다** 이 값을 받아야 한다 — verify만 못 보면 프로필
+    # 기반 문장이 "근거 없음"으로 판정돼 CRAG 재시도가 상시 발동한다(generation.py::
+    # verify_answer docstring 참고). 웨딩이 없거나 활성 카테고리가 0개면 빈 문자열.
+    #
+    # ⚠️ 읽을 때는 반드시 `state.get("profile_block")` — scripts/run_rag_eval.py가 2개 키만
+    # 담은 부분 state로 ainvoke하므로 `state["profile_block"]`이면 KeyError로 깨진다
+    # (이 파일 상단 docstring이 이미 경고한 함정).
+    profile_block: str
 
 
 # ① retrieve: 질문+카테고리로 하이브리드 검색(retrieval.py)을 돌려 근거 청크를 찾아온다.
@@ -276,6 +285,7 @@ async def generate_node(state: ChatState, config: RunnableConfig) -> dict:
                 # 해소된 질문이 있으면 그걸 쓴다 — 원 질문("그럼 스드메는?")만 주면 생성 모델도
                 # "그럼"이 뭘 가리키는지 알 수 없다(이 채팅은 이력을 프롬프트에 넣지 않는다).
                 state.get("resolved_query") or state["query"],
+                state.get("profile_block") or None,
             ),
             stream=True,  # 완성된 답변을 한 번에 안 받고, 글자 조각(delta) 단위로 하나씩 받는다
         )
@@ -302,7 +312,14 @@ async def verify_node(state: ChatState, config: RunnableConfig) -> dict:
 
         client = get_azure_openai_client(settings)
         verdict, reason = await _await_with_heartbeat(
-            verify_answer(client, settings, state["context"], state["answer"]), writer
+            verify_answer(
+                client,
+                settings,
+                state["context"],
+                state["answer"],
+                state.get("profile_block") or None,
+            ),
+            writer,
         )
         return {"verdict": verdict, "verification_reason": reason}
 
