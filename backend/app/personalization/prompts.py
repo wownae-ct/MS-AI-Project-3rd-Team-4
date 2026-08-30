@@ -58,7 +58,7 @@ ROUTE_PROMPT_TEMPLATE = """당신은 메리맵의 개인화 콘텐츠 라우터�
 
 응답은 JSON으로만 답하세요: {{"affected_domains": ["CHECKLIST"와 "TIMELINE" 중 0개 이상], "reasoning": "판단 이유 한 문장"}}"""
 
-_FOCUS_CATEGORIES: frozenset[str] = frozenset({"VENUE", "SDM"})
+FOCUS_CATEGORIES: frozenset[str] = frozenset({"VENUE", "SDM"})
 
 # 2026-08-30 결정(VENUE/SDM 튜닝, red-bug.md #9-11 후속) — 이 규칙은 예전엔 _CHECKLIST_RULES
 # 안에 있어 CHECKLIST를 요청하는 모든 카테고리 호출(GIFT/ETC 등 FOCUS와 무관한 7개 포함)에
@@ -121,6 +121,26 @@ _CHECKLIST_OUTPUT_SCHEMA = """체크리스트 항목은 각각 이 필드만 채
 {"category_code": "...", "item_type": "CONTRACT_TERM 또는 EXTRA_COST 또는 PREP", "title": "...",
 "body": "...", "priority": "high 또는 mid 또는 low", "option_group": null 또는 "...",
 "tag": null 또는 "...", "source_ref_id": null 또는 [근거 자료] 번호}"""
+
+# 2026-08-30 결정(VENUE/SDM 튜닝, 옵션 C) — FOCUS 카테고리(VENUE/SDM) 단독 호출에서만 쓰는
+# 대안 출력 스키마. "40~60% 비중을 알아서 맞춰라"는 느슨한 지시 대신, item_type별 버킷을
+# 스키마 자체에 두고 버킷마다 최소 개수를 명시한다 — 호출은 그대로 하나(카테고리 하나의 맥락을
+# 유지, item_type별로 별도 LLM 호출을 보내지 않는다: item_type들은 같은 카테고리 안에서 서로
+# 연관된 내용이라 별도 호출로 쪼개면 맥락 단절·중복·인위적 비중 할당이라는 노이즈가 생긴다는
+# 게 이번 튜닝에서 기각한 방향이다). 파싱한 뒤 세 버킷을 다시 하나의 checklist_items 리스트로
+# 합치고 각 항목에 item_type을 버킷 이름으로 채워 넣으면, 이후 파이프라인(검증·인용 결합·
+# DB 반영)은 전부 기존 평평한 스키마 그대로 재사용할 수 있다(app/personalization/graph.py::
+# _generate_checklist_category_draft가 이 병합을 담당).
+_CHECKLIST_FOCUS_OUTPUT_SCHEMA = """이 카테고리는 CONTRACT_TERM 비중 규칙(F9_CONTRACT_FOCUS) 대상이라,
+항목을 item_type별 버킷 3개로 나눠 응답하세요(item_type은 버킷으로 이미 정해지므로 각 항목에
+넣지 마세요). 각 항목은 이 필드만 채우세요(그 외 필드는 응답에 포함하지 마세요 —
+group_label/status는 서비스 레이어가 결정론적으로 채웁니다):
+{"category_code": "...", "title": "...", "body": "...", "priority": "high 또는 mid 또는 low",
+"option_group": null 또는 "...", "tag": null 또는 "...", "source_ref_id": null 또는 [근거 자료] 번호}
+
+각 버킷 최소 3개 이상 채우세요(CONTRACT_TERM 단일 구성 금지 — EXTRA_COST/PREP도 반드시
+채우는 게 이 스키마 자체의 요구사항입니다):
+{"contract_term_items": [...], "extra_cost_items": [...], "prep_items": [...]}"""
 
 # FOCUS 카테고리(VENUE/SDM)의 CONTRACT_TERM 항목을 DS3(표준계약서) RAG 청크에 근거를 달 때 쓰는
 # 검색 질의. "계약"/"위약금" 키워드가 F9_CONTRACT_FOCUS 가산점(app/rag/retrieval.py의
@@ -413,18 +433,37 @@ def build_generate_prompt(
         if note:
             parts.insert(0, note)
 
+    # 2026-08-30 결정(VENUE/SDM 튜닝, 옵션 C) — CHECKLIST 단독 호출이고 그 카테고리(들)가
+    # FOCUS(VENUE/SDM) 안에만 있을 때(카테고리 단위 분리 이후엔 사실상 항상 singleton)만
+    # 버킷형 스키마를 쓴다. TIMELINE과 결합된 호출이나 여러 카테고리가 섞인 호출(과거 경로·
+    # 테스트 호환)은 예전처럼 평평한 스키마 + FOCUS_RULE 텍스트를 유지한다.
+    use_focus_schema = (
+        include_checklist
+        and not include_timeline
+        and active_categories is not None
+        and bool(active_categories)
+        and active_categories <= FOCUS_CATEGORIES
+    )
+
     if include_checklist:
         parts += [_CHECKLIST_RULES, _build_checklist_few_shot(active_categories)]
-        focus_relevant = active_categories is None or bool(active_categories & _FOCUS_CATEGORIES)
-        if focus_relevant:
+        focus_relevant = active_categories is None or bool(active_categories & FOCUS_CATEGORIES)
+        if focus_relevant and not use_focus_schema:
             parts.append(_CHECKLIST_FOCUS_RULE)
+        if focus_relevant:
             citation_menu = build_contract_citation_menu(contract_citations or [])
             if citation_menu:
                 parts.append(citation_menu)
     if include_timeline:
         parts += [_TIMELINE_RULES, _build_timeline_few_shot(active_categories)]
 
-    if include_checklist and include_timeline:
+    if use_focus_schema:
+        parts.append(_CHECKLIST_FOCUS_OUTPUT_SCHEMA)
+        parts.append(
+            '응답은 JSON으로만 답하세요: {"contract_term_items": [...], "extra_cost_items": '
+            '[...], "prep_items": [...]} — 세 키 모두 반드시 포함하세요.'
+        )
+    elif include_checklist and include_timeline:
         parts.append(_CHECKLIST_OUTPUT_SCHEMA)
         parts.append(_TIMELINE_OUTPUT_SCHEMA)
         parts.append(
