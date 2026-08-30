@@ -1,6 +1,33 @@
 // shared/ui public API (§6.1.1) — 스타일(styles.css)은 app 진입점에서 1회 import한다.
 // CSS 는 사이드이펙트라 여기서 재수출할 수 없다 (layers.md §4.2).
 export { Badge, type BadgeProps, type BadgeVariant } from "./Badge";
+// 제목 위 내비 줄 (D25) — `Page` 의 `nav` 슬롯에 들어가는 두 컴포넌트. 뜻이 갈린다:
+// `Breadcrumb` 는 위치(계층 · 딥링크에서도 동작) · `BackLink` 는 히스토리(어디서 왔는가).
+// 규격(색·크기·44px 히트 영역)은 `page-nav-style.ts` 한 곳에서 나온다 — 두 컴포넌트가 `Page` 의
+// **같은 자리**에 번갈아 나타나므로 리터럴이 갈리면 화면마다 그 줄이 들썩인다.
+//
+// ⚠️ **`DateCalendar` 처럼 배럴에서 빼는 안을 실제로 재 보고 기각했다**(2026-08-30). 그쪽은 배럴
+// 재수출이 lazy 청크를 초기 청크로 끌어오는 사례지만, 여기서는 **직접 import 가 두 지표 다 나빴다.**
+// 세 변형 모두 같은 시점에 `rm -rf dist` 후 빌드해 잰 값이다(⚠️ dist 를 비우지 않으면 지난 빌드의
+// 해시 청크가 남아 합계가 수백 B 씩 흔들린다 — 실제로 한 번 그 값에 속았다):
+//
+//                     최대 단일 청크(gzip)      JS 합계(gzip)     JS 파일 수
+//   그 시점 기준선        96,985 B              180,571 B          30
+//   배럴 export(현행)     98,509 B              180,654 B          31
+//   직접 import          98,741 B              180,914 B          31   ← 둘 다 더 크다
+//
+// (커밋 시점 기준 절대값은 `scripts/check-bundle-budget.mjs` 의 D25 항목에 있다 — 그 사이 HEAD 가
+// 움직여 기준선이 바뀌었다. 위 표가 고정하는 것은 **세 변형의 상대 순서**다.)
+//
+// 초기 청크 증가분은 배럴 탓이 아니라 **Rollup 의 공용 청크 재분할** 때문이다 — 종전에 따로 떨어져
+// 있던 `client` 청크(2.11 kB gzip)가 `index` 안으로 흡수됐다(빌드 산출 목록 대조로 확인 — 그 청크가
+// 목록에서 통째로 사라진다). 그 청크는 `index.js` 의 **정적 import** 라 원래도 초기 로드 경로에
+// 있었고 `dist/index.html` 에 modulepreload 도 없어(확인함) 왕복이 한 번 더 붙어 있었다 — 흡수된
+// 지금 사용자가 실제로 기다리는 바이트는 100.24 kB → 99.93 kB 로 오히려 **줄었고 요청도 하나
+// 줄었다**(ADR 0005 의 `defaultPreload` 주석이 지적한 그 직렬화 왕복이다). 지표 하나만 보고 배럴을
+// 깨뜨리면 API 만 불규칙해지고 얻는 것이 없다.
+export { BackLink } from "./BackLink";
+export { Breadcrumb, type BreadcrumbAncestor, type BreadcrumbProps, type BreadcrumbTarget } from "./Breadcrumb";
 // 웨딩 카테고리 배지 색 (D17) — 비용 관리(entities/payment)와 리포트(pages/report)가 같은 매핑을
 // 써야 하는데 entities 끼리는 서로를 import 할 수 없다. 공유 지점은 여기뿐이다(SourceList 와 같은 이유).
 export { CATEGORY_BADGE_CLASS, categoryBadgeClass } from "./category-badge";

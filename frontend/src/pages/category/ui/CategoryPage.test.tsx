@@ -16,7 +16,7 @@
 // 수단을 잃는다.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from "@tanstack/react-router";
+import { createMemoryHistory, createRootRoute, createRoute, createRouter, RouterProvider } from "@tanstack/react-router";
 import type { CategoryConstant, WeddingCategory } from "@/entities/wedding";
 import { CategoryPage } from "./CategoryPage";
 
@@ -68,6 +68,31 @@ function title() {
   return screen.getByRole("heading", { level: 1 }).textContent;
 }
 
+// 이 화면은 `Link` 를 쓴다(브레드크럼브의 「홈」 · 안내 화면의 「대시보드로 돌아가기」) — 라우터
+// 컨텍스트가 없으면 렌더 자체가 터진다. 전체 routeTree 를 끌어오면 이 파일의 관심사(한 화면의
+// 분기)가 라우팅 조립까지 넓어지므로, 이 컴포넌트만 띄우는 최소 트리를 만든다.
+//
+// ⚠️ [2026-08-30, D25] 종전엔 **안내 화면만** 이 헬퍼를 썼고 나머지 테스트는
+// `render(<CategoryPage …/>)` 로 맨몸 렌더했다. 브레드크럼브가 두 갈래 모두에 붙으면서
+// **이 파일의 모든 렌더가 라우터를 지난다.**
+//
+// 진입 경로를 실제 경로(`/category/venue`)로 둔다 — `/` 로 두면 브레드크럼브의 조상 링크(`to="/"`)가
+// 그 자리에서 활성이 되어 **테스트 하네스가 만든 `aria-current`** 를 보게 된다. 실제 앱에서는
+// 일어나지 않는 상태다.
+function renderInRouter(categoryCode: string) {
+  const rootRoute = createRootRoute();
+  const detailRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/category/$id",
+    component: () => <CategoryPage categoryCode={categoryCode} />,
+  });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([detailRoute]),
+    history: createMemoryHistory({ initialEntries: ["/category/venue"] }),
+  });
+  render(<RouterProvider router={router} />);
+}
+
 beforeEach(() => {
   getCategoriesMock.mockReset();
   getWeddingCategoriesMock.mockReset();
@@ -77,17 +102,20 @@ beforeEach(() => {
 });
 
 describe("CategoryPage 제목", () => {
-  it("조회 중에는 백엔드 코드를 제목으로 내보내지 않는다", () => {
+  it("조회 중에는 백엔드 코드를 제목으로 내보내지 않는다", async () => {
     // 끝나지 않는 조회로 로딩 상태를 붙잡아 둔다.
     getCategoriesMock.mockReturnValue(new Promise(() => {}));
-    render(<CategoryPage categoryCode="VENUE" />);
+    renderInRouter("VENUE");
 
+    // `RouterProvider` 의 첫 렌더가 비동기라 제목이 도착할 때까지 기다린다 — 그 뒤에도 조회는
+    // 여전히 진행 중이므로(위 목이 영영 resolve 되지 않는다) 로딩 상태를 붙잡아 둔 채로 단언한다.
+    await screen.findByRole("heading", { level: 1 });
     expect(title()).not.toBe("VENUE");
   });
 
   it("이름을 찾으면 한국어 이름을 쓴다", async () => {
     getCategoriesMock.mockResolvedValue({ categories: [VENUE] });
-    render(<CategoryPage categoryCode="VENUE" />);
+    renderInRouter("VENUE");
 
     expect(await screen.findByRole("heading", { level: 1, name: "예식장" })).toBeInTheDocument();
   });
@@ -95,14 +123,14 @@ describe("CategoryPage 제목", () => {
   // 조회는 끝났는데 그 코드가 목록에 없다 — 이름이 영영 안 오므로 코드라도 보여준다.
   it("조회가 끝났는데 목록에 없으면 코드로 폴백한다", async () => {
     getCategoriesMock.mockResolvedValue({ categories: [] });
-    render(<CategoryPage categoryCode="VENUE" />);
+    renderInRouter("VENUE");
 
     expect(await screen.findByRole("heading", { level: 1, name: "VENUE" })).toBeInTheDocument();
   });
 
   it("조회에 실패해도 코드로 폴백한다 — 실패와 '목록에 없음'을 같게 다룬다", async () => {
     getCategoriesMock.mockRejectedValue(new Error("네트워크 실패"));
-    render(<CategoryPage categoryCode="VENUE" />);
+    renderInRouter("VENUE");
 
     expect(await screen.findByRole("heading", { level: 1, name: "VENUE" })).toBeInTheDocument();
   });
@@ -117,18 +145,6 @@ describe("CategoryPage 제목", () => {
 // 🚨 판정은 **fail-open** 이어야 한다: 「행이 있고 그 `is_active` 가 false」일 때만 안내다.
 // 조회 실패나 "행 없음"까지 비활성으로 취급하면, 사라진 코드로 들어온 딥링크(위 폴백 테스트가
 // 지키는 그 경우)와 네트워크 실패가 전부 이 안내로 둔갑한다.
-// 안내 화면만 `Link`(대시보드로 돌아가기)를 쓴다 — 라우터 컨텍스트가 없으면 렌더 자체가
-// 터진다. 전체 routeTree 를 끌어오면 이 파일의 관심사(한 화면의 분기)가 라우팅 조립까지
-// 넓어지므로, 이 컴포넌트만 띄우는 최소 트리를 만든다.
-function renderInRouter(categoryCode: string) {
-  const rootRoute = createRootRoute({ component: () => <CategoryPage categoryCode={categoryCode} /> });
-  const router = createRouter({
-    routeTree: rootRoute,
-    history: createMemoryHistory({ initialEntries: ["/"] }),
-  });
-  render(<RouterProvider router={router} />);
-}
-
 describe("CategoryPage — 사용 안 함으로 설정한 카테고리", () => {
   const NOTICE = "사용 안 함으로 설정한 카테고리예요.";
 
@@ -146,7 +162,7 @@ describe("CategoryPage — 사용 안 함으로 설정한 카테고리", () => {
   it("활성이면 평소대로 탭을 그린다", async () => {
     getCategoriesMock.mockResolvedValue({ categories: [VENUE] });
     getWeddingCategoriesMock.mockResolvedValue({ categories: [weddingCategory(true)] });
-    render(<CategoryPage categoryCode="VENUE" />);
+    renderInRouter("VENUE");
 
     expect(await screen.findByRole("tab", { name: "체크리스트" })).toBeInTheDocument();
     expect(screen.queryByText(NOTICE)).not.toBeInTheDocument();
@@ -155,7 +171,7 @@ describe("CategoryPage — 사용 안 함으로 설정한 카테고리", () => {
   it("조회에 실패하면 안내로 새지 않는다(fail-open)", async () => {
     getCategoriesMock.mockResolvedValue({ categories: [VENUE] });
     getWeddingCategoriesMock.mockRejectedValue(new Error("네트워크 실패"));
-    render(<CategoryPage categoryCode="VENUE" />);
+    renderInRouter("VENUE");
 
     expect(await screen.findByRole("tab", { name: "체크리스트" })).toBeInTheDocument();
     expect(screen.queryByText(NOTICE)).not.toBeInTheDocument();
@@ -164,9 +180,41 @@ describe("CategoryPage — 사용 안 함으로 설정한 카테고리", () => {
   it("그 코드의 행 자체가 없으면 안내로 새지 않는다(fail-open)", async () => {
     getCategoriesMock.mockResolvedValue({ categories: [VENUE] });
     getWeddingCategoriesMock.mockResolvedValue({ categories: [] });
-    render(<CategoryPage categoryCode="VENUE" />);
+    renderInRouter("VENUE");
 
     expect(await screen.findByRole("tab", { name: "체크리스트" })).toBeInTheDocument();
     expect(screen.queryByText(NOTICE)).not.toBeInTheDocument();
+  });
+});
+
+// [2026-08-30, D25] 이 화면은 앱에서 **유일한 하위 화면**이다 — layout.md §1 의 「카테고리 상세는
+// 홈 탭에 귀속되는 하위 화면」 계약이 여기서 처음 화면에 드러난다.
+//
+// 컴포넌트 자체의 마크업(APG 형태 · exact 매칭 · 44px)은 shared/ui/Breadcrumb.test.tsx 가 본다.
+// 여기서 고정하는 것은 **이 화면이 그것을 붙였는가**와 **제목과 같은 이름을 말하는가** 둘이다.
+describe("브레드크럼브 — 홈에 귀속되는 하위 화면", () => {
+  it("두 갈래(정상 · 사용 안 함) 모두에 붙는다", async () => {
+    getCategoriesMock.mockResolvedValue({ categories: [VENUE] });
+    getWeddingCategoriesMock.mockResolvedValue({ categories: [weddingCategory(false)] });
+    renderInRouter("VENUE");
+
+    // 안내 화면은 탭이 없어 통째로 다른 트리를 낸다 — 한쪽만 고치는 회귀가 실제로 가능하다.
+    await screen.findByText("사용 안 함으로 설정한 카테고리예요.");
+    expect(screen.getByRole("navigation", { name: "현재 위치" })).toBeInTheDocument();
+    // 안내 문장의 다음 행동(본문 CTA)은 브레드크럼브가 생겨도 그대로 남는다 — 지우면 읽던 흐름의
+    // 끝이 사라진다. 둘 다 `/` 로 가지만 역할이 다르다.
+    expect(screen.getByRole("link", { name: "대시보드로 돌아가기" })).toBeInTheDocument();
+  });
+
+  // 제목과 브레드크럼브가 서로 다른 이름을 말하는 순간이 없어야 한다 — `title` 한 값을 둘이 나눠 쓴다.
+  // 폴백 경로(이름을 영영 못 받아 코드로 떨어지는 경우)로 확인한다: 이름이 두 갈래를 갖는 자리다.
+  it("현재 항목이 제목과 같은 이름을 말한다 — 폴백에서도", async () => {
+    getCategoriesMock.mockResolvedValue({ categories: [] });
+    renderInRouter("VENUE");
+
+    await screen.findByRole("heading", { level: 1, name: "VENUE" });
+    const breadcrumb = screen.getByRole("navigation", { name: "현재 위치" });
+    expect(breadcrumb).toHaveTextContent("VENUE");
+    expect(title()).toBe("VENUE");
   });
 });
