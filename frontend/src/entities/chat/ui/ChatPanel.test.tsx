@@ -10,7 +10,7 @@
 // 바뀌어 버그 자체가 재현되지 않는다.
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ChatSession } from "../model";
 import { ChatPanel } from "./ChatPanel";
@@ -88,10 +88,17 @@ type RetryHandlers = {
   onDone: (payload: { message_id: string; latency_ms: number }) => void;
 };
 
-// SSE 이벤트를 **한 틱에 몰아서** 부르면 안 된다 — draftRef 미러는 setDraft updater 안에서
-// 갱신되므로(ChatPanel.tsx 머리말), React가 그 사이에 flush 하지 못하면 onDone 이 낡은 ref 를
-// 읽는다. 실제 네트워크에서는 청크마다 read() 가 끊기며 자연히 flush 된다. 그 타이밍을 재현하려고
-// 핸들러만 가로챈 뒤 테스트가 act() 로 한 이벤트씩 흘려보낸다.
+// **[2026-08-31 정정]** 이 머리말은 오래 *"SSE 이벤트를 한 틱에 몰아서 부르면 안 된다 — 실제
+// 네트워크에서는 청크마다 read() 가 끊기며 자연히 flush 된다"* 고 적혀 있었다. **뒷문장이 사실이
+// 아니었다.** 한 청크에 여러 프레임이 실리면 `api/chat.ts` 는 그 전부를 **동기 for 루프**로
+// 디스패치하므로 React 는 그 사이에 flush 하지 않는다. 백엔드가 `citations`→`verification`→`done`
+// 을 await 없이 연달아 보내므로 그 상황이 오히려 기본값이었고, 그것이 「재생성한 답변에 근거가
+// 안 붙는다」 버그의 정체였다(use-chat-stream.ts 머리말). 아래 「스트림 꼬리」 describe 가 그
+// 몰아치기를 **일부러** 재현해 계약으로 고정한다. 여기서는 한 이벤트씩 흘려 단계별 표시를 본다.
+//
+// ⚠️ 스트림은 **열어 둔 채**로 둔다(`new Promise(() => {})`). 곧바로 resolve 하면 종료 이벤트가
+// 없는 스트림이 되어 `use-chat-stream.ts` 의 복구 경로(서버 화해)가 도는데, 그건 여기서 보려는
+// 것이 아니다 — 실제 스트림도 done/error 를 보내기 전에는 닫히지 않는다.
 describe("CRAG 재시도 — 1차 답변 표시", () => {
   let handlers: RetryHandlers;
 
@@ -100,7 +107,7 @@ describe("CRAG 재시도 — 1차 답변 표시", () => {
     getChatMessagesMock.mockResolvedValue({ messages: [] });
     sendChatMessageMock.mockImplementation((_sessionId: string, _content: string, received: RetryHandlers) => {
       handlers = received;
-      return Promise.resolve();
+      return new Promise(() => {});
     });
     render(<ChatPanel sessionId="s1" onSessionCreated={() => {}} />);
     await user.type(screen.getByPlaceholderText("메시지를 입력하세요"), "예식장 어디가 좋아요?");
@@ -230,5 +237,132 @@ describe("세션 전환 — 화면 정합성", () => {
     // ⚠️ abort 되면 sendChatMessage 는 **조용히 return** 해서 onDone/onError 가 영영 오지
     // 않는다 — 전환 시 sending 을 직접 풀지 않으면 입력창이 영구히 잠긴다.
     expect(screen.getByPlaceholderText("메시지를 입력하세요")).not.toBeDisabled();
+  });
+});
+
+// 회귀 테스트 — 사용자 리포트 2026-08-30 "채팅을 보기가 불편함".
+//
+// 종전 자동 스크롤은 `[messages, draft]` 가 바뀔 때마다 **무조건** 목록을 맨 아래로 끌어내렸다.
+// 스트리밍은 토큰마다 draft 를 바꾸므로, 답변이 오는 동안 위로 올려 읽는 것이 **물리적으로
+// 불가능**했다 — 손가락으로 올려도 다음 토큰이 즉시 도로 내렸다. 모바일에서 대화창이 333px 밖에
+// 안 되던 것과 합쳐져 「짧고 못 읽는 창」이 됐다. 여기서 고정하는 것은 그 판정 로직이다.
+//
+// ⚠️ **jsdom 은 레이아웃을 계산하지 않는다** — `scrollHeight`/`clientHeight`/`scrollTop` 이 전부
+// 0 이라 판정식이 언제나 「맨 아래」로 떨어진다. 그래서 세 값을 직접 심어 「위로 올려 둔 상태」를
+// 만든다. 심지 않으면 이 테스트는 통과하는 것처럼 보이면서 아무것도 검증하지 않는다.
+type TokenHandlers = { onToken: (delta: string) => void };
+
+/** 목록의 스크롤 치수를 심고 `scrollTo` 를 감시 가능한 스파이로 바꾼다. */
+function instrumentList() {
+  const list = screen.getByRole("log");
+  Object.defineProperty(list, "scrollHeight", { value: 1000, configurable: true });
+  Object.defineProperty(list, "clientHeight", { value: 300, configurable: true });
+  Object.defineProperty(list, "scrollTop", { value: 700, writable: true, configurable: true });
+  const scrollTo = vi.fn();
+  list.scrollTo = scrollTo;
+  return { list, scrollTo };
+}
+
+/** 목록을 특정 위치로 옮긴 것처럼 스크롤 이벤트를 흘린다. */
+function scrollListTo(list: HTMLElement, top: number) {
+  Object.defineProperty(list, "scrollTop", { value: top, writable: true, configurable: true });
+  fireEvent.scroll(list);
+}
+
+describe("스트리밍 중 스크롤 — 사용자가 올려 읽는 중엔 끌어내리지 않는다", () => {
+  let handlers: TokenHandlers;
+
+  async function startSend() {
+    const user = userEvent.setup();
+    getChatMessagesMock.mockResolvedValue({ messages: [] });
+    // 스트림은 열어 둔다 — 위 「CRAG 재시도」 describe 머리말의 ⚠️ 와 같은 이유다.
+    sendChatMessageMock.mockImplementation((_s: string, _c: string, received: TokenHandlers) => {
+      handlers = received;
+      return new Promise(() => {});
+    });
+    render(<ChatPanel sessionId="s1" onSessionCreated={() => {}} />);
+    await user.type(screen.getByPlaceholderText("메시지를 입력하세요"), "예식장 어디가 좋아요?");
+    await user.click(screen.getByRole("button", { name: "보내기" }));
+    return user;
+  }
+
+  async function emitToken(delta: string) {
+    await act(async () => {
+      handlers.onToken(delta);
+      await Promise.resolve();
+    });
+  }
+
+  it("맨 아래를 보고 있으면 새 토큰을 따라 내려간다", async () => {
+    await startSend();
+    const { list, scrollTo } = instrumentList();
+    scrollListTo(list, 700); // 1000 - 700 - 300 = 0 → 맨 아래
+    scrollTo.mockClear();
+
+    await emitToken("답변이 옵니다.");
+
+    expect(scrollTo).toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "맨 아래로" })).not.toBeInTheDocument();
+  });
+
+  it("위로 올려 둔 상태에서는 새 토큰이 와도 끌어내리지 않는다", async () => {
+    await startSend();
+    const { list, scrollTo } = instrumentList();
+    scrollListTo(list, 100); // 1000 - 100 - 300 = 600 > 64 → 올려 읽는 중
+    scrollTo.mockClear();
+
+    await emitToken("답변이 옵니다.");
+
+    // 이 한 줄이 이 수정의 전부다 — 예전에는 매 토큰마다 호출됐다.
+    expect(scrollTo).not.toHaveBeenCalled();
+    // 돌아갈 길은 남긴다.
+    expect(screen.getByRole("button", { name: "맨 아래로" })).toBeInTheDocument();
+  });
+
+  it("「맨 아래로」를 누르면 내려가고 버튼이 사라진다", async () => {
+    const user = await startSend();
+    const { list, scrollTo } = instrumentList();
+    scrollListTo(list, 100);
+    scrollTo.mockClear();
+
+    await user.click(screen.getByRole("button", { name: "맨 아래로" }));
+
+    expect(scrollTo).toHaveBeenCalledWith({ top: 1000 });
+    expect(screen.queryByRole("button", { name: "맨 아래로" })).not.toBeInTheDocument();
+  });
+
+  it("내가 메시지를 보내면 올려 읽던 중이었어도 다시 붙는다", async () => {
+    const user = await startSend();
+    const { list, scrollTo } = instrumentList();
+    scrollListTo(list, 100);
+    expect(screen.getByRole("button", { name: "맨 아래로" })).toBeInTheDocument();
+
+    // 스트림을 끝내고 다음 질문을 보낸다 — 내가 방금 보낸 질문은 반드시 보여야 한다.
+    await act(async () => {
+      (handlers as unknown as { onDone: (p: { message_id: string; latency_ms: number }) => void }).onDone({
+        message_id: "m1",
+        latency_ms: 10,
+      });
+      await Promise.resolve();
+    });
+    scrollTo.mockClear();
+    await user.type(screen.getByPlaceholderText("메시지를 입력하세요"), "그럼 비용은요?");
+    await user.click(screen.getByRole("button", { name: "보내기" }));
+
+    expect(scrollTo).toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "맨 아래로" })).not.toBeInTheDocument();
+  });
+
+  it("다른 세션으로 갈아타면 올려 읽던 상태가 따라가지 않는다", async () => {
+    getChatMessagesMock.mockResolvedValue({ messages: [] });
+    const { rerender } = render(<ChatPanel sessionId="A" onSessionCreated={() => {}} />);
+    const { list } = instrumentList();
+    scrollListTo(list, 100);
+    expect(screen.getByRole("button", { name: "맨 아래로" })).toBeInTheDocument();
+
+    rerender(<ChatPanel sessionId="B" onSessionCreated={() => {}} />);
+
+    // 남아 있으면 B 대화가 맨 위에 멈춘 채 버튼만 떠 있게 된다.
+    expect(screen.queryByRole("button", { name: "맨 아래로" })).not.toBeInTheDocument();
   });
 });
