@@ -1,5 +1,6 @@
 """타임라인 결정론적 카탈로그 — docs/wedding/ing/ds7-timeline-seed-data-prep.md 완성본 55항목 +
-ETC/HOMENEW 신규 저작 10항목 + MEETING/GIFT 표본 보강 3항목(2026-08-24 버그 수정 2건, 아래 참고).
+ETC/HOMENEW 신규 저작 10항목 + MEETING/GIFT 표본 보강 3항목(2026-08-24 버그 수정 2건) +
+2026-08-30 상세도 보강 16항목 = 총 84항목(아래 참고).
 
 v4.0에서 이 상수는 두 가지 역할을 겸한다: (1) `13_personalization_router_agent_design.md` §2가
 정의하는 개인화 라우터 에이전트의 `validate` 실패 시 타임라인 폴백, (2) 개인화 라우터 에이전트
@@ -29,7 +30,14 @@ MEETING이 1개(display_order 2)·GIFT가 2개(11, 18)뿐이라 노출되는 예
 두 카테고리를 통째로 누락시키는 사례가 나왔다(ETC/HOMENEW가 0개였던 것의 완화판 — 개수가
 0은 아니지만 표본이 적어 확률적으로 계속 재현됨). MEETING 2개·GIFT 1개를 추가해 각각 3개로
 맞췄다(display_order 66~68) — `CHECKLIST_FALLBACK_CATALOG`의 MOCKUP 카테고리당 5개 기준엔
-못 미치지만, few-shot 노출 표본을 늘려 누락 확률을 낮추는 게 목적이라 3개로 충분하다고 판단."""
+못 미치지만, few-shot 노출 표본을 늘려 누락 확률을 낮추는 게 목적이라 3개로 충분하다고 판단.
+
+**2026-08-30 상세도 보강**: checklist_catalog.py의 MOCKUP 카테고리 콘텐츠 + 실제 결혼 준비
+타임라인 자료(계약금 D-10~12M/잔금 D-1~2W 클러스터 등)를 근거로 16항목을 추가했다(display_order
+69~84) — VENUE/SDM에 "잔금 납부" 이벤트가 통째로 빠져 있던 구조적 공백을 메웠고(계약금만
+있고 잔금이 없었음), 나머지 7개 MOCKUP 카테고리(특히 MEETING/GIFT/HOMEWARE/INVITATION/
+HONEYMOON/HOMENEW)의 표본 개수도 3~5개 → 5~7개로 늘려 실제 준비 과정의 세부 단계(원판 구매,
+함/이바지, 이사·전입신고 등)를 반영했다."""
 
 from dataclasses import dataclass
 
@@ -137,4 +145,23 @@ TIMELINE_CATALOG: tuple[TimelineTemplateItem, ...] = (
     TimelineTemplateItem("MEETING", "상견례 날짜·장소 조율", -365, 66),
     TimelineTemplateItem("MEETING", "상견례 후 준비 로드맵 공유", -350, 67),
     TimelineTemplateItem("GIFT", "예물 각인·사이즈 최종 확인", -120, 68),
+    # ===== 2026-08-30 상세도 보강 — checklist_catalog.py의 MOCKUP 카테고리 내용 + 실제 결혼 준비
+    # 타임라인 자료(계약금 D-10~12M / 잔금 D-1~2W 클러스터 등) 기반 신규 저작. VENUE/SDM은
+    # "잔금 납부"가 통째로 빠져 있던 구조적 공백을 메움. =====
+    TimelineTemplateItem("VENUE", "예식장 잔금 납부", -14, 69),
+    TimelineTemplateItem("VENUE", "폐백실·신부대기실 등 부대공간 이용 여부 최종 확인", -30, 70),
+    TimelineTemplateItem("SDM", "웨딩앨범 원판 구매·앨범 디자인 시안 선택", -60, 71),
+    TimelineTemplateItem("SDM", "스드메 잔금 납부", -14, 72),
+    TimelineTemplateItem("MEETING", "예물·예단 형식(현금·예단비·생략) 상견례 전 합의", -370, 73),
+    TimelineTemplateItem("MEETING", "신혼집 마련 방식·부담 비율 상견례 전 조율", -370, 74),
+    TimelineTemplateItem("GIFT", "예물 예산·브랜드 후보 리서치", -270, 75),
+    TimelineTemplateItem("GIFT", "함(이바지) 준비 및 전달 일정 조율", -7, 76),
+    TimelineTemplateItem("HOMEWARE", "신혼집 평수·구조 확정 후 혼수 배치 계획 수립", -100, 77),
+    TimelineTemplateItem("HOMEWARE", "가전·가구 배송·설치 일정 최종 조율", -21, 78),
+    TimelineTemplateItem("INVITATION", "모바일 청첩장 제작·문구 확정", -90, 79),
+    TimelineTemplateItem("INVITATION", "발송 인원 기준 하객 명단 최종 확정", -70, 80),
+    TimelineTemplateItem("HONEYMOON", "여행자보험 가입", -30, 81),
+    TimelineTemplateItem("HONEYMOON", "환전·여행 경비 준비", -14, 82),
+    TimelineTemplateItem("HOMENEW", "이사업체 예약 및 견적 비교", -40, 83),
+    TimelineTemplateItem("HOMENEW", "전입신고·주소 변경(우편물·은행 등)", 7, 84),
 )
