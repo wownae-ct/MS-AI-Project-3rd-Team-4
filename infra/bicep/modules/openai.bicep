@@ -14,11 +14,30 @@ param chatDeploymentSkuName string = 'GlobalStandard'
 param embeddingModelName string = 'text-embedding-3-small'
 param embeddingModelVersion string = '1'
 
-@description('chat/chat-mini 배포 공통 용량(1000 TPM 단위). 발표일 최대 25명 동시접속 대비 여유있게 잡음 — Standard/GlobalStandard는\n실사용량만큼만 과금이라 안 쓰면 비용 영향 없고, 유일한 리스크는 구독 쿼터 초과로 배포 실패뿐(그땐 낮추면 됨)')
-param chatDeploymentCapacity int = 250
+@description('''chat(gpt-5.4) 배포 용량(1000 TPM 단위) — AI상담의 generate+verify가 쓴다.
+2026-08-31 실측 기반 상향(250 → 500): 온보딩과 달리 챗은 1인당 LLM 2~3회라 부하가 훨씬 가볍지만,
+25명이 동시에 상담을 열면 250(=250K TPM)에 근접한다. Standard/GlobalStandard는 실사용량만큼만
+과금이라 안 쓰면 비용 영향이 없고, 유일한 리스크는 구독 쿼터 초과로 배포가 실패하는 것뿐이다(그땐 낮춘다).''')
+param chatDeploymentCapacity int = 500
 
-@description('embedding 배포 용량 — RAG 인덱싱(배치)+쿼리 임베딩이라 chat보다 저빈도지만 여유 있게 상향')
-param embeddingDeploymentCapacity int = 100
+@description('''chat-mini(gpt-5.4-mini) 배포 용량(1000 TPM 단위) — 개인화 에이전트가 쓴다. **여기가 병목이다.**
+
+2026-08-31 staging 실측: 온보딩 1건이 **LLM 19회 / 34,333 토큰**(입력 23,817 + 출력 10,516),
+벽시계 14.4초. PR #152로 CHECKLIST·TIMELINE 양쪽이 카테고리 단위로 쪼개지면서 1인당 동시 호출이
+최대 18건까지 늘어난 결과다.
+
+25명이 1분 안에 몰리면 34,333 × 25 = **858,325 TPM** — 종전 한도 250(=250K)의 **343%**라 429가 난다.
+5분에 걸쳐 분산되면 약 172K로 안전하지만, "다같이 지금 눌러보세요" 식 진행이면 반드시 터진다.
+그래서 1000(=1M TPM)으로 올려 **동시 25명 최악 케이스(86%)까지 커버**한다.
+
+개인화가 429로 실패하면 정적 카탈로그로 폴백하므로(체크리스트 95 / 타임라인 87항목) 화면이 비지는
+않지만, 데모에서 보여주려는 것이 바로 그 개인화라 의미가 없어진다.''')
+param chatMiniDeploymentCapacity int = 1000
+
+@description('''embedding 배포 용량 — RAG 인덱싱(배치)+쿼리 임베딩이라 chat보다 저빈도지만 여유 있게 상향.
+2026-08-31에 100 → 300. 쿼리 임베딩은 질문당 1회(재검색 시 2회)라 25명이 몰려도 수십 K TPM 수준이지만,
+같은 시간대에 rag-reindex(213청크 배치, 색인당 API 14회)가 겹칠 수 있어 여유를 둔다.''')
+param embeddingDeploymentCapacity int = 300
 
 param logAnalyticsWorkspaceId string
 
@@ -128,7 +147,9 @@ resource chatMiniDeployment 'Microsoft.CognitiveServices/accounts/deployments@20
   name: 'chat-mini'
   sku: {
     name: chatDeploymentSkuName
-    capacity: chatDeploymentCapacity
+    // chat과 용량을 분리한다(2026-08-31) — 개인화가 chat-mini만 쓰고 그쪽이 병목이라,
+    // 하나의 param을 공유하면 chat까지 불필요하게 같이 올려야 한다.
+    capacity: chatMiniDeploymentCapacity
   }
   properties: {
     model: {
