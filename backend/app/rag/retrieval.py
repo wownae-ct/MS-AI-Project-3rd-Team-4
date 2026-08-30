@@ -37,6 +37,19 @@ class RetrievedChunk:
     source_url: str | None
 
 
+@dataclass(frozen=True)
+class RetrievalOutcome:
+    """retrieve_with_similarity()의 반환값 — 근거 청크와 "주제 적합도"를 함께 돌려준다.
+
+    top_similarity는 카테고리 필터를 적용하지 않은 전역 top-1 코사인 유사도라
+    chunks(카테고리 필터가 걸린 하이브리드 검색 결과)와 계산 대상이 다르다.
+    코퍼스가 비어 있으면 None.
+    """
+
+    chunks: list[RetrievedChunk]
+    top_similarity: float | None
+
+
 _SEARCH_SQL = text("""
     -- ① "의미"로 찾기: 질문을 숫자 벡터로 바꾼 뒤(:query_embedding), 벡터끼리 거리가 가까운
     --   순으로 top-8(:vector_top_k)개를 뽑는다. "위약금"이라고 안 써도 "계약 취소 시 손해배상"처럼
@@ -84,7 +97,12 @@ _SEARCH_SQL = text("""
                 + CASE
                       WHEN :apply_contract_bonus
                            AND COALESCE(v.item_type, k.item_type) = 'CONTRACT_TERM'
-                      THEN :contract_bonus
+                      -- 가산점 바인딩 파라미터는 바인딩 전엔 타입이 unknown이라, 이 THEN
+                      -- 분기를 명시 캐스팅하지 않으면 Postgres가 ELSE 0(정수 리터럴)에 맞춰
+                      -- 전체 CASE 타입을 integer로 추론해버려 0.1이 0으로 잘려나간다
+                      -- (red-bug.md #22 — F9 계약조건 가산점이 배포 이래 한 번도 실제로
+                      -- 반영된 적이 없었던 근본 원인, staging 실 DB로 재현·격리 완료).
+                      THEN CAST(:contract_bonus AS double precision)
                       ELSE 0
                   END AS rrf_score
         FROM vector_search v
@@ -102,6 +120,27 @@ _SEARCH_SQL = text("""
     JOIN rag_documents d ON d.id = m.document_id
     ORDER BY m.rrf_score DESC
     LIMIT :context_top_k
+""")
+
+
+# "이 질문이 우리 코퍼스가 다루는 주제이긴 한가"를 재는 단일 스칼라 — 스코프 컷오프 전용이다
+# (app/rag/graph.py::retrieve_node이 settings.rag_min_similarity와 비교한다).
+#
+# _SEARCH_SQL과 달리 **category_code 필터를 일부러 걸지 않는다.** 스코프 판정은 사용자가 어느
+# 카테고리 탭에서 물었는지와 무관해야 하기 때문이다 — 라이브 실측(2026-08-30) 세션 677개 중
+# 593개(88%)가 category_code를 걸고 들어오는데, 필터를 건 채로 재면 후보 풀이 줄어 유사도가
+# 같거나 낮아지고, VENUE 탭에서 던진 정상 SDM 질문이 "주제이탈"로 오판될 수 있다.
+#
+# RRF 점수가 아니라 코사인 유사도를 쓰는 이유: RRF는 순위의 역수 합이라 값 자체가 관련도를
+# 뜻하지 않는다(대역폭이 최대 0.033 남짓이라 1등이면 관련 없는 청크여도 높은 점수가 나온다).
+# "얼마나 가까운가"를 재려면 거리 원값이어야 한다.
+#
+# rag_chunks가 213행이라 Seq Scan으로 1.8ms다(EXPLAIN ANALYZE 실측) — 별도 쿼리 1회 비용이
+# 무시할 수준이라 _SEARCH_SQL에 스칼라 서브쿼리로 끼워 넣어 두 관심사를 섞는 대신 분리했다.
+# 검색 결과가 0건이어도 이 값은 항상 나온다는 이점도 있다.
+_GLOBAL_TOP_SIMILARITY_SQL = text("""
+    SELECT 1 - MIN(embedding <=> CAST(:query_embedding AS vector)) AS top_similarity
+    FROM rag_chunks
 """)
 
 
@@ -158,6 +197,19 @@ async def retrieve(
     category_code: str | None,
     settings: Settings | None = None,
 ) -> list[RetrievedChunk]:
+    """근거 청크만 필요한 호출부용 얇은 래퍼(app/personalization/graph.py 등).
+
+    스코프 컷오프 판정까지 필요한 챗 그래프는 retrieve_with_similarity()를 쓴다.
+    """
+    return (await retrieve_with_similarity(session, query, category_code, settings)).chunks
+
+
+async def retrieve_with_similarity(
+    session: AsyncSession,
+    query: str,
+    category_code: str | None,
+    settings: Settings | None = None,
+) -> RetrievalOutcome:
     settings = settings or get_settings()
     client = get_azure_openai_client(settings)
     # 사용자 질문 문장도 색인 때와 똑같은 방식으로 벡터로 바꿔야 "의미가 가까운지" 비교할 수 있다.
@@ -177,7 +229,7 @@ async def retrieve(
             "contract_bonus": _CONTRACT_TERM_BONUS,
         },
     )
-    return [
+    chunks = [
         RetrievedChunk(
             chunk_id=row.chunk_id,
             content=row.content,
@@ -187,3 +239,14 @@ async def retrieve(
         )
         for row in result
     ]
+    # 위에서 이미 만든 임베딩을 재사용한다 — 임베딩 API를 두 번 부르지 않는다.
+    top_similarity = (
+        await session.execute(
+            _GLOBAL_TOP_SIMILARITY_SQL,
+            {"query_embedding": to_pgvector_literal(query_embedding)},
+        )
+    ).scalar()
+    return RetrievalOutcome(
+        chunks=chunks,
+        top_similarity=None if top_similarity is None else float(top_similarity),
+    )

@@ -29,6 +29,16 @@ class TestCategoryMeta:
         vendor_cases = {m.code for m in CATEGORY_META if m.has_vendor_cases}
         assert focus == benchmark == vendor_cases == {"VENUE", "SDM"}
 
+    def test_every_category_has_cost(self):
+        """2026-08-29 제품 확인 — 상견례(MEETING)도 비용 설정이 가능해야 한다.
+
+        그 전까지 MEETING만 has_cost=False였고(00_BASELINE.md §1 표), 프론트는 그 값을 보고
+        온보딩 배분 입력·예산 배정 행·결제 등록을 통째로 막았다. 이제 9개 전부 True다 —
+        플래그 자체는 계약에 남아 있으므로 소비자들은 계속 이 값을 읽는다.
+        """
+        no_cost = {m.code for m in CATEGORY_META if not m.has_cost}
+        assert no_cost == set()
+
     def test_only_etc_allows_custom_tag(self):
         allows_custom = {m.code for m in CATEGORY_META if m.allows_custom_tag}
         assert allows_custom == {"ETC"}

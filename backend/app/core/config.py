@@ -40,6 +40,30 @@ class Settings(BaseSettings):
     rag_tsvector_top_k: int = 4
     rag_context_top_k: int = 5
     rag_rrf_k: int = 60
+    # 검색 결과가 "질문과 아예 상관없는" 수준이면 generate/verify를 돌리지 않고 거절한다.
+    # 값의 근거는 라이브 실측(2026-08-30) — rag_chunks 전체를 대상으로 한 top-1 코사인 유사도
+    # 분포를 세 집단으로 나눠 재봤다:
+    #   · 명백한 주제이탈 12건("스파게티 맛집", "오늘 날씨", "퀵소트 짜줘" 등) → 최대 0.343
+    #   · 골든 질문 21건(scripts/run_rag_eval.py)                          → 최소 0.406
+    #   · 실사용자 질문 95건(중복 제거, chat_messages)                      → 0.30 미만 17건 중
+    #     13건이 무관 질문("눈누난나", 랜덤 타이핑, 프롬프트 인젝션 시도 등)
+    # 0.35로 잡으면 주제이탈 12/12를 다 막지만 실제 정상 질문("드레스 상담 받기 전에 뭐 알아야해?"
+    # 0.331, "웨딩업체 알아볼때 하는법" 0.311)까지 잘린다 — 서비스 본질을 훼손하므로 0.30을
+    # 택했다. 0.30~0.35 사이로 새는 소수(예: "제주도 맛집" 0.310)는 기존 generate가 "확인된
+    # 근거가 없습니다"로 거절하므로 방치가 아니다.
+    #
+    # 주의: 이 값은 **카테고리 필터를 적용하지 않은 전역 유사도**와 비교한다(retrieval.py의
+    # _GLOBAL_TOP_SIMILARITY_SQL). "이게 결혼 질문이긴 한가"는 사용자가 어느 카테고리 탭에
+    # 있든 같은 답이어야 하기 때문이다 — 실측상 세션 677개 중 593개(88%)가 category_code를
+    # 걸고 들어오는데, 필터를 건 채로 재면 VENUE 탭에서 던진 정상 SDM 질문이 주제이탈로
+    # 오판될 수 있다.
+    rag_min_similarity: float = 0.30
+
+    # 2026-08-31 — AI상담 프롬프트에 사용자 본인의 예산·일정·지출을 실을지
+    # (app/rag/chat_profile.py). 끄면 프롬프트가 이 기능 도입 전과 바이트 단위로 같아지므로,
+    # 데모 중 이상 동작이 보이면 코드 롤백 없이 env 하나로 즉시 되돌릴 수 있다. 기본값이 있어
+    # 새 필수 env가 아니다(필수 필드를 늘렸다가 파드가 부팅에서 죽은 전례가 있어 의도적).
+    chat_profile_enabled: bool = True
 
     # rag-reindex CronJob이 data/rag_corpus/를 이 경로에 마운트한다(infra/k8s/base/rag-cronjob/
     # cronjob.yaml: /app/data/rag_corpus, 컨테이너 WORKDIR이 /app이라 상대경로로 일치).
@@ -86,11 +110,29 @@ class Settings(BaseSettings):
     # (chat-mini/chat) 모두 이미 있어 새 배포·RBAC 변경 없이 전환 가능.
     azure_openai_receipt_vision_deployment: str | None = None
 
+    # AI상담(챗) 그래프 전용 배포 — 2026-08-29 A/B 비교(21개 골든 질문, docs/wedding/ing/
+    # gpt54-vs-mini-comparison-2026-08-29.md) 결과로 gpt-5.4(배포 이름 "chat")를 실제 기본값으로
+    # 전환했다: 검증 통과율은 개인화·영수증OCR이 쓰는 gpt-5.4-mini와 동일(21/21 SUPPORTED)했지만
+    # gpt-5.4가 출처 경계를 더 엄격히 지키고 근거 자료를 더 폭넓게 활용했다(속도는 약 1.7배
+    # 느림, 평균 8.7s vs 5.0s — 감내 가능하다고 판단). `reasoning_effort` 파라미터로 속도-품질을
+    # 조절하는 대안은 검토 후 기각 — gpt-5.4/gpt-5.4-mini 둘 다 minimal 이상에서 추론 토큰이
+    # 예산을 전부 먹어 답변이 빈 문자열로 나오는 경우가 잦았고(안전한 값은 사실상 minimal뿐이라
+    # 조절 폭이 없음), 추론 토큰은 스트리밍되지 않아 사용자에게 응답 시작 전 수십 초의 "침묵
+    # 구간"이 생기는 문제도 있었다(실시간 스트리밍 챗 UX와 근본적으로 안 맞음). 개인화·영수증
+    # OCR엔 영향 없이 챗만 이 값을 오버라이드하려면(예: 다시 mini로 되돌리거나 다른 모델로
+    # A/B하려면) 이 값만 바꾸면 된다 — receipt_vision_deployment와 동일한 fallback 패턴
+    # (infra/bicep/modules/openai.bicep에 두 배포 모두 이미 있어 새 배포·RBAC 변경 없이 전환 가능).
+    azure_openai_chat_rag_deployment: str | None = "chat"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property
     def receipt_vision_deployment(self) -> str:
         return self.azure_openai_receipt_vision_deployment or self.azure_openai_chat_deployment
+
+    @property
+    def chat_rag_deployment(self) -> str:
+        return self.azure_openai_chat_rag_deployment or self.azure_openai_chat_deployment
 
 
 @lru_cache

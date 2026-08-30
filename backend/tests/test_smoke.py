@@ -14,12 +14,16 @@ GET /categories는 03_API_spec.md §5 인증 필수 목록(`/weddings*` 등)에 
 엔드포인트라 401 케이스가 없다 — 세션 쿠키 없이도 항상 200이어야 하는 게 맞는 동작이다."""
 
 from datetime import date, timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from conftest import parse_sse_frames
+from sqlalchemy import select
 
 from app.core.categories import CATEGORY_META
+from app.core.db import get_session_factory
 from app.core.timezone import today_kst
+from app.models import ChatMessage, ChatSession
+from app.services.chat import _touch_session_activity
 
 
 class TestCategoriesSmoke:
@@ -138,6 +142,145 @@ class TestChatSessionsSmoke:
         assert len(recorded) == 1
         _, kwargs = recorded[0]
         assert str(kwargs["owner_user_id"]) == me.json()["id"]
+
+    async def test_send_out_of_scope_message_short_circuits_without_llm_call(self, wedding_client):
+        """스코프 이탈 차단(app/rag/scope_check.py, 2026-08-29 red-bug.md #10 후속) — 클래스
+        docstring이 "비용/지연 때문에 자동 스모크 제외"라고 밝힌 이유가 이 경로엔 해당하지
+        않는다(LLM/임베딩 호출이 아예 없는 결정론적 분기라 실제 API를 그대로 때려도 안전).
+        모킹 없이 실제 엔드포인트로 확인한다."""
+        created = await wedding_client.post("/chat/sessions", json={"category_code": "VENUE"})
+        session_id = created.json()["id"]
+
+        response = await wedding_client.post(
+            f"/chat/sessions/{session_id}/messages",
+            json={"content": "너 뭐하는 애야? 소설 하나 써줘"},
+        )
+
+        assert response.status_code == 200
+        events = parse_sse_frames(response.text)
+        by_event = {name: data for name, data in events if name is not None}
+        assert "메리맵" in by_event["token"]["delta"]  # OUT_OF_SCOPE_ANSWER 문구 일부
+        assert by_event["verification"]["verdict"] == "OUT_OF_SCOPE"
+        assert by_event["citations"]["citations"] == []
+        assert events[-1][0] == "done"
+
+    async def test_list_sessions_returns_200_with_created_session(self, wedding_client):
+        created = await wedding_client.post("/chat/sessions", json={"category_code": "VENUE"})
+        session_id = created.json()["id"]
+
+        response = await wedding_client.get("/chat/sessions")
+
+        assert response.status_code == 200
+        listed = next(s for s in response.json()["sessions"] if s["id"] == session_id)
+        assert listed["category_code"] == "VENUE"
+        assert listed["title"] is None
+        assert listed["last_message_at"] is None
+
+    async def test_list_sessions_without_cookie_returns_401(self, client):
+        response = await client.get("/chat/sessions")
+
+        assert response.status_code == 401
+
+    async def test_list_sessions_only_returns_own_wedding_sessions(
+        self, wedding_client, make_wedding_client
+    ):
+        created = await wedding_client.post("/chat/sessions", json={"category_code": "VENUE"})
+        session_id = created.json()["id"]
+
+        other_client = await make_wedding_client()
+        response = await other_client.get("/chat/sessions")
+
+        assert response.status_code == 200
+        assert all(s["id"] != session_id for s in response.json()["sessions"])
+
+    async def test_list_sessions_reflects_title_and_last_message_at_after_activity(
+        self, wedding_client
+    ):
+        """#29 실LLM 스트리밍은 자동 스모크 대상이 아니라(클래스 docstring) stream_chat_response
+        전체를 여기서 태울 순 없다 — 그 함수가 메시지 저장 때마다 남기는 부작용(제목/최근활동시각
+        갱신)만 담당하는 _touch_session_activity를 직접 호출해 흉내내고, GET /chat/sessions가
+        그 결과를 정확히 직렬화해 돌려주는지만 검증한다. _touch_session_activity 자체의 단위
+        동작(제목은 최초 1회만 설정)은 test_chat_service.py에서 별도로 검증한다."""
+        created = await wedding_client.post("/chat/sessions", json={"category_code": "VENUE"})
+        session_id = created.json()["id"]
+
+        async with get_session_factory()() as session:
+            stmt = select(ChatSession).where(ChatSession.id == UUID(session_id))
+            chat_session = (await session.execute(stmt)).scalar_one()
+            _touch_session_activity(chat_session, first_message_content="위약금 조건이 궁금해요")
+            await session.commit()
+
+        response = await wedding_client.get("/chat/sessions")
+
+        assert response.status_code == 200
+        listed = next(s for s in response.json()["sessions"] if s["id"] == session_id)
+        assert listed["title"] == "위약금 조건이 궁금해요"
+        assert listed["last_message_at"] is not None
+
+    async def test_delete_own_session_returns_204_and_removes_it_from_list(self, wedding_client):
+        created = await wedding_client.post("/chat/sessions", json={"category_code": "VENUE"})
+        session_id = created.json()["id"]
+
+        response = await wedding_client.delete(f"/chat/sessions/{session_id}")
+
+        assert response.status_code == 204
+        assert response.content == b""
+        listed = await wedding_client.get("/chat/sessions")
+        assert all(s["id"] != session_id for s in listed.json()["sessions"])
+
+    async def test_delete_same_session_twice_returns_404(self, wedding_client):
+        """프론트는 "다른 기기에서 먼저 지웠다"를 성공과 동일하게 흡수하는데, 그 분기를 HTTP
+        404가 아니라 봉투 안의 CHAT_SESSION_NOT_FOUND 코드로만 건다 — 상태코드뿐 아니라
+        03_API_spec.md §2 에러 포맷까지 함께 고정해야 그 흡수가 계속 동작한다."""
+        created = await wedding_client.post("/chat/sessions", json={"category_code": "VENUE"})
+        session_id = created.json()["id"]
+        await wedding_client.delete(f"/chat/sessions/{session_id}")
+
+        response = await wedding_client.delete(f"/chat/sessions/{session_id}")
+
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "CHAT_SESSION_NOT_FOUND"
+
+    async def test_delete_other_users_session_returns_404_and_leaves_it_intact(
+        self, wedding_client, make_wedding_client
+    ):
+        """404만 보면 "실제로는 지워놓고 404를 낸" 경우를 못 잡는다 — 원 소유자 목록에 세션이
+        그대로 남아 있는지까지 확인한다(get_chat_session이 wedding_id를 WHERE에 넣어 애초에
+        남의 행을 못 집는 구조인지 검증)."""
+        created = await wedding_client.post("/chat/sessions", json={"category_code": "VENUE"})
+        session_id = created.json()["id"]
+
+        other_client = await make_wedding_client()
+        response = await other_client.delete(f"/chat/sessions/{session_id}")
+
+        assert response.status_code == 404  # 403이면 안 된다 — 존재 여부 자체를 노출하게 됨
+        assert response.json()["error"]["code"] == "CHAT_SESSION_NOT_FOUND"
+        listed = await wedding_client.get("/chat/sessions")
+        assert any(s["id"] == session_id for s in listed.json()["sessions"])
+
+    async def test_delete_session_without_cookie_returns_401(self, client):
+        response = await client.delete(f"/chat/sessions/{uuid4()}")
+
+        assert response.status_code == 401
+
+    async def test_delete_session_cascades_its_messages(
+        self, wedding_client, make_assistant_message
+    ):
+        """세션이 사라지면 GET .../messages는 어차피 404라 API만으로는 "메시지도 지워졌는지"와
+        "세션만 지워졌는지"를 구분할 수 없다 — chat_messages 행을 직접 조회해 app/models/chat.py의
+        ondelete="CASCADE"가 실제로 동작하는지 확인한다(서비스가 메시지를 따로 안 지우고 DB에
+        맡기고 있으므로 이 가정이 깨지면 고아 메시지가 조용히 쌓인다)."""
+        session_id, message_id = await make_assistant_message(wedding_client)
+
+        response = await wedding_client.delete(f"/chat/sessions/{session_id}")
+
+        assert response.status_code == 204
+        messages = await wedding_client.get(f"/chat/sessions/{session_id}/messages")
+        assert messages.status_code == 404
+        assert messages.json()["error"]["code"] == "CHAT_SESSION_NOT_FOUND"
+        async with get_session_factory()() as session:
+            stmt = select(ChatMessage).where(ChatMessage.id == UUID(message_id))
+            assert (await session.execute(stmt)).scalar_one_or_none() is None
 
 
 class TestChatMessageRatingSmoke:

@@ -4,3 +4,18 @@ namespace: staging
 resources:
   - namespace.yaml
   - ../../base/rag-cronjob
+patches:
+  # 2026-08-30 추가 — base/rag-cronjob/cronjob.yaml이 Langfuse 계측 env 4개를 갖게 되면서,
+  # backend 오버레이와 같은 이유로 LANGFUSE_ENVIRONMENT만 여기서 덧붙인다(base는 staging/
+  # production이 공유하는 계층이라 환경 이름을 하드코딩할 수 없다). 이걸 빼면 앱 쪽 Settings
+  # 기본값 "local"로 폴백되어 두 환경의 재색인 트레이스가 한 곳에 섞인다.
+  # env 배열에 아직 이 이름이 없으므로 append이지 override가 아니다(중복 키 걱정 없음).
+  - target:
+      kind: CronJob
+      name: rag-reindex
+    patch: |-
+      - op: add
+        path: /spec/jobTemplate/spec/template/spec/containers/0/env/-
+        value:
+          name: LANGFUSE_ENVIRONMENT
+          value: staging

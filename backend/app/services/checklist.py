@@ -16,14 +16,25 @@ from app.models import ChecklistItem
 GENERAL_STATUSES: frozenset[str] = frozenset({"TODO", "DOING", "SKIP", "DONE"})
 HOMEWARE_STATUSES: frozenset[str] = frozenset({"LISTED", "COMPARING", "ORDERED", "DELIVERED"})
 
+# 2026-08-29 — 예전엔 이 값들이 아래 두 함수 안에 리터럴로만 있었다. app/services/
+# personalization.py::_checklist_protected_clause가 "status가 기본값이 아니다"를 SQL 조건식으로
+# 표현해야 해서(파이썬 함수 호출로는 컬럼 값에 분기할 수 없다) 상수로 뽑아 단일 출처로 만든다.
+HOMEWARE_CATEGORY_CODE = "HOMEWARE"
+HOMEWARE_DEFAULT_STATUS = "LISTED"
+GENERAL_DEFAULT_STATUS = "TODO"
+
 
 def valid_statuses_for_category(category_code: str) -> frozenset[str]:
     """04_DB_schema.sql CHECK와 1:1 — HOMEWARE(혼수)만 다른 4단계 상태값을 쓴다."""
-    return HOMEWARE_STATUSES if category_code == "HOMEWARE" else GENERAL_STATUSES
+    return HOMEWARE_STATUSES if category_code == HOMEWARE_CATEGORY_CODE else GENERAL_STATUSES
 
 
 def default_status_for_category(category_code: str) -> str:
-    return "LISTED" if category_code == "HOMEWARE" else "TODO"
+    return (
+        HOMEWARE_DEFAULT_STATUS
+        if category_code == HOMEWARE_CATEGORY_CODE
+        else GENERAL_DEFAULT_STATUS
+    )
 
 
 def is_valid_status_for_category(category_code: str, status: str) -> bool:
