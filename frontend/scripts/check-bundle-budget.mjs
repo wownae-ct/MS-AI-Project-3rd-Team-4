@@ -30,6 +30,7 @@ import { checkDeployConfig } from "./lib/deploy-config.mjs";
 const ROOT = resolve(import.meta.dirname, "..");
 const ASSETS_DIRECTORY = join(ROOT, "dist", "assets");
 const THEME_PATH = join(ROOT, "src", "shared", "ui", "theme.css");
+const STYLES_PATH = join(ROOT, "src", "shared", "ui", "styles.css");
 const SOURCE_DIRECTORY = join(ROOT, "src");
 const DEPLOY_CONFIG_PATH = join(ROOT, "dist", "staticwebapp.config.json");
 
@@ -446,6 +447,7 @@ const BUDGETS = [
 
 const NORM_LABELS = {
   retirement: "폐기 유지 — theme.css 의 필수 `-*: initial` 선언 6종",
+  "base-rule": "base 레이어 필수 규칙 — 모바일 확대 계약 (D24 · a11y.md §2.5 · §2.6)",
   shadow: "그림자·링 금지 — 「The Flat-By-Default Rule」 · D9 · D10",
   color: "팔레트 밖 색 금지 — 「The One Accent Rule」 · D8",
   radius: "라운드 토큰 밖 금지 — D1",
@@ -459,6 +461,30 @@ const NORM_LABELS = {
  * 이 목록을 고치려면 docs/design/namespaces.md 를 먼저 고친다 — 순서는 폐기 선언 먼저, 이 목록 나중.
  */
 const REQUIRED_RETIREMENTS = ["--color", "--radius", "--shadow", "--drop-shadow", "--inset-shadow", "--text-shadow"];
+
+/**
+ * base 레이어 필수 규칙 — D24 (docs/design/decisions.md) · a11y.md §2.5 · §2.6.
+ *
+ * 위 폐기 유지 검사와 **같은 종류의 장치**다. 두 규칙 다 「지워도 빌드가 통과하고 화면도 멀쩡한데
+ * 모바일에서만 조용히 나빠지는」 성질이라, 사람이 기억하게 두지 않는다.
+ *   · 16px 하한이 사라지면 → 클래스를 안 준 입력칸이 바깥 라벨의 14px 을 물려받아 iOS 가 포커스에서 확대한다.
+ *     그 계약은 예전에 호출부마다 손으로 지켰고, 실제로 5곳이 조용히 어겨져 있었다(a11y.md §5).
+ *   · 더블탭 억제가 사라지면 → 입력칸을 두 번 탭하는(캐럿 이동) 흔한 조작이 다시 확대로 해석된다.
+ *
+ * 산출 CSS 가 아니라 **소스**를 보는 이유는 lib/source-norms.mjs 머리말과 같다 — 산출물만 보면
+ * 고칠 위치를 알려 줄 수 없고, minifier 의 재배치·병합에 흔들린다.
+ * 주석은 먼저 걷어낸다 — 주석에 적힌 선언이 게이트를 만족시키면 검사가 통째로 무의미해진다.
+ */
+const REQUIRED_BASE_RULES = [
+  {
+    pattern: /\binput\b[^{}]*\{[^{}]*font-size\s*:\s*1rem/u,
+    hint: "`input, textarea, select { font-size: 1rem }` 이 없다 — 클래스를 안 준 입력칸이 조상의 14px 을 물려받아 iOS 가 포커스에서 확대한다 (a11y.md §2.5)",
+  },
+  {
+    pattern: /touch-action\s*:\s*manipulation/u,
+    hint: "`touch-action: manipulation` 이 없다 — 컨트롤 위 더블탭 확대가 되살아난다 (a11y.md §2.6)",
+  },
+];
 
 const FONT_EXTENSIONS = new Set([".woff2", ".woff", ".ttf", ".otf"]);
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx"]);
@@ -500,6 +526,15 @@ function readTheme() {
   const retired = new Set([...text.matchAll(/(--[a-z-]+)-\*\s*:\s*initial/gu)].map((m) => m[1]));
 
   return { palette, paletteSize, radii, retired };
+}
+
+/**
+ * styles.css 를 주석 없이 읽는다 — `REQUIRED_BASE_RULES` 의 대조 대상.
+ * readTheme 과 같은 이유로 주석을 먼저 걷어낸다(그쪽은 예시 hex 가 화이트리스트에 섞이는 것,
+ * 여기는 주석에 적힌 선언이 게이트를 만족시키는 것).
+ */
+function readBaseRules() {
+  return readFileSync(STYLES_PATH, "utf8").replaceAll(/\/\*[\s\S]*?\*\//gu, "");
 }
 
 function collectAssets() {
@@ -587,6 +622,17 @@ for (const namespace of REQUIRED_RETIREMENTS) {
       norm: "retirement",
       where: relative(ROOT, THEME_PATH).replaceAll("\\", "/"),
       value: `${namespace}-*: initial; 이 없다 — Tailwind 기본 ${namespace} 토큰이 되살아난다`,
+    });
+  }
+}
+
+const baseRulesText = readBaseRules();
+for (const { pattern, hint } of REQUIRED_BASE_RULES) {
+  if (!pattern.test(baseRulesText)) {
+    violations.push({
+      norm: "base-rule",
+      where: relative(ROOT, STYLES_PATH).replaceAll("\\", "/"),
+      value: hint,
     });
   }
 }
