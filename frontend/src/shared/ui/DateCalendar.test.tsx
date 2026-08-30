@@ -95,6 +95,18 @@ describe("DateCalendar — 월 이동", () => {
     expect(screen.getByRole("status")).toHaveTextContent("2026년 12월");
   });
 
+  // 날짜를 골라도 패널이 닫히지 않게 되면서(2026-08-30) 필요해진 계약이다 — 6주 그리드에는
+  // 앞뒤 달의 날이 함께 보이는데, 그 하나를 고르고도 11월에 머물면 방금 고른 칸이 「지난달 칸」
+  // 자리에 남는다. 종전엔 곧바로 닫혀서 드러나지 않던 자리다.
+  it("앞뒤 달의 날을 고르면 보이는 달이 그 값을 따라간다", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<DateCalendar value="2026-11-02" onSelect={vi.fn()} onClose={vi.fn()} labelId="l" />);
+    // 2026-11 그리드의 마지막 줄에는 12월 초가 딸려 온다.
+    await user.click(screen.getByRole("button", { name: /^2026년 12월 1일/u }));
+    rerender(<DateCalendar value="2026-12-01" onSelect={vi.fn()} onClose={vi.fn()} labelId="l" />);
+    expect(screen.getByRole("status")).toHaveTextContent("2026년 12월");
+  });
+
   it("범위 밖으로는 이동 버튼이 잠긴다 — 눌러도 제자리인 버튼을 남기지 않는다", () => {
     renderCalendar({ value: "2026-11-02", min: "2026-11-01", max: "2026-11-30" });
     expect(screen.getByRole("button", { name: "이전 달" })).toBeDisabled();
@@ -103,15 +115,17 @@ describe("DateCalendar — 월 이동", () => {
 });
 
 describe("DateCalendar — 빠른 선택", () => {
-  it("칩을 누르면 그 날짜로 곧바로 정해지고 닫힌다", async () => {
+  // [2026-08-30] 종전엔 「곧바로 정해지고 **닫힌다**」였다. 이제 닫는 길은 「닫기」·Esc·바깥
+  // 누르기뿐이다 — 「6개월 뒤」가 며칠인지는 눌러 봐야 알고, 그 확인이 그리드에서 이뤄져야 한다.
+  it("칩을 누르면 그 날짜로 정해지되 닫히지는 않는다", async () => {
     const user = userEvent.setup();
     const props = renderCalendar({
       value: "2026-11-02",
-      quickPicks: [{ label: "1주 뒤", value: "2026-11-09" }],
+      quickPicks: [{ label: "6개월 뒤", value: "2027-05-02" }],
     });
-    await user.click(screen.getByRole("button", { name: "1주 뒤" }));
-    expect(props.onSelect).toHaveBeenCalledWith("2026-11-09");
-    expect(props.onClose).toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "6개월 뒤" }));
+    expect(props.onSelect).toHaveBeenCalledWith("2027-05-02");
+    expect(props.onClose).not.toHaveBeenCalled();
   });
 
   it("범위 밖 칩은 아예 그리지 않는다", () => {

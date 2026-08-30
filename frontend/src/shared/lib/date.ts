@@ -187,6 +187,23 @@ export function futureQuickPicks(today: string): DateQuickPick[] {
   ];
 }
 
+/**
+ * 결혼식 날짜 칸의 빠른 선택 — **척도가 다르다.**
+ *
+ * 위 `futureQuickPicks`(오늘·1주 뒤·1개월 뒤)는 「곧 있을 일」의 척도라 결혼식에는 맞지 않는다.
+ * 준비 기간은 보통 **반년에서 한 해 반**이고, 온보딩에서 날짜를 고르는 사람의 머릿속에 있는 것도
+ * 「내년 봄쯤」 같은 개월 단위다. 그래서 6·12·18개월로 나눈다 — 세 칩이 그 구간을 고르게 덮는다.
+ *
+ * `addMonths` 가 말일을 접어 주므로(8/31 + 6개월 = 2/28) 실존하지 않는 날짜가 나오지 않는다.
+ */
+export function weddingQuickPicks(today: string): DateQuickPick[] {
+  return [
+    { label: "6개월 뒤", value: addMonths(today, 6) },
+    { label: "12개월 뒤", value: addMonths(today, 12) },
+    { label: "18개월 뒤", value: addMonths(today, 18) },
+  ];
+}
+
 /** 이미 지난 날짜를 고르는 칸(결제일)의 빠른 선택 — 영수증을 보며 입력하는 자리다. */
 export function pastQuickPicks(today: string): DateQuickPick[] {
   return [

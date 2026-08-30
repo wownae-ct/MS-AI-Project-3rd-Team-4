@@ -15,6 +15,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { addDays, todayISO } from "@/shared/lib/date";
 import { AddTimelineItemRow } from "./AddTimelineItemRow";
 
 const createTimelineItemMock = vi.fn();
@@ -47,6 +48,19 @@ async function openForm() {
   await userEvent.click(screen.getByRole("button", { name: "+ 항목 추가" }));
 }
 
+/**
+ * 날짜를 넣는다. [2026-08-30] 종전엔 칸에 `2027-01-15` 를 쳤지만 **날짜 칸은 더 이상 칠 수
+ * 없다** — 값을 만드는 길은 캘린더뿐이다(`shared/ui/DateField.tsx` 머리말 §개정).
+ *
+ * 이 폼이 이미 넘기는 빠른 선택 칩(`futureQuickPicks`)을 태운다 — 실제 사용자가 「3주 뒤쯤」을
+ * 떠올릴 때 쓰는 그 경로이고, 그리드에서 특정 연월을 찾아 헤매지 않아 테스트가 짧다.
+ * 고정 날짜를 쓰지 않으므로 어느 날에 돌려도 성립한다.
+ */
+async function pickOneWeekLater() {
+  await userEvent.click(screen.getByRole("button", { name: /날짜,/u }));
+  await userEvent.click(await screen.findByRole("button", { name: "1주 뒤" }));
+}
+
 describe("AddTimelineItemRow — 카테고리 선택지", () => {
   it("넘겨받은 목록만 낸다 — 카테고리 상수를 스스로 조회하지 않는다", async () => {
     await openForm();
@@ -72,13 +86,13 @@ describe("AddTimelineItemRow — 카테고리 선택지", () => {
     await userEvent.click(screen.getByRole("combobox", { name: "카테고리" }));
     await userEvent.click(screen.getByRole("option", { name: "스드메" }));
     await userEvent.type(screen.getByRole("textbox", { name: "항목 이름" }), "드레스 투어");
-    await userEvent.type(screen.getByRole("textbox", { name: "날짜" }), "2027-01-15");
+    await pickOneWeekLater();
     await userEvent.click(screen.getByRole("button", { name: "추가" }));
 
     expect(createTimelineItemMock).toHaveBeenCalledWith({
       category_code: "SDM",
       title: "드레스 투어",
-      target_date: "2027-01-15",
+      target_date: addDays(todayISO(), 7),
     });
   });
 
@@ -86,13 +100,13 @@ describe("AddTimelineItemRow — 카테고리 선택지", () => {
     await openForm();
 
     await userEvent.type(screen.getByRole("textbox", { name: "항목 이름" }), "혼인신고");
-    await userEvent.type(screen.getByRole("textbox", { name: "날짜" }), "2027-01-15");
+    await pickOneWeekLater();
     await userEvent.click(screen.getByRole("button", { name: "추가" }));
 
     expect(createTimelineItemMock).toHaveBeenCalledWith({
       category_code: null,
       title: "혼인신고",
-      target_date: "2027-01-15",
+      target_date: addDays(todayISO(), 7),
     });
   });
 });
