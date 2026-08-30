@@ -175,10 +175,13 @@ async def retrieve_node(state: ChatState, config: RunnableConfig) -> dict:
         if is_retry:
             update["retry_count"] = state.get("retry_count", 0) + 1
 
-        # 재시도(CRAG) 때는 판정하지 않는다 — 1차에서 이미 스코프를 통과한 질문이고, 재시도
-        # 검색어는 LLM이 재구성한 것이라 원 질문과 성격이 다를 수 있다. 여기서 또 자르면
-        # "1차는 통과했는데 2차에서 갑자기 주제이탈" 같은 이상한 상태가 된다.
-        # 컷오프에 걸릴 것 같고 대화 이력이 있으면, 거절하기 전에 **한 번 더 기회를 준다** —
+        # ── 스코프 판정 (1차 검색에서만) ──────────────────────────────────────────────
+        #
+        # 아래 두 블록 모두 `not is_retry` 로 묶여 있다. 재시도(CRAG)는 1차에서 이미 스코프를
+        # 통과한 질문이고 검색어도 LLM이 재구성한 것이라, 여기서 또 자르면 "1차는 통과했는데
+        # 2차에서 갑자기 주제이탈" 같은 이상한 상태가 된다.
+
+        # ① 거절하기 전에 **한 번 더 기회를 준다** —
         # 생략형 후속 질문("그럼 스드메는?" 단독 0.199)은 주제를 벗어난 게 아니라 문장이 짧아
         # 벡터가 흐려진 것이라, 생략된 대상을 채우면 정상 점수로 돌아온다(0.434 실측).
         #
@@ -223,6 +226,7 @@ async def retrieve_node(state: ChatState, config: RunnableConfig) -> dict:
                         }
                     )
 
+        # ② 그래도 미달이면 거절한다 — generate/verify를 건너뛰고 곧바로 END로 간다.
         if (
             not is_retry
             and not resolved_query
