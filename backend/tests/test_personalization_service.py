@@ -13,7 +13,9 @@ from app.services.personalization import (
     _checklist_fallback_rows,
     _checklist_protected_clause,
     _checklist_row_from_draft,
+    _deterministic_general_timeline_rows,
     _drop_rows_colliding_with_protected,
+    _merge_checklist_rows,
     _timeline_fallback_rows,
     _timeline_protected_clause,
     _timeline_row_from_draft,
@@ -223,6 +225,71 @@ class TestChecklistFallbackRows:
         assert all(r.source_tier == "CONSENSUS" for r in rows)
 
 
+class TestMergeChecklistRows:
+    """2026-08-30 결정(red-bug.md #9-11)의 핵심 수정 — 카테고리 단위 폴백 병합. staging
+    실측(CHECKLIST 80% BLOCKED, VENUE 1개만 성공해도 그 결과까지 카탈로그로 갈아엎힘)의
+    직접적인 회귀 테스트다."""
+
+    def test_all_categories_succeed_uses_llm_draft_only(self):
+        active = {"VENUE", "SDM"}
+        draft = [
+            {"category_code": "VENUE", "title": "체크1"},
+            {"category_code": "SDM", "title": "체크2"},
+        ]
+
+        rows = _merge_checklist_rows(active, set(), draft)
+
+        assert len(rows) == 2
+        assert all(r.origin == "LLM" for r in rows)
+
+    def test_one_blocked_category_falls_back_only_for_that_category(self):
+        # 이번 재발 버그의 핵심 재현 — VENUE만 성공(LLM), SDM은 BLOCKED. 예전 도메인 단위
+        # 폴백이었다면 VENUE의 LLM 결과까지 버려지고 60개(VENUE 25 + SDM 35) 전부 카탈로그가
+        # 됐을 것이다. 이제는 VENUE 1개(LLM) + SDM 35개(카탈로그)만 나와야 한다.
+        active = {"VENUE", "SDM"}
+        draft = [{"category_code": "VENUE", "title": "체크1"}]
+
+        rows = _merge_checklist_rows(active, {"SDM"}, draft)
+
+        venue_rows = [r for r in rows if r.category_code == "VENUE"]
+        sdm_rows = [r for r in rows if r.category_code == "SDM"]
+        assert len(venue_rows) == 1
+        assert venue_rows[0].origin == "LLM"
+        assert len(sdm_rows) == 35
+        assert all(r.origin == "CATALOG_FALLBACK" for r in sdm_rows)
+
+    def test_all_categories_blocked_matches_full_catalog_fallback(self):
+        active = {"VENUE"}
+
+        rows = _merge_checklist_rows(active, {"VENUE"}, [])
+
+        assert len(rows) == 25
+        assert all(r.origin == "CATALOG_FALLBACK" for r in rows)
+
+    def test_display_order_is_contiguous_and_gapless_across_origins(self):
+        # LLM 출처(원래 idx 1부터)와 카탈로그 출처(카탈로그 고정 display_order)가 그대로
+        # 섞이면 번호가 겹칠 수 있다 — 병합 후 새로 매긴 번호는 1부터 연속이어야 한다.
+        active = {"VENUE", "MEETING"}
+        draft = [{"category_code": "MEETING", "title": "체크1"}]
+
+        rows = _merge_checklist_rows(active, {"VENUE"}, draft)
+
+        orders = sorted(r.display_order for r in rows)
+        assert orders == list(range(1, len(rows) + 1))
+
+    def test_rows_are_grouped_by_category_in_sorted_order(self):
+        active = {"VENUE", "MEETING"}
+        draft = [
+            {"category_code": "MEETING", "title": "체크1"},
+            {"category_code": "VENUE", "title": "체크2"},
+        ]
+
+        rows = _merge_checklist_rows(active, set(), draft)
+
+        # sorted(active_categories) == ["MEETING", "VENUE"] — MEETING 항목이 먼저 나와야 한다.
+        assert [r.category_code for r in rows] == ["MEETING", "VENUE"]
+
+
 class TestTimelineRowFromDraft:
     def test_target_date_is_wedding_date_plus_scaled_offset(self):
         item = {"category_code": "VENUE", "title": "제목", "default_dday_offset_days": -30}
@@ -274,6 +341,32 @@ class TestTimelineFallbackRows:
         # "CATALOG_FALLBACK"이 나오는지 처음으로 확정한다.
         rows = _timeline_fallback_rows(date(2027, 5, 15), {"VENUE"}, None, date(2026, 8, 24))
         assert rows
+        assert all(r.origin == "CATALOG_FALLBACK" for r in rows)
+
+
+class TestDeterministicGeneralTimelineRows:
+    """2026-08-30 결정(TIMELINE 결정론화) — SUCCESS 경로에서도 범용(category_code=None)
+    항목은 LLM이 아니라 이 함수가 항상 채운다. active_categories=set()으로
+    generate_timeline_items를 호출하는 트릭이라, 그 함수의 기존 필터 규칙(None은
+    active_categories와 무관하게 항상 포함, 그 외는 active_categories에 있을 때만 포함)이
+    그대로 "범용만 남기고 카테고리 특정 항목은 전부 제외"로 작동하는지 확인한다."""
+
+    def test_only_null_category_items_are_returned(self):
+        rows = _deterministic_general_timeline_rows(date(2027, 5, 15), set(), date(2026, 8, 24))
+        assert rows
+        assert all(r.category_code is None for r in rows)
+
+    def test_result_is_independent_of_active_categories_argument(self):
+        # active_categories 인자 자체를 이 함수는 안 받는다(항상 내부에서 set()으로 고정) —
+        # 이 테스트는 그 설계를 문서화한다: 카테고리를 아무리 활성화해도 결과가 안 바뀐다는
+        # 사실은 시그니처 자체로 이미 보장되므로, 서로 다른 시점에 반복 호출해도 항상 같은
+        # (결정론적) 결과가 나오는지만 확인한다.
+        first = _deterministic_general_timeline_rows(date(2027, 5, 15), set(), date(2026, 8, 24))
+        second = _deterministic_general_timeline_rows(date(2027, 5, 15), set(), date(2026, 8, 24))
+        assert [r.title for r in first] == [r.title for r in second]
+
+    def test_rows_have_catalog_fallback_origin(self):
+        rows = _deterministic_general_timeline_rows(date(2027, 5, 15), set(), date(2026, 8, 24))
         assert all(r.origin == "CATALOG_FALLBACK" for r in rows)
 
 

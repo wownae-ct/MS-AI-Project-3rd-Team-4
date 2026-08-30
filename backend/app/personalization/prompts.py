@@ -58,18 +58,27 @@ ROUTE_PROMPT_TEMPLATE = """당신은 메리맵의 개인화 콘텐츠 라우터�
 
 응답은 JSON으로만 답하세요: {{"affected_domains": ["CHECKLIST"와 "TIMELINE" 중 0개 이상], "reasoning": "판단 이유 한 문장"}}"""
 
+_FOCUS_CATEGORIES: frozenset[str] = frozenset({"VENUE", "SDM"})
+
+# 2026-08-30 결정(VENUE/SDM 튜닝, red-bug.md #9-11 후속) — 이 규칙은 예전엔 _CHECKLIST_RULES
+# 안에 있어 CHECKLIST를 요청하는 모든 카테고리 호출(GIFT/ETC 등 FOCUS와 무관한 7개 포함)에
+# 무차별로 들어갔다. 카테고리 단위 분리(2026-08-29 결정) 이후엔 각 호출이 카테고리 하나만
+# 다루므로, 이 규칙이 실제로 의미 있는 건 그 카테고리가 VENUE/SDM일 때뿐이다 — 무관한
+# 카테고리 호출에 안 쓰는 규칙 문단·인용 메뉴를 얹는 건 순수 낭비(프롬프트 토큰)이자 잠재적
+# 노이즈라 분리했다. build_generate_prompt가 active_categories에 VENUE/SDM이 섞여 있을 때만
+# 이 문단(과 DS3 인용 메뉴)을 붙인다.
+_CHECKLIST_FOCUS_RULE = """- FOCUS 카테고리(VENUE/SDM)는 CONTRACT_TERM 비중을 40~60% 정도로 하세요(F9_CONTRACT_FOCUS) —
+  EXTRA_COST/PREP도 반드시 섞으세요, CONTRACT_TERM 단일 구성은 이 기준을 어긴 것입니다."""
+
 _CHECKLIST_RULES = """웨딩 프로필(활성 카테고리·우선순위·스타일·예산·이번 준비에서 가장 바라는 것)에
 맞춰 카테고리별 체크리스트 항목을 만드세요.
 
-- FOCUS 카테고리(VENUE/SDM)는 CONTRACT_TERM 비중을 40~60% 정도로 하세요(F9_CONTRACT_FOCUS) —
-  EXTRA_COST/PREP도 반드시 섞으세요, CONTRACT_TERM 단일 구성은 이 기준을 어긴 것입니다.
 - protected_items에 있는 항목은 재생성 후에도 화면에 그대로 남습니다(사용자가 이미 직접
   수정함) — **표현만 바꿔서 같은 내용을 다시 만들지도 마세요**(예: "계약금 상한 확인" ↔
   "계약금 한도 체크"). 중복 방지용 참고로만 쓰세요.
 - 같은 카테고리 안에서 title이 겹치는 항목을 두 개 이상 만들지 마세요. 여러 항목이 필요하면
   각 title을 서로 다르게(구체적인 시기·대상·내용 등으로 구분) 쓰세요.
 - 활성 카테고리마다 최소 2개 이상 항목을 만드세요.
-- category_code는 활성 카테고리 안에서만 쓰세요.
 - 프로필의 selected_options는 카테고리 안에서도 사용자가 일부 옵션만 선택했다는 뜻입니다
   (예: SDM에서 ["드레스","메이크업"]만 선택 = 포토그래퍼 관련 항목은 제외). selected_options에
   없는 옵션과 관련된 항목은 만들지 마세요. 어떤 카테고리가 selected_options에 아예 없으면
@@ -83,9 +92,9 @@ _CHECKLIST_RULES = """웨딩 프로필(활성 카테고리·우선순위·스타
 _TIMELINE_RULES = """아래 표준 카탈로그(few-shot)를 참고해 이 커플에게 맞는 타임라인을 만드세요.
 
 - 활성 카테고리에 해당하는 항목만 포함하세요. 비활성 카테고리 항목은 만들지 마세요.
-- category_code가 필요 없는 범용 항목(혼인신고·본식 등)은 JSON의 따옴표 없는 null 타입으로
-  두세요. "null"이라는 문자열이든 다른 어떤 한글/영문 단어든, category_code 자리에 텍스트
-  값을 쓰면 ENUM에 없는 값이라 오류가 납니다 — 아래 few-shot의 JSON 예시를 그대로 참고하세요.
+- category_code는 활성 카테고리 중 하나를 반드시 쓰세요(9개 ENUM 값 중 하나). 혼인신고·
+  결혼 날짜 확정처럼 특정 카테고리에 안 속하는 범용 일정은 이미 별도로 자동 추가되니
+  만들지 마세요 — 굳이 만들어도 category_code를 정할 수 없어 오류가 납니다.
 - default_dday_offset_days는 본식 기준 며칠 전(음수)/후(양수)인지 정수로, -400~60 범위
   안에서만 쓰세요.
 - protected_items는 재생성 후에도 화면에 그대로 남아 있는 항목입니다. **표현만 바꿔서 같은
@@ -106,9 +115,18 @@ _TIMELINE_RULES = """아래 표준 카탈로그(few-shot)를 참고해 이 커�
   필요하면 few-shot에 없는 항목을 프로필에 맞게 추가하세요. 활성 카테고리 커버리지·오프셋
   범위 같은 구조적 제약만 지키면 되고, few-shot과 내용이 대부분 동일할 필요는 전혀 없습니다."""
 
-_CHECKLIST_OUTPUT_SCHEMA = """체크리스트 항목은 각각 이 필드만 채우세요(그 외 필드는 응답에 포함하지
-마세요 — group_label/status는 서비스 레이어가 결정론적으로 채웁니다):
-{"category_code": "...", "item_type": "CONTRACT_TERM 또는 EXTRA_COST 또는 PREP", "title": "...",
+# 2026-08-30 결정(CHECKLIST category_code 강제주입, red-bug.md #24 후속) — 이 스키마에서
+# category_code 필드를 뺐다. CHECKLIST는 이제 카테고리 하나만 요청하는 호출로만 쓰이므로
+# (app/personalization/graph.py::_generate_checklist_category_draft, 결합 도메인 호출
+# 경로인 _generate_domain_draft는 이제 TIMELINE 전용) 어느 카테고리인지는 호출 시점에
+# 코드가 이미 알고 있다 — 모델에게 다시 물어볼 이유가 없다. 예전엔 이 필드를 모델이 직접
+# 써야 했는데, 오타("HONEYMOON"→"HONEYOON")나 다른 카테고리 혼입 같은 실패가 실측으로
+# 확인됐다(staging 라이브 테스트, 60% BLOCKED 중 일부가 이 유형). 필드 자체를 안 물어보면
+# 이 실패 클래스가 확률이 아니라 구조적으로 불가능해진다 — graph.py가 파싱 직후 모든 항목의
+# category_code를 무조건 호출 카테고리로 덮어쓴다.
+_CHECKLIST_OUTPUT_SCHEMA = """체크리스트 항목은 각각 이 필드만 채우세요(category_code는 이미 정해져
+있으므로 쓰지 마세요 — 그 외에도 group_label/status는 서비스 레이어가 결정론적으로 채웁니다):
+{"item_type": "CONTRACT_TERM 또는 EXTRA_COST 또는 PREP", "title": "...",
 "body": "...", "priority": "high 또는 mid 또는 low", "option_group": null 또는 "...",
 "tag": null 또는 "...", "source_ref_id": null 또는 [근거 자료] 번호}"""
 
@@ -143,7 +161,7 @@ def build_contract_citation_menu(chunks: list) -> str | None:
 
 
 _TIMELINE_OUTPUT_SCHEMA = """타임라인 항목은 각각 이 필드만 채우세요:
-{"category_code": null 또는 "...", "title": "...", "default_dday_offset_days": 정수}"""
+{"category_code": "...", "title": "...", "default_dday_offset_days": 정수}"""
 
 
 def _build_checklist_few_shot(active_categories: set[str] | None = None) -> str:
@@ -181,43 +199,40 @@ def _build_checklist_few_shot(active_categories: set[str] | None = None) -> str:
 
 
 def _build_timeline_few_shot(active_categories: set[str] | None = None) -> str:
-    """VENUE/SDM/범용(category_code=None) 항목은 활성 상태라면 전체 그대로 보여준다 — 이
-    항목들이 전체 일정의 시간축 뼈대를 이루므로 줄이면 LLM이 타이밍 감각을 잃는다(범용
-    항목은 특정 카테고리에 속하지 않으므로 애초에 활성/비활성 대상이 아니다 — 항상 보여줌).
-    반면 MOCKUP 7개 카테고리는 카테고리당 _MOCKUP_FEW_SHOT_SAMPLE_SIZE개로 제한한다
-    (2026-08-24 버그 수정: 원래 카탈로그 68항목 전체를 그대로 보여줘서, 서로 다른 프로필의
-    웨딩 두 건이 67개 중 66개가 완전히 동일한 타임라인을 받는 사례가 실계정 재현으로
-    확인됐다 — LLM이 "그대로 베낄 답"을 통째로 받으면 개인화할 유인이 사실상 없어지는 문제.
-    `_TIMELINE_RULES`의 명시적 "베끼지 마세요" 지시와 함께 적용한다). 카탈로그 순서(연대순)는
-    그대로 유지해 시간 흐름 감각이 깨지지 않게 한다.
+    """VENUE/SDM 항목은 활성 상태라면 전체 그대로 보여준다 — 이 항목들이 전체 일정의 시간축
+    뼈대를 이루므로 줄이면 LLM이 타이밍 감각을 잃는다. 반면 MOCKUP 7개 카테고리는 카테고리당
+    _MOCKUP_FEW_SHOT_SAMPLE_SIZE개로 제한한다(2026-08-24 버그 수정: 원래 카탈로그 68항목
+    전체를 그대로 보여줘서, 서로 다른 프로필의 웨딩 두 건이 67개 중 66개가 완전히 동일한
+    타임라인을 받는 사례가 실계정 재현으로 확인됐다 — LLM이 "그대로 베낄 답"을 통째로 받으면
+    개인화할 유인이 사실상 없어지는 문제. `_TIMELINE_RULES`의 명시적 "베끼지 마세요" 지시와
+    함께 적용한다). 카탈로그 순서(연대순)는 그대로 유지해 시간 흐름 감각이 깨지지 않게 한다.
+
+    **2026-08-30 결정(TIMELINE 결정론화)** — category_code=None(범용) 항목은 few-shot에서
+    아예 뺀다. 예전엔 LLM이 이 항목들을 직접 생성해야 했으므로 few-shot에도 보여줬지만,
+    이제 범용 항목은 app/services/timeline.py::generate_timeline_items를 그대로 재사용해
+    항상 결정론적으로 채우고 LLM 생성 대상에서 완전히 제외했다(app/personalization/
+    graph.py::generate_node는 이제 category_code=null을 아예 다루지 않는다) — LLM이 이
+    값을 문자열 "null"/"범용" 등으로 잘못 내는 재발 버그(CLAUDE.md에 3번 기록)가 애초에 낼
+    일이 없는 값이 되어 버그 클래스 자체가 사라진다.
 
     active_categories가 None이면(필터링을 원치 않는 호출부·테스트) 기존처럼 전체를 보여준다.
     실제 웨딩이 주어지면 VENUE/SDM/MOCKUP 전부 비활성 카테고리는 few-shot에서 제외한다
     (2026-08-28 버그 수정 red-bug.md #9-1 — _build_checklist_few_shot과 동일한 이유).
 
-    **출력을 사람이 읽는 불릿 텍스트가 아니라 실제 출력 스키마와 동일한 JSON 한 줄씩으로
-    보여준다**(2026-08-24 버그 수정 3 — 이전 두 시도, "범용" 라벨 → "null" 라벨, 둘 다 같은
-    클래스의 버그로 재발했다: null 항목을 사람이 읽는 텍스트 라벨(`[범용]`/`(category_code=null)`)
-    로 표시하면, 라벨 단어를 뭘로 바꾸든 LLM이 그 라벨을 "category_code 자리에 넣을 문자열
-    값"으로 착각해 `"category_code": "범용"`/`"category_code": "null"`(둘 다 존재하지 않는
-    ENUM 값, 후자는 파이썬 None이 아니라 4글자 문자열)을 그대로 출력했다 — 실계정 재현으로
-    2연속 확인됨. 텍스트 라벨 방식 자체가 근본 원인이라, `json.dumps`로 실제 JSON null
-    토큰(따옴표 없음)을 그대로 보여주는 방식으로 바꿔 이 클래스의 버그를 구조적으로 차단한다
-    — LLM이 "이 예시를 그대로 따라 쓰면" 자동으로 올바른 JSON null이 나온다."""
+    출력을 사람이 읽는 불릿 텍스트가 아니라 실제 출력 스키마와 동일한 JSON 한 줄씩으로
+    보여준다(2026-08-24 버그 수정 3 — null 라벨 표시 방식 자체가 근본 원인이었던 문제, 지금은
+    범용 항목 자체가 few-shot에 없으니 이 형식은 남은 카테고리 예시에만 적용된다)."""
     header = (
-        "[타임라인 few-shot — 실제 출력과 동일한 JSON 한 줄씩. VENUE/SDM/null 항목 전체 + "
-        f"나머지 카테고리 대표 예시 {_MOCKUP_FEW_SHOT_SAMPLE_SIZE}개씩(비활성 카테고리는 "
-        "예시에서 제외됨). category_code가 null인 항목은 예시처럼 따옴표 없는 JSON null "
-        "그대로 쓰세요.]"
+        "[타임라인 few-shot — 실제 출력과 동일한 JSON 한 줄씩. VENUE/SDM 전체 + 나머지 "
+        f"카테고리 대표 예시 {_MOCKUP_FEW_SHOT_SAMPLE_SIZE}개씩(비활성 카테고리는 예시에서 "
+        "제외됨). 범용(category_code=null) 항목은 이미 자동으로 추가되니 여기 안 보여준다.]"
     )
     lines = [header]
     mockup_shown_count: dict[str, int] = {}
     for item in TIMELINE_CATALOG:
-        if (
-            item.category_code is not None
-            and active_categories is not None
-            and item.category_code not in active_categories
-        ):
+        if item.category_code is None:
+            continue
+        if active_categories is not None and item.category_code not in active_categories:
             continue
         if item.category_code in _MOCKUP_CATEGORY_CODES:
             already_shown = mockup_shown_count.get(item.category_code, 0)
@@ -405,9 +420,12 @@ def build_generate_prompt(
 
     if include_checklist:
         parts += [_CHECKLIST_RULES, _build_checklist_few_shot(active_categories)]
-        citation_menu = build_contract_citation_menu(contract_citations or [])
-        if citation_menu:
-            parts.append(citation_menu)
+        focus_relevant = active_categories is None or bool(active_categories & _FOCUS_CATEGORIES)
+        if focus_relevant:
+            parts.append(_CHECKLIST_FOCUS_RULE)
+            citation_menu = build_contract_citation_menu(contract_citations or [])
+            if citation_menu:
+                parts.append(citation_menu)
     if include_timeline:
         parts += [_TIMELINE_RULES, _build_timeline_few_shot(active_categories)]
 
