@@ -64,10 +64,30 @@ def _validate_category_membership(
 
 
 def _validate_category_coverage(
-    domain_label: str, active_categories: set[str], items: list[dict]
+    domain_label: str,
+    active_categories: set[str],
+    items: list[dict],
+    protected_titles: set[tuple] | None = None,
 ) -> list[str]:
-    """규칙 (2): 활성 카테고리마다 항목이 1개 이상 있는가(도메인별 독립 적용)."""
+    """규칙 (2): 활성 카테고리마다 항목이 1개 이상 있는가(도메인별 독립 적용).
+
+    2026-08-30 결정 — "있는가"의 판정 대상에 **protected_items도 포함**한다. 재생성 후에도
+    DB에 그대로 남는 행이 protected_items이므로, 그 카테고리에 보호 행이 있으면 사용자 화면
+    기준으로는 이미 "항목이 1개 이상 있는" 상태다. 예전엔 새 초안만 셌는데, 바로 앞 단계인
+    `deduplicate_titles()`가 보호 행과 제목이 겹치는 초안 항목을 드롭하므로 **표준 항목을 이미
+    완료 체크해 둔 카테고리는 초안이 0건이 되어 상시 BLOCKED**가 됐다(staging 실측: test05
+    계정 GIFT 보호 4/6·HOMEWARE 3/5 → 매 재생성마다 BLOCKED). 즉 "앱을 열심히 쓸수록 재생성이
+    더 자주 실패하는" 구조였다.
+
+    ⚠️ 이 완화만 단독으로 넣으면 안 된다 — 커버리지를 통과한 카테고리의 초안이 0건이면
+    app/services/personalization.py가 그 카테고리에 새 행을 하나도 안 만드는데,
+    `_delete_unprotected_items`는 카테고리 스코프 없이 미보호 행을 지우므로 **항목 수가
+    순감**한다(수정 전 카탈로그 25행 → 수정 후 보호 8행 같은 식). 그래서 같은 커밋에서 병합
+    쪽이 "초안이 빈 카테고리는 카탈로그로 보충"하도록 함께 고쳤다 — 둘은 반드시 짝으로 유지할 것."""
     covered = {item.get("category_code") for item in items if item.get("category_code") is not None}
+    # protected_titles는 (category_code, title) 튜플 집합이다. TIMELINE 범용 항목의
+    # category_code=None은 어떤 활성 카테고리도 커버하지 못하므로 초안 쪽과 같은 규칙으로 건다.
+    covered |= {code for code, _ in (protected_titles or ()) if code is not None}
     missing = active_categories - covered
     return [
         f"{domain_label}: 활성 카테고리 {code}에 생성된 항목이 없습니다."
@@ -156,7 +176,7 @@ def validate_checklist_items(
     active_categories: set[str], items: list[dict], protected_titles: set[tuple] | None = None
 ) -> list[str]:
     errors = _validate_category_membership("CHECKLIST", active_categories, items)
-    errors += _validate_category_coverage("CHECKLIST", active_categories, items)
+    errors += _validate_category_coverage("CHECKLIST", active_categories, items, protected_titles)
     errors += _validate_has_title("CHECKLIST", items)
     errors += _validate_no_duplicate_titles("CHECKLIST", items, protected_titles)
     return errors
@@ -168,7 +188,7 @@ def validate_timeline_items(
     """체크리스트 규칙 + 규칙 (3): default_dday_offset_days가 -400~60 범위인가(타임라인 전용
     필드라 이 도메인에만 적용)."""
     errors = _validate_category_membership("TIMELINE", active_categories, items)
-    errors += _validate_category_coverage("TIMELINE", active_categories, items)
+    errors += _validate_category_coverage("TIMELINE", active_categories, items, protected_titles)
     errors += _validate_has_title("TIMELINE", items)
     errors += _validate_no_duplicate_titles("TIMELINE", items, protected_titles)
     for item in items:
@@ -259,6 +279,39 @@ def validate_checklist_by_category(
     errors: dict[str, list[str]] = {}
     for category in active_categories:
         category_errors = validate_checklist_items(
+            {category}, grouped.get(category, []), protected_titles
+        )
+        status[category] = "BLOCKED" if category_errors else "SUCCESS"
+        errors[category] = category_errors
+    return status, errors
+
+
+def validate_timeline_by_category(
+    active_categories: set[str], items: list[dict], protected_titles: set[tuple] | None = None
+) -> tuple[dict[str, str], dict[str, list[str]]]:
+    """TIMELINE 카테고리별 독립 SUCCESS/BLOCKED — `validate_checklist_by_category`(2026-08-30
+    #9-11)와 같은 패턴을 TIMELINE에도 적용한다(2026-08-30 2차).
+
+    #9-11이 CHECKLIST만 카테고리 단위로 쪼갠 뒤에도 TIMELINE은 도메인 단위 그대로 남았고,
+    그 이유는 `category_code=None` 범용 항목 때문에 "카테고리 하나만 요청하는 호출"이 안
+    맞아서였다. 그런데 같은 날 TIMELINE 결정론화로 **범용 항목이 LLM 생성 대상에서 완전히
+    빠지면서** 그 걸림돌이 사라졌다 — 이제 LLM이 만드는 타임라인 항목은 전부 실제 카테고리를
+    가지므로 CHECKLIST와 동일하게 쪼갤 수 있다.
+
+    쪼개야 하는 이유는 실측으로 확인됐다: staging에서 보호 항목이 **하나도 없는** 계정
+    (test1431)도 GIFT/HOMENEW/HOMEWARE/HONEYMOON 누락으로 BLOCKED됐다 — 보호 항목 dedup으로는
+    설명이 안 되고, "활성 9개 카테고리를 한 응답에 담다가 일부만 만들고 멈추는" #9-11과 같은
+    실패다. 도메인 단위 폴백은 그 1개 때문에 나머지 8개 카테고리의 LLM 결과까지 전부 버리므로
+    피해도 CHECKLIST보다 크다.
+
+    `validate_timeline_items`를 그대로 재사용한다 — 이유는 `validate_checklist_by_category`
+    docstring과 동일(활성 카테고리 1개짜리 도메인으로 돌리면 그 카테고리만의 판정이 나온다).
+    offset 범위 규칙(규칙 3)은 항목 단위라 카테고리별로 나눠 검사해도 결과가 같다."""
+    grouped = group_checklist_by_category(items)
+    status: dict[str, str] = {}
+    errors: dict[str, list[str]] = {}
+    for category in active_categories:
+        category_errors = validate_timeline_items(
             {category}, grouped.get(category, []), protected_titles
         )
         status[category] = "BLOCKED" if category_errors else "SUCCESS"
