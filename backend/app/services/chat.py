@@ -282,6 +282,7 @@ async def stream_chat_response(
             "verdict": "",
             "verification_reason": "",
             "retry_count": 0,
+            "out_of_scope": False,
         }
         config = {"configurable": {"session": session, "settings": settings}}
 

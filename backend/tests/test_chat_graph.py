@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.core.config import Settings
 from app.rag.graph import build_graph
-from app.rag.retrieval import RetrievedChunk
+from app.rag.retrieval import RetrievalOutcome, RetrievedChunk
 
 # retrieve_node가 config["configurable"]에 settings가 없으면 get_settings()로 폴백하는데,
 # 그건 .env(이 워크트리엔 없음)/환경변수에 의존해 테스트가 로컬·CI 환경에 따라 깨질 수 있다 —
@@ -83,7 +83,18 @@ def _initial_state() -> dict:
         "verdict": "",
         "verification_reason": "",
         "retry_count": 0,
+        "out_of_scope": False,
     }
+
+
+# 스코프 컷오프(rag_min_similarity=0.30)에 걸리지 않는 충분히 높은 유사도 — 이 파일의 테스트는
+# CRAG 재검색 루프를 보는 것이라 컷오프는 항상 통과시켜야 한다. 컷오프 자체의 회귀 테스트는
+# tests/test_chat_scope_cutoff.py에 따로 있다.
+_PASSING_SIMILARITY = 0.9
+
+
+def _outcome(*chunks: RetrievedChunk, similarity: float = _PASSING_SIMILARITY) -> RetrievalOutcome:
+    return RetrievalOutcome(chunks=list(chunks), top_similarity=similarity)
 
 
 async def _run(
@@ -99,7 +110,10 @@ async def _run(
     final_state = _initial_state()
     with (
         patch("app.rag.graph.get_azure_openai_client", return_value=client),
-        patch("app.rag.graph.retrieve", AsyncMock(side_effect=retrieve_results)) as retrieve_mock,
+        patch(
+            "app.rag.graph.retrieve_with_similarity",
+            AsyncMock(side_effect=[_outcome(*r) for r in retrieve_results]),
+        ) as retrieve_mock,
         patch("app.rag.graph.verify_answer", AsyncMock(side_effect=verify_results)),
         patch("app.rag.graph.reformulate_query", AsyncMock(return_value="재구성된 질의")),
     ):
@@ -186,7 +200,10 @@ class TestVerifyHeartbeat:
         heartbeats: list[dict] = []
         with (
             patch("app.rag.graph.get_azure_openai_client", return_value=client),
-            patch("app.rag.graph.retrieve", AsyncMock(return_value=[_chunk(1)])),
+            patch(
+                "app.rag.graph.retrieve_with_similarity",
+                AsyncMock(return_value=_outcome(_chunk(1))),
+            ),
             patch("app.rag.graph.verify_answer", AsyncMock(side_effect=_slow_verify)),
             patch("app.rag.graph._HEARTBEAT_INTERVAL_SECONDS", 0.01),
         ):
@@ -213,8 +230,8 @@ class TestReformulateHeartbeat:
         with (
             patch("app.rag.graph.get_azure_openai_client", return_value=client),
             patch(
-                "app.rag.graph.retrieve",
-                AsyncMock(side_effect=[[_chunk(1)], [_chunk(2)]]),
+                "app.rag.graph.retrieve_with_similarity",
+                AsyncMock(side_effect=[_outcome(_chunk(1)), _outcome(_chunk(2))]),
             ),
             patch(
                 "app.rag.graph.verify_answer",
@@ -243,7 +260,10 @@ class TestRetrieveSpanRecordsChunkIds:
         config = {"configurable": {"session": object(), "settings": _TEST_SETTINGS}}
         with (
             patch("app.rag.graph.get_azure_openai_client", return_value=client),
-            patch("app.rag.graph.retrieve", AsyncMock(return_value=[_chunk(1), _chunk(2)])),
+            patch(
+                "app.rag.graph.retrieve_with_similarity",
+                AsyncMock(return_value=_outcome(_chunk(1), _chunk(2))),
+            ),
             patch(
                 "app.rag.graph.verify_answer",
                 AsyncMock(return_value=("SUPPORTED", "근거 충분")),
@@ -255,7 +275,10 @@ class TestRetrieveSpanRecordsChunkIds:
 
         retrieve_calls = [c for c in span_calls if c["span_name"] == "chat.retrieve"]
         assert len(retrieve_calls) == 1
-        assert retrieve_calls[0]["output"] == [1, 2]
+        assert retrieve_calls[0]["output"] == {
+            "chunk_ids": [1, 2],
+            "top_similarity": _PASSING_SIMILARITY,
+        }
 
     async def test_records_empty_list_when_no_chunks_found(self):
         """0건 검색(RAG_NO_CONTEXT)도 output=[]로 명시적으로 남아야 한다 — 필드 자체가
@@ -273,7 +296,7 @@ class TestRetrieveSpanRecordsChunkIds:
         config = {"configurable": {"session": object(), "settings": _TEST_SETTINGS}}
         with (
             patch("app.rag.graph.get_azure_openai_client", return_value=client),
-            patch("app.rag.graph.retrieve", AsyncMock(return_value=[])),
+            patch("app.rag.graph.retrieve_with_similarity", AsyncMock(return_value=_outcome())),
             patch("app.rag.graph.reformulate_query", AsyncMock(return_value="재구성된 질의")),
             patch("app.rag.graph.traced_span", _recording_traced_span(span_calls)),
         ):
@@ -282,12 +305,18 @@ class TestRetrieveSpanRecordsChunkIds:
 
         retrieve_calls = [c for c in span_calls if c["span_name"] == "chat.retrieve"]
         assert len(retrieve_calls) == 1
-        assert retrieve_calls[0]["output"] == []
+        assert retrieve_calls[0]["output"] == {
+            "chunk_ids": [],
+            "top_similarity": _PASSING_SIMILARITY,
+        }
         # 위 독스트링대로 재시도 span도 자동으로 도는지, 거기서도 output=[]가 명시적으로
         # 남는지까지 같이 확인한다.
         retry_calls = [c for c in span_calls if c["span_name"] == "chat.retrieve_retry"]
         assert len(retry_calls) == 1
-        assert retry_calls[0]["output"] == []
+        assert retry_calls[0]["output"] == {
+            "chunk_ids": [],
+            "top_similarity": _PASSING_SIMILARITY,
+        }
 
     async def test_records_chunk_ids_on_retry_span_too(self):
         """chat.retrieve_retry span도 같은 함수 본문을 타므로 별도 처리 없이 자동으로
@@ -299,8 +328,8 @@ class TestRetrieveSpanRecordsChunkIds:
         with (
             patch("app.rag.graph.get_azure_openai_client", return_value=client),
             patch(
-                "app.rag.graph.retrieve",
-                AsyncMock(side_effect=[[_chunk(1)], [_chunk(2), _chunk(3)]]),
+                "app.rag.graph.retrieve_with_similarity",
+                AsyncMock(side_effect=[_outcome(_chunk(1)), _outcome(_chunk(2), _chunk(3))]),
             ),
             patch(
                 "app.rag.graph.verify_answer",
@@ -314,4 +343,7 @@ class TestRetrieveSpanRecordsChunkIds:
 
         retry_calls = [c for c in span_calls if c["span_name"] == "chat.retrieve_retry"]
         assert len(retry_calls) == 1
-        assert retry_calls[0]["output"] == [2, 3]
+        assert retry_calls[0]["output"] == {
+            "chunk_ids": [2, 3],
+            "top_similarity": _PASSING_SIMILARITY,
+        }
