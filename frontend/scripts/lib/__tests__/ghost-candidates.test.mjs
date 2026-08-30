@@ -37,6 +37,17 @@ describe("스캐너 후보에 유령이 없다", () => {
   it("주석이 만들던 bare rounded (토큰 밖 4px) 가 없다", () => {
     expect(candidates.has("rounded")).toBe(false);
   });
+  // 2026-08-30 (D27 개정) — ChatPanel 의 `SURFACE` 머리말이 **폐기한 유틸리티 이름을 평문으로
+  // 적어서** 아무도 안 쓰는 규칙 하나를 CSS 에 실었다. 그 주석은 이름 대신 「위아래 2면만」으로
+  // 고쳤다.
+  //
+  // 🚨 **이 유령은 아래 두 가드를 모두 빠져나갔다.** 위 세 단언은 이미 당한 이름만 보고,
+  // 아래 화이트리스트는 `/^[a-z][a-z0-9]*$/` 인 **bare 후보만** 본다 — 하이픈이 있으면 둘 다
+  // 해당하지 않는다. 방향 보더는 실제 사용처가 여럿이라(AppShell·드로어·PaymentListRow) 계열
+  // 전체를 막을 수는 없으므로, 당한 이름을 여기 한 줄로 고정한다.
+  it("주석이 만들던 방향 보더 유령이 없다 (D27 개정)", () => {
+    expect(candidates.has("border-y")).toBe(false);
+  });
   it("금지 토큰이 후보에 없다 — ring · 그림자 · 색 임의값", () => {
     const banned = [...candidates].filter((c) =>
       /^(?:[\w-]+:)*(?:(?:inset-)?ring(?:-|$)|(?:inset-shadow|drop-shadow|text-shadow|shadow)(?:-|$)|[\w-]+-\[#[0-9a-f]{3,8}\]$)/iu.test(c),

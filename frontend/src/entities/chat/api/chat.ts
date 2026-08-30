@@ -24,10 +24,31 @@ export function createChatSession(categoryCode?: string): Promise<ChatSession> {
 // 준다(백엔드가 `last_message_at desc nulls_last, created_at desc`로 정렬해서 보내므로
 // 프론트에서 다시 정렬하지 않는다 — 두 곳에 정렬 규칙을 두면 조용히 갈린다).
 //
-// 삭제·이름변경 엔드포인트는 없다(`backend/app/routers/ai/chat.py`는 생성/목록/메시지조회/
-// 메시지전송/피드백 5개뿐) — 그래서 목록 UI도 읽기 전용이다.
+// 이름변경 엔드포인트는 아직 없다 — 목록의 제목은 백엔드가 첫 질문에서 유도한 값이다.
 export function listChatSessions(): Promise<ChatSessionListResponse> {
   return apiFetch("/api/v1/chat/sessions") as Promise<ChatSessionListResponse>;
+}
+
+/**
+ * 지난 대화 1건 삭제 (사용자 요청 2026-08-30).
+ *
+ * 백엔드가 요청한 계약 그대로 구현했다(회신 2026-08-30) — 성공 204 · 실패는 **봉투 형식의**
+ * 404 `CHAT_SESSION_NOT_FOUND`(없음 · 남의 것 · 이미 지워짐 전부). 메시지는 DB 의
+ * `ondelete="CASCADE"` 가 함께 지운다. 계약 전문과 판단 근거는
+ * `docs/backend-analysis/BACKEND_REQUEST-2026-08-30-chat-session-delete.md`.
+ *
+ * 🚨 **배포는 백엔드가 먼저다.** 그쪽이 나가기 전에 이 함수를 부르면 FastAPI 기본
+ * 404(`{"detail":"Not Found"}`)가 오는데, 그 바디엔 `error` 봉투가 없어
+ * `parseApiError`(shared/api/errors.ts)가 `UNKNOWN_ERROR` 로 떨어뜨린다 — 화면엔 「서버 응답을
+ * 해석할 수 없습니다 (HTTP 404).」가 뜬다. **조용히 성공한 척하지 않는다**는 뜻이라 안전한
+ * 실패이긴 하지만 사용자에게 보여 줄 문구는 아니다(드로어의 `CHAT_SESSION_NOT_FOUND` 흡수가
+ * **봉투 안의 코드로만** 걸리게 돼 있는 이유가 이것이다 — 미배포 404 를 삭제 성공으로 오인하지 않는다).
+ *
+ * 성공은 204(바디 없음)라 반환값이 `void` 다 — `entities/payment/api/payment.ts` 의
+ * `deletePayment` 와 같은 모양이고, `client.ts::readBody` 가 204 를 `undefined` 로 처리한다.
+ */
+export function deleteChatSession(sessionId: string): Promise<void> {
+  return apiFetch(`/api/v1/chat/sessions/${sessionId}`, { method: "DELETE" }) as Promise<void>;
 }
 
 export function getChatMessages(sessionId: string): Promise<ChatMessagesResponse> {
