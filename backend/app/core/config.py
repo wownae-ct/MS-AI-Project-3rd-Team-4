@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     # 오판될 수 있다.
     rag_min_similarity: float = 0.30
 
+    # 2026-08-31 — AI상담 프롬프트에 사용자 본인의 예산·일정·지출을 실을지
+    # (app/rag/chat_profile.py). 끄면 프롬프트가 이 기능 도입 전과 바이트 단위로 같아지므로,
+    # 데모 중 이상 동작이 보이면 코드 롤백 없이 env 하나로 즉시 되돌릴 수 있다. 기본값이 있어
+    # 새 필수 env가 아니다(필수 필드를 늘렸다가 파드가 부팅에서 죽은 전례가 있어 의도적).
+    chat_profile_enabled: bool = True
+
     # rag-reindex CronJob이 data/rag_corpus/를 이 경로에 마운트한다(infra/k8s/base/rag-cronjob/
     # cronjob.yaml: /app/data/rag_corpus, 컨테이너 WORKDIR이 /app이라 상대경로로 일치).
     rag_corpus_path: str = "data/rag_corpus"
