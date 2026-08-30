@@ -124,6 +124,21 @@ async def load_chat_profile(session: AsyncSession, wedding: Wedding, today: date
     )
 
 
+def _format_d_day(d_day: int) -> str:
+    """`compute_d_day`의 부호 규약을 한국식 D-day 표기로 뒤집는다.
+
+    `compute_d_day(due, today)`는 `(due - today).days`라 **양수가 "남은 일수"**다(결제 연체
+    판정용 규약, app/services/payment.py). 그런데 한국식 표기는 정반대로 남은 날이 `D-268`,
+    지난 날이 `D+3`이다. 그래서 `f"D{d_day:+d}"`처럼 부호를 그대로 쓰면 "268일 남음"이
+    **"예식이 268일 지남"**으로 뒤집혀 찍힌다 — 실제로 스테이징 검증에서 `D+268`로 나왔고,
+    LLM이 이걸 그대로 읽으면 이미 끝난 결혼식으로 오해한다."""
+    if d_day > 0:
+        return f"D-{d_day}"
+    if d_day == 0:
+        return "D-DAY"
+    return f"D+{abs(d_day)}"
+
+
 def _format_won(amount: int) -> str:
     """원 단위 정수를 사람이 읽는 한국어 금액으로. LLM에게 자릿수 계산을 시키지 않으려고
     코드가 미리 변환한다(이 레포의 "계산은 코드가, LLM은 판단만" 관례)."""
@@ -152,7 +167,9 @@ def render_chat_profile_block(profile: ChatProfile) -> str | None:
 
     lines: list[str] = []
     if profile.wedding_date_precision == "EXACT":
-        lines.append(f"예식 예정일: {profile.wedding_date:%Y년 %m월 %d일} (D{profile.d_day:+d})")
+        lines.append(
+            f"예식 예정일: {profile.wedding_date:%Y년 %m월 %d일} ({_format_d_day(profile.d_day)})"
+        )
     else:
         label = _PRECISION_LABELS.get(profile.wedding_date_precision, "정확한 날짜 미정")
         lines.append(f"예식 시기: {label} — 정확한 날짜가 없어 남은 기간을 단정할 수 없음")
