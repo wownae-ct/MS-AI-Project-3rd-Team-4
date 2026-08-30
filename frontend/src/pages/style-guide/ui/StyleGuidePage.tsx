@@ -7,7 +7,7 @@
 //
 // 값의 SSOT 는 디자인 문서이고 여기는 그 표시일 뿐이다. 여기서 새 값을 만들지 않는다.
 // 섹션을 파일로 나눈 이유는 카탈로그가 계속 늘어나기 때문이다 — 한 파일에 모으면 곧 읽을 수 없어진다.
-import { Page } from "@/shared/ui";
+import { BackLink, Page } from "@/shared/ui";
 import { ColorSection, TypographySection } from "./sections/FoundationSection";
 import {
   BadgeSection,
@@ -22,9 +22,12 @@ import { FocusSection, NonGoalsSection, ShapeSection, SurfaceSection } from "./s
 
 export function StyleGuidePage() {
   return (
+    // 설정과 같은 성격의 화면이다 (D25) — 데스크톱 사이드바 보조 메뉴에서만 들어오고 부모가 없다.
+    // 참조 화면이라 「보다가 원래 하던 일로 돌아간다」가 유일한 나가는 동선이다.
     <Page
       title="디자인 시스템"
       subtitle="디자인 문서의 구현체입니다. 값의 출처는 이 화면이 아니라 그 문서입니다."
+      nav={<BackLink />}
     >
       <ColorSection />
       <TypographySection />

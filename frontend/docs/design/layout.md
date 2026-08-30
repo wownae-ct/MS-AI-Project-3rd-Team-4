@@ -35,14 +35,23 @@ tabHome active = (screen === 'dashboard' || screen === 'category')
 
 ## 2. 라우트 표
 
-| 경로 | 화면 | 셸 | 탭 활성 | 데스크톱 폭 |
-|---|---|---|---|---|
-| `/onboarding` | S1 온보딩 (6단계) | **없음** | — | `max-width: 430px` 중앙 |
-| `/` | S2 대시보드 | 있음 | 홈 | `repeat(auto-fit, minmax(320px, 1fr))` |
-| `/category/:id` | S3 카테고리 상세 (3탭) | 있음 | **홈** | 2열 |
-| `/timeline` | S4 타임라인 | 있음 | 타임라인 | `max-width: 640px` 단일 열 |
-| `/budget` | S6 예산 재배분 | 있음 | 예산 | `max-width: 720px` |
-| `/report` | S5 리포트 | 있음 | 리포트 | `repeat(auto-fit, minmax(260px, 1fr))` |
+| 경로 | 화면 | 셸 | 탭 활성 | 제목 위 내비 | 데스크톱 폭 |
+|---|---|---|---|---|---|
+| `/onboarding` | S1 온보딩 (6단계) | **없음** | — | — (단계 내비가 있다) | `max-width: 430px` 중앙 |
+| `/` | S2 대시보드 | 있음 | 홈 | — | `repeat(auto-fit, minmax(320px, 1fr))` |
+| `/category/:id` | S3 카테고리 상세 (3탭) | 있음 | **홈** | **브레드크럼브** `홈 › {카테고리}` | 2열 |
+| `/timeline` | S4 타임라인 | 있음 | 타임라인 | — | `max-width: 640px` 단일 열 |
+| `/budget` | S6 예산 재배분 | 있음 | 예산 | — | `max-width: 720px` |
+| `/report` | S5 리포트 | 있음 | 리포트 | — | `repeat(auto-fit, minmax(260px, 1fr))` |
+| `/chat` | AI상담 | 있음 | AI상담 | — | `max-w-3xl` · `fill` |
+| `/settings` | 설정 | 있음 | — (탭 없음) | **뒤로** | 기본 |
+| `/style-guide` | 디자인 시스템 | 있음 | — (보조 메뉴) | **뒤로** | 기본 |
+
+**「제목 위 내비」 열은 [decisions.md D25](decisions.md#d25-돌아가는-길을-두-장치로-나눈다--계층은-브레드크럼브-히스토리는-뒤로)가 정한다** (2026-08-30). 두 장치의 뜻이 다르므로 **한 화면에 하나만** 둔다 —
+브레드크럼브는 「어디에 **있는가**」(계층 · 딥링크에서도 동작), 뒤로는 「어디서 **왔는가**」(히스토리).
+**최상위 탭 5개에는 둘 다 넣지 않는다** — 조상이 없어 「홈 › 예산」은 거짓 계층이 되고, 탭 활성 열의
+`aria-current` 가 이미 같은 정보를 준다. 구현은 `shared/ui/{Breadcrumb,BackLink}.tsx` 이고 `Page` 의
+`nav` prop 이 그 슬롯이다.
 
 **미정** — S3의 3탭(체크리스트 / 비용 / AI상담)을 URL에 반영할지. 공유 링크와 뒤로가기 동작이 갈린다.
 
@@ -104,11 +113,27 @@ padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
 |---|---|---|
 | 마크업 | **`<nav>` 랜드마크 + 링크 리스트** | [ARIA APG Navigation Landmark](https://www.w3.org/WAI/ARIA/apg/patterns/landmarks/examples/navigation.html) (1차) |
 | **`role="tablist"` 금지** | 탭 위젯은 **같은 페이지 내 패널 전환용**이다. URL이 바뀌는 라우트 내비게이션에 쓰지 않는다 | 위와 같음 |
-| 현재 항목 | **`aria-current="page"`** — 집합 내 오직 하나 | [MDN aria-current](https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Attributes/aria-current) (1차) |
-| 복수 `<nav>` | 탭바와 사이드바가 함께 있으면 `<nav>`가 2개다 → **각각 고유 `aria-label` 필수** | APG: *"If a page includes more than one navigation landmark, each should have a unique label."* |
+| 현재 항목 | **`aria-current="page"`** — 집합 내 오직 하나. ⚠️ 아래 「집합이 둘이 됐다」 참고 | [MDN aria-current](https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Attributes/aria-current) (1차) |
+| 복수 `<nav>` | 탭바·사이드바에 **브레드크럼브가 더해져 카테고리 상세에서는 3개**다 → **각각 고유 `aria-label` 필수**(`주 메뉴` · `보조 메뉴` · `현재 위치`). APG 는 개수를 제한하지 않는다 | APG: *"If a page includes more than one navigation landmark, each should have a unique label."* |
+| 브레드크럼브 | `<nav aria-label="현재 위치"><ol>` · **마지막 항목은 링크가 아니고 `aria-current="page"`** · 조상 링크는 `activeOptions={{ exact: true }}`(없으면 `to="/"` 가 모든 경로에 걸린다) | [ARIA APG Breadcrumb](https://www.w3.org/WAI/ARIA/apg/patterns/breadcrumb/) (1차) · [D25](decisions.md#d25-돌아가는-길을-두-장치로-나눈다--계층은-브레드크럼브-히스토리는-뒤로) |
+| 「뒤로」는 `<nav>`가 아니다 | 컨트롤 **하나**는 목록형 내비게이션 랜드마크로 보기 어렵다 — 감싸면 설정·스타일가이드의 랜드마크가 이유 없이 3개가 된다. 모바일 상단 바의 설정 링크가 같은 판단을 같은 이유로 내렸다 | 위 APG 랜드마크 항목의 연장 · [D25](decisions.md#d25-돌아가는-길을-두-장치로-나눈다--계층은-브레드크럼브-히스토리는-뒤로) |
 | 모바일↔데스크톱 전환 | **단일 DOM + CSS 재배치.** DOM을 이중으로 두지 않는다 | W3C는 *"designers not stray from source order when creating a CSS layout"* 을 권고한다 — 포커스 순서와 읽기 순서가 소스 순서를 따르기 때문 |
 
 **DOM 이중화를 피하는 이유** — 중복 랜드마크가 스크린리더의 랜드마크 목록을 어지럽히고, 숨기는 쪽을 `display: none`으로 하지 않으면 **키보드 포커스가 보이지 않는 내비게이션으로 들어간다**(`aria-hidden="true"`만으로는 막지 못한다).
+
+### ⚠️ 「집합 내 오직 하나」의 집합이 둘이 됐다 (2026-08-30 · [D25](decisions.md#d25-돌아가는-길을-두-장치로-나눈다--계층은-브레드크럼브-히스토리는-뒤로))
+
+위 표의 문구는 처음부터 *"**집합 내** 오직 하나"* 였지만, `app/ui/AppShell.test.tsx` 는 오래
+`document.querySelectorAll('[aria-current="page"]')` 로 **문서 전체**를 세어 왔다. **집합이 하나뿐이던
+시절에만 성립하던 축약**이다.
+
+브레드크럼브가 두 번째 집합을 만든다 — APG 가 마지막 항목에 `aria-current="page"` 를 요구하므로,
+카테고리 상세에서는 「주 메뉴에 하나 + 브레드크럼브에 하나」가 **정상**이다. 그래서 그 케이스만
+**집합별 검사**로 바꿨다.
+
+🚨 **문서 전체 개수로 되돌리지 않는다** — 되돌리면 표준을 지키는 마크업이 위반으로 잡힌다.
+반대로 **탭 5개 경로의 문서 전체 검사는 그대로 둔다**: 그 화면들은 집합이 하나뿐이라 여전히
+유효하고, 동시에 **브레드크럼브가 최상위 탭으로 새지 않았다는 증거**로도 쓰인다.
 
 > ARIA APG에 **하단 탭바 / 사이드바 전용 패턴은 없다**(확인함). 둘 다 navigation 랜드마크 + 링크 리스트로 마크업하는 것이 정석이다.
 

@@ -148,6 +148,20 @@ describe("내비게이션 마크업", () => {
       .map((link) => link.textContent);
     expect(labels).toEqual(["홈", "타임라인", "예산", "리포트", "AI상담"]);
   });
+
+  // [2026-08-30, D25] 브레드크럼브가 **세 번째 랜드마크**를 만든다 — 위 첫 테스트("2개")는 대시보드
+  // 기준이라 그대로 통과하지만, 그 숫자를 계약으로 읽으면 카테고리 상세에서 무엇이 옳은지 알 수 없다.
+  // APG 가 요구하는 것은 개수가 아니라 **고유 라벨**이므로 여기서 그 형태로 고정한다.
+  //
+  // ⚠️ 설정·스타일가이드에는 「뒤로」가 들어가지만 그건 컨트롤 하나라 `<nav>` 로 감싸지 않는다
+  // (shared/ui/BackLink.tsx 머리말) — 그래서 저 화면들의 랜드마크는 여전히 2개다.
+  it("카테고리 상세에서는 내비 랜드마크가 3개이고 라벨이 전부 다르다", async () => {
+    await renderShellAt("/category/wedding-hall");
+
+    const labels = screen.getAllByRole("navigation").map((nav) => nav.getAttribute("aria-label"));
+    expect(labels).toEqual(["주 메뉴", "보조 메뉴", "현재 위치"]);
+    expect(new Set(labels).size).toBe(labels.length);
+  });
 });
 
 describe("현재 위치 표시 — aria-current", () => {
@@ -155,6 +169,11 @@ describe("현재 위치 표시 — aria-current", () => {
   // 이게 깨지는 가장 흔한 경로는 접두사 매칭이다 — `to="/"` 에 exact 를 주지 않으면 모든 경로에 걸린다.
   // `it.each` 로 경로마다 독립 테스트를 만든다 — 한 테스트 안에서 루프를 돌면 첫 경로에서 깨졌을 때
   // 나머지가 실행되지 않아 "어디서부터 깨졌는지"를 잃는다(순차 렌더라 병렬화도 불가능하다).
+  //
+  // 🚨 **아래 목록에 `/category/…` 를 다시 넣지 않는다.** 이 화면들은 집합이 **하나뿐**이라
+  // 문서 전체 개수가 곧 집합 개수다 — 그래서 이 검사가 여전히 유효하고, 동시에
+  // **브레드크럼브가 최상위 탭 화면으로 새지 않았다는 증거**이기도 하다(D25).
+  // 집합이 둘인 카테고리 상세는 아래 별도 케이스가 집합별로 센다.
   it.each(["/", "/timeline", "/budget", "/report", "/style-guide"])(
     "%s 에서 정확히 하나다",
     async (path) => {
@@ -171,10 +190,26 @@ describe("현재 위치 표시 — aria-current", () => {
   // layout.md §1: tabHome active = (screen === 'dashboard' || screen === 'category')
   // 카테고리 상세는 독립 탭이 아니라 홈에 귀속되는 하위 화면이다. 이 규칙이 탭바와 사이드바로
   // 흩어지면 활성 표시가 조용히 갈리므로 `NavItem` 한 곳에 모아 두었다.
-  it("카테고리 상세에서도 홈이 활성이다 — 그리고 여전히 하나뿐이다", async () => {
+  //
+  // 🚨 [2026-08-30, D25] **이 케이스가 세는 방식을 바꿨다** — `document.querySelectorAll` 로 문서
+  // 전체를 세고 `toHaveLength(1)` 을 걸던 자리다. 계약 원문은 layout.md §5 도 MDN 도 *"**집합 내**
+  // 오직 하나"* 이고, 문서 전체 개수는 **집합이 하나뿐이던 시절에만 성립하던 축약**이었다.
+  // 브레드크럼브가 두 번째 집합(`<nav aria-label="현재 위치">`)을 만들면서 그 축약이 계약을
+  // 잘못 표현하게 됐다 — 주 메뉴에 하나, 브레드크럼브에 하나가 **정상**이다.
+  //
+  // 계약이 약해지지 않도록 **집합마다 센다.** 문서 전체 개수로 되돌리지 말 것 — 되돌리면
+  // 브레드크럼브가 APG 대로 현재 항목을 표시하는 것이 위반으로 잡힌다.
+  it("카테고리 상세에서 홈이 활성이고, 집합마다 정확히 하나다", async () => {
     await renderShellAt("/category/wedding-hall");
 
-    expect(screen.getByRole("link", { name: "홈" })).toHaveAttribute("aria-current", "page");
-    expect(document.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+    const primary = screen.getByRole("navigation", { name: "주 메뉴" });
+    const breadcrumb = screen.getByRole("navigation", { name: "현재 위치" });
+
+    expect(within(primary).getByRole("link", { name: "홈" })).toHaveAttribute("aria-current", "page");
+    expect(primary.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+    expect(breadcrumb.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+
+    // 두 집합 밖에는 없다 — 브레드크럼브의 조상 링크(`to="/"`)가 exact 매칭을 잃으면 여기서 잡힌다.
+    expect(document.querySelectorAll('[aria-current="page"]')).toHaveLength(2);
   });
 });
