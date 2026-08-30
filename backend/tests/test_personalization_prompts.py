@@ -276,21 +276,14 @@ class TestFocusRuleScoping:
     단독 호출에 이 문단·메뉴가 새는 걸 막는 회귀 테스트."""
 
     _FOCUS_MARKER = "CONTRACT_TERM 비중을 40~60%"
-    # 옵션 C(2026-08-30, VENUE/SDM 단독 호출 버킷형 스키마) 적용 후엔 이 두 카테고리 단독
-    # 호출에서 위 느슨한 문구 대신 버킷 스키마 자체가 비중 요구를 대신한다 — 그 스키마의
-    # 존재를 확인하는 마커.
-    _FOCUS_BUCKET_MARKER = "contract_term_items"
 
     def test_focus_rule_included_when_venue_is_the_only_active_category(self):
-        # 옵션 C가 적용된 뒤로는 느슨한 비중 문구 대신 버킷형 스키마(최소 개수 강제)가 그
-        # 자리를 대신한다 — 둘 다 "FOCUS 취급을 받는다"는 같은 사실의 서로 다른 구현이므로,
-        # 이 테스트는 버킷 스키마가 실제로 켜지는지를 본다.
         prompt = build_generate_prompt(["CHECKLIST"], {"active_categories": ["VENUE"]}, {})
-        assert self._FOCUS_BUCKET_MARKER in prompt
+        assert self._FOCUS_MARKER in prompt
 
     def test_focus_rule_included_when_sdm_is_the_only_active_category(self):
         prompt = build_generate_prompt(["CHECKLIST"], {"active_categories": ["SDM"]}, {})
-        assert self._FOCUS_BUCKET_MARKER in prompt
+        assert self._FOCUS_MARKER in prompt
 
     def test_focus_rule_excluded_for_unrelated_single_category_call(self):
         prompt = build_generate_prompt(["CHECKLIST"], {"active_categories": ["GIFT"]}, {})

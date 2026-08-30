@@ -62,7 +62,6 @@ from app.core.embeddings import get_azure_openai_client
 from app.core.tracing import traced_span
 from app.personalization.prompts import (
     CONTRACT_GROUNDING_QUERY_BY_CATEGORY,
-    FOCUS_CATEGORIES,
     build_generate_prompt,
     build_route_prompt,
 )
@@ -220,38 +219,7 @@ async def _generate_checklist_category_draft(
         messages=[{"role": "user", "content": prompt}],
     )
     parsed = json.loads(response.choices[0].message.content)
-    if category in FOCUS_CATEGORIES and "checklist_items" not in parsed:
-        # 정상 경로(옵션 C 스키마를 따른 응답)는 버킷 3개로 온다. "checklist_items" 키가
-        # 있으면(스키마 지시를 못 따르고 예전 평평한 형태로 응답했거나, 테스트 픽스처처럼
-        # 이미 평평한 형태를 직접 준 경우) 그대로 받아들인다 — 버킷 파싱에 실패해 통째로
-        # BLOCKED시키는 것보다, 이미 유효한 항목 목록이 왔으면 살리는 편이 낫다.
-        return _flatten_focus_buckets(category, parsed)
     return parsed.get("checklist_items") or []
-
-
-# item_type → 응답 버킷 키 매핑. build_generate_prompt가 FOCUS(VENUE/SDM) 단독 호출에서
-# _CHECKLIST_FOCUS_OUTPUT_SCHEMA(옵션 C, 2026-08-30 결정)를 쓰면 이 세 키로 응답이 온다 —
-# 각 항목엔 item_type이 없으므로(버킷으로 이미 정해짐) 여기서 채워 넣어야, 이후 파이프라인
-# (validate_checklist_by_category/_resolve_checklist_citations/_checklist_row_from_draft)이
-# 기대하는 평평한 checklist_items 형태(item_type 포함)로 되돌릴 수 있다.
-_ITEM_TYPE_BY_FOCUS_BUCKET: dict[str, str] = {
-    "contract_term_items": "CONTRACT_TERM",
-    "extra_cost_items": "EXTRA_COST",
-    "prep_items": "PREP",
-}
-
-
-def _flatten_focus_buckets(category: str, parsed: dict) -> list[dict]:
-    """FOCUS 카테고리 응답의 3개 버킷을 하나의 checklist_items 리스트로 합치고 item_type을
-    채운다. category_code도 각 항목에 명시적으로 채운다 — 옵션 C 스키마가 category_code를
-    항목 필드에서 아예 뺀 게 아니라(few-shot/검증 호환을 위해 필드 자체는 남겨뒀다) LLM이
-    빠뜨릴 가능성까지 방어하는 차원("이 카테고리 하나만 요청했으니 당연히 이 값"이라
-    코드에서 강제해도 손실이 없다)."""
-    items: list[dict] = []
-    for bucket_key, item_type in _ITEM_TYPE_BY_FOCUS_BUCKET.items():
-        for item in parsed.get(bucket_key) or []:
-            items.append({**item, "item_type": item_type, "category_code": category})
-    return items
 
 
 # ② generate: TIMELINE(대상이면)은 기존처럼 도메인 단위 독립 호출, CHECKLIST(대상이면)는

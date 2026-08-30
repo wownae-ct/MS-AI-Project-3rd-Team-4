@@ -73,12 +73,10 @@ def _client_with_domain_responses(
 
     async def _side_effect(*args, **kwargs):
         prompt = kwargs["messages"][0]["content"]
-        # "timeline_items" 존재 여부만으로 판별한다 — "checklist_items" 문자열은 FOCUS
-        # 카테고리(VENUE/SDM) 단독 호출의 옵션 C 버킷형 스키마(2026-08-30 결정)에는 아예
-        # 등장하지 않으므로 판별 기준으로 못 쓴다. 이 헬퍼가 조립하는 프롬프트는 항상 두
-        # 도메인 중 하나만 요청하므로 이분법으로 충분하다.
-        is_timeline = "timeline_items" in prompt
-        payload = timeline_queue.pop(0) if is_timeline else checklist_queue.pop(0)
+        is_checklist = "checklist_items" in prompt and "timeline_items" not in prompt
+        is_timeline = "timeline_items" in prompt and "checklist_items" not in prompt
+        assert is_checklist or is_timeline, f"prompt matched neither domain marker: {prompt[:200]}"
+        payload = checklist_queue.pop(0) if is_checklist else timeline_queue.pop(0)
         return SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(payload)))]
         )
@@ -94,10 +92,10 @@ def _prompts_by_domain(client: MagicMock) -> tuple[list[str], list[str]]:
     checklist_prompts, timeline_prompts = [], []
     for call in client.chat.completions.create.call_args_list:
         prompt = call.kwargs["messages"][0]["content"]
-        if "timeline_items" in prompt:
-            timeline_prompts.append(prompt)
-        else:
+        if "checklist_items" in prompt and "timeline_items" not in prompt:
             checklist_prompts.append(prompt)
+        else:
+            timeline_prompts.append(prompt)
     return checklist_prompts, timeline_prompts
 
 
@@ -125,7 +123,7 @@ def _client_with_checklist_categories_and_timeline(
 
     async def _side_effect(*args, **kwargs):
         prompt = kwargs["messages"][0]["content"]
-        if "timeline_items" in prompt:
+        if "timeline_items" in prompt and "checklist_items" not in prompt:
             call_log.append("TIMELINE")
             payload = timeline_queue.pop(0)
         else:
@@ -617,85 +615,3 @@ class TestChecklistCategoryFanOut:
         # personalization.py의 카테고리 단위 병합이 이 값을 그대로 신뢰).
         titles = {item["title"] for item in result["checklist_draft"]}
         assert titles == {"웨딩홀 계약서 확인"}
-
-
-class TestFocusBucketResponseFlattening:
-    """2026-08-30 결정(VENUE/SDM 튜닝, 옵션 C) — VENUE/SDM 단독 호출은
-    contract_term_items/extra_cost_items/prep_items 3버킷으로 응답이 오도록 프롬프트가
-    요청한다(app/personalization/prompts.py::_CHECKLIST_FOCUS_OUTPUT_SCHEMA). generate_node가
-    이걸 하나의 checklist_items 리스트로 되돌려 이후 파이프라인(검증·병합)이 기존 평평한
-    스키마 그대로 동작하는지 확인한다."""
-
-    @pytest.mark.asyncio
-    async def test_venue_bucket_response_is_flattened_with_item_type_filled_in(self):
-        state = _initial_state()
-        state["profile"] = {"active_categories": ["VENUE"]}
-        bucket_payload = {
-            "contract_term_items": [{"category_code": "VENUE", "title": "계약금 상한 확인"}],
-            "extra_cost_items": [{"category_code": "VENUE", "title": "추가 대관료 확인"}],
-            "prep_items": [{"category_code": "VENUE", "title": "실측 방문 예약"}],
-        }
-        client = _client_with_checklist_categories_and_timeline(
-            checklist_by_category={"VENUE": [bucket_payload]},
-            timeline_payloads=[
-                {
-                    "timeline_items": [
-                        {
-                            "category_code": "VENUE",
-                            "title": "예식장 투어",
-                            "default_dday_offset_days": -300,
-                        }
-                    ]
-                }
-            ],
-        )
-        with patch("app.personalization.graph.get_azure_openai_client", return_value=client):
-            graph = build_graph()
-            result = await graph.ainvoke(state, {"configurable": {"settings": _TEST_SETTINGS}})
-
-        assert result["checklist_category_status"] == {"VENUE": "SUCCESS"}
-        by_title = {item["title"]: item["item_type"] for item in result["checklist_draft"]}
-        assert by_title == {
-            "계약금 상한 확인": "CONTRACT_TERM",
-            "추가 대관료 확인": "EXTRA_COST",
-            "실측 방문 예약": "PREP",
-        }
-        assert all(item["category_code"] == "VENUE" for item in result["checklist_draft"])
-
-    @pytest.mark.asyncio
-    async def test_legacy_flat_response_for_focus_category_is_still_accepted(self):
-        # 방어적 하위호환 — LLM이 스키마 지시를 못 따르고 예전 평평한 checklist_items
-        # 형태로 응답해도(또는 테스트가 그 형태로 직접 준 경우) 버킷 파싱 실패로 통째로
-        # BLOCKED시키지 않고 그대로 받아들인다(app/personalization/graph.py::
-        # _generate_checklist_category_draft).
-        state = _initial_state()
-        state["profile"] = {"active_categories": ["VENUE"]}
-        flat_payload = {
-            "checklist_items": [
-                {
-                    "category_code": "VENUE",
-                    "item_type": "CONTRACT_TERM",
-                    "title": "계약금 상한 확인",
-                }
-            ]
-        }
-        client = _client_with_checklist_categories_and_timeline(
-            checklist_by_category={"VENUE": [flat_payload]},
-            timeline_payloads=[
-                {
-                    "timeline_items": [
-                        {
-                            "category_code": "VENUE",
-                            "title": "예식장 투어",
-                            "default_dday_offset_days": -300,
-                        }
-                    ]
-                }
-            ],
-        )
-        with patch("app.personalization.graph.get_azure_openai_client", return_value=client):
-            graph = build_graph()
-            result = await graph.ainvoke(state, {"configurable": {"settings": _TEST_SETTINGS}})
-
-        assert result["checklist_category_status"] == {"VENUE": "SUCCESS"}
-        assert [item["title"] for item in result["checklist_draft"]] == ["계약금 상한 확인"]
