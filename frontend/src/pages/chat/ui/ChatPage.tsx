@@ -98,6 +98,24 @@ export function ChatPage() {
     setHistoryOpen(false);
   }
 
+  // 드로어에서 대화 1건이 실제로 삭제됐다 (2026-08-30).
+  //
+  // 🚨 **지금 열려 있는 대화였을 때만** 화면을 비운다 — 다른 대화를 지운 것은 이 화면과 무관하고,
+  // 여기서 무조건 비우면 「목록 정리를 했더니 읽던 대화가 사라진다」가 된다.
+  //
+  // 비울 때 **미러도 함께 지운다.** 안 지우면 하단 탭을 옮겼다 돌아왔을 때 `readStoredSessionId`
+  // 가 **이미 삭제된 세션 id** 를 복원해 빈 화면 + 다음 전송 404 가 된다(이 파일 머리말의
+  // sessionStorage 미러 사정, `ChatPage.test.tsx` 가 「미러를 갱신해야 하는 지점」으로 셋을
+  // 세어 뒀는데 이것이 **넷째**다).
+  //
+  // 진행 중이던 SSE 스트림은 따로 끊지 않아도 된다 — `sessionId` 가 `null` 로 바뀌면 `ChatPanel`
+  // 의 세션 전환 effect 가 abort · 메시지 비우기 · 입력창 잠금 해제를 이미 전부 한다.
+  function handleSessionDeleted(deletedId: string) {
+    if (deletedId !== sessionId) return;
+    setSessionId(null);
+    storeSessionId(null);
+  }
+
   function startNewSession() {
     // `null` 로 두면 `ChatPanel` 이 다음 첫 메시지 전송 때 새 세션을 만든다 — 탭만 열어 보고
     // 나가는 방문마다 빈 세션이 쌓이지 않게 하는 기존 규칙 그대로다.
@@ -117,7 +135,17 @@ export function ChatPage() {
     // 이 페이지가 유일한 사용처라서(카테고리별 상담 탭은 2026-08-26 제거) 안전하게 스코프된다.
     <Page
       title="AI상담"
-      subtitle="결혼 준비 중 궁금한 점을 자유롭게 물어보세요."
+      // [2026-08-30] 부제를 **모바일에서만** 숨긴다(사용자 리포트: 대화창이 정사각형 · 높이가 짧다).
+      // `Page` 의 `<p>` 는 그대로 렌더되지만 유일한 인라인 자식이 `display:none` 이라 줄상자가 만들어
+      // 지지 않아 **높이가 0** 이 된다 — 헤더 높이는 제목 열(28px)이 아니라 「지난 대화」 버튼(36px)이
+      // 정하므로 헤더가 52px → 36px 로 줄고, 그 16px 이 그대로 대화창이 된다.
+      //
+      // **잃는 것을 하나씩 되돌린 결과다** — 데스크톱은 그대로 보인다. 모바일에서 이 문장이 하던
+      // 「무엇을 하는 화면인가」는 첫 진입 시 어시스턴트 말풍선 「무엇이 궁금하세요?」
+      // (entities/chat/ui/ChatPanel.tsx)가 같은 자리에서 그대로 한다. 위치 안내는 `<h1>AI상담` 과
+      // 하단 탭바의 `aria-current` 가 이미 두 채널로 준다.
+      // ⚠️ `sr-only` 가 아니라 `hidden` 이다 — 스크린리더에도 안 읽혀야 위 말풍선과 중복되지 않는다.
+      subtitle={<span className="hidden md:inline">결혼 준비 중 궁금한 점을 자유롭게 물어보세요.</span>}
       width="max-w-lg md:max-w-3xl lg:max-w-4xl"
       fill
       // `fill` 은 헤더 높이를 뺀 나머지를 대화창에 준다 — 트리거가 헤더를 두 줄로 만들면 그만큼
@@ -164,6 +192,7 @@ export function ChatPage() {
         currentSessionId={sessionId}
         onSelect={openSession}
         onNewSession={startNewSession}
+        onDeleted={handleSessionDeleted}
       />
     </Page>
   );
