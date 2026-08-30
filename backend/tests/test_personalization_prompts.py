@@ -258,6 +258,45 @@ class TestContractCitationMenu:
         assert "source_ref_id" in prompt
 
 
+class TestFocusRuleScoping:
+    """2026-08-30 결정(VENUE/SDM 튜닝) — FOCUS 규칙(CONTRACT_TERM 비중 40~60%)과 인용 메뉴는
+    카테고리 단위 호출에서 그 카테고리가 VENUE/SDM일 때만 붙어야 한다. 무관한 카테고리(GIFT 등)
+    단독 호출에 이 문단·메뉴가 새는 걸 막는 회귀 테스트."""
+
+    _FOCUS_MARKER = "CONTRACT_TERM 비중을 40~60%"
+
+    def test_focus_rule_included_when_venue_is_the_only_active_category(self):
+        prompt = build_generate_prompt(["CHECKLIST"], {"active_categories": ["VENUE"]}, {})
+        assert self._FOCUS_MARKER in prompt
+
+    def test_focus_rule_included_when_sdm_is_the_only_active_category(self):
+        prompt = build_generate_prompt(["CHECKLIST"], {"active_categories": ["SDM"]}, {})
+        assert self._FOCUS_MARKER in prompt
+
+    def test_focus_rule_excluded_for_unrelated_single_category_call(self):
+        prompt = build_generate_prompt(["CHECKLIST"], {"active_categories": ["GIFT"]}, {})
+        assert self._FOCUS_MARKER not in prompt
+
+    def test_citation_menu_excluded_for_unrelated_single_category_call_even_if_citations_given(
+        self,
+    ):
+        # generate_node가 VENUE+SDM 공용으로 미리 fetch해둔 contract_citations를 실수로 GIFT
+        # 카테고리 호출에도 그대로 넘기더라도, 무관한 카테고리 프롬프트엔 새지 않아야 한다.
+        chunk = RetrievedChunk(
+            chunk_id=1, content="내용", title="제목", source_tier="OFFICIAL", source_url=None
+        )
+        prompt = build_generate_prompt(
+            ["CHECKLIST"], {"active_categories": ["GIFT"]}, {}, contract_citations=[chunk]
+        )
+        assert "관련 있으면 source_ref_id에" not in prompt
+
+    def test_focus_rule_included_when_active_categories_unknown(self):
+        # active_categories 자체가 없는 호출(예: 필터링 원치 않는 테스트/구경로)은 예전처럼
+        # 항상 포함 — None을 "무관한 카테고리"로 오판하면 안 된다.
+        prompt = build_generate_prompt(["CHECKLIST"], {}, {})
+        assert self._FOCUS_MARKER in prompt
+
+
 class TestGeneratePromptActiveCategoryFiltering:
     """2026-08-28 버그 수정(red-bug.md #9-1) — build_generate_prompt가 profile의
     active_categories를 실제로 few-shot 필터링까지 배선하는지 확인하는 종단 테스트
