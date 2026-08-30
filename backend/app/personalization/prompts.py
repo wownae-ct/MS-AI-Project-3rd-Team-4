@@ -93,9 +93,9 @@ _CHECKLIST_RULES = """웨딩 프로필(활성 카테고리·우선순위·스타
 _TIMELINE_RULES = """아래 표준 카탈로그(few-shot)를 참고해 이 커플에게 맞는 타임라인을 만드세요.
 
 - 활성 카테고리에 해당하는 항목만 포함하세요. 비활성 카테고리 항목은 만들지 마세요.
-- category_code가 필요 없는 범용 항목(혼인신고·본식 등)은 JSON의 따옴표 없는 null 타입으로
-  두세요. "null"이라는 문자열이든 다른 어떤 한글/영문 단어든, category_code 자리에 텍스트
-  값을 쓰면 ENUM에 없는 값이라 오류가 납니다 — 아래 few-shot의 JSON 예시를 그대로 참고하세요.
+- category_code는 활성 카테고리 중 하나를 반드시 쓰세요(9개 ENUM 값 중 하나). 혼인신고·
+  결혼 날짜 확정처럼 특정 카테고리에 안 속하는 범용 일정은 이미 별도로 자동 추가되니
+  만들지 마세요 — 굳이 만들어도 category_code를 정할 수 없어 오류가 납니다.
 - default_dday_offset_days는 본식 기준 며칠 전(음수)/후(양수)인지 정수로, -400~60 범위
   안에서만 쓰세요.
 - protected_items는 재생성 후에도 화면에 그대로 남아 있는 항목입니다. **표현만 바꿔서 같은
@@ -173,7 +173,7 @@ def build_contract_citation_menu(chunks: list) -> str | None:
 
 
 _TIMELINE_OUTPUT_SCHEMA = """타임라인 항목은 각각 이 필드만 채우세요:
-{"category_code": null 또는 "...", "title": "...", "default_dday_offset_days": 정수}"""
+{"category_code": "...", "title": "...", "default_dday_offset_days": 정수}"""
 
 
 def _build_checklist_few_shot(active_categories: set[str] | None = None) -> str:
@@ -211,43 +211,40 @@ def _build_checklist_few_shot(active_categories: set[str] | None = None) -> str:
 
 
 def _build_timeline_few_shot(active_categories: set[str] | None = None) -> str:
-    """VENUE/SDM/범용(category_code=None) 항목은 활성 상태라면 전체 그대로 보여준다 — 이
-    항목들이 전체 일정의 시간축 뼈대를 이루므로 줄이면 LLM이 타이밍 감각을 잃는다(범용
-    항목은 특정 카테고리에 속하지 않으므로 애초에 활성/비활성 대상이 아니다 — 항상 보여줌).
-    반면 MOCKUP 7개 카테고리는 카테고리당 _MOCKUP_FEW_SHOT_SAMPLE_SIZE개로 제한한다
-    (2026-08-24 버그 수정: 원래 카탈로그 68항목 전체를 그대로 보여줘서, 서로 다른 프로필의
-    웨딩 두 건이 67개 중 66개가 완전히 동일한 타임라인을 받는 사례가 실계정 재현으로
-    확인됐다 — LLM이 "그대로 베낄 답"을 통째로 받으면 개인화할 유인이 사실상 없어지는 문제.
-    `_TIMELINE_RULES`의 명시적 "베끼지 마세요" 지시와 함께 적용한다). 카탈로그 순서(연대순)는
-    그대로 유지해 시간 흐름 감각이 깨지지 않게 한다.
+    """VENUE/SDM 항목은 활성 상태라면 전체 그대로 보여준다 — 이 항목들이 전체 일정의 시간축
+    뼈대를 이루므로 줄이면 LLM이 타이밍 감각을 잃는다. 반면 MOCKUP 7개 카테고리는 카테고리당
+    _MOCKUP_FEW_SHOT_SAMPLE_SIZE개로 제한한다(2026-08-24 버그 수정: 원래 카탈로그 68항목
+    전체를 그대로 보여줘서, 서로 다른 프로필의 웨딩 두 건이 67개 중 66개가 완전히 동일한
+    타임라인을 받는 사례가 실계정 재현으로 확인됐다 — LLM이 "그대로 베낄 답"을 통째로 받으면
+    개인화할 유인이 사실상 없어지는 문제. `_TIMELINE_RULES`의 명시적 "베끼지 마세요" 지시와
+    함께 적용한다). 카탈로그 순서(연대순)는 그대로 유지해 시간 흐름 감각이 깨지지 않게 한다.
+
+    **2026-08-30 결정(TIMELINE 결정론화)** — category_code=None(범용) 항목은 few-shot에서
+    아예 뺀다. 예전엔 LLM이 이 항목들을 직접 생성해야 했으므로 few-shot에도 보여줬지만,
+    이제 범용 항목은 app/services/timeline.py::generate_timeline_items를 그대로 재사용해
+    항상 결정론적으로 채우고 LLM 생성 대상에서 완전히 제외했다(app/personalization/
+    graph.py::generate_node는 이제 category_code=null을 아예 다루지 않는다) — LLM이 이
+    값을 문자열 "null"/"범용" 등으로 잘못 내는 재발 버그(CLAUDE.md에 3번 기록)가 애초에 낼
+    일이 없는 값이 되어 버그 클래스 자체가 사라진다.
 
     active_categories가 None이면(필터링을 원치 않는 호출부·테스트) 기존처럼 전체를 보여준다.
     실제 웨딩이 주어지면 VENUE/SDM/MOCKUP 전부 비활성 카테고리는 few-shot에서 제외한다
     (2026-08-28 버그 수정 red-bug.md #9-1 — _build_checklist_few_shot과 동일한 이유).
 
-    **출력을 사람이 읽는 불릿 텍스트가 아니라 실제 출력 스키마와 동일한 JSON 한 줄씩으로
-    보여준다**(2026-08-24 버그 수정 3 — 이전 두 시도, "범용" 라벨 → "null" 라벨, 둘 다 같은
-    클래스의 버그로 재발했다: null 항목을 사람이 읽는 텍스트 라벨(`[범용]`/`(category_code=null)`)
-    로 표시하면, 라벨 단어를 뭘로 바꾸든 LLM이 그 라벨을 "category_code 자리에 넣을 문자열
-    값"으로 착각해 `"category_code": "범용"`/`"category_code": "null"`(둘 다 존재하지 않는
-    ENUM 값, 후자는 파이썬 None이 아니라 4글자 문자열)을 그대로 출력했다 — 실계정 재현으로
-    2연속 확인됨. 텍스트 라벨 방식 자체가 근본 원인이라, `json.dumps`로 실제 JSON null
-    토큰(따옴표 없음)을 그대로 보여주는 방식으로 바꿔 이 클래스의 버그를 구조적으로 차단한다
-    — LLM이 "이 예시를 그대로 따라 쓰면" 자동으로 올바른 JSON null이 나온다."""
+    출력을 사람이 읽는 불릿 텍스트가 아니라 실제 출력 스키마와 동일한 JSON 한 줄씩으로
+    보여준다(2026-08-24 버그 수정 3 — null 라벨 표시 방식 자체가 근본 원인이었던 문제, 지금은
+    범용 항목 자체가 few-shot에 없으니 이 형식은 남은 카테고리 예시에만 적용된다)."""
     header = (
-        "[타임라인 few-shot — 실제 출력과 동일한 JSON 한 줄씩. VENUE/SDM/null 항목 전체 + "
-        f"나머지 카테고리 대표 예시 {_MOCKUP_FEW_SHOT_SAMPLE_SIZE}개씩(비활성 카테고리는 "
-        "예시에서 제외됨). category_code가 null인 항목은 예시처럼 따옴표 없는 JSON null "
-        "그대로 쓰세요.]"
+        "[타임라인 few-shot — 실제 출력과 동일한 JSON 한 줄씩. VENUE/SDM 전체 + 나머지 "
+        f"카테고리 대표 예시 {_MOCKUP_FEW_SHOT_SAMPLE_SIZE}개씩(비활성 카테고리는 예시에서 "
+        "제외됨). 범용(category_code=null) 항목은 이미 자동으로 추가되니 여기 안 보여준다.]"
     )
     lines = [header]
     mockup_shown_count: dict[str, int] = {}
     for item in TIMELINE_CATALOG:
-        if (
-            item.category_code is not None
-            and active_categories is not None
-            and item.category_code not in active_categories
-        ):
+        if item.category_code is None:
+            continue
+        if active_categories is not None and item.category_code not in active_categories:
             continue
         if item.category_code in _MOCKUP_CATEGORY_CODES:
             already_shown = mockup_shown_count.get(item.category_code, 0)

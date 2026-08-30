@@ -96,18 +96,26 @@ class TestTimelineFewShotDiversity:
             count = sum(1 for entry in entries if entry["category_code"] == category_code)
             assert count <= _MOCKUP_FEW_SHOT_SAMPLE_SIZE
 
-    def test_venue_sdm_and_universal_items_are_shown_in_full(self):
-        # VENUE/SDM/범용(None) 항목은 시간축 뼈대라 줄이지 않는다 — 카탈로그의 실제 개수와
-        # few-shot에 노출된 개수가 정확히 같아야 한다. None 카테고리 개수가 일치한다는 건
-        # json.loads가 실제 JSON null(파이썬 None)로 파싱했다는 뜻이기도 하다 — 문자열
-        # "null"이었다면 이 비교가 실패한다(아래 버그 수정 3 테스트와 이중 보장).
+    def test_venue_and_sdm_are_shown_in_full(self):
+        # VENUE/SDM 항목은 시간축 뼈대라 줄이지 않는다 — 카탈로그의 실제 개수와 few-shot에
+        # 노출된 개수가 정확히 같아야 한다.
         entries = _parse_timeline_few_shot_entries()
-        for category_code in (None, "VENUE", "SDM"):
+        for category_code in ("VENUE", "SDM"):
             catalog_count = sum(
                 1 for item in TIMELINE_CATALOG if item.category_code == category_code
             )
             few_shot_count = sum(1 for entry in entries if entry["category_code"] == category_code)
             assert few_shot_count == catalog_count
+
+    def test_universal_null_category_items_are_excluded_from_few_shot(self):
+        # 2026-08-30 결정(TIMELINE 결정론화) — 범용(category_code=None) 항목은 LLM 생성
+        # 대상에서 아예 빠졌으므로(app/services/personalization.py가 항상 결정론적으로
+        # 채운다) few-shot에도 더 이상 안 보여준다. 카탈로그엔 여전히 10개 있어야 하지만
+        # (그래야 결정론 주입 쪽 테스트가 의미가 있다), few-shot 노출은 0이어야 한다.
+        catalog_null_count = sum(1 for item in TIMELINE_CATALOG if item.category_code is None)
+        assert catalog_null_count > 0
+        entries = _parse_timeline_few_shot_entries()
+        assert sum(1 for entry in entries if entry["category_code"] is None) == 0
 
 
 class TestTimelineFewShotActiveCategoryFiltering:
@@ -138,14 +146,12 @@ class TestTimelineFewShotActiveCategoryFiltering:
         assert "VENUE" not in codes
         assert "SDM" in codes
 
-    def test_universal_null_category_items_always_shown(self):
-        # 범용 항목(category_code=None)은 특정 카테고리에 속하지 않으므로 활성/비활성 필터링
-        # 대상이 아니다 — 어떤 카테고리를 꺼도 그대로 전부 보여야 한다.
-        active = {"VENUE"}
-        entries = _parse_timeline_few_shot_entries(active)
-        null_count = sum(1 for entry in entries if entry["category_code"] is None)
-        catalog_null_count = sum(1 for item in TIMELINE_CATALOG if item.category_code is None)
-        assert null_count == catalog_null_count > 0
+    def test_universal_null_category_items_stay_excluded_regardless_of_active_categories(self):
+        # 2026-08-30 결정 — 범용 항목은 애초에 few-shot 대상이 아니므로, active_categories를
+        # 뭘로 좁혀도(빈 집합 포함) 여전히 0이어야 한다.
+        for active in ({"VENUE"}, set()):
+            entries = _parse_timeline_few_shot_entries(active)
+            assert sum(1 for entry in entries if entry["category_code"] is None) == 0
 
 
 class TestTimelineFewShotIsValidJson:
@@ -159,9 +165,15 @@ class TestTimelineFewShotIsValidJson:
         for entry in entries:
             assert set(entry.keys()) == {"category_code", "title", "default_dday_offset_days"}
 
-    def test_no_natural_language_placeholder_anywhere(self):
-        few_shot = _build_timeline_few_shot()
-        assert "범용" not in few_shot
+    def test_no_natural_language_placeholder_in_any_json_entry(self):
+        # 2026-08-24 버그(수정 3)의 핵심은 "사람이 읽는 라벨이 JSON 값 자리에 등장"이었다.
+        # 2026-08-30 결정으로 범용 항목 자체가 few-shot에서 빠졌으니 그 라벨이 JSON 값으로
+        # 나올 자리가 이제 없다 — 안내 문구(헤더)에 설명 목적으로 "범용"이 등장하는 것과는
+        # 별개로, 파싱된 JSON 항목 어디에도 그 단어가 값으로 들어있지 않은지를 검사한다.
+        entries = _parse_timeline_few_shot_entries()
+        for entry in entries:
+            assert entry["category_code"] != "범용"
+            assert "범용" not in entry["title"]
 
 
 class TestNoDuplicateTitleRule:
