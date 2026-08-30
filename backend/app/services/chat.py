@@ -258,6 +258,34 @@ async def _finish_after_upstream_failure(
     yield _sse("error", ErrorEventData(code=error_code, message=error_message))
 
 
+# 후속 질문 해소(app/rag/generation.py::resolve_followup_query)에 넘길 직전 대화.
+#
+# **생성 프롬프트에는 안 들어간다.** 이 채팅은 여전히 매 메시지가 독립이고(build_chat_messages
+# 가 이력을 받지 않는다), 이력은 오직 "그럼/그것/거기"가 무엇을 가리키는지 찾는 데만 쓴다.
+# 이력을 근거 자료처럼 프롬프트에 넣으면 "컨텍스트에 있는 내용만 근거로 답하라"는 1번 규칙이
+# 흔들린다 — 이전 답변이 새로운 근거가 되어 버리기 때문이다.
+#
+# 2턴만 본다(직전 사용자 질문 + 직전 답변). 생략된 대상은 거의 항상 바로 앞 턴에 있고,
+# 더 많이 넣을수록 프롬프트가 길어지면서 "이번 질문"이 묻히기만 한다.
+_FOLLOWUP_HISTORY_TURNS = 2
+
+
+async def _load_recent_turns(session: AsyncSession, chat_session_id: UUID) -> list[tuple[str, str]]:
+    """최신 N턴을 시간순(오래된 것 먼저)으로 돌려준다. 방금 저장한 이번 사용자 메시지는 뺀다."""
+    stmt = (
+        select(ChatMessage.role, ChatMessage.content)
+        .where(ChatMessage.session_id == chat_session_id)
+        .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
+        .limit(_FOLLOWUP_HISTORY_TURNS + 1)  # +1 = 방금 넣은 이번 질문
+    )
+    rows = (await session.execute(stmt)).all()
+    # 최신순으로 왔으니 이번 질문(맨 앞 user)을 버리고 뒤집어 시간순으로 만든다.
+    recent = [(role, content) for role, content in rows]
+    if recent and recent[0][0] == "user":
+        recent = recent[1:]
+    return [(role, content) for role, content in reversed(recent)]
+
+
 async def stream_chat_response(
     chat_session_id: UUID,
     wedding_id: UUID,
@@ -274,6 +302,7 @@ async def stream_chat_response(
         await session.commit()
 
         settings = get_settings()
+        history = await _load_recent_turns(session, chat_session.id)
         initial_state: ChatState = {
             "query": payload.content,
             "category_code": chat_session.category_code,
@@ -282,6 +311,9 @@ async def stream_chat_response(
             "verdict": "",
             "verification_reason": "",
             "retry_count": 0,
+            "out_of_scope": False,
+            "history": history,
+            "resolved_query": "",
         }
         config = {"configurable": {"session": session, "settings": settings}}
 

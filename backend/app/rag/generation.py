@@ -146,6 +146,85 @@ async def verify_answer(
     return _normalize_verdict(verdict_json.get("verdict")), verdict_json.get("reason", "")
 
 
+# 대화 이력에서 생략된 대상을 채워 **그 자체로 이해되는 질문**으로 다시 쓴다.
+#
+# ## 왜 필요한가
+#
+# 이 채팅은 매 메시지가 독립이다(build_chat_messages 가 이력을 받지 않는다). 그래서 "그럼
+# 스드메는?" 같은 생략형 후속 질문은 검색도 생성도 제대로 못 한다 — 실측(2026-08-30) 결과
+# 전역 top-1 유사도가 0.199 로, 스코프 컷오프(0.30)에 걸려 **정상 질문인데 거절**됐다.
+# "스드메"는 이 서비스의 핵심 도메인 용어인데도 문장이 너무 짧아 벡터가 흐려진 것이다.
+#
+# ## 왜 앞뒤 문장을 그냥 이어붙이지 않는가
+#
+# 직전 질문을 앞에 붙여 함께 임베딩하는 안을 먼저 재봤다. 후속 질문은 확실히 살아났지만
+# (0.199 → 0.531) **주제 이탈 질문도 똑같이 살아났다** — 직전 턴이 결혼 질문이면
+# "오늘 서울 날씨 어때?"가 0.228 → 0.591 로 뛰어 7/7 전부 컷오프를 뚫었다. 두 문장을 합쳐
+# 임베딩하면 "무엇을 묻는가"가 아니라 "대화가 어느 주제였나"를 재게 되기 때문이다.
+#
+# LLM 재작성은 그 함정을 피한다 — 아래 프롬프트의 **"주제를 바꾸지 마라"** 규칙이 핵심이다.
+# 실측 8건에서 후속 질문 4/4 는 결혼 질문으로 복원됐고(0.199→0.434, 0.235→0.556,
+# 0.234→0.553, 0.218→0.565), 주제 이탈은 재작성 뒤에도 거의 그대로였다("스파게티 맛집
+# 알려줘" 0.211→0.198, "오늘 서울 날씨 어때?" 0.228→0.228).
+#
+# ## 실패 시 원 질문으로 폴백한다
+#
+# 후속 질문 해소는 **품질 개선**이지 안전장치가 아니다. LLM 호출이 실패하거나 빈 응답이면
+# 원 질문 그대로 두고 진행한다 — 여기서 예외를 올리면 "AI 상담이 아예 안 되는" 쪽이 된다.
+_FOLLOWUP_RESOLVE_PROMPT = """다음은 결혼 준비 상담 대화다.
+
+{history_block}
+
+이번 질문: {query}
+
+이번 질문을 **그 자체로 이해되는 완전한 질문**으로 다시 써라.
+규칙:
+- 생략된 대상(그것/그럼/거기/그건)만 앞 대화에서 가져와 채운다.
+- **질문의 주제를 바꾸지 마라.** 이번 질문이 앞 대화와 다른 주제면 그 주제 그대로 둔다.
+- 설명 없이 다시 쓴 질문 한 문장만 출력한다."""
+
+# 직전 답변은 길어서 그대로 넣으면 프롬프트가 답변 본문에 잠식된다 — 생략된 대상을 찾는 데는
+# 앞부분이면 충분하다.
+_HISTORY_ANSWER_MAX_CHARS = 400
+
+
+def build_history_block(history: list[tuple[str, str]]) -> str:
+    """[(role, content), ...] → 프롬프트에 넣을 텍스트. 최신이 뒤에 오도록 정렬되어 들어온다."""
+    lines = []
+    for role, content in history:
+        label = "직전 질문" if role == "user" else "직전 답변"
+        body = content if role == "user" else content[:_HISTORY_ANSWER_MAX_CHARS]
+        lines.append(f"{label}: {body}")
+    return "\n".join(lines)
+
+
+async def resolve_followup_query(
+    client: AsyncAzureOpenAI,
+    settings: Settings,
+    history: list[tuple[str, str]],
+    query: str,
+) -> str:
+    if not history:
+        return query
+    try:
+        response = await client.chat.completions.create(
+            model=settings.chat_rag_deployment,
+            messages=[
+                {
+                    "role": "user",
+                    "content": _FOLLOWUP_RESOLVE_PROMPT.format(
+                        history_block=build_history_block(history), query=query
+                    ),
+                }
+            ],
+        )
+    except Exception:
+        logger.exception("후속 질문 해소 실패 — 원 질문으로 진행한다")
+        return query
+    resolved = (response.choices[0].message.content or "").strip()
+    return resolved or query
+
+
 async def reformulate_query(
     client: AsyncAzureOpenAI, settings: Settings, query: str, verification_reason: str
 ) -> str:
