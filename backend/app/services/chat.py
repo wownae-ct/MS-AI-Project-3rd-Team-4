@@ -36,8 +36,10 @@ from app.core.db import get_session_factory
 from app.core.errors import api_error
 from app.core.sse import sse_comment as _sse_comment
 from app.core.sse import sse_event as _sse
+from app.core.timezone import today_kst
 from app.core.tracing import score_trace, traced_span
 from app.models import ChatMessage, ChatSession, Wedding
+from app.rag.chat_profile import load_chat_profile, render_chat_profile_block
 from app.rag.graph import ChatState, build_graph
 from app.rag.query_profile import profile_query
 from app.rag.scope_check import OUT_OF_SCOPE_ANSWER, OUT_OF_SCOPE_REASON, looks_out_of_scope
@@ -188,6 +190,33 @@ async def list_chat_sessions(session: AsyncSession, wedding_id: UUID) -> list[Ch
     return list(result.scalars().all())
 
 
+async def delete_chat_session(session: AsyncSession, wedding_id: UUID, session_id: UUID) -> None:
+    """DELETE /chat/sessions/{id}(2026-08-30, "지난 대화기록을 삭제하는 기능이 필요함").
+    소유권 검사는 get_chat_session에 그대로 위임한다 — "없음"과 "남의 것"을 둘 다 404
+    CHAT_SESSION_NOT_FOUND로 뭉개는 정책이 이미 거기 있고, 삭제라고 다른 규칙을 둘 이유가 없다.
+    이미 지운 세션에 대한 재요청도 같은 404로 나가 프론트가 멱등하게 흡수할 수 있다.
+
+    chat_messages는 따로 지우지 않는다 — app/models/chat.py의 session_id가
+    ForeignKey(..., ondelete="CASCADE")라 DB가 정리한다(ChatSession에 relationship()이 없어
+    ORM은 chat_sessions DELETE 한 줄만 낸다).
+
+    소프트 삭제(deleted_at) 대신 하드 삭제인 이유: 이 코드베이스에 소프트 삭제 선례가 아예 없고
+    (app/services/payment.py::delete_payment도 하드 삭제), chat_sessions를 읽는 지점이
+    get_chat_session 하나가 아니라 넷이다(+ list_chat_sessions, get_chat_message,
+    app/services/feedback.py::target_exists_for_wedding — 뒤 둘은 ChatSession을 직접 조인해서
+    get_chat_session을 안 거친다). 한 곳만 빠뜨려도 "지운 대화의 메시지에 평가/신고가 계속 되는"
+    조용한 구멍이 되는데, 하드 삭제엔 그 실수 여지가 없다.
+
+    feedback_reports(F13)는 일부러 건드리지 않는다 — target_id가 의도적으로 FK가 아니라
+    (app/models/feedback.py:3-5) 지워진 메시지를 가리키는 채로 남는다. AI 안전성 신고 기록이
+    사용자의 대화 정리로 함께 사라지는 것보다 낫다고 판단했고(F13 "책임성"), 이 테이블을 읽는
+    코드가 아직 없어(03_API_spec.md #30 — 관리자 검토는 스코프 밖) 런타임 영향도 없다. 검토
+    화면이 생기면 그때 "대상이 이미 삭제됨" 표시를 다뤄야 한다."""
+    chat_session = await get_chat_session(session, wedding_id, session_id)
+    await session.delete(chat_session)
+    await session.commit()
+
+
 def _build_citations(context: list) -> list[CitationOut]:
     return [
         CitationOut(
@@ -258,6 +287,34 @@ async def _finish_after_upstream_failure(
     yield _sse("error", ErrorEventData(code=error_code, message=error_message))
 
 
+# 후속 질문 해소(app/rag/generation.py::resolve_followup_query)에 넘길 직전 대화.
+#
+# **생성 프롬프트에는 안 들어간다.** 이 채팅은 여전히 매 메시지가 독립이고(build_chat_messages
+# 가 이력을 받지 않는다), 이력은 오직 "그럼/그것/거기"가 무엇을 가리키는지 찾는 데만 쓴다.
+# 이력을 근거 자료처럼 프롬프트에 넣으면 "컨텍스트에 있는 내용만 근거로 답하라"는 1번 규칙이
+# 흔들린다 — 이전 답변이 새로운 근거가 되어 버리기 때문이다.
+#
+# 2턴만 본다(직전 사용자 질문 + 직전 답변). 생략된 대상은 거의 항상 바로 앞 턴에 있고,
+# 더 많이 넣을수록 프롬프트가 길어지면서 "이번 질문"이 묻히기만 한다.
+_FOLLOWUP_HISTORY_TURNS = 2
+
+
+async def _load_recent_turns(session: AsyncSession, chat_session_id: UUID) -> list[tuple[str, str]]:
+    """최신 N턴을 시간순(오래된 것 먼저)으로 돌려준다. 방금 저장한 이번 사용자 메시지는 뺀다."""
+    stmt = (
+        select(ChatMessage.role, ChatMessage.content)
+        .where(ChatMessage.session_id == chat_session_id)
+        .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
+        .limit(_FOLLOWUP_HISTORY_TURNS + 1)  # +1 = 방금 넣은 이번 질문
+    )
+    rows = (await session.execute(stmt)).all()
+    # 최신순으로 왔으니 이번 질문(맨 앞 user)을 버리고 뒤집어 시간순으로 만든다.
+    recent = [(role, content) for role, content in rows]
+    if recent and recent[0][0] == "user":
+        recent = recent[1:]
+    return [(role, content) for role, content in reversed(recent)]
+
+
 async def stream_chat_response(
     chat_session_id: UUID,
     wedding_id: UUID,
@@ -274,6 +331,7 @@ async def stream_chat_response(
         await session.commit()
 
         settings = get_settings()
+        history = await _load_recent_turns(session, chat_session.id)
         initial_state: ChatState = {
             "query": payload.content,
             "category_code": chat_session.category_code,
@@ -282,6 +340,12 @@ async def stream_chat_response(
             "verdict": "",
             "verification_reason": "",
             "retry_count": 0,
+            "out_of_scope": False,
+            "history": history,
+            "resolved_query": "",
+            # 2026-08-31 — out_of_scope 판정 이후에만 채운다(아래). 스코프 가드의 존재 이유가
+            # "무관한 요청엔 비용을 아예 안 쓴다"라 그 앞에서 DB를 5~6회 때리면 안 된다.
+            "profile_block": "",
         }
         config = {"configurable": {"session": session, "settings": settings}}
 
@@ -303,6 +367,22 @@ async def stream_chat_response(
         # "검색 결과 0건 → 거절" 경로가 벡터 검색에 유사도 임계값이 없어 사실상 거의 발동하지
         # 않았고, 프롬프트 규칙만으로는 태스크성 무관 요청("소설 써줘")이 새는 게 확인됐다.
         out_of_scope = looks_out_of_scope(payload.content)
+        # 2026-08-31 — 사용자 본인의 예산·일정·지출을 프롬프트에 실어 "내 예산에서 이거
+        # 무리인가요?"에 답할 수 있게 한다(app/rag/chat_profile.py). 스코프 거절이면 그래프
+        # 자체를 안 타므로 조회도 건너뛴다. settings.chat_profile_enabled는 데모 중 이상 동작
+        # 시 즉시 끄기 위한 킬 스위치 — 끄면 프롬프트가 이 기능 도입 전과 바이트 단위로 같아진다.
+        if not out_of_scope and settings.chat_profile_enabled:
+            wedding = await session.get(Wedding, wedding_id)
+            if wedding is not None:
+                profile = await load_chat_profile(session, wedding, today_kst())
+                initial_state["profile_block"] = render_chat_profile_block(profile) or ""
+            if not initial_state["profile_block"]:
+                # 자동 생략이 발동하면 로그를 남긴다(이 레포의 "자동 교정/폴백은 반드시 로깅"
+                # 관례) — 활성 카테고리 0개 같은 경우가 얼마나 흔한지 봐야 판단할 수 있다.
+                logger.info(
+                    "Chat profile block omitted for wedding_id=%s (no wedding or no active categories)",
+                    wedding_id,
+                )
         async with traced_span(
             "chat",
             settings=settings,

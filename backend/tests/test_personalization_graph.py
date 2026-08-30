@@ -47,15 +47,12 @@ _SUCCESS_TIMELINE = {
         {"category_code": "VENUE", "title": "웨딩홀 계약", "default_dday_offset_days": -300}
     ]
 }
-# TIMELINE은 도메인 단위 그대로라(2026-08-30 결정 참고) 활성 카테고리 전부를 한 응답에
-# 커버해야 SUCCESS다 — TestChecklistCategoryFanOut의 active_categories=["VENUE","SDM"]
-# 테스트는 위 VENUE 단독 페이로드로는 TIMELINE 자체가 BLOCKED돼 버려 CHECKLIST 재시도
-# 회귀 검증이 흐려진다(TIMELINE도 같이 재호출됨).
-_SUCCESS_TIMELINE_VENUE_SDM = {
-    "timeline_items": [
-        {"category_code": "VENUE", "title": "웨딩홀 계약", "default_dday_offset_days": -300},
-        {"category_code": "SDM", "title": "드레스 투어", "default_dday_offset_days": -200},
-    ]
+# 2026-08-30 2차 — TIMELINE도 카테고리 단위 호출이라, 활성 카테고리가 둘이면 응답도 둘로
+# 나뉘어야 한다. category_code는 graph.py가 요청 카테고리로 강제 주입하므로 페이로드에 안 쓴다
+# (CHECKLIST 픽스처와 달리 여기서 굳이 넣으면 "모델이 낸 값이 쓰인다"는 오해를 만든다).
+_TIMELINE_BY_CATEGORY_VENUE_SDM = {
+    "VENUE": [{"timeline_items": [{"title": "웨딩홀 계약", "default_dday_offset_days": -300}]}],
+    "SDM": [{"timeline_items": [{"title": "드레스 투어", "default_dday_offset_days": -200}]}],
 }
 
 
@@ -101,21 +98,25 @@ def _prompts_by_domain(client: MagicMock) -> tuple[list[str], list[str]]:
 
 def _client_with_checklist_categories_and_timeline(
     checklist_by_category: dict[str, list[dict]],
-    timeline_payloads: list[dict] | None = None,
+    timeline_by_category: dict[str, list[dict]] | None = None,
 ) -> MagicMock:
-    """2026-08-30 결정(red-bug.md #9-11) 전용 — CHECKLIST가 이제 도메인 단위가 아니라
-    카테고리 단위로 독립 호출되므로, 도메인 마커만으로는(위 `_client_with_domain_responses`)
-    "어느 카테고리 호출인지"를 구분할 수 없다. `_generate_checklist_category_draft`가
+    """2026-08-30 결정(red-bug.md #9-11) 전용 — 두 도메인 모두 도메인 단위가 아니라 카테고리
+    단위로 독립 호출되므로, 도메인 마커만으로는(위 `_client_with_domain_responses`) "어느
+    카테고리 호출인지"를 구분할 수 없다. `_generate_{checklist,timeline}_category_draft`가
     `profile["active_categories"]`를 그 카테고리 하나짜리 리스트로 좁혀 넘기고,
     `build_generate_prompt`가 그걸 raw ENUM이 아니라 한글 이름으로
     `"활성 카테고리: {한글명}"` 한 줄로 렌더링하므로(red-bug.md #20 유출 수정,
-    `_describe_priorities_and_categories`) 그 줄로 카테고리를 판별한다. TIMELINE은
-    기존과 동일하게 도메인 단위 그대로다. `client.call_log`에 호출 순서대로 매칭된
-    카테고리/도메인 이름을 남겨, 어느 카테고리가 몇 번 불렸는지 그대로 검사할 수 있게 한다."""
+    `_describe_priorities_and_categories`) 그 줄로 카테고리를 판별한다.
+
+    2026-08-30 2차 — TIMELINE도 카테고리 단위로 쪼개졌으므로 이 헬퍼의 timeline 쪽도
+    카테고리별 큐로 바뀌었다. `client.call_log`에는 `"CHECKLIST:VENUE"`처럼 도메인과 카테고리를
+    함께 남겨, 어느 도메인의 어느 카테고리가 몇 번 불렸는지 그대로 검사할 수 있게 한다."""
     checklist_queues = {
         category: list(payloads) for category, payloads in checklist_by_category.items()
     }
-    timeline_queue = list(timeline_payloads or [])
+    timeline_queues = {
+        category: list(payloads) for category, payloads in (timeline_by_category or {}).items()
+    }
     call_log: list[str] = []
 
     def _marker(category: str) -> str:
@@ -123,13 +124,12 @@ def _client_with_checklist_categories_and_timeline(
 
     async def _side_effect(*args, **kwargs):
         prompt = kwargs["messages"][0]["content"]
-        if "timeline_items" in prompt and "checklist_items" not in prompt:
-            call_log.append("TIMELINE")
-            payload = timeline_queue.pop(0)
-        else:
-            matched = next(category for category in checklist_queues if _marker(category) in prompt)
-            call_log.append(matched)
-            payload = checklist_queues[matched].pop(0)
+        is_timeline = "timeline_items" in prompt and "checklist_items" not in prompt
+        queues = timeline_queues if is_timeline else checklist_queues
+        domain = "TIMELINE" if is_timeline else "CHECKLIST"
+        matched = next(category for category in queues if _marker(category) in prompt)
+        call_log.append(f"{domain}:{matched}")
+        payload = queues[matched].pop(0)
         return SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(payload)))]
         )
@@ -352,12 +352,15 @@ class TestDuplicateTitleTolerance:
         assert result["timeline_draft"][0]["default_dday_offset_days"] == -300
 
     @pytest.mark.asyncio
-    async def test_new_item_colliding_with_protected_title_still_blocks_on_coverage(self):
-        # 새로 만든 유일한 TIMELINE 항목이 protected_items(사용자가 이미 수정한 기존 행)와
-        # 제목이 겹쳐 드롭되면, 그 카테고리엔 결국 항목이 하나도 안 남는다 — 이건 dedup의
-        # 버그가 아니라 커버리지 규칙(활성 카테고리마다 1개 이상)이 정상적으로 잡아내는
-        # 별개의 실패다. 재시도까지 소진돼도 TIMELINE만 여전히 BLOCKED로 남아야 하고,
-        # 이미 SUCCESS인 CHECKLIST는 재시도에서 다시 호출되지 않아야 한다.
+    async def test_new_item_colliding_with_protected_title_is_covered_by_that_protected_item(self):
+        # 2026-08-30 2차 — 이 테스트는 계약이 **뒤집힌** 케이스다. 예전엔 "새 항목이 전부
+        # protected와 겹쳐 드롭되면 그 카테고리는 항목 0개 → 커버리지 규칙이 BLOCKED"였다.
+        # 그런데 그 판정은 화면 기준으로 틀렸다 — protected 행은 재생성 후에도 그대로 남으므로
+        # 사용자에겐 그 카테고리에 항목이 계속 보인다. staging에서 이 오탐이 "앱을 열심히 쓴
+        # 계정일수록 재생성이 매번 실패"로 나타났다(test05: GIFT 보호 4/6 → 상시 BLOCKED).
+        # 이제 커버리지가 protected도 커버로 세므로 SUCCESS이고, 따라서 재시도도 안 돈다.
+        # (항목 수가 줄지 않도록 카탈로그로 보충하는 건 서비스 레이어의 몫 —
+        #  app/services/personalization.py::_merge_timeline_rows, 이 그래프의 책임이 아니다.)
         state = _initial_state()
         state["protected_items"] = {
             "CHECKLIST": [],
@@ -374,15 +377,19 @@ class TestDuplicateTitleTolerance:
         }
         client = _client_with_domain_responses(
             checklist_payloads=[_SUCCESS_CHECKLIST],
-            timeline_payloads=[colliding_timeline, colliding_timeline],
+            timeline_payloads=[colliding_timeline],
         )
         with patch("app.personalization.graph.get_azure_openai_client", return_value=client):
             graph = build_graph()
             result = await graph.ainvoke(state, {"configurable": {"settings": _TEST_SETTINGS}})
 
-        assert client.chat.completions.create.call_count == 3
+        # 1패스로 끝난다(CHECKLIST 1 + TIMELINE 1) — 재시도가 돌면 여기가 3이 된다. 이 단언이
+        # "불필요한 재시도가 되살아났는지"를 잡는 유일한 신호다(큐가 남아도 예외는 안 나므로).
+        assert client.chat.completions.create.call_count == 2
+        assert result["retry_count"] == 0
+        # dedup 자체는 그대로 동작해 초안은 비어 있다 — 바뀐 건 그걸 실패로 볼지 여부뿐이다.
         assert result["timeline_draft"] == []
-        assert result["validation_status"]["TIMELINE"] == "BLOCKED"
+        assert result["validation_status"]["TIMELINE"] == "SUCCESS"
         assert result["validation_status"]["CHECKLIST"] == "SUCCESS"
 
 
@@ -543,15 +550,19 @@ class TestChecklistCategoryFanOut:
         sdm_checklist = {"checklist_items": [{"category_code": "SDM", "title": "드레스 피팅"}]}
         client = _client_with_checklist_categories_and_timeline(
             checklist_by_category={"VENUE": [venue_checklist], "SDM": [sdm_checklist]},
-            timeline_payloads=[_SUCCESS_TIMELINE_VENUE_SDM],
+            timeline_by_category=_TIMELINE_BY_CATEGORY_VENUE_SDM,
         )
         with patch("app.personalization.graph.get_azure_openai_client", return_value=client):
             graph = build_graph()
             result = await graph.ainvoke(state, {"configurable": {"settings": _TEST_SETTINGS}})
 
-        # 결합 1콜이 아니라 카테고리별 2콜(+TIMELINE 1콜) = 총 3콜.
-        assert client.chat.completions.create.call_count == 3
-        assert sorted(c for c in client.call_log if c != "TIMELINE") == ["SDM", "VENUE"]
+        # 결합 1콜이 아니라 도메인×카테고리별 독립 호출 = CHECKLIST 2 + TIMELINE 2 = 총 4콜
+        # (2026-08-30 2차로 TIMELINE도 카테고리 단위가 되면서 3 → 4로 늘었다).
+        assert client.chat.completions.create.call_count == 4
+        assert sorted(c for c in client.call_log if c.startswith("CHECKLIST:")) == [
+            "CHECKLIST:SDM",
+            "CHECKLIST:VENUE",
+        ]
         assert result["checklist_category_status"] == {"VENUE": "SUCCESS", "SDM": "SUCCESS"}
         titles = {item["title"] for item in result["checklist_draft"]}
         assert titles == {"웨딩홀 계약서 확인", "드레스 피팅"}
@@ -600,16 +611,20 @@ class TestChecklistCategoryFanOut:
                 "VENUE": [venue_checklist],
                 "SDM": [{"checklist_items": []}, sdm_success],
             },
-            timeline_payloads=[_SUCCESS_TIMELINE_VENUE_SDM],
+            timeline_by_category=_TIMELINE_BY_CATEGORY_VENUE_SDM,
         )
         with patch("app.personalization.graph.get_azure_openai_client", return_value=client):
             graph = build_graph()
             result = await graph.ainvoke(state, {"configurable": {"settings": _TEST_SETTINGS}})
 
-        # VENUE 1콜 + SDM 2콜(1차 BLOCKED + 재시도 SUCCESS) + TIMELINE 1콜 = 총 4콜.
-        assert client.chat.completions.create.call_count == 4
-        assert client.call_log.count("VENUE") == 1
-        assert client.call_log.count("SDM") == 2
+        # CHECKLIST VENUE 1콜 + CHECKLIST SDM 2콜(1차 BLOCKED + 재시도 SUCCESS)
+        # + TIMELINE 2콜(VENUE/SDM 각 1, 둘 다 1차 SUCCESS라 재시도 없음) = 총 5콜.
+        assert client.chat.completions.create.call_count == 5
+        # 재시도 패스에서 TIMELINE이 다시 안 불렸는지 — 도메인 간 carry-forward 회귀 감지.
+        assert client.call_log.count("TIMELINE:VENUE") == 1
+        assert client.call_log.count("TIMELINE:SDM") == 1
+        assert client.call_log.count("CHECKLIST:VENUE") == 1
+        assert client.call_log.count("CHECKLIST:SDM") == 2
         assert result["checklist_category_status"] == {"VENUE": "SUCCESS", "SDM": "SUCCESS"}
         assert result["retry_count"] == 1
         titles = {item["title"] for item in result["checklist_draft"]}
@@ -630,13 +645,15 @@ class TestChecklistCategoryFanOut:
                 "VENUE": [venue_checklist],
                 "SDM": [{"checklist_items": []}, {"checklist_items": []}],
             },
-            timeline_payloads=[_SUCCESS_TIMELINE_VENUE_SDM],
+            timeline_by_category=_TIMELINE_BY_CATEGORY_VENUE_SDM,
         )
         with patch("app.personalization.graph.get_azure_openai_client", return_value=client):
             graph = build_graph()
             result = await graph.ainvoke(state, {"configurable": {"settings": _TEST_SETTINGS}})
 
-        assert client.call_log.count("SDM") == 2  # 1차 + 재시도 1회, 상한(_MAX_RETRIES=1) 소진
+        assert (
+            client.call_log.count("CHECKLIST:SDM") == 2
+        )  # 1차 + 재시도 1회, 상한(_MAX_RETRIES=1) 소진
         assert result["checklist_category_status"] == {"VENUE": "SUCCESS", "SDM": "BLOCKED"}
         assert result["validation_status"]["CHECKLIST"] == "BLOCKED"
         # VENUE는 그래도 살아남아 checklist_draft에 남아있어야 한다(app/services/

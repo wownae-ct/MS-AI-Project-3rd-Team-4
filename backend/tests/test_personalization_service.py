@@ -16,6 +16,7 @@ from app.services.personalization import (
     _deterministic_general_timeline_rows,
     _drop_rows_colliding_with_protected,
     _merge_checklist_rows,
+    _merge_timeline_rows,
     _timeline_fallback_rows,
     _timeline_protected_clause,
     _timeline_row_from_draft,
@@ -277,6 +278,31 @@ class TestMergeChecklistRows:
         orders = sorted(r.display_order for r in rows)
         assert orders == list(range(1, len(rows) + 1))
 
+    def test_success_category_with_empty_draft_is_supplemented_with_catalog(self):
+        # ★ 2026-08-30 2차의 핵심 안전장치 회귀 — 커버리지 완화로 "BLOCKED은 아닌데 초안이
+        # 0건"인 카테고리가 처음 생겼다. 이때 아무 행도 안 만들면 _delete_unprotected_items가
+        # 기존 미보호 행을 지운 자리를 아무도 못 채워 **항목 수가 순감**한다(그것도 SUCCESS로
+        # 보고되면서). blocked 집합이 비어 있어도 카탈로그로 보충돼야 한다.
+        active = {"VENUE"}
+
+        rows = _merge_checklist_rows(active, set(), [])
+
+        assert len(rows) == 25
+        assert all(r.origin == "CATALOG_FALLBACK" for r in rows)
+
+    def test_empty_draft_category_is_supplemented_without_touching_other_categories(self):
+        # 보충이 그 카테고리에만 적용되고, 정상 생성된 카테고리의 LLM 결과는 그대로 살아야 한다.
+        active = {"VENUE", "MEETING"}
+        draft = [{"category_code": "MEETING", "title": "체크1"}]
+
+        rows = _merge_checklist_rows(active, set(), draft)
+
+        meeting_rows = [r for r in rows if r.category_code == "MEETING"]
+        venue_rows = [r for r in rows if r.category_code == "VENUE"]
+        assert [r.origin for r in meeting_rows] == ["LLM"]
+        assert len(venue_rows) == 25
+        assert all(r.origin == "CATALOG_FALLBACK" for r in venue_rows)
+
     def test_rows_are_grouped_by_category_in_sorted_order(self):
         active = {"VENUE", "MEETING"}
         draft = [
@@ -288,6 +314,44 @@ class TestMergeChecklistRows:
 
         # sorted(active_categories) == ["MEETING", "VENUE"] — MEETING 항목이 먼저 나와야 한다.
         assert [r.category_code for r in rows] == ["MEETING", "VENUE"]
+
+
+class TestMergeTimelineRows:
+    """2026-08-30 2차 — TIMELINE도 카테고리 단위 폴백 병합으로 전환. 예전엔 도메인 단위
+    all-or-nothing이라 카테고리 1개가 BLOCKED면 나머지 카테고리의 LLM 결과까지 통째로
+    카탈로그로 갈아엎었다(staging test05/test1431 실패의 피해 확대 경로)."""
+
+    _WEDDING_DATE = date(2027, 5, 14)
+    _TODAY = date(2026, 8, 30)
+
+    def _rows(self, active, blocked, draft):
+        return _merge_timeline_rows(self._WEDDING_DATE, active, blocked, set(), self._TODAY, draft)
+
+    def test_blocked_category_falls_back_while_success_category_keeps_llm_rows(self):
+        draft = [
+            {"category_code": "VENUE", "title": "예식장 투어", "default_dday_offset_days": -300}
+        ]
+
+        rows = self._rows({"VENUE", "GIFT"}, {"GIFT"}, draft)
+
+        venue = [r for r in rows if r.category_code == "VENUE"]
+        gift = [r for r in rows if r.category_code == "GIFT"]
+        assert [r.origin for r in venue] == ["LLM"]
+        assert gift and all(r.origin == "CATALOG_FALLBACK" for r in gift)
+
+    def test_success_category_with_empty_draft_is_supplemented_with_catalog(self):
+        # CHECKLIST 쪽과 같은 안전장치 — 커버리지 완화로 생긴 "SUCCESS인데 초안 0건" 상태에서
+        # 항목 수가 순감하지 않아야 한다.
+        rows = self._rows({"GIFT"}, set(), [])
+
+        assert rows and all(r.origin == "CATALOG_FALLBACK" for r in rows)
+
+    def test_general_null_category_rows_are_not_duplicated_per_category(self):
+        # 범용(category_code=None) 항목은 _deterministic_general_timeline_rows가 따로 한 번만
+        # 넣는다 — 카테고리별 카탈로그 보충이 그것까지 같이 가져오면 카테고리 수만큼 중복된다.
+        rows = self._rows({"VENUE", "GIFT"}, {"VENUE", "GIFT"}, [])
+
+        assert all(r.category_code is not None for r in rows)
 
 
 class TestTimelineRowFromDraft:
