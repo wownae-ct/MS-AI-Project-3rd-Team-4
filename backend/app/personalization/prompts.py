@@ -58,11 +58,21 @@ ROUTE_PROMPT_TEMPLATE = """당신은 메리맵의 개인화 콘텐츠 라우터�
 
 응답은 JSON으로만 답하세요: {{"affected_domains": ["CHECKLIST"와 "TIMELINE" 중 0개 이상], "reasoning": "판단 이유 한 문장"}}"""
 
+_FOCUS_CATEGORIES: frozenset[str] = frozenset({"VENUE", "SDM"})
+
+# 2026-08-30 결정(VENUE/SDM 튜닝, red-bug.md #9-11 후속) — 이 규칙은 예전엔 _CHECKLIST_RULES
+# 안에 있어 CHECKLIST를 요청하는 모든 카테고리 호출(GIFT/ETC 등 FOCUS와 무관한 7개 포함)에
+# 무차별로 들어갔다. 카테고리 단위 분리(2026-08-29 결정) 이후엔 각 호출이 카테고리 하나만
+# 다루므로, 이 규칙이 실제로 의미 있는 건 그 카테고리가 VENUE/SDM일 때뿐이다 — 무관한
+# 카테고리 호출에 안 쓰는 규칙 문단·인용 메뉴를 얹는 건 순수 낭비(프롬프트 토큰)이자 잠재적
+# 노이즈라 분리했다. build_generate_prompt가 active_categories에 VENUE/SDM이 섞여 있을 때만
+# 이 문단(과 DS3 인용 메뉴)을 붙인다.
+_CHECKLIST_FOCUS_RULE = """- FOCUS 카테고리(VENUE/SDM)는 CONTRACT_TERM 비중을 40~60% 정도로 하세요(F9_CONTRACT_FOCUS) —
+  EXTRA_COST/PREP도 반드시 섞으세요, CONTRACT_TERM 단일 구성은 이 기준을 어긴 것입니다."""
+
 _CHECKLIST_RULES = """웨딩 프로필(활성 카테고리·우선순위·스타일·예산·이번 준비에서 가장 바라는 것)에
 맞춰 카테고리별 체크리스트 항목을 만드세요.
 
-- FOCUS 카테고리(VENUE/SDM)는 CONTRACT_TERM 비중을 40~60% 정도로 하세요(F9_CONTRACT_FOCUS) —
-  EXTRA_COST/PREP도 반드시 섞으세요, CONTRACT_TERM 단일 구성은 이 기준을 어긴 것입니다.
 - protected_items에 있는 항목은 재생성 후에도 화면에 그대로 남습니다(사용자가 이미 직접
   수정함) — **표현만 바꿔서 같은 내용을 다시 만들지도 마세요**(예: "계약금 상한 확인" ↔
   "계약금 한도 체크"). 중복 방지용 참고로만 쓰세요.
@@ -405,9 +415,12 @@ def build_generate_prompt(
 
     if include_checklist:
         parts += [_CHECKLIST_RULES, _build_checklist_few_shot(active_categories)]
-        citation_menu = build_contract_citation_menu(contract_citations or [])
-        if citation_menu:
-            parts.append(citation_menu)
+        focus_relevant = active_categories is None or bool(active_categories & _FOCUS_CATEGORIES)
+        if focus_relevant:
+            parts.append(_CHECKLIST_FOCUS_RULE)
+            citation_menu = build_contract_citation_menu(contract_citations or [])
+            if citation_menu:
+                parts.append(citation_menu)
     if include_timeline:
         parts += [_TIMELINE_RULES, _build_timeline_few_shot(active_categories)]
 
