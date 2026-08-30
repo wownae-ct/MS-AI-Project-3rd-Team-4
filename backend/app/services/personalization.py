@@ -325,12 +325,22 @@ def _merge_checklist_rows(
 
     display_order는 카테고리(정렬 고정 순서)별로 이어붙여 새로 매긴다 — LLM 출처(원래
     idx 1부터)와 카탈로그 출처(카탈로그 고정 display_order)가 그대로 섞이면 서로 다른
-    카테고리의 행끼리 번호가 겹쳐 정렬 순서가 뒤섞일 수 있다."""
+    카테고리의 행끼리 번호가 겹쳐 정렬 순서가 뒤섞일 수 있다.
+
+    **2026-08-30 2차 — "초안이 빈 카테고리"도 카탈로그로 보충한다.** 같은 커밋에서 커버리지
+    규칙이 protected_items도 커버로 쳐주게 완화됐는데(validation.py::_validate_category_coverage),
+    그러면 "보호 행으로만 커버된 카테고리"가 BLOCKED가 아니면서 초안은 0건인 상태가 처음으로
+    정규 경로에 생긴다. 그런데 `_delete_unprotected_items`는 카테고리 스코프 없이 미보호 행을
+    지우므로, 그 카테고리는 **재생성 후 보호 행만 남아 항목 수가 순감**한다(시뮬레이션: 보호 8 +
+    미보호 12 = 20행 → 8행, 그것도 status="SUCCESS"로 보고). 커버리지 완화의 이득(BLOCKED 오탐
+    제거)만 취하고 이 부작용은 막기 위해, blocked 여부와 무관하게 **초안이 비면 카탈로그로
+    채운다** — 뒤이은 `_drop_rows_colliding_with_protected`가 보호 행과 겹치는 카탈로그 항목을
+    알아서 걷어내므로 중복도 안 생긴다. 이 두 변경은 반드시 짝으로 유지할 것."""
     draft_by_category = group_checklist_by_category(checklist_draft)
     rows: list[ChecklistItem] = []
     display_order = 0
     for category in sorted(active_categories):
-        if category in blocked_categories:
+        if category in blocked_categories or not draft_by_category.get(category):
             for row in _checklist_fallback_rows({category}):
                 display_order += 1
                 row.display_order = display_order
@@ -342,6 +352,21 @@ def _merge_checklist_rows(
                 if row is not None:
                     rows.append(row)
     return rows
+
+
+def categories_needing_catalog_supplement(
+    active_categories: set[str], blocked_categories: set[str], draft: list[dict]
+) -> set[str]:
+    """BLOCKED은 아닌데 초안이 0건이라 카탈로그 보충을 받는 카테고리 — 로깅 전용으로 뽑는다.
+    이 레포는 "자동 교정이 발동하면 반드시 로그를 남긴다"를 관례로 못박고 있다(null-string
+    category_code 버그가 무로깅으로 3번 재발한 전례). 보충이 얼마나 자주 도는지 안 보이면
+    커버리지 완화가 과했는지 판단할 근거가 사라진다. CHECKLIST/TIMELINE 양쪽이 공유한다."""
+    by_category = group_checklist_by_category(draft)
+    return {
+        category
+        for category in active_categories
+        if category not in blocked_categories and not by_category.get(category)
+    }
 
 
 def _timeline_row_from_draft(
@@ -411,6 +436,47 @@ def _deterministic_general_timeline_rows(
         TimelineItem(**row)
         for row in generate_timeline_items(wedding_date, set(), sorted(done_categories), today)
     ]
+
+
+def _merge_timeline_rows(
+    wedding_date: date,
+    active_categories: set[str],
+    blocked_categories: set[str],
+    done_categories: set[str],
+    today: date,
+    timeline_draft: list[dict],
+) -> list[TimelineItem]:
+    """TIMELINE 카테고리 단위 폴백 병합(2026-08-30 2차) — `_merge_checklist_rows`와 같은 구조다.
+    예전엔 TIMELINE만 도메인 단위 all-or-nothing이라 카테고리 1개가 BLOCKED면 나머지 8개의
+    LLM 결과까지 통째로 카탈로그로 갈아엎었다.
+
+    카테고리별 카탈로그 보충은 `_timeline_fallback_rows`에 그 카테고리 하나만 넘겨 받되,
+    범용(category_code=None) 항목은 걸러낸다 — 범용 항목은 카테고리와 무관하게 항상
+    `_deterministic_general_timeline_rows`가 한 번만 넣기 때문에 여기서 또 받으면 카테고리
+    개수만큼 중복된다.
+
+    `_merge_checklist_rows`와 동일하게 "초안이 빈 카테고리도 카탈로그로 보충"한다(그 이유는
+    그쪽 docstring 참고). display_order는 호출부가 범용 항목까지 합친 뒤 다시 매긴다."""
+    draft_by_category = group_checklist_by_category(timeline_draft)
+    scale_factor = compute_prep_scale_factor(today, wedding_date)
+    rows: list[TimelineItem] = []
+    for category in sorted(active_categories):
+        if category in blocked_categories or not draft_by_category.get(category):
+            rows.extend(
+                row
+                for row in _timeline_fallback_rows(
+                    wedding_date, {category}, sorted(done_categories), today
+                )
+                if row.category_code is not None
+            )
+        else:
+            rows.extend(
+                _timeline_row_from_draft(
+                    wedding_date, done_categories, today, idx, item, scale_factor
+                )
+                for idx, item in enumerate(draft_by_category[category], start=1)
+            )
+    return rows
 
 
 def _drop_rows_colliding_with_protected(
@@ -527,55 +593,65 @@ async def run_personalization(
             # 도메인별로 완전히 독립 적용한다 — 한쪽이 BLOCKED라고 다른 쪽까지 폴백시키지
             # 않는다(2026-08-24 버그 수정: 이전엔 result["validation_status"]가 단일 값이라
             # CHECKLIST만 실패해도 이미 통과한 TIMELINE까지 폴백 카탈로그로 버려졌다).
-            if "CHECKLIST" in affected_domains:
-                checklist_category_status = result.get("checklist_category_status") or {}
-                blocked_categories = {
+            def _blocked_and_log(domain: str, draft: list[dict]) -> set[str]:
+                """도메인의 카테고리별 판정에서 BLOCKED 집합을 뽑고, 카탈로그로 내려가는
+                카테고리를 전부 로그로 남긴다(BLOCKED 폴백 / 초안 0건 보충 두 경로 모두 —
+                2026-08-26 레드팀 감사 4라운드 항목 5의 "폴백 전환은 사유와 함께 로깅" 규칙)."""
+                category_status = result.get(f"{domain.lower()}_category_status") or {}
+                blocked = {
                     category
                     for category in active_categories
-                    if checklist_category_status.get(category) != "SUCCESS"
+                    if category_status.get(category) != "SUCCESS"
                 }
-                if blocked_categories:
-                    # 2026-08-26 레드팀 감사 4라운드 항목 5의 로깅 규칙을 그대로 따른다 —
-                    # BLOCKED→카탈로그 폴백 전환은 반드시 사유와 함께 로그를 남긴다.
+                if blocked:
                     logger.warning(
-                        "Personalization CHECKLIST partially BLOCKED for wedding_id=%s "
-                        "trigger=%s, falling back to catalog for categories=%s: %s",
+                        "Personalization %s partially BLOCKED for wedding_id=%s trigger=%s, "
+                        "falling back to catalog for categories=%s: %s",
+                        domain,
                         wedding.id,
                         trigger,
-                        sorted(blocked_categories),
-                        result.get("checklist_category_errors"),
+                        sorted(blocked),
+                        result.get(f"{domain.lower()}_category_errors"),
                     )
+                supplemented = categories_needing_catalog_supplement(
+                    active_categories, blocked, draft
+                )
+                if supplemented:
+                    logger.warning(
+                        "Personalization %s produced no new items for wedding_id=%s trigger=%s "
+                        "categories=%s (covered by protected rows) — supplementing with catalog "
+                        "so the user does not end up with fewer items than before",
+                        domain,
+                        wedding.id,
+                        trigger,
+                        sorted(supplemented),
+                    )
+                return blocked
+
+            if "CHECKLIST" in affected_domains:
+                checklist_draft = result["checklist_draft"] or []
                 checklist_rows = _merge_checklist_rows(
-                    active_categories, blocked_categories, result["checklist_draft"] or []
+                    active_categories,
+                    _blocked_and_log("CHECKLIST", checklist_draft),
+                    checklist_draft,
                 )
             if "TIMELINE" in affected_domains:
-                if domain_statuses.get("TIMELINE") == "SUCCESS":
-                    scale_factor = compute_prep_scale_factor(today, wedding.wedding_date)
-                    llm_timeline_rows = [
-                        _timeline_row_from_draft(
-                            wedding.wedding_date, done_categories, today, idx, item, scale_factor
-                        )
-                        for idx, item in enumerate(result["timeline_draft"] or [], start=1)
-                    ]
-                    # 2026-08-30 결정 — 범용(category_code=None) 항목은 LLM 몫이 아니라 항상
-                    # 결정론적으로 채운다(_deterministic_general_timeline_rows 참고). 합친 뒤
-                    # display_order를 다시 매겨 카탈로그 고정 번호와 LLM 쪽 순번이 안 겹치게 한다.
-                    timeline_rows = llm_timeline_rows + _deterministic_general_timeline_rows(
-                        wedding.wedding_date, done_categories, today
-                    )
-                    for order, row in enumerate(timeline_rows, start=1):
-                        row.display_order = order
-                else:
-                    logger.warning(
-                        "Personalization TIMELINE BLOCKED for wedding_id=%s trigger=%s, "
-                        "falling back to catalog: %s",
-                        wedding.id,
-                        trigger,
-                        domain_errors.get("TIMELINE"),
-                    )
-                    timeline_rows = _timeline_fallback_rows(
-                        wedding.wedding_date, active_categories, sorted(done_categories), today
-                    )
+                timeline_draft = result["timeline_draft"] or []
+                # 2026-08-30 결정 — 범용(category_code=None) 항목은 LLM 몫이 아니라 항상
+                # 결정론적으로 채운다(_deterministic_general_timeline_rows 참고). 합친 뒤
+                # display_order를 다시 매겨 카탈로그 고정 번호와 LLM 쪽 순번이 안 겹치게 한다.
+                timeline_rows = _merge_timeline_rows(
+                    wedding.wedding_date,
+                    active_categories,
+                    _blocked_and_log("TIMELINE", timeline_draft),
+                    done_categories,
+                    today,
+                    timeline_draft,
+                ) + _deterministic_general_timeline_rows(
+                    wedding.wedding_date, done_categories, today
+                )
+                for order, row in enumerate(timeline_rows, start=1):
+                    row.display_order = order
 
             # ai_invocations.status/error_message는 이 실행 전체를 요약하는 감사로그다 —
             # 도메인 중 하나라도 BLOCKED면 "완전히 깨끗한 성공은 아니었다"를 남긴다. 표시되는
