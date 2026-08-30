@@ -1,5 +1,9 @@
-"""RAG 코퍼스 색인: DS2_KCA~DS8_UGC(DS1_PRICE/DS7_TIMELINE 제외) chunk-ready JSON
+"""RAG 코퍼스 색인: data/rag_corpus/ 아래 모든 데이터셋(DS7_TIMELINE 제외 — 이건 RAG 코퍼스가
+아니라 app/core/timeline_catalog.py 백엔드 상수로 별도 관리)의 chunk-ready JSON
 (app.rag.corpus.load_corpus) → Azure OpenAI 임베딩 → rag_documents/rag_chunks 전체 재구성.
+DS1_PRICE도 이 대상에 포함된다(2026-08-30 정정 — 이전 버전 이 docstring이 "DS1_PRICE 제외"라고
+잘못 적어뒀었으나, load_corpus는 애초에 데이터셋 코드로 필터링하는 로직이 없어 실제로는 계속
+포함되어 왔다. 아래 _embed_all의 "151개(DS1_PRICE 3청크 포함)" 주석과도 이제 일치한다).
 
 rag-reindex CronJob(infra/k8s/base/rag-cronjob/)이 `python -m app.rag.indexing`으로 실행한다.
 코퍼스는 이미 청크 단위로 정제돼 있어(05_RAG_design.md §3, 10_RAG_data_catalog.md) 여기서
@@ -21,14 +25,14 @@ import logging
 from pathlib import Path
 
 import tiktoken
-from sqlalchemy import delete
+from sqlalchemy import delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.db import get_session_factory
 from app.core.embeddings import embed_texts, get_azure_openai_client
-from app.models import RagChunk, RagDocument
-from app.rag.corpus import ParsedDocument, load_corpus
+from app.models import RagChunk, RagDocument, RagIndexState
+from app.rag.corpus import ParsedDocument, compute_corpus_hash, load_corpus
 
 logger = logging.getLogger(__name__)
 
@@ -109,9 +113,53 @@ async def _replace_all(
     return len(documents), chunk_count
 
 
+def _should_skip_reindex(current_hash: str, previous_hash: str | None) -> bool:
+    """코퍼스 해시가 이전 색인 시점과 같으면 재색인을 건너뛴다. DB 세션도 임베딩 API도 안
+    끌어오는 순수 비교라 이 판단 자체는 따로 유닛 테스트할 수 있다 — `previous_hash`가
+    아직 없으면(최초 실행) 무조건 색인을 진행한다."""
+    return previous_hash is not None and previous_hash == current_hash
+
+
+async def _load_previous_corpus_hash(session: AsyncSession) -> str | None:
+    state = await session.get(RagIndexState, 1)
+    return state.corpus_hash if state else None
+
+
+async def _record_index_state(
+    session: AsyncSession, corpus_hash: str, doc_count: int, chunk_count: int
+) -> None:
+    state = await session.get(RagIndexState, 1)
+    if state is None:
+        state = RagIndexState(
+            id=1,
+            corpus_hash=corpus_hash,
+            document_count=doc_count,
+            chunk_count=chunk_count,
+            indexed_at=func.now(),
+        )
+        session.add(state)
+    else:
+        state.corpus_hash = corpus_hash
+        state.document_count = doc_count
+        state.chunk_count = chunk_count
+        state.indexed_at = func.now()
+    await session.commit()
+
+
 async def reindex() -> None:
     """이 CronJob 전체의 진입점 — 매일 새벽 자동 실행된다. 코퍼스 JSON을 읽고(load_corpus) →
-    전부 임베딩하고(_embed_all) → DB를 통째로 갈아끼운다(_replace_all), 딱 3단계.
+    코퍼스가 실제로 바뀌었는지 확인하고(2026-08-30 스킵 가드) → 안 바뀌었으면 여기서 끝, 바뀌었으면
+    전부 임베딩하고(_embed_all) → DB를 통째로 갈아끼운다(_replace_all).
+
+    2026-08-30 — 코퍼스가 안 바뀐 날에도 이 스케줄이 매일 임베딩 API를 다시 부르고
+    rag_documents/rag_chunks를 통째로 삭제·재삽입해왔다(비용은 미미하지만 순수하게 낭비).
+    `data/rag_corpus/`가 실제로 바뀐 커밋에서만 재색인이 의미 있으므로, `compute_corpus_hash()`로
+    "코퍼스 내용 자체"의 해시를 내서 `rag_index_state`(단일행)에 저장된 이전 값과 비교한다 —
+    스케줄(매일 03시)은 그대로 두고 그 안에서 "할 일이 없는 실행"만 건너뛴다. CI에서
+    `data/rag_corpus/**` diff를 보고 CronJob을 트리거하는 이벤트 기반 방식이 더 정교하겠지만,
+    이 CronJob은 스케줄 트리거만 받을 수 있어(K8s CronJob 자체의 제약) 그 방식은 별도의
+    파이프라인(예: GitHub Actions → K8s Job 생성)이 필요해 이 프로젝트 규모엔 과설계다 — 실행
+    시점에 스스로 "할 일이 있는지" 판단하는 이 가드가 같은 효과를 훨씬 적은 인프라로 낸다.
 
     2026-08-26 레드팀 감사 4라운드 항목 12 — 전체에 로깅이 없어 실패하면 어느 단계에서
     죽었는지도 안 남고 pod만 죽었다. 각 단계마다 시작/완료를 남겨 최소한 어느 단계까지는
@@ -119,9 +167,17 @@ async def reindex() -> None:
     스택트레이스와 함께 stderr로 전파돼 pod 로그에 남으므로, 여기서 또 잡았다 다시 던지는
     건 중복이라 YAGNI)."""
     settings = get_settings()
-    logger.info("코퍼스 로드 시작: %s", settings.rag_corpus_path)
-    documents = load_corpus(Path(settings.rag_corpus_path))
+    corpus_root = Path(settings.rag_corpus_path)
+    logger.info("코퍼스 로드 시작: %s", corpus_root)
+    documents = load_corpus(corpus_root)
     logger.info("코퍼스 로드 완료: %d개 문서", len(documents))
+
+    corpus_hash = compute_corpus_hash(corpus_root)
+    async with get_session_factory()() as session:
+        previous_hash = await _load_previous_corpus_hash(session)
+    if _should_skip_reindex(corpus_hash, previous_hash):
+        logger.info("코퍼스 변경 없음(hash=%s) — 재색인 건너뜀", corpus_hash[:12])
+        return
 
     logger.info("임베딩 생성 시작")
     embeddings_by_doc = await _embed_all(documents, settings)
@@ -129,6 +185,7 @@ async def reindex() -> None:
 
     async with get_session_factory()() as session:
         doc_count, chunk_count = await _replace_all(session, documents, embeddings_by_doc)
+        await _record_index_state(session, corpus_hash, doc_count, chunk_count)
 
     # LOW 항목 — print()를 logger.info로.
     logger.info("indexed %d docs, %d chunks", doc_count, chunk_count)
