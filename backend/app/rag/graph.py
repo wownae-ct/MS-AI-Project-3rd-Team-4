@@ -49,6 +49,7 @@ from app.rag.generation import (
     NO_CONTEXT_REASON,
     build_chat_messages,
     reformulate_query,
+    resolve_followup_query,
     verify_answer,
 )
 from app.rag.query_profile import profile_query
@@ -103,6 +104,13 @@ class ChatState(TypedDict):
     # 건너뛰고 곧바로 END로 간다(_route_after_retrieve). 스코프 가드(키워드, 그래프 진입 전)가
     # 놓친 주제이탈을 검색 결과로 한 번 더 거르는 2차 방어선이다.
     out_of_scope: bool
+    # 대화 이력 [(role, content), ...] — 최신이 뒤. 후속 질문 해소에만 쓴다(생성 프롬프트엔
+    # 안 들어간다). app/services/chat.py 가 직전 몇 턴만 잘라서 채운다.
+    history: list[tuple[str, str]]
+    # 후속 질문을 "그 자체로 이해되는 형태"로 다시 쓴 것. 해소가 일어났을 때만 채워지고,
+    # 그때는 검색어와 생성 프롬프트의 질문이 모두 이 값이 된다(원 질문은 query에 그대로 남아
+    # DB 저장·트레이스에 쓰인다).
+    resolved_query: str
 
 
 # ① retrieve: 질문+카테고리로 하이브리드 검색(retrieval.py)을 돌려 근거 청크를 찾아온다.
@@ -170,7 +178,56 @@ async def retrieve_node(state: ChatState, config: RunnableConfig) -> dict:
         # 재시도(CRAG) 때는 판정하지 않는다 — 1차에서 이미 스코프를 통과한 질문이고, 재시도
         # 검색어는 LLM이 재구성한 것이라 원 질문과 성격이 다를 수 있다. 여기서 또 자르면
         # "1차는 통과했는데 2차에서 갑자기 주제이탈" 같은 이상한 상태가 된다.
-        if not is_retry and _is_out_of_scope(outcome.top_similarity, settings):
+        # 컷오프에 걸릴 것 같고 대화 이력이 있으면, 거절하기 전에 **한 번 더 기회를 준다** —
+        # 생략형 후속 질문("그럼 스드메는?" 단독 0.199)은 주제를 벗어난 게 아니라 문장이 짧아
+        # 벡터가 흐려진 것이라, 생략된 대상을 채우면 정상 점수로 돌아온다(0.434 실측).
+        #
+        # 순서가 중요하다 — **먼저 재보고 미달일 때만** 해소한다. 대부분의 질문은 그냥 통과하므로
+        # LLM 호출이 아예 없고, 비용은 어차피 거절될 뻔한 소수에만 붙는다(그마저도 거절 대신
+        # 답변으로 이어지면 원래 쓸 예정이던 generate+verify 2회보다 싸다).
+        resolved_query = ""
+        if (
+            not is_retry
+            and _is_out_of_scope(outcome.top_similarity, settings)
+            and state.get("history")
+        ):
+            client = get_azure_openai_client(settings)
+            resolved = await _await_with_heartbeat(
+                resolve_followup_query(client, settings, state["history"], state["query"]),
+                writer,
+            )
+            if resolved != state["query"]:
+                retry_outcome = await retrieve_with_similarity(
+                    session, resolved, state["category_code"], settings
+                )
+                logger.info(
+                    "followup resolved: %.4f -> %.4f, %r -> %r",
+                    outcome.top_similarity,
+                    retry_outcome.top_similarity,
+                    state["query"][:40],
+                    resolved[:60],
+                )
+                # 해소해도 여전히 미달이면 진짜 주제 이탈이다 — 실측상 "스파게티 맛집 알려줘"는
+                # 재작성 뒤에도 0.198 로 남았다(주제를 바꾸지 말라는 프롬프트 규칙 덕분이다).
+                if not _is_out_of_scope(retry_outcome.top_similarity, settings):
+                    outcome = retry_outcome
+                    chunks = retry_outcome.chunks
+                    resolved_query = resolved
+                    update["context"] = chunks
+                    update["resolved_query"] = resolved
+                    trace.update(
+                        output={
+                            "chunk_ids": [c.chunk_id for c in chunks],
+                            "top_similarity": retry_outcome.top_similarity,
+                            "resolved_query": resolved,
+                        }
+                    )
+
+        if (
+            not is_retry
+            and not resolved_query
+            and _is_out_of_scope(outcome.top_similarity, settings)
+        ):
             logger.info(
                 "chat scope cutoff: top_similarity=%.4f < %.2f, query=%r",
                 outcome.top_similarity,
@@ -209,7 +266,13 @@ async def generate_node(state: ChatState, config: RunnableConfig) -> dict:
         client = get_azure_openai_client(settings)
         stream = await client.chat.completions.create(
             model=settings.chat_rag_deployment,
-            messages=build_chat_messages(state["category_code"], state["context"], state["query"]),
+            messages=build_chat_messages(
+                state["category_code"],
+                state["context"],
+                # 해소된 질문이 있으면 그걸 쓴다 — 원 질문("그럼 스드메는?")만 주면 생성 모델도
+                # "그럼"이 뭘 가리키는지 알 수 없다(이 채팅은 이력을 프롬프트에 넣지 않는다).
+                state.get("resolved_query") or state["query"],
+            ),
             stream=True,  # 완성된 답변을 한 번에 안 받고, 글자 조각(delta) 단위로 하나씩 받는다
         )
         answer_parts: list[str] = []

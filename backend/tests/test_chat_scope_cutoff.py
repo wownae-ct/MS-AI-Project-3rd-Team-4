@@ -101,3 +101,106 @@ def test_route_goes_to_generate_normally() -> None:
     assert _route_after_retrieve({"out_of_scope": False}) == "generate"
     # 키가 아예 없어도(구버전 state) 정상 경로로 — 컷오프는 opt-in이어야 한다.
     assert _route_after_retrieve({}) == "generate"
+
+
+# ── 후속 질문 해소 ────────────────────────────────────────────────────────────────
+#
+# 컷오프를 넣자 **정상 질문이 거절되는** 부작용이 나왔다 — "그럼 스드메는?"은 이 서비스의
+# 핵심 도메인 용어를 담고 있는데도 문장이 짧아 전역 유사도가 0.199 로 나온다(2026-08-30 실측).
+# 주제를 벗어난 게 아니라 벡터가 흐려진 것이다.
+#
+# 그래서 컷오프에 걸릴 때 **거절하기 전에 한 번 더 기회를 준다** — 생략된 대상을 채워 다시 재고,
+# 그래도 미달이면 그때 거절한다. 아래는 그 판정 흐름을 고정한다(LLM 은 목킹한다 — 실제 재작성
+# 품질은 라이브 A/B 로 확인했고, 여기서 볼 것은 "언제 해소를 시도하고 언제 최종 거절하는가"다).
+
+from app.rag.generation import build_history_block
+
+
+class TestHistoryBlock:
+    def test_사용자_질문과_답변에_다른_라벨을_붙인다(self) -> None:
+        block = build_history_block([("user", "예식장 계약 확인사항?"), ("assistant", "네, 우선…")])
+        assert "직전 질문: 예식장 계약 확인사항?" in block
+        assert "직전 답변: 네, 우선…" in block
+
+    def test_직전_답변은_잘라서_넣는다(self) -> None:
+        """답변 전문을 넣으면 프롬프트가 답변 본문에 잠식돼 '이번 질문'이 묻힌다."""
+        block = build_history_block([("assistant", "가" * 1000)])
+        assert len(block) < 1000
+
+    def test_이력이_없으면_빈_문자열이다(self) -> None:
+        assert build_history_block([]) == ""
+
+
+class TestFollowupRescueFlow:
+    """ "거절 직전 한 번 더" 흐름을 그래프로 돌려 고정한다.
+
+    LLM(재작성)과 검색은 목킹한다 — 재작성 **품질**은 라이브 A/B 로 확인했고(후속 4/4 복원,
+    주제이탈 3/4 유지, 2026-08-30), 여기서 볼 것은 판정 분기다.
+    """
+
+    @staticmethod
+    def _run(first_similarity: float, resolved_similarity: float, history: list[tuple[str, str]]):
+        """retrieve_node 만 떼어 돌린다 — generate/verify 는 이 테스트의 관심사가 아니다."""
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from app.rag.graph import retrieve_node
+        from app.rag.retrieval import RetrievalOutcome
+
+        state = {
+            "query": "그럼 스드메는?",
+            "category_code": None,
+            "context": [],
+            "answer": "",
+            "verdict": "",
+            "verification_reason": "",
+            "retry_count": 0,
+            "out_of_scope": False,
+            "history": history,
+            "resolved_query": "",
+        }
+        outcomes = [
+            RetrievalOutcome(chunks=[], top_similarity=first_similarity),
+            RetrievalOutcome(chunks=[], top_similarity=resolved_similarity),
+        ]
+        with (
+            patch("app.rag.graph.retrieve_with_similarity", AsyncMock(side_effect=outcomes)),
+            patch("app.rag.graph.get_azure_openai_client", return_value=object()),
+            patch(
+                "app.rag.graph.resolve_followup_query",
+                AsyncMock(return_value="스드메 계약할 때 뭘 확인해야 하나요?"),
+            ),
+            patch("app.rag.graph.traced_span", _null_span()),
+            patch("app.rag.graph.get_stream_writer", return_value=lambda _: None),
+        ):
+            config = {"configurable": {"session": object(), "settings": _SETTINGS}}
+            return asyncio.run(retrieve_node(state, config))
+
+    def test_해소로_점수가_올라가면_거절하지_않는다(self) -> None:
+        """정상 후속 질문이 짧다는 이유로 거절되면 안 된다 — 이 테스트가 그 회귀를 막는다."""
+        update = self._run(0.199, 0.434, [("user", "예식장 계약할 때 뭘 확인해야 하나요?")])
+        assert update.get("out_of_scope") is not True
+        assert update["resolved_query"] == "스드메 계약할 때 뭘 확인해야 하나요?"
+
+    def test_해소해도_미달이면_거절한다(self) -> None:
+        """ "스파게티 맛집"은 재작성해도 주제가 그대로라 여전히 낮다(실측 0.211→0.198)."""
+        update = self._run(0.211, 0.198, [("user", "예식장 계약할 때 뭘 확인해야 하나요?")])
+        assert update["out_of_scope"] is True
+        assert update["context"] == []
+
+    def test_이력이_없으면_해소를_시도하지_않는다(self) -> None:
+        """첫 메시지는 가리킬 앞 대화가 없다 — 불필요한 LLM 호출을 하지 않는다."""
+        update = self._run(0.199, 0.999, history=[])
+        assert update["out_of_scope"] is True
+
+
+def _null_span():
+    """traced_span 대체 — 이 테스트는 트레이싱을 보지 않는다."""
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    @asynccontextmanager
+    async def _span(*_args, **_kwargs):
+        yield SimpleNamespace(update=lambda **__: None)
+
+    return _span

@@ -84,6 +84,8 @@ def _initial_state() -> dict:
         "verification_reason": "",
         "retry_count": 0,
         "out_of_scope": False,
+        "history": [],
+        "resolved_query": "",
     }
 
 
