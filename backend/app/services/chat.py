@@ -188,6 +188,33 @@ async def list_chat_sessions(session: AsyncSession, wedding_id: UUID) -> list[Ch
     return list(result.scalars().all())
 
 
+async def delete_chat_session(session: AsyncSession, wedding_id: UUID, session_id: UUID) -> None:
+    """DELETE /chat/sessions/{id}(2026-08-30, "지난 대화기록을 삭제하는 기능이 필요함").
+    소유권 검사는 get_chat_session에 그대로 위임한다 — "없음"과 "남의 것"을 둘 다 404
+    CHAT_SESSION_NOT_FOUND로 뭉개는 정책이 이미 거기 있고, 삭제라고 다른 규칙을 둘 이유가 없다.
+    이미 지운 세션에 대한 재요청도 같은 404로 나가 프론트가 멱등하게 흡수할 수 있다.
+
+    chat_messages는 따로 지우지 않는다 — app/models/chat.py의 session_id가
+    ForeignKey(..., ondelete="CASCADE")라 DB가 정리한다(ChatSession에 relationship()이 없어
+    ORM은 chat_sessions DELETE 한 줄만 낸다).
+
+    소프트 삭제(deleted_at) 대신 하드 삭제인 이유: 이 코드베이스에 소프트 삭제 선례가 아예 없고
+    (app/services/payment.py::delete_payment도 하드 삭제), chat_sessions를 읽는 지점이
+    get_chat_session 하나가 아니라 넷이다(+ list_chat_sessions, get_chat_message,
+    app/services/feedback.py::target_exists_for_wedding — 뒤 둘은 ChatSession을 직접 조인해서
+    get_chat_session을 안 거친다). 한 곳만 빠뜨려도 "지운 대화의 메시지에 평가/신고가 계속 되는"
+    조용한 구멍이 되는데, 하드 삭제엔 그 실수 여지가 없다.
+
+    feedback_reports(F13)는 일부러 건드리지 않는다 — target_id가 의도적으로 FK가 아니라
+    (app/models/feedback.py:3-5) 지워진 메시지를 가리키는 채로 남는다. AI 안전성 신고 기록이
+    사용자의 대화 정리로 함께 사라지는 것보다 낫다고 판단했고(F13 "책임성"), 이 테이블을 읽는
+    코드가 아직 없어(03_API_spec.md #30 — 관리자 검토는 스코프 밖) 런타임 영향도 없다. 검토
+    화면이 생기면 그때 "대상이 이미 삭제됨" 표시를 다뤄야 한다."""
+    chat_session = await get_chat_session(session, wedding_id, session_id)
+    await session.delete(chat_session)
+    await session.commit()
+
+
 def _build_citations(context: list) -> list[CitationOut]:
     return [
         CitationOut(
