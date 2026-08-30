@@ -67,6 +67,14 @@ export { Select, type SelectOption, type SelectProps } from "./Select";
 export { SkeletonRows, type SkeletonRowsProps, type SkeletonRowsVariant } from "./Skeleton";
 // 근거·출처 목록 (D16) — 채팅 인용 · 체크리스트 근거 · 업체사례 관련 사례가 같은 그릇을 쓴다.
 // entities 끼리는 서로를 import 할 수 없으므로 공유 지점은 여기뿐이다(safe-url·source-tier 와 같은 이유).
+// AI 생성물 고지(2026-08-30) — AI상담·체크리스트·타임라인 세 화면이 같은 문구를 써야 하는데
+// pages 끼리는 서로 import 할 수 없다. 공유 지점은 여기뿐이다(SourceList 와 같은 이유).
+export {
+  AI_CHAT_DISCLAIMER,
+  AI_PLAN_DISCLAIMER,
+  AiDisclaimer,
+  type AiDisclaimerProps,
+} from "./AiDisclaimer";
 export { SourceList, type SourceListItem, type SourceListProps } from "./SourceList";
 export { StatusCallout, type StatusCalloutProps } from "./StatusCallout";
 // 켜고 끄는 스위치 — 온보딩 7단계에서 뽑아 올렸다(2026-08-29). 예산 재배분의 「카테고리 사용
