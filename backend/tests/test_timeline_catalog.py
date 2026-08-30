@@ -1,7 +1,7 @@
 """app/core/timeline_catalog.py 정적 데이터 회귀 테스트 — docs/wedding/ing/
 ds7-timeline-seed-data-prep.md 완성본(55항목) + ETC/HOMENEW 신규 저작 10항목 + MEETING/GIFT
-표본 보강 3항목(2026-08-24 버그 수정 2건) + 2026-08-30 상세도 보강 16항목(카탈로그 모듈
-docstring 참고)과 계속 일치하는지 확인한다."""
+표본 보강 3항목(2026-08-24 버그 수정 2건) + 2026-08-30 상세도 보강 16항목 + 실무 지식 추가
+보강 3항목(카탈로그 모듈 docstring 참고)과 계속 일치하는지 확인한다."""
 
 from app.core.timeline_catalog import TIMELINE_CATALOG
 from app.schemas.common import CategoryCode
@@ -20,12 +20,12 @@ _VALID_CATEGORY_CODES: set[CategoryCode] = {
 
 
 class TestTimelineCatalog:
-    def test_has_exactly_84_items(self):
-        assert len(TIMELINE_CATALOG) == 84
+    def test_has_exactly_87_items(self):
+        assert len(TIMELINE_CATALOG) == 87
 
-    def test_display_order_is_1_to_84_unique_and_sequential(self):
+    def test_display_order_is_1_to_87_unique_and_sequential(self):
         orders = [item.display_order for item in TIMELINE_CATALOG]
-        assert orders == list(range(1, 85))
+        assert orders == list(range(1, 88))
 
     def test_category_codes_are_none_or_valid(self):
         for item in TIMELINE_CATALOG:
@@ -41,13 +41,13 @@ class TestTimelineCatalog:
         for item in TIMELINE_CATALOG:
             assert -365 <= item.dday_offset_days <= 14
 
-    def test_offset_sign_distribution_sums_to_84(self):
-        # 2026-08-30 상세도 보강(16항목) 이후 실측값 — 음수 77(기존 62 + 신규 15) · 0(당일) 3
-        # (변동 없음) · 양수(본식 후) 4(기존 3 + 신규 "전입신고" D+7 1개).
+    def test_offset_sign_distribution_sums_to_87(self):
+        # 2026-08-30 실무 지식 추가 보강(3항목, 전부 음수 offset) 이후 실측값 — 음수 80
+        # (기존 77 + 신규 3) · 0(당일) 3(변동 없음) · 양수(본식 후) 4(변동 없음).
         negative = sum(1 for item in TIMELINE_CATALOG if item.dday_offset_days < 0)
         zero = sum(1 for item in TIMELINE_CATALOG if item.dday_offset_days == 0)
         positive = sum(1 for item in TIMELINE_CATALOG if item.dday_offset_days > 0)
-        assert (negative, zero, positive) == (77, 3, 4)
+        assert (negative, zero, positive) == (80, 3, 4)
 
     def test_all_titles_non_empty(self):
         assert all(item.title.strip() for item in TIMELINE_CATALOG)
