@@ -14,6 +14,7 @@ export type {
 export type { SendMessageHandlers } from "./api/chat";
 export {
   createChatSession,
+  deleteChatSession,
   getChatMessages,
   listChatSessions,
   rateChatMessage,

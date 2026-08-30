@@ -12,19 +12,26 @@ import { ChatPage } from "./ChatPage";
 
 const STORAGE_KEY = "merrymap.chat.global_session_id";
 const listChatSessionsMock = vi.fn();
+const deleteChatSessionMock = vi.fn();
 
 // `ChatPanel` 은 여기서 검증 대상이 아니다 — 받은 sessionId 를 그대로 드러내는 자리표시자로
 // 바꿔서, 이 화면이 **무엇을 내려보내는지**만 본다.
 vi.mock("@/entities/chat", () => ({
   listChatSessions: () => listChatSessionsMock(),
+  deleteChatSession: (id: string) => deleteChatSessionMock(id),
   ChatPanel: ({ sessionId }: { sessionId: string | null }) => <div>panel:{sessionId ?? "none"}</div>,
 }));
 vi.mock("@/entities/feedback", () => ({ ReportButton: () => null }));
 
 beforeEach(() => {
   listChatSessionsMock.mockReset();
+  deleteChatSessionMock.mockReset();
   sessionStorage.clear();
 });
+
+function sessionRow(id: string, title: string) {
+  return { id, category_code: null, title, last_message_at: "2026-08-29T05:00:00Z", created_at: "2026-08-29T00:00:00Z" };
+}
 
 describe("AI상담 세션 배선", () => {
   it("목록에서 대화를 고르면 그 세션을 열고 sessionStorage 미러도 갱신한다", async () => {
@@ -45,7 +52,10 @@ describe("AI상담 세션 배선", () => {
     expect(screen.getByText("panel:none")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "지난 대화" }));
-    await user.click(await screen.findByRole("button", { name: /예식장 질문/u }));
+    // `^` 를 앵커한다 — 같은 행의 삭제 버튼 접근명이 「예식장 질문」 삭제 라서(2026-08-30) 앵커가
+    // 없으면 이 조회가 버튼 2개를 물어 실패한다. 두 이름이 겹치는 것 자체는 의도다: 스크린리더가
+    // 「무엇의 삭제인지」를 알아야 한다.
+    await user.click(await screen.findByRole("button", { name: /^예식장 질문/u }));
 
     expect(screen.getByText("panel:picked")).toBeInTheDocument();
     expect(sessionStorage.getItem(STORAGE_KEY)).toBe("picked");
@@ -66,6 +76,44 @@ describe("AI상담 세션 배선", () => {
     expect(screen.getByText("panel:none")).toBeInTheDocument();
     // 지우지 않으면 탭을 다시 열 때 방금 버린 대화가 되살아난다.
     expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  // 위 머리말의 「미러를 갱신해야 하는 지점」이 **넷**이 됐다(2026-08-30) — 삭제가 넷째다.
+  // 이 배선이 빠지면 지운 대화가 화면에 그대로 남고 다음 전송이 404 로 죽는다.
+  it("지금 열려 있는 대화를 지우면 화면을 비우고 미러도 지운다", async () => {
+    const user = userEvent.setup();
+    sessionStorage.setItem(STORAGE_KEY, "open-one");
+    listChatSessionsMock.mockResolvedValue({ sessions: [sessionRow("open-one", "지금 보는 대화")] });
+    deleteChatSessionMock.mockImplementation(() => Promise.resolve());
+
+    render(<ChatPage />);
+    expect(screen.getByText("panel:open-one")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "지난 대화" }));
+    await user.click(await screen.findByRole("button", { name: "「지금 보는 대화」 삭제" }));
+    await user.click(screen.getByRole("button", { name: "삭제" }));
+
+    expect(await screen.findByText("panel:none")).toBeInTheDocument();
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it("다른 대화를 지우면 지금 보던 대화는 그대로 남는다", async () => {
+    const user = userEvent.setup();
+    sessionStorage.setItem(STORAGE_KEY, "open-one");
+    listChatSessionsMock.mockResolvedValue({
+      sessions: [sessionRow("open-one", "지금 보는 대화"), sessionRow("other", "다른 대화")],
+    });
+    deleteChatSessionMock.mockImplementation(() => Promise.resolve());
+
+    render(<ChatPage />);
+
+    await user.click(screen.getByRole("button", { name: "지난 대화" }));
+    await user.click(await screen.findByRole("button", { name: "「다른 대화」 삭제" }));
+    await user.click(screen.getByRole("button", { name: "삭제" }));
+
+    // 목록 정리를 했더니 읽던 대화가 사라지면 안 된다.
+    expect(await screen.findByText("panel:open-one")).toBeInTheDocument();
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBe("open-one");
   });
 });
 
