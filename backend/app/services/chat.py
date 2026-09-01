@@ -226,6 +226,26 @@ def _build_citations(context: list) -> list[CitationOut]:
     ]
 
 
+def _sse_event_for_custom_chunk(chunk: dict) -> str | None:
+    """그래프가 writer()로 흘려보낸 "custom" 청크 하나를 SSE 프레임 문자열로 바꾼다.
+    아는 type이 아니면 None(=아무것도 내보내지 않음).
+
+    2026-09-01 리팩토링 — 원래는 stream_chat_response의 astream 루프 안에 4단 elif 체인으로
+    있었다. ast 기준으로 elif는 중첩 If라 이 체인만으로 중첩이 4단계 늘어(전체 10단계) 이 레포
+    기준(4단계)을 크게 넘겼다. 순수 함수라 DB도 settings도 필요 없고, 분기 표만 여기 모인다.
+    """
+    kind = chunk["type"]
+    if kind == "token":
+        return _sse("token", TokenEventData(delta=chunk["delta"]))
+    if kind == "stage":
+        return _sse("stage", StageEventData(stage=chunk["stage"]))
+    if kind == "retry":
+        return _sse("retry", RetryEventData(reason=chunk["reason"]))
+    if kind == "heartbeat":
+        return _sse_comment("heartbeat")
+    return None
+
+
 # 2026-08-26 레드팀 감사 3라운드 MEDIUM #10 — 다른 에러 경로(예: app/services/oauth.py의
 # UPSTREAM_LLM_ERROR)는 전부 정제된 한국어 문구를 쓰는데, 여기만 openai SDK 원본 예외 문자열을
 # 그대로 SSE로 노출했다. 원인 진단용 상세는 trace.update(metadata=...)의 error_detail로만 남긴다.
@@ -287,6 +307,83 @@ async def _finish_after_upstream_failure(
     yield _sse("error", ErrorEventData(code=error_code, message=error_message))
 
 
+def _build_initial_state(
+    query: str, category_code: str | None, history: list[tuple[str, str]]
+) -> ChatState:
+    """그래프에 넘길 초기 상태. 순수 함수 — DB도 settings도 보지 않는다.
+
+    profile_block만 빈 문자열로 두고 호출부가 나중에 채운다: out_of_scope 판정 **이후에만**
+    채워야 하기 때문이다(2026-08-31). 스코프 가드의 존재 이유가 "무관한 요청엔 비용을 아예 안
+    쓴다"인데 그 앞에서 프로필을 조회하면 DB를 5~6회 때리게 된다.
+    """
+    return {
+        "query": query,
+        "category_code": category_code,
+        "context": [],
+        "answer": "",
+        "verdict": "",
+        "verification_reason": "",
+        "retry_count": 0,
+        "out_of_scope": False,
+        "history": history,
+        "resolved_query": "",
+        "profile_block": "",
+    }
+
+
+async def _finish_successfully(
+    session: AsyncSession,
+    chat_session: ChatSession,
+    final_state: ChatState,
+    trace_id: str | None,
+    start: float,
+) -> AsyncIterator[str]:
+    """그래프가 끝까지 성공했을 때의 마무리 — 근거/검증 SSE, assistant 메시지 저장, done.
+
+    2026-09-01 리팩토링 — 위 _finish_after_upstream_failure와 정확히 대칭인 짝이다(실패 종료 /
+    정상 종료). 원래는 stream_chat_response 본문에 인라인으로 있어 두 종료 경로가 한쪽만 함수로
+    뽑혀 있었다.
+
+    trace_id를 trace 객체가 아니라 문자열로 받는 이유: 이 저장은 `async with traced_span(...)`
+    블록이 **닫힌 뒤에** 일어나는데(span은 답변 생성까지만 감싼다), 그 구조를 인자 타입으로
+    드러내 두면 나중에 span 경계를 옮길 때 여기서 먼저 걸린다.
+    """
+    logger.info(
+        "Chat response verdict=%s retry_count=%s session_id=%s",
+        final_state["verdict"],
+        final_state["retry_count"],
+        chat_session.id,
+    )
+    citations = _build_citations(final_state["context"])
+    yield _sse("citations", CitationsEventData(citations=citations))
+    yield _sse(
+        "verification",
+        VerificationEventData(
+            verdict=final_state["verdict"], reason=final_state["verification_reason"]
+        ),
+    )
+
+    latency_ms = int((time.monotonic() - start) * 1000)
+    assistant_message = ChatMessage(
+        session_id=chat_session.id,
+        role="assistant",
+        content=final_state["answer"],
+        citations=[c.model_dump() for c in citations],
+        verification={
+            "verdict": final_state["verdict"],
+            "reason": final_state["verification_reason"],
+        },
+        latency_ms=latency_ms,
+        trace_ref=trace_id,
+    )
+    session.add(assistant_message)
+    _touch_session_activity(chat_session, first_message_content=None)
+    await session.commit()
+    await session.refresh(assistant_message)
+
+    yield _sse("done", DoneEventData(message_id=str(assistant_message.id), latency_ms=latency_ms))
+
+
 # 후속 질문 해소(app/rag/generation.py::resolve_followup_query)에 넘길 직전 대화.
 #
 # **생성 프롬프트에는 안 들어간다.** 이 채팅은 여전히 매 메시지가 독립이고(build_chat_messages
@@ -332,21 +429,7 @@ async def stream_chat_response(
 
         settings = get_settings()
         history = await _load_recent_turns(session, chat_session.id)
-        initial_state: ChatState = {
-            "query": payload.content,
-            "category_code": chat_session.category_code,
-            "context": [],
-            "answer": "",
-            "verdict": "",
-            "verification_reason": "",
-            "retry_count": 0,
-            "out_of_scope": False,
-            "history": history,
-            "resolved_query": "",
-            # 2026-08-31 — out_of_scope 판정 이후에만 채운다(아래). 스코프 가드의 존재 이유가
-            # "무관한 요청엔 비용을 아예 안 쓴다"라 그 앞에서 DB를 5~6회 때리면 안 된다.
-            "profile_block": "",
-        }
+        initial_state = _build_initial_state(payload.content, chat_session.category_code, history)
         config = {"configurable": {"session": session, "settings": settings}}
 
         final_state: ChatState = initial_state
@@ -420,17 +503,15 @@ async def stream_chat_response(
                     async for mode, chunk in _GRAPH.astream(
                         initial_state, config, stream_mode=["custom", "values"]
                     ):
-                        if mode == "custom":
-                            if chunk["type"] == "token":
-                                yield _sse("token", TokenEventData(delta=chunk["delta"]))
-                            elif chunk["type"] == "stage":
-                                yield _sse("stage", StageEventData(stage=chunk["stage"]))
-                            elif chunk["type"] == "retry":
-                                yield _sse("retry", RetryEventData(reason=chunk["reason"]))
-                            elif chunk["type"] == "heartbeat":
-                                yield _sse_comment("heartbeat")
-                        else:
+                        if mode != "custom":
+                            # "values" 청크 = 노드 하나가 끝날 때마다의 상태 스냅샷.
+                            # 계속 덮어써서 마지막 것만 남긴다(재검색이 일어나도 자동으로
+                            # 마지막 시도 결과만 남는다).
                             final_state = chunk
+                            continue
+                        event = _sse_event_for_custom_chunk(chunk)
+                        if event is not None:
+                            yield event
                 except RateLimitError as exc:
                     # 03_API_spec.md #29 "에러 시" / 05_RAG_design.md §10 — 스트림이 이미
                     # 200으로 시작해서 HTTP 상태코드를 더 못 바꾸므로 event: error로만 알린다.
@@ -480,42 +561,9 @@ async def stream_chat_response(
             )
 
         # 루프가 끝난 시점엔 final_state에 검색 근거(context)·최종 답변·검증 결과가 전부 들어있다.
-        # 2026-08-26 레드팀 감사 4라운드 항목 8 — 3라운드에서 찾은 verify verdict 크래시
-        # 지점(app/rag/generation.py가 이미 정상화하지만, Langfuse trace는 항목 11처럼 자체
-        # 실패할 수 있어 독립적인 stdout 기록도 남긴다)이 무로깅이었다.
-        logger.info(
-            "Chat response verdict=%s retry_count=%s session_id=%s",
-            final_state["verdict"],
-            final_state["retry_count"],
-            chat_session.id,
-        )
-        citations = _build_citations(final_state["context"])
-        yield _sse("citations", CitationsEventData(citations=citations))
-        yield _sse(
-            "verification",
-            VerificationEventData(
-                verdict=final_state["verdict"], reason=final_state["verification_reason"]
-            ),
-        )
-
-        latency_ms = int((time.monotonic() - start) * 1000)
-        assistant_message = ChatMessage(
-            session_id=chat_session.id,
-            role="assistant",
-            content=final_state["answer"],
-            citations=[c.model_dump() for c in citations],
-            verification={
-                "verdict": final_state["verdict"],
-                "reason": final_state["verification_reason"],
-            },
-            latency_ms=latency_ms,
-            trace_ref=trace.trace_id,
-        )
-        session.add(assistant_message)
-        _touch_session_activity(chat_session, first_message_content=None)
-        await session.commit()
-        await session.refresh(assistant_message)
-
-        yield _sse(
-            "done", DoneEventData(message_id=str(assistant_message.id), latency_ms=latency_ms)
-        )
+        # trace.trace_id를 여기서 읽는 것에 주의 — 위 `async with traced_span(...)` 블록은 이미
+        # 닫혔다(span은 답변 생성까지만 감싼다). 그래서 객체가 아니라 id 문자열만 넘긴다.
+        async for event in _finish_successfully(
+            session, chat_session, final_state, trace.trace_id, start
+        ):
+            yield event
