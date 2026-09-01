@@ -13,6 +13,7 @@ from uuid import uuid4
 
 import pytest
 from conftest import parse_sse_frames
+from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.core.categories import CATEGORY_META
@@ -24,6 +25,7 @@ from app.schemas.wedding import (
     WeddingUpdate,
 )
 from app.services.wedding import (
+    _raise_if_budget_below_paid,
     approximate_wedding_date,
     find_budget_below_paid_violation,
     stream_wedding_creation,
@@ -393,3 +395,24 @@ class TestStreamWeddingCreationHeartbeat:
                 {"code": "BUDGET_EXCEEDED", "message": "배정 합계가 예산을 1,000원 초과합니다."},
             )
         ]
+
+
+class TestRaiseIfBudgetBelowPaid:
+    """2026-09-01에 update_wedding_categories 본문에서 뽑아낸 가드 — _raise_if_budget_exceeded와
+    대칭인 짝이다. 판정 자체(find_budget_below_paid_violation)는 위에서 이미 다루므로, 여기선
+    "위반을 어떤 응답으로 옮기는가"만 본다."""
+
+    def test_passes_silently_when_no_category_is_below_its_paid_amount(self):
+        _raise_if_budget_below_paid(uuid4(), {"VENUE": 1_000_000}, {"VENUE": 900_000})
+
+    def test_raises_400_with_category_and_min_required(self):
+        with pytest.raises(HTTPException) as exc_info:
+            _raise_if_budget_below_paid(uuid4(), {"VENUE": 500_000}, {"VENUE": 900_000})
+        error = exc_info.value.detail["error"]
+        assert exc_info.value.status_code == 400
+        assert error["code"] == "BUDGET_BELOW_PAID"
+        assert error["category_code"] == "VENUE"
+        assert error["min_required"] == 900_000
+        # 한글 카테고리명과 천단위 구분이 사용자에게 그대로 보인다.
+        assert "예식장" in error["message"]
+        assert "900,000원" in error["message"]

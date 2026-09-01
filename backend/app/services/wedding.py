@@ -98,6 +98,40 @@ def _raise_if_budget_exceeded(wedding_id, total_planned: int, total_budget: int)
         raise api_error(400, "BUDGET_EXCEEDED", f"배정 합계가 예산을 {over:,}원 초과합니다.")
 
 
+def _raise_if_budget_below_paid(
+    wedding_id, planned_budgets: dict[str, int], paid_amounts: dict[str, int]
+) -> None:
+    """어떤 카테고리든 planned_budget이 이미 지급한 금액보다 작으면 BUDGET_BELOW_PAID(400).
+
+    위 _raise_if_budget_exceeded와 대칭인 짝이다 — 그쪽은 "합계가 총예산을 넘는" 방향,
+    이쪽은 "개별 카테고리가 이미 쓴 돈 아래로 내려가는" 방향을 막는다.
+
+    위반 판정 자체는 순수 함수 find_budget_below_paid_violation이 하고, 여기서는 그 결과를
+    사용자에게 보여줄 한국어 메시지와 로깅으로 옮기기만 한다.
+
+    2026-09-01 리팩토링 — update_wedding_categories 본문에 인라인으로 있었다. 대칭인 두 검증
+    중 한쪽만 함수로 뽑혀 있어 짝이 맞지 않았다.
+    """
+    violation = find_budget_below_paid_violation(planned_budgets, paid_amounts)
+    if violation is None:
+        return
+    category_code, min_required = violation
+    name_ko = CATEGORY_META_BY_CODE[category_code].name_ko
+    logger.info(
+        "BUDGET_BELOW_PAID for wedding_id=%s category_code=%s min_required=%s",
+        wedding_id,
+        category_code,
+        min_required,
+    )
+    raise api_error(
+        400,
+        "BUDGET_BELOW_PAID",
+        f"{name_ko} 카테고리는 이미 {min_required:,}원을 지급해 그 아래로 예산을 낮출 수 없습니다.",
+        category_code=category_code,
+        min_required=min_required,
+    )
+
+
 async def _resolve_total_budget(session: AsyncSession, payload: WeddingCreate) -> int:
     if not payload.total_budget_unsure:
         assert payload.total_budget is not None  # WeddingCreate 검증기가 이미 보장
@@ -482,23 +516,7 @@ async def update_wedding_categories(
     # 검증 2: category_code별 planned_budget >= SUM(payments.amount WHERE status='PAID').
     planned_budgets = {code: row.planned_budget for code, row in existing_by_code.items()}
     paid_amounts = await get_paid_amounts_by_category(session, wedding.id)
-    violation = find_budget_below_paid_violation(planned_budgets, paid_amounts)
-    if violation is not None:
-        category_code, min_required = violation
-        name_ko = CATEGORY_META_BY_CODE[category_code].name_ko
-        logger.info(
-            "BUDGET_BELOW_PAID for wedding_id=%s category_code=%s min_required=%s",
-            wedding.id,
-            category_code,
-            min_required,
-        )
-        raise api_error(
-            400,
-            "BUDGET_BELOW_PAID",
-            f"{name_ko} 카테고리는 이미 {min_required:,}원을 지급해 그 아래로 예산을 낮출 수 없습니다.",
-            category_code=category_code,
-            min_required=min_required,
-        )
+    _raise_if_budget_below_paid(wedding.id, planned_budgets, paid_amounts)
 
     # 13_personalization_router_agent_design.md §1-2 규칙 1: 활성 카테고리가 바뀌면(카테고리
     # 온/오프) 체크리스트·타임라인 둘 다 재생성 대상 — 이 규칙 자체는 결정적이라 route 노드도
