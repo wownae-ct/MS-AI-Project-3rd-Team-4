@@ -278,6 +278,27 @@ def _categories_to_regenerate(
     ]
 
 
+def _carry_forward_draft(
+    previous_draft: list[dict] | None,
+    categories_regenerated: list[str],
+    results: list[list[dict]],
+    active_categories: list[str],
+) -> list[dict]:
+    """이번 패스에서 재생성한 카테고리만 덮어쓰고, 나머지(이미 SUCCESS)는 이전 draft에서 이월한다.
+
+    반환 순서는 항상 active_categories 순이다 — 재생성 여부와 무관하게 화면에 보이는 순서가
+    흔들리지 않게 한다.
+
+    2026-09-01 리팩토링 — CHECKLIST와 TIMELINE이 이 로직을 글자만 다르게 반복하고 있었다.
+    유일한 차이였던 "CHECKLIST만 인용 근거를 해소한다"는 호출부에서 results를 미리 가공하는
+    것으로 흡수했다.
+    """
+    by_category = group_checklist_by_category(previous_draft or [])
+    for category, items in zip(categories_regenerated, results):
+        by_category[category] = items
+    return [item for category in active_categories for item in by_category.get(category, [])]
+
+
 async def generate_node(state: PersonalizationState, config: RunnableConfig) -> dict:
     settings: Settings = config["configurable"].get("settings") or get_settings()
     async with traced_span(
@@ -345,31 +366,28 @@ async def generate_node(state: PersonalizationState, config: RunnableConfig) -> 
 
         checklist_draft = state["checklist_draft"]
         if "CHECKLIST" in affected_domains:
-            # carry-forward: 이전 draft를 카테고리별로 다시 묶어, 이번 패스에서 재생성한
-            # 카테고리만 덮어쓰고 나머지(이미 SUCCESS)는 그대로 둔다.
-            draft_by_category = group_checklist_by_category(state["checklist_draft"] or [])
-            for category, items in zip(checklist_categories_to_regenerate, checklist_results):
-                draft_by_category[category] = (
+            # CHECKLIST만 인용 근거를 해소해 넣는다(TIMELINE엔 인용 개념이 없다). carry-forward
+            # 자체는 두 도메인이 같으므로 그 앞단에서만 결과를 가공한다.
+            checklist_draft = _carry_forward_draft(
+                state["checklist_draft"],
+                checklist_categories_to_regenerate,
+                [
                     _resolve_checklist_citations(items, contract_citations) or []
-                )
-            checklist_draft = [
-                item
-                for category in active_categories
-                for item in draft_by_category.get(category, [])
-            ]
+                    for items in checklist_results
+                ],
+                active_categories,
+            )
         # TIMELINE도 CHECKLIST와 같은 carry-forward 구조다(2026-08-30 2차). 범용
         # (category_code=null) 항목은 LLM이 아예 안 만들고 app/services/personalization.py가
         # 결정론적으로 채우므로(TIMELINE 결정론화), 여기 draft에는 실제 카테고리 항목만 있다.
         timeline_draft = state["timeline_draft"]
         if "TIMELINE" in affected_domains:
-            timeline_by_category = group_checklist_by_category(state["timeline_draft"] or [])
-            for category, items in zip(timeline_categories_to_regenerate, timeline_results):
-                timeline_by_category[category] = items
-            timeline_draft = [
-                item
-                for category in active_categories
-                for item in timeline_by_category.get(category, [])
-            ]
+            timeline_draft = _carry_forward_draft(
+                state["timeline_draft"],
+                timeline_categories_to_regenerate,
+                timeline_results,
+                active_categories,
+            )
         return {"checklist_draft": checklist_draft, "timeline_draft": timeline_draft}
 
 
