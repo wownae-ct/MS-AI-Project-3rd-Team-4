@@ -253,6 +253,77 @@ async def stream_wedding_creation(
         yield sse_event("done", WeddingOut.model_validate(wedding))
 
 
+async def _recalculate_timeline_for_date_change(
+    session: AsyncSession,
+    wedding: Wedding,
+    old_wedding_date: date,
+    changed_date_fields: list[str],
+) -> None:
+    """03_API_spec.md #8 부작용 — 본식일(또는 그 정밀도)이 바뀌면 date_overridden=false,
+    status='TODO'인 timeline_items.target_date를 다시 계산한다.
+
+    이건 콘텐츠 판단이 아니라 산수라 개인화 에이전트를 거치지 않고 항상 결정론적으로 처리한다
+    (설계 문서 §1 "중요한 설계 원칙 하나").
+
+    커밋하지 않는다 — 호출부(update_wedding)가 개인화 재트리거까지 묶어 한 번에 커밋한다.
+
+    2026-09-01 리팩토링 — update_wedding 본문의 55줄짜리 인라인 블록이었다. 이 함수에서 유일하게
+    "본식일 변경"이라는 하나의 관심사만 다루는 덩어리라 그대로 떼어냈다(공유하던 지역변수가
+    wedding/old_wedding_date/changed 셋뿐이었다).
+    """
+    rows = (
+        await session.execute(
+            select(
+                TimelineItem.id,
+                TimelineItem.default_dday_offset_days,
+                TimelineItem.date_overridden,
+                TimelineItem.status,
+            ).where(TimelineItem.wedding_id == wedding.id)
+        )
+    ).all()
+    # 2026-08-28 준비기간 스케일링 — 변경 폭이 5개월 이상이면 온보딩 시점(wedding.created_at)
+    # 스케일을 되돌리고 새 스케일을 적용한다(recalculate_timeline_dates 내부 판정,
+    # app/services/timeline.py 모듈 docstring 참고). onboarding_date는 새 컬럼 없이
+    # created_at을 그대로 대리 지표로 쓴다.
+    # red-bug.md #14 — wedding.created_at은 UTC-aware 시각이라 .date()를 바로 쓰면 KST
+    # 00:00~08:59 사이 생성된 웨딩은 실제보다 하루 이른 날짜로 취급된다(round5 감사가 이미
+    # 5개 파일에서 고친 "today_kst() 안 거친 .date()" 버그 클래스와 동일).
+    updates = recalculate_timeline_dates(
+        old_wedding_date,
+        wedding.wedding_date,
+        to_kst_date(wedding.created_at),
+        today_kst(),
+        [tuple(r) for r in rows],
+    )
+    # red-bug.md #13 — 항목 수(최대 95개)만큼 개별 UPDATE를 순차 await하던 N+1 패턴을
+    # SQLAlchemy 2.0 "ORM Bulk UPDATE by Primary Key" 한 번으로 교체. WHERE 절을 직접
+    # 쓰지 않는다 — 명시 WHERE(bindparam 등)를 쓰면 이 기능과 충돌해
+    # "No primary key value supplied" / "bulk synchronize ... not supported"로 죽는다
+    # (2026-08-29 CI가 두 형태 다 실제로 잡아냄). 파라미터 dict의 "id" 키가 PK 컬럼과
+    # 이름이 같아야 SQLAlchemy가 자동으로 PK 기준 WHERE를 만든다.
+    if updates:
+        await session.execute(
+            update(TimelineItem),
+            [
+                {
+                    "id": item_id,
+                    "target_date": new_target_date,
+                    "default_dday_offset_days": new_offset,
+                }
+                for item_id, (new_target_date, new_offset) in updates.items()
+            ],
+        )
+    session.add(
+        AiInvocation(
+            wedding_id=wedding.id,
+            trigger="FIELD_UPDATED",
+            changed_fields=changed_date_fields,
+            affected_domains=["TIMELINE"],
+            status="SUCCESS",
+        )
+    )
+
+
 async def update_wedding(
     session: AsyncSession, settings: Settings, wedding: Wedding, payload: WeddingUpdate
 ) -> Wedding:
@@ -285,63 +356,10 @@ async def update_wedding(
     for field, value in changed.items():
         setattr(wedding, field, value)
 
-    # 03_API_spec.md #8 부작용: wedding_date 또는 wedding_date_precision이 바뀌면 date_overridden
-    # =false, status='TODO'인 timeline_items.target_date만 재계산 — 이건 콘텐츠 판단이 아니라
-    # 산수라 개인화 에이전트를 거치지 않고 여기서 항상 결정론적으로 처리한다(설계 문서 §1 "중요한
-    # 설계 원칙 하나").
-    if "wedding_date" in changed or "wedding_date_precision" in changed:
-        rows = (
-            await session.execute(
-                select(
-                    TimelineItem.id,
-                    TimelineItem.default_dday_offset_days,
-                    TimelineItem.date_overridden,
-                    TimelineItem.status,
-                ).where(TimelineItem.wedding_id == wedding.id)
-            )
-        ).all()
-        # 2026-08-28 준비기간 스케일링 — 변경 폭이 5개월 이상이면 온보딩 시점(wedding.created_at)
-        # 스케일을 되돌리고 새 스케일을 적용한다(recalculate_timeline_dates 내부 판정,
-        # app/services/timeline.py 모듈 docstring 참고). onboarding_date는 새 컬럼 없이
-        # created_at을 그대로 대리 지표로 쓴다.
-        # red-bug.md #14 — wedding.created_at은 UTC-aware 시각이라 .date()를 바로 쓰면 KST
-        # 00:00~08:59 사이 생성된 웨딩은 실제보다 하루 이른 날짜로 취급된다(round5 감사가 이미
-        # 5개 파일에서 고친 "today_kst() 안 거친 .date()" 버그 클래스와 동일).
-        updates = recalculate_timeline_dates(
-            old_wedding_date,
-            wedding.wedding_date,
-            to_kst_date(wedding.created_at),
-            today_kst(),
-            [tuple(r) for r in rows],
-        )
-        # red-bug.md #13 — 항목 수(최대 95개)만큼 개별 UPDATE를 순차 await하던 N+1 패턴을
-        # SQLAlchemy 2.0 "ORM Bulk UPDATE by Primary Key" 한 번으로 교체. WHERE 절을 직접
-        # 쓰지 않는다 — 명시 WHERE(bindparam 등)를 쓰면 이 기능과 충돌해
-        # "No primary key value supplied" / "bulk synchronize ... not supported"로 죽는다
-        # (2026-08-29 CI가 두 형태 다 실제로 잡아냄). 파라미터 dict의 "id" 키가 PK 컬럼과
-        # 이름이 같아야 SQLAlchemy가 자동으로 PK 기준 WHERE를 만든다.
-        if updates:
-            await session.execute(
-                update(TimelineItem),
-                [
-                    {
-                        "id": item_id,
-                        "target_date": new_target_date,
-                        "default_dday_offset_days": new_offset,
-                    }
-                    for item_id, (new_target_date, new_offset) in updates.items()
-                ],
-            )
-        session.add(
-            AiInvocation(
-                wedding_id=wedding.id,
-                trigger="FIELD_UPDATED",
-                changed_fields=[
-                    f for f in ("wedding_date", "wedding_date_precision") if f in changed
-                ],
-                affected_domains=["TIMELINE"],
-                status="SUCCESS",
-            )
+    changed_date_fields = [f for f in ("wedding_date", "wedding_date_precision") if f in changed]
+    if changed_date_fields:
+        await _recalculate_timeline_for_date_change(
+            session, wedding, old_wedding_date, changed_date_fields
         )
 
     # 03_API_spec.md #8 Should 스코프: 날짜 외 필드(total_budget/taste_preference/venue_priority/
