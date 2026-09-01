@@ -1,3 +1,8 @@
+// 앱 진입점 — 마운트, 그리고 어느 슬라이스에도 속하지 않는 전역 배선 두 가지.
+//
+// 이 파일이 조립 레이어인 이유: 세션 만료 처리는 shared 가 entities 를 알아야 하는데 그건
+// 레이어 규칙에 어긋난다(아래 참조). 그래서 shared 가 구독 지점만 열어 두고, 실제 연결은
+// 위에서 내려다보는 이 파일이 한다.
 import { StrictMode, type ErrorInfo } from "react";
 import { createRoot } from "react-dom/client";
 import { invalidateSession } from "@/entities/session";
