@@ -1,3 +1,7 @@
+// vitest 전역 준비 — jsdom 이 구현하지 않은 브라우저 API 를 최소한만 채운다.
+//
+// 흉내는 "없으면 테스트가 아예 안 도는 것"에만 낸다. 동작까지 흉내 내기 시작하면 테스트가
+// 브라우저가 아니라 이 파일을 검증하게 된다 — 아래 각 스텁에 왜 필요한지가 적혀 있다.
 import "@testing-library/jest-dom/vitest";
 
 // jsdom은 Window.scrollTo는 "not implemented" 경고만 내고 넘어가지만(스텁 존재), 실제 브라우저와
