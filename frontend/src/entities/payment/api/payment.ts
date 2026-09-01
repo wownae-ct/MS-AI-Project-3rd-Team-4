@@ -1,3 +1,9 @@
+// 결제 내역(#15-20, #34) REST 클라이언트 — 목록 · 생성 · 수정 · 삭제 · 다가오는 결제 ·
+// 시세 비교, 그리고 영수증 사진 추출.
+//
+// 영수증 추출은 서버에 아무것도 저장하지 않는다. 사진에서 읽어낸 값을 돌려주기만 하고,
+// 사용자가 폼에서 확인·수정한 뒤 별도로 생성 요청을 보내는 흐름이다(카테고리는 자동으로
+// 추론하지 않는다 — 틀리면 사용자가 알아채기 어려운 값이라서다).
 import { apiFetch, apiFetchMultipart, RECEIPT_OCR_TIMEOUT_MS } from "@/shared/api";
 import type {
   BenchmarkComparison,
