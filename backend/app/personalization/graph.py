@@ -252,6 +252,32 @@ async def _generate_checklist_category_draft(
 # 근거(contract_citations)는 CHECKLIST 카테고리 중 하나라도 이번 패스에 재생성 대상일 때만,
 # gather로 병렬 호출을 보내기 전에 순차로 먼저 fetch한다 — AsyncSession은 동시 사용이
 # 안전하지 않으므로 DB 접근은 반드시 gather 이전에 끝낸다.
+def _categories_to_regenerate(
+    domain: str,
+    *,
+    affected_domains: list[str],
+    active_categories: list[str],
+    category_status: dict[str, str],
+    is_retry: bool,
+) -> list[str]:
+    """이번 패스에서 이 도메인의 어느 카테고리를 (재)생성할지 고른다.
+
+    첫 생성이면 활성 카테고리 전부, 재시도면 직전에 BLOCKED된 카테고리만. 도메인 자체가
+    영향 범위 밖이면 빈 목록이다.
+
+    2026-09-01 리팩토링 — 원래 generate_node 안의 클로저라 affected_domains/active_categories/
+    is_retry 세 개를 암묵적으로 캡처했다. 순수 함수인데 바깥 지역변수에 묶여 있어 단독으로
+    읽을 수도 테스트할 수도 없었다. 캡처하던 값을 전부 키워드 인자로 드러낸다.
+    """
+    if domain not in affected_domains:
+        return []
+    return [
+        category
+        for category in active_categories
+        if not is_retry or category_status.get(category) == "BLOCKED"
+    ]
+
+
 async def generate_node(state: PersonalizationState, config: RunnableConfig) -> dict:
     settings: Settings = config["configurable"].get("settings") or get_settings()
     async with traced_span(
@@ -268,20 +294,19 @@ async def generate_node(state: PersonalizationState, config: RunnableConfig) -> 
         timeline_category_errors = state.get("timeline_category_errors") or {}
         active_categories: list[str] = state["profile"].get("active_categories") or []
 
-        def _categories_to_regenerate(domain: str, category_status: dict[str, str]) -> list[str]:
-            if domain not in affected_domains:
-                return []
-            return [
-                category
-                for category in active_categories
-                if not is_retry or category_status.get(category) == "BLOCKED"
-            ]
-
         checklist_categories_to_regenerate = _categories_to_regenerate(
-            "CHECKLIST", checklist_category_status
+            "CHECKLIST",
+            affected_domains=affected_domains,
+            active_categories=active_categories,
+            category_status=checklist_category_status,
+            is_retry=is_retry,
         )
         timeline_categories_to_regenerate = _categories_to_regenerate(
-            "TIMELINE", timeline_category_status
+            "TIMELINE",
+            affected_domains=affected_domains,
+            active_categories=active_categories,
+            category_status=timeline_category_status,
+            is_retry=is_retry,
         )
 
         contract_citations = (
