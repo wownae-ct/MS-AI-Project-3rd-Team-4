@@ -1,3 +1,8 @@
+// 대시보드(#25)와 리포트(#26) REST 클라이언트.
+//
+// 두 응답 모두 최상위 필드의 존재·타입을 한 번 확인하고 넘긴다. 예상과 다른 200 이 그대로
+// 통과하면 렌더 도중 TypeError 가 나고, 그러면 화면 단위 오류 처리가 아니라 앱 전역
+// ErrorBoundary 로 튕겨 나간다(레드팀 감사에서 실제로 겪은 경로다).
 import { ApiError, apiFetch } from "@/shared/api";
 import type { DashboardSummary, MyReport } from "../model";
 

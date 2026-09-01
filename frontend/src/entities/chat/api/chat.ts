@@ -1,3 +1,10 @@
+// AI상담(#20-22, #33, #36) REST 클라이언트 — 세션 CRUD · 메시지 목록 · 평가, 그리고 답변
+// 스트리밍.
+//
+// 답변 전송만 다른 함수들과 모양이 다르다. 서버가 SSE 로 흘려보내는데 엔드포인트가 POST 라
+// EventSource 를 쓸 수 없어(그 API 는 GET 전용) fetch + ReadableStream 으로 직접 읽는다.
+// 프레임 파싱과 이벤트 종류(token/stage/retry/citations/verification/done/error, 그리고
+// `:` 로 시작하는 heartbeat 주석 줄)를 아는 곳이 여기다.
 import { apiBase, apiFetch, notifyUnauthorized } from "@/shared/api";
 import { parseApiError } from "@/shared/api/errors";
 import type {

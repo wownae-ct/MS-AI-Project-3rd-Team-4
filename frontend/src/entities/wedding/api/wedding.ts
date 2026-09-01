@@ -1,3 +1,11 @@
+// 웨딩 프로필(#5-10, #29) REST 클라이언트 — 생성 · 조회 · 수정, 카테고리 활성화와 예산 배정,
+// 그리고 지역 평균 시세.
+//
+// 생성만 모양이 다르다. 서버가 프로필을 만들면서 개인화(LLM)까지 함께 돌리느라 오래 걸려,
+// 응답을 SSE 로 흘려보내며 진행 상황을 알린다 — 그래서 이 요청은 fetch + ReadableStream 으로
+// 읽고 별도의 긴 제한 시간을 쓴다. 카테고리 선택도 이 한 번의 요청에 함께 실어 보낸다
+// (예전엔 생성과 카테고리 저장이 두 번의 요청이었는데, 앞이 시간 초과로 보이면 뒤가 아예
+// 실행되지 않아 사용자의 선택이 통째로 사라지는 사고가 있었다).
 import { apiBase, apiFetch, classifyFetchFailure, notifyUnauthorized, PERSONALIZATION_TIMEOUT_MS } from "@/shared/api";
 import { ApiError, parseApiError } from "@/shared/api/errors";
 import type {
