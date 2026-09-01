@@ -33,10 +33,10 @@ class ChatSession(Base):
         index=True,
     )
     category_code: Mapped[str | None] = mapped_column(CategoryCodeEnum)
-    # title/last_message_at: 03_API_spec.md 전체에 GET /chat/sessions(목록) 엔드포인트가 없어
-    # 이 두 컬럼을 읽는 소비자가 이번 스코프엔 하나도 없다 — 그래서 지금은 아무도 채우지 않고
-    # null로만 둔다(#27 응답 예시도 "title": null). 상담 이력 목록 화면이 생기면 그때
-    # stream_chat_response 등에 채우는 로직을 추가하면 된다.
+    # title/last_message_at: 상담 이력 목록(GET /chat/sessions, 03_API_spec.md #36)이 읽는다.
+    # app/services/chat.py::_touch_session_activity가 메시지를 저장할 때마다 채운다 —
+    # last_message_at은 매번 갱신하고, title은 이 세션의 첫 메시지일 때만 그 내용으로 채운다
+    # (두 번째부터는 덮어쓰지 않아 첫 질문이 목록의 제목 역할을 계속 한다).
     title: Mapped[str | None] = mapped_column(Text)
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # DDL은 TIMESTAMPTZ다 — DateTime(timezone=True)를 명시해야 asyncpg가 tz-aware Python

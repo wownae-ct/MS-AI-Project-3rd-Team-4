@@ -1,9 +1,10 @@
 """checklist_items 조회/수정/생성. 03_API_spec.md #12-14.
 
-이 세션 범위에서는 개인화 라우터 에이전트(LLM generate)를 구현하지 않는다 — 온보딩 시
-checklist_items 생성은 03_API_spec.md #6이 명시한 대로 "비동기 트리거"만 남기고(services/
-wedding.py의 TODO(personalization-task)), 실제 생성은 후속 태스크에서 채운다. 그래서 이
-모듈은 CRUD·상태값 검증만 다룬다 — 생성 로직은 없다."""
+여기서 만드는 것은 **사용자가 직접 추가한 항목**뿐이다(origin="USER"). 온보딩과 프로필 변경
+시점에 항목을 대량 생성하는 개인화 에이전트는 별개 경로다 — app/personalization의 LangGraph가
+초안을 만들고 app/services/personalization.py가 DB에 반영한다.
+
+상태값 규칙이 카테고리마다 다른 것(혼수는 구매 단계, 나머지는 진행 단계)도 이 모듈이 안다."""
 
 from datetime import UTC, datetime
 from uuid import UUID
