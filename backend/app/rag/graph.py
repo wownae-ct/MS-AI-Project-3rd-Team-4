@@ -40,6 +40,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.embeddings import get_azure_openai_client
@@ -53,7 +54,7 @@ from app.rag.generation import (
     verify_answer,
 )
 from app.rag.query_profile import profile_query
-from app.rag.retrieval import RetrievedChunk, retrieve_with_similarity
+from app.rag.retrieval import RetrievalOutcome, RetrievedChunk, retrieve_with_similarity
 from app.rag.scope_check import OUT_OF_SCOPE_ANSWER, OUT_OF_SCOPE_REASON
 
 # CRAG 재검색 루프의 상한. 무한루프/비용 폭증 방지가 목적이라 설정값으로 노출하지 않고 코드에
@@ -125,6 +126,51 @@ class ChatState(TypedDict):
 # ① retrieve: 질문+카테고리로 하이브리드 검색(retrieval.py)을 돌려 근거 청크를 찾아온다.
 # state["verdict"]가 WEAK/GENERAL이면 이전 시도가 재시도로 돌아온 것 — 원본 질문(state["query"])은
 # 그대로 두고, 그 판정 사유를 근거로 LLM이 재구성한 검색어로만 다시 검색한다(CRAG).
+async def _rescue_followup_query(
+    session: AsyncSession,
+    settings: Settings,
+    state: ChatState,
+    outcome: RetrievalOutcome,
+    writer: Callable[[dict], None],
+) -> tuple[RetrievalOutcome, str] | None:
+    """생략형 후속 질문("그럼 스드메는?")의 생략된 대상을 채워 재검색한다.
+
+    점수가 실제로 회복됐을 때만 (새 outcome, 해소된 질의)를 돌려주고, 그 외엔 None이다.
+
+    2026-09-01 리팩토링 — 원래 retrieve_node 본문에 인라인으로 있었고, 성공 시 outcome/chunks/
+    resolved_query/update/trace 다섯 개를 한꺼번에 재대입했다. 값 반환으로 뒤집어 재대입을
+    호출부의 두 개(outcome, resolved_query)로 줄인다. update[...] 대입과 trace.update()를
+    호출부에 남긴 것은 의도적이다 — trace가 span 컨텍스트 안에서만 유효하다는 구조를 헬퍼가
+    모르게 한다.
+
+    이 헬퍼는 반드시 이 모듈 안에 있어야 한다. 테스트가 app.rag.graph의 모듈 전역 이름
+    (resolve_followup_query, retrieve_with_similarity)을 패치하기 때문이다.
+    """
+    client = get_azure_openai_client(settings)
+    resolved = await _await_with_heartbeat(
+        resolve_followup_query(client, settings, state["history"], state["query"]),
+        writer,
+    )
+    if resolved == state["query"]:
+        return None
+
+    retry_outcome = await retrieve_with_similarity(
+        session, resolved, state["category_code"], settings
+    )
+    logger.info(
+        "followup resolved: %.4f -> %.4f, %r -> %r",
+        outcome.top_similarity,
+        retry_outcome.top_similarity,
+        state["query"][:40],
+        resolved[:60],
+    )
+    # 해소해도 여전히 미달이면 진짜 주제 이탈이다 — 실측상 "스파게티 맛집 알려줘"는
+    # 재작성 뒤에도 0.198 로 남았다(주제를 바꾸지 말라는 프롬프트 규칙 덕분이다).
+    if _is_out_of_scope(retry_outcome.top_similarity, settings):
+        return None
+    return retry_outcome, resolved
+
+
 async def retrieve_node(state: ChatState, config: RunnableConfig) -> dict:
     is_retry = state.get("verdict") in ("WEAK", "GENERAL")
     writer = get_stream_writer()
@@ -203,37 +249,19 @@ async def retrieve_node(state: ChatState, config: RunnableConfig) -> dict:
             and _is_out_of_scope(outcome.top_similarity, settings)
             and state.get("history")
         ):
-            client = get_azure_openai_client(settings)
-            resolved = await _await_with_heartbeat(
-                resolve_followup_query(client, settings, state["history"], state["query"]),
-                writer,
-            )
-            if resolved != state["query"]:
-                retry_outcome = await retrieve_with_similarity(
-                    session, resolved, state["category_code"], settings
+            rescued = await _rescue_followup_query(session, settings, state, outcome, writer)
+            if rescued is not None:
+                outcome, resolved_query = rescued
+                chunks = outcome.chunks
+                update["context"] = chunks
+                update["resolved_query"] = resolved_query
+                trace.update(
+                    output={
+                        "chunk_ids": [c.chunk_id for c in chunks],
+                        "top_similarity": outcome.top_similarity,
+                        "resolved_query": resolved_query,
+                    }
                 )
-                logger.info(
-                    "followup resolved: %.4f -> %.4f, %r -> %r",
-                    outcome.top_similarity,
-                    retry_outcome.top_similarity,
-                    state["query"][:40],
-                    resolved[:60],
-                )
-                # 해소해도 여전히 미달이면 진짜 주제 이탈이다 — 실측상 "스파게티 맛집 알려줘"는
-                # 재작성 뒤에도 0.198 로 남았다(주제를 바꾸지 말라는 프롬프트 규칙 덕분이다).
-                if not _is_out_of_scope(retry_outcome.top_similarity, settings):
-                    outcome = retry_outcome
-                    chunks = retry_outcome.chunks
-                    resolved_query = resolved
-                    update["context"] = chunks
-                    update["resolved_query"] = resolved
-                    trace.update(
-                        output={
-                            "chunk_ids": [c.chunk_id for c in chunks],
-                            "top_similarity": retry_outcome.top_similarity,
-                            "resolved_query": resolved,
-                        }
-                    )
 
         # ② 그래도 미달이면 거절한다 — generate/verify를 건너뛰고 곧바로 END로 간다.
         if (
