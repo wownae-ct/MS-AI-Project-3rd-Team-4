@@ -5,8 +5,6 @@
 
 export const FIELD_LABEL = "flex flex-col gap-1.5 text-sm font-bold text-ink";
 
-export const CHOICE_GRID = "grid grid-cols-2 gap-2.5";
-
 export const CHOICE_CARD_BASE =
   "flex flex-col gap-0.5 rounded-md border border-line bg-surface p-3.5 text-left transition-colors duration-150";
 export const CHOICE_CARD_SELECTED = `${CHOICE_CARD_BASE} border-primary bg-primary-soft`;
