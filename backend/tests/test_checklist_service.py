@@ -12,6 +12,7 @@ import uuid
 
 from fakes import FakeSession
 
+from app.schemas.checklist import ChecklistItemCreate
 from app.services.checklist import (
     create_checklist_item,
     default_status_for_category,
@@ -69,18 +70,17 @@ class TestCreateChecklistItem:
     async def _create(self, category_code: str = "VENUE") -> tuple:
         session = FakeSession()
         wedding_id = uuid.UUID("44444444-4444-4444-4444-444444444444")
-        item = await create_checklist_item(
-            session,
-            wedding_id,
-            category_code,
-            "CONTRACT_TERM",
-            "그룹라벨",
-            "제목",
-            "본문",
-            "high",
-            "옵션그룹",
-            "태그",
+        payload = ChecklistItemCreate(
+            category_code=category_code,
+            item_type="CONTRACT_TERM",
+            group_label="그룹라벨",
+            title="제목",
+            body="본문",
+            priority="high",
+            option_group="옵션그룹",
+            tag="태그",
         )
+        item = await create_checklist_item(session, wedding_id, payload)
         return item, session, wedding_id
 
     async def test_every_argument_lands_on_its_own_column(self):

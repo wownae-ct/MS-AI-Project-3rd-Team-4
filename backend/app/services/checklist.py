@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import ChecklistItem
+from app.schemas.checklist import ChecklistItemCreate
 
 GENERAL_STATUSES: frozenset[str] = frozenset({"TODO", "DOING", "SKIP", "DONE"})
 HOMEWARE_STATUSES: frozenset[str] = frozenset({"LISTED", "COMPARING", "ORDERED", "DELIVERED"})
@@ -82,29 +83,31 @@ async def update_checklist_item(
 
 
 async def create_checklist_item(
-    session: AsyncSession,
-    wedding_id: UUID,
-    category_code: str,
-    item_type: str,
-    group_label: str,
-    title: str,
-    body: str | None,
-    priority: str,
-    option_group: str | None,
-    tag: str | None,
+    session: AsyncSession, wedding_id: UUID, payload: ChecklistItemCreate
 ) -> ChecklistItem:
+    """사용자가 직접 추가하는 체크리스트 항목.
+
+    2026-09-01 리팩토링 — 원래 payload 8필드를 낱개 인자로 풀어 받았다(총 10개). 유일한
+    호출부(app/routers/wedding/checklist.py)는 이미 ChecklistItemCreate를 손에 쥔 채 그것을
+    8개로 풀어서 위치 인자로 넘기고 있었고, 8개 중 대부분이 str/str|None이라 인접한
+    group_label/title/body가 자리를 바꿔도 타입체커도 ruff도 잡지 못하는 구조였다. 이 레포의
+    다른 서비스 함수(wedding/payment/feedback/chat)는 전부 스키마를 직접 받으므로 풀어쓰기
+    쪽이 오히려 예외였다.
+
+    origin/status는 payload에 없는 서버 결정값이라 여기서 채운다.
+    """
     item = ChecklistItem(
         wedding_id=wedding_id,
-        category_code=category_code,
+        category_code=payload.category_code,
         origin="USER",
-        status=default_status_for_category(category_code),
-        item_type=item_type,
-        option_group=option_group,
-        group_label=group_label,
-        title=title,
-        body=body,
-        priority=priority,
-        tag=tag,
+        status=default_status_for_category(payload.category_code),
+        item_type=payload.item_type,
+        option_group=payload.option_group,
+        group_label=payload.group_label,
+        title=payload.title,
+        body=payload.body,
+        priority=payload.priority,
+        tag=payload.tag,
     )
     session.add(item)
     await session.commit()

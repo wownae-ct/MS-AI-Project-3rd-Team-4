@@ -105,16 +105,5 @@ async def post_checklist_item(
         raise api_error(
             404, "CATEGORY_NOT_FOUND", f"{payload.category_code}는 존재하지 않는 카테고리입니다."
         )
-    item = await create_checklist_item(
-        session,
-        wedding.id,
-        payload.category_code,
-        payload.item_type,
-        payload.group_label,
-        payload.title,
-        payload.body,
-        payload.priority,
-        payload.option_group,
-        payload.tag,
-    )
+    item = await create_checklist_item(session, wedding.id, payload)
     return _to_out(item)
