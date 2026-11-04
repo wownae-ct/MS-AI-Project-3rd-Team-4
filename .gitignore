@@ -92,6 +92,11 @@ docs/
 할일.md
 # ===== 공유형 docs는 ignore하지 않음 =====
 !frontend/docs/
+# 루트 README가 참조하는 이미지·보존본만 추적한다. 루트 docs/의 나머지는 계속 개인 기록으로 무시.
+!/docs/
+/docs/*
+!/docs/images/
+!/docs/development-notes.md
 # backend/old/rag/docs/(구 backend/rag/docs/)는 실질 RAG 설계서·코퍼스 원고 9건 — 위 블랭킷 규칙에
 # 걸려 2026-08-19부터 두 번(피벗 전후 모두) git 미추적 상태였던 걸 뒤늦게 발견(docs 위키
 # errors/2026-08-19-gitignore-blanket-ignores-backend-rag-docs.md 참고). 로컬 디스크가 사라지면

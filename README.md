@@ -1,143 +1,200 @@
-# 메리맵 (MarryMap)
+# MarryMap 메리맵
 
-SeSAC MS AI 엔지니어 4기 3차 프로젝트 (2인 팀). 예식장·스드메(드레스/스튜디오/메이크업) 중심으로
-예산·타임라인·계약전 체크리스트를 관리하고, 실제 사례(좋은예/나쁜예)와 공식 통계에 근거한 RAG
-상담을 받는 웨딩 준비 앱. "크로스핏 폼 코치"(웹캠 운동 코칭) → "브리프코치"(AI 화법 트레이너)에
-이은 **2차 주제 전환**(2026-08-20)으로, 인프라·협업 구조는 그대로 두고 주제만 다시 바꿨다.
+**결혼 준비의 예산·일정·계약 전 확인 사항을 관리하고, 공개 자료에 근거한 AI 상담을 제공하는 웹 서비스입니다.**
 
-**2026-08-28: `backend`·`frontend`가 `main`으로 승격 완료.** 다만 백엔드 애플리케이션 코드는
-`main` 승격을 기다리지 않고 `backend` 머지 시점에 production까지 반영된다 — `main`이 통제하는
-건 `infra/k8s` 매니페스트뿐이다(아래 "배포 현황" 참고). 영역별 상세 내용은
-[`backend/README.md`](backend/README.md), [`frontend/README.md`](frontend/README.md) 참고 —
-어느 브랜치에서 보든 같은 트리 안에 있다.
+추가 비용과 계약 해지 조건, 업체별 납부일을 따로 찾아 관리해야 하는 불편에서 출발했습니다. 사용자 조건에 맞는 체크리스트와 타임라인을 만들고, 준비 현황·지출·상담을 하나의 흐름으로 연결했습니다.
 
-## 주요 기능
+<p align="center">
+  <img src="docs/images/marrymap-generating.png" width="240" alt="온보딩 입력 정보를 바탕으로 AI가 체크리스트와 타임라인을 생성하는 화면" />
+  <img src="docs/images/marrymap-budget.jpeg" width="240" alt="예산 배정액과 지불 완료·예정 금액, 다가오는 납부일을 보여주는 예산 화면" />
+  <img src="docs/images/marrymap-ai-chat.png" width="240" alt="사용자 상황과 검색 근거를 활용하는 AI 상담 화면" />
+</p>
 
-- **인증**: 이메일+비밀번호(BFF + Opaque 세션 쿠키) + 소셜 로그인(**구글·네이버 2종만 실동작** —
-  카카오·애플은 구현까지 끝냈지만 PR(#48/#49)이 클로즈돼 이번 데모 범위에서 제외)
-- **예산/결제**: 카테고리별 예산 배정, 시세 벤치마크 비교, 결제 CRUD(환불/취소 포함) + 영수증
-  사진 OCR 자동입력
-- **체크리스트/타임라인**: 웨딩별 개인화 LangGraph 에이전트가 생성. 체크리스트에 이어 타임라인도
-  카테고리 단위 독립 호출로 전환(2026-08-31)해, 한 카테고리가 실패해도 나머지까지 폴백으로
-  끌려가지 않는다. 사용자 수정 항목은 재생성에서 보호, 카탈로그 폴백으로 안정성 확보
-- **AI상담**: RAG(하이브리드 검색+RRF, pgvector HNSW) 기반 챗, SSE 스트리밍, 근거 인용, 메시지
-  평점. 검색 유사도 컷오프로 주제 밖 질문은 generate/verify 이전에 거절하고(판정
-  `OUT_OF_SCOPE`, 인용 0건), "그럼 스드메는?" 같은 생략형 후속 질문은 LLM 재작성으로 구제한다.
-  답변은 사용자 본인의 총예산·카테고리별 배정액/실지출·D-day·진행률까지 알고 생성된다(개별
-  결제 내역·업체명은 인젝션 표면이라 의도적으로 제외)
-- **대시보드/리포트**: 예산 벤치마크 카드, 카테고리별 진행률(타임라인 기준)
-- **업체 사례**: vendor_case ↔ 소비자원 분쟁사례 크로스링크, 신고 기능
+*프로젝트 수행 당시 화면: 개인화 생성 중 → 예산 관리 → AI 상담*
 
-## 아키텍처 개요 (routers → services → models/rag/personalization)
+## 프로젝트 개요
 
-CRUD API + RAG 상담 1개 엔드포인트 + 체크리스트/타임라인 개인화 에이전트로 구성된다. 각각
-독립된 3노드 LangGraph를 쓴다(챗: retrieve→generate→verify, 개인화: route→generate→validate).
+| 항목 | 내용 |
+|---|---|
+| 기간 | 2026.08.12–08.31 · MarryMap 주제 확정 08.20 |
+| 형태 | SeSAC Microsoft AI 엔지니어 과정 · 2인 팀 프로젝트 |
+| 이지언 | 기획·설계, 프론트엔드·백엔드·DB·AI/RAG 구현, Azure 인프라·CI/CD 구성과 통합 검증 |
+| 팀원 | 설계 문서 검토와 로그인 화면 구현 |
 
-| 레이어 | 위치 | 역할 |
+서비스를 직접 구현하며 애플리케이션의 인증·통신·데이터 저장까지 연결했습니다. 이 문서에서는 전체 사용자 흐름을 소개하고, **Azure 인프라 구성과 배포 자동화, 실제 배포 과정의 문제 해결**을 중심으로 정리합니다.
+
+- [사용자 흐름과 주요 기능](#사용자-흐름과-주요-기능)
+- [전체 구성과 기술](#전체-구성과-기술)
+- [인프라와 배포](#인프라와-배포)
+- [배포 과정에서 해결한 문제](#배포-과정에서-해결한-문제)
+- [AI와 애플리케이션의 주요 설계](#ai와-애플리케이션의-주요-설계)
+- [검증 범위와 개선 과제](#검증-범위와-개선-과제)
+- [실행과 개발 안내](#실행과-개발-안내)
+- [저장소 구조와 상세 문서](#저장소-구조와-상세-문서)
+
+## 사용자 흐름과 주요 기능
+
+```text
+로그인 → 예식일·지역·예산·준비 항목 입력 → 개인화 체크리스트·타임라인 생성
+       → 준비 상태 확인·예산 배정·납부 기록 → 계약 전 확인 사항과 비용에 대한 AI 상담
+```
+
+| 기능 | 사용자가 할 수 있는 일 |
+|---|---|
+| 온보딩·개인화 | 자신의 조건을 입력하고 체크리스트·타임라인을 받아 진행 상태 관리 |
+| 예산·납부 | 배정·지불 완료·지불 예정·미배정 금액 확인, 결제 등록·수정·삭제·환불 |
+| 영수증 | 사진에서 금액·정보를 추출한 제안을 확인하고 저장 |
+| AI 상담 | 공개된 약관·분쟁 사례·통계를 참고한 답변 확인, 지난 상담 이어가기 |
+| 대시보드·리포트 | 카테고리별 준비 현황·다가오는 납부일·시세 비교 확인 |
+
+화면과 API 연결은 [프론트엔드 README](https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4/blob/main/frontend/README.md)에 정리했습니다.
+
+## 전체 구성과 기술
+
+![MarryMap 서비스와 배포 구성](docs/images/marrymap-architecture.svg)
+
+사용자 요청은 같은 AKS Ingress 호스트에서 `/`는 프론트엔드, `/api`는 백엔드로 분기합니다. 백엔드는 PostgreSQL에서 서비스 데이터를 관리하고, 상담·개인화 요청을 Azure OpenAI와 연결합니다. 검색에는 같은 DB의 pgvector와 전문검색을 사용하고, 영수증 이미지는 Blob Storage에 저장합니다.
+
+| 영역 | 주요 기술·역할 |
+|---|---|
+| 인프라·운영 | AKS · ACR · Key Vault CSI · Workload Identity · Log Analytics |
+| 구성·배포 | Bicep · Ansible · Kustomize · GitHub Actions(OIDC) · ArgoCD · Image Updater |
+| 프론트엔드 | React · TypeScript · Vite · Tailwind CSS · API·SSE 연동 |
+| 백엔드·데이터 | FastAPI · SQLAlchemy async · Alembic · PostgreSQL Flexible Server · Blob Storage |
+| AI·검색 | Azure OpenAI · LangGraph · pgvector HNSW · PostgreSQL 전문검색 · RRF · Langfuse |
+
+## 인프라와 배포
+
+
+### 클라우드 구성과 자격증명
+
+Bicep으로 AKS·ACR·Key Vault·PostgreSQL·Blob Storage·Azure OpenAI·Log Analytics 등을 구성했습니다. Ansible은 ingress-nginx·cert-manager·ArgoCD 등의 부트스트랩을 담당합니다. 애플리케이션 매니페스트는 Kustomize 오버레이로 관리합니다.
+
+교육 프로젝트의 비용과 관리 범위를 고려해 AKS 클러스터 하나에서 staging·production 네임스페이스를 분리했습니다. GitHub Actions의 Azure 인증은 OIDC, Image Updater의 ACR 접근은 전용 Workload Identity를 사용합니다. 애플리케이션 시크릿은 Key Vault CSI로 주입합니다. Static Web Apps 배포에는 별도의 배포 토큰을 사용합니다.
+
+### 이미지 빌드와 배포 상태 반영
+
+```text
+GitHub Actions 검증·이미지 빌드 → ACR 업로드
+                            → Image Updater가 변경 감지
+                            → ArgoCD Application 이미지 파라미터 갱신 → AKS 롤아웃
+```
+
+Image Updater는 **Git write-back 대신 Application 파라미터 override**를 사용합니다. Git 매니페스트의 동기화와 이미지 갱신 경로를 구분합니다. App-of-Apps 구조로 backend·frontend·RAG 재색인 CronJob을 환경별 Application으로 관리했습니다.
+
+| 대상 | 빌드·반영 경로 |
+|---|---|
+| 백엔드 이미지 | `backend` 브랜치에서 빌드한 이미지를 staging·production이 함께 사용 |
+| 프론트 staging | `frontend` 브랜치에서 staging용 이미지 빌드 |
+| 프론트 production | `main`에서 production용 이미지 빌드 |
+| 매니페스트 | staging·production Application이 각 대상 브랜치를 추적 |
+
+프론트의 `VITE_API_BASE`는 빌드 시점에 반영돼 환경별 이미지가 필요했습니다. 백엔드는 `backend` 브랜치 이미지가 production에도 반영되는 구성으로, 환경별 이미지 승격·승인은 개선 과제로 남았습니다.
+
+**문서:** [인프라·배포 단위·설치 순서](https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4/blob/main/infra/README.md) · [ArgoCD·Image Updater](https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4/blob/main/infra/k8s/argocd/README.md)
+
+## 배포 과정에서 해결한 문제
+
+설치 여부만으로 배포가 동작한다고 판단하지 않고, 요청 경로·인증 주체·실제 반영 상태를 나눠 확인했습니다.
+
+
+| 문제 | 확인한 근거 | 조치·확인 |
 |---|---|---|
-| Routers | `backend/app/routers/{system,wedding,ai}/` + `auth.py` | 도메인별 서브패키지로 재구성(2026-08-26) — 39개 라우트(OpenAPI 노출 37개; OAuth 리다이렉트 2개는 스키마 비노출) |
-| Services | `backend/app/services/` | 비즈니스 로직 |
-| Models | `backend/app/models/` | SQLAlchemy 2.0 async, 16개 테이블(코퍼스 재색인 스킵용 `rag_index_state` 포함) |
-| RAG | `backend/app/rag/` | indexing(오프라인 색인) / retrieval(하이브리드 검색+RRF) / graph(LangGraph 3노드, CRAG 조건부 재시도 ≤1회, 유사도 컷오프 기반 스코프 거절) / chat_profile(사용자 예산·일정 컨텍스트 주입) |
-| Personalization | `backend/app/personalization/` + `services/personalization.py` | 체크리스트/타임라인 전담 LangGraph 3노드, 두 도메인 모두 카테고리 단위 독립 호출, 카탈로그 폴백, 조건부 재시도 ≤1회 |
-| Frontend | `frontend/src/` | React 19 + Vite + TS, FSD 구조. S0~S6 전 화면 + 설정(⚙️)/AI상담 실구현 |
+| 외부 접속·TLS 인증서 발급 실패 | NSG·내부 요청 정상, LB `DipAvailability` 0. 프로브 기본 경로는 404, `/healthz`는 200 | 프로브 경로 수정 후 지표 회복·인증서 `Ready` 확인. Ansible에도 반영 |
+| 설치된 Image Updater가 새 이미지를 갱신하지 않음 | `No ImageUpdater CRs to process`. CR 추가 후 ACR 인증 401이 별도로 발생 | 감시 CR과 실제 ServiceAccount에 맞는 연합 자격증명 subject를 수정. 로그·digest·Pod 롤아웃 대조 |
+| IaC 머지 후 시크릿 주입 실패 | PR에서 `what-if`만 수행되고 실제 리소스 배포는 실행되지 않은 상태 | IaC 실배포와 OIDC 배포자의 사용자 속성을 참조하던 템플릿 오류 수정 후 Pod 정상화 확인 |
 
-## 폴더 구조
+**코드 근거:** [LB 프로브](https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4/blob/main/infra/ansible/playbooks/bootstrap-cluster.yml#L82-L91) · [ImageUpdater CR](https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4/blob/main/infra/k8s/argocd/argocd-image-updater-crs.yaml#L1-L43) · [ServiceAccount 기본값](https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4/blob/main/infra/bicep/modules/aks.bicep#L33-L34) · [인프라 배포 워크플로](https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4/blob/main/.github/workflows/infra-deploy.yml#L1-L65)
 
-```
-backend/    FastAPI(app/main.py) + SQLAlchemy 2.0 async 모델(app/models/) + Alembic(alembic/)
-            + routers(system/wedding/ai 서브패키지 + auth.py)/services/rag/personalization.
-            backend/old/에 이전 주제 구현 아카이브(lint/test 제외)
-frontend/   React 19 + Vite + TS. S0~S6 전 화면 + 설정(⚙️)/AI상담 화면까지 실구현 완료. 백엔드와
-            같은 AKS Ingress 아래 same-origin으로 배포(2026-08-26, 서드파티 쿠키 차단 우회) —
-            Azure Static Web Apps 배포는 PR 프리뷰/로컬 크로스오리진 검증용으로 별도 병행
-data/       RAG 코퍼스(DS1_PRICE~DS6_CHECK — 참가격/소비자원 사례/표준계약서/정부정책/
-            듀오 결혼비용 통계(7개년)/체크리스트, 14문서/213청크). DS7_TIMELINE은 코퍼스가
-            아니라 backend/app/core/timeline_catalog.py 상수로 존재. DS8_UGC(Threads 후기)는
-            개인정보 리스크로 2026-08-30 코퍼스에서 제외 — data/old/에 이전 주제 코퍼스와
-            함께 보존
-db/         vendor_case/price_benchmark 콘텐츠 시드 로더 스크립트만 남음 — checklist/timeline은
-            공유 마스터 시드 없이 개인화 에이전트가 웨딩별로 생성. 스키마 자체는
-            backend/app/models/ + backend/alembic/에 있음
-infra/      Bicep(Azure 리소스) + AKS 매니페스트 + ArgoCD(GitOps, staging/production 네임스페이스
-            분리 + Image Updater 자동 배포) — 이전 주제 빌드 그대로 재사용
-docs/       docs/wedding/new-plan/이 코드 실측 기반 최신 설계 자료(작성 진행 중, 로컬 전용).
-            docs/wedding/plan/new/이 이전 BASELINE v4.0. 이전 주제 설계 문서는 docs/old/에 보존
-```
+### 로그인 세션과 서비스 진입점
 
-> **커스텀 모델 학습 없음**: RAG/개인화는 학습이 아니라 서비스가 매 요청 호출하는 라이브
-> LangGraph 컴포넌트라 이 레포(`backend/app/rag/`, `backend/app/personalization/`, `data/`)에
-> 있다. Azure OpenAI가 chat/embedding 배포를 분리 제공한다.
+초기에는 Static Web Apps와 AKS로 프론트·API가 나뉘어 브라우저의 cross-site 쿠키 정책에 영향을 받았습니다. 프론트와 API를 같은 Ingress 호스트로 통합하고 쿠키·API 경로를 맞췄습니다. 인프라의 접속 경로와 애플리케이션 인증을 함께 점검한 사례입니다.
 
-## 배포 현황
+## AI와 애플리케이션의 주요 설계
 
-- **production**: `https://merrymap-production.koreacentral.cloudapp.azure.com`(Azure
-  LoadBalancer 자동생성 DNS 라벨, 구매 도메인 아님) — 프론트 이미지는 `main` push가, 백엔드
-  이미지는 `backend` push가 빌드하고, ArgoCD Image Updater가 ACR의 새 digest를 감지해 자동
-  반영한다(아래 비대칭 항목 참고).
-- **staging**: `https://20-249-52-148.nip.io`(같은 LB IP, nip.io 무료 와일드카드 DNS) —
-  `backend`/`frontend` push가 각각 트리거.
-- backend+frontend가 같은 AKS Ingress 아래 same-origin(`/api` → backend, `/` → frontend)으로
-  서빙된다. 상세: [`infra/README.md`](infra/README.md), `infra/k8s/`.
-- **브랜치 → 환경 대응이 백엔드와 프론트엔드에서 비대칭이다.** 백엔드는 staging·production
-  ArgoCD Application이 **같은 `backend:latest` 태그**를 보고 Image Updater가 digest로 양쪽을
-  갱신하므로, 백엔드 애플리케이션 코드는 `backend` 브랜치에 머지되는 순간 production까지
-  올라간다 — `main` 승격이 통제하는 건 `infra/k8s` 매니페스트뿐이다. 프론트엔드는 반대로
-  `VITE_API_BASE`가 빌드타임에 번들에 구워져 환경별 태그(`staging-latest`/`production-latest`)가
-  분리되고, production 이미지는 `main` push가 빌드한다.
-- 2026-08-31 실측: `main`은 `933d924`, 이후 백엔드는 `backend`의 `0e7c3a3`(#161 머지)까지
-  진행됐고 ArgoCD production Application 3개 모두 동기화·파드 교체가 끝났다.
+### 상담과 개인화 생성
 
-## 브랜치 전략 & 폴더 소유권
+- **RAG 상담:** 6개 데이터셋의 14개 문서를 213개 청크로 구성했습니다. 벡터·전문검색을 RRF로 결합하고 사용자 예산·준비 상태를 답변 문맥에 반영합니다. 별도 LLM 호출로 답변과 근거의 부합성을 평가하며, 근거가 부족하면 최대 한 번 질의를 바꿔 재검색합니다.
+- **개인화:** 사용자 조건에 따라 체크리스트·타임라인을 생성하고 누락·코드를 검증합니다. 일부 계약 관련 체크리스트에는 검색 근거를 전달하고, 모델이 선택한 근거 ID를 실제 검색 결과와 대조해 출처명·URL을 연결합니다.
+- **재생성과 실패 처리:** 보호 조건에 해당하는 사용자 작업을 보존합니다. 카테고리별 검증 실패에서는 정상 결과를 유지하고 실패 영역을 보완하며, API 호출·파싱 예외에는 대상 영역을 카탈로그로 대체합니다.
 
-```
-feature/backend-*  ─┐
-feature/infra-*     ├─ PR → backend  ─┐
-feature/rag-*       ┘                 │
-                                       ├─ PR → main (배포 릴리스)
-feature/frontend-*  ─── PR → frontend ┘
+생성 단위를 카테고리별로 나누고 확정 코드는 서버가 넣도록 바꿨습니다. 프롬프트 수정뿐 아니라 실패가 발생하는 단위와 저장 경로를 함께 살핀 변경입니다. 세부 분기와 보호 조건은 [개인화 그래프](https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4/tree/main/backend/app/personalization), [저장·폴백 처리](https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4/blob/main/backend/app/services/personalization.py), [RAG 코드](https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4/tree/main/backend/app/rag)에서 확인할 수 있습니다.
+
+### 화면·API·데이터 연결
+
+온보딩의 웨딩 생성·카테고리 선택·예산 배분을 하나의 요청으로 묶어 후속 저장 누락을 줄였습니다. 긴 생성 요청은 SSE 진행 상태와 하트비트로 표시했습니다. 이메일·비밀번호 및 구글·네이버 OAuth 로그인과 세션 쿠키를 연결하고, API에서 웨딩 소유권을 확인합니다. 영수증은 OCR 추출 결과를 사용자가 확인한 뒤 저장합니다.
+
+세부 화면 구조·DB 모델·API 계약·실행 조건은 [프론트 문서](https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4/blob/main/frontend/README.md)와 [백엔드 문서](https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4/blob/main/backend/README.md)로 분리했습니다.
+
+## 검증 범위와 개선 과제
+
+| 확인한 항목 | 확인 방법·결과 |
+|---|---|
+| 외부 접속·TLS | LB 헬스프로브 지표 회복과 인증서 `Ready` 확인 |
+| 이미지 배포 | Image Updater 로그·새 이미지 digest·실제 Pod 롤아웃 대조 |
+| 서비스 진입점 | 동일 호스트의 프론트 응답과 백엔드 health 응답 확인 |
+| 변경 검증 | 백엔드 린트·테스트·코퍼스 검사, 프론트 타입·린트·테스트·빌드의 CI 게이트 구성 |
+
+교육 프로젝트의 배포·시연·내부 시험 범위입니다. staging·production이 AKS 클러스터와 DB를 공유하므로, 이후에는 환경별 DB와 이미지 승격·승인 경로를 분리할 필요가 있습니다. AI 상담의 정확성·대규모 부하·실사용자 검증은 추가 평가가 필요합니다. 납부일 선제 알림과 설정의 비밀번호 변경·온보딩 다시하기는 구현 범위에 포함하지 않았습니다.
+
+프로젝트 당시의 시행착오와 내부 실험은 [문제 해결 기록](https://app.notion.com/p/3ba144faaffc80e4b89be457c49fe495#e90b6bd0b84f4c06b6f1bde12668a153)에 모았습니다.
+
+## 실행과 개발 안내
+
+
+### 준비
+
+프론트 Node 버전은 [`frontend/.nvmrc`](https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4/blob/main/frontend/.nvmrc), 백엔드 환경은 [`backend/pyproject.toml`](https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4/blob/main/backend/pyproject.toml)을 기준으로 맞춥니다.
+
+백엔드의 DB·Azure OpenAI·Storage·인증 설정을 자신의 환경에 맞게 준비해야 합니다. 아래 명령만으로 클라우드 의존성 없이 전체 기능이 동작하는 구성은 아닙니다. 설정 기준은 [백엔드 문서](https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4/blob/main/backend/README.md)를 참고합니다.
+
+### 백엔드
+
+```bash
+cd backend
+uv sync --extra dev
+# 자신의 개발 DB와 서비스 설정을 준비한 뒤 실행
+uv run alembic upgrade head
+uv run uvicorn app.main:app --reload --port 8000
 ```
 
-| 브랜치 | 용도 | 소유 폴더 | 직접 push |
-|---|---|---|---|
-| `main` | 배포 릴리스. `backend`/`frontend`의 PR만 받음 | 전체(머지 결과) | **금지** |
-| `backend` | 백엔드 통합 브랜치 | `backend/`, `data/`, `db/`, `infra/`, 루트 설정 | 금지 (feature 브랜치 PR만) |
-| `frontend` | 프론트 통합 브랜치 | `frontend/` | 금지 (feature 브랜치 PR만) |
-| `feature/*` | 실제 작업 브랜치 | 위 소유 폴더 내 | 자유 (본인 브랜치) |
+### 프론트엔드
 
-각 브랜치는 자신이 소유하지 않은 폴더를 건드리지 않는다. 이는 다음 두 가지로 강제된다:
-1. **[CODEOWNERS](.github/CODEOWNERS)** — 폴더별 필수 리뷰어 지정
-2. **[path-guard 워크플로우](.github/workflows/path-guard.yml)** — PR이 대상 브랜치의 소유 폴더 밖 파일을 건드리면 CI 실패
+```bash
+cd frontend
+npm ci
+# .env의 VITE_API_BASE를 실제 백엔드 주소·포트에 맞춤
+npm run dev
+```
 
-로컬 작업 시 자신의 폴더만 체크아웃하려면 [`scripts/setup-sparse-checkout.sh`](scripts/setup-sparse-checkout.sh) 참고.
+프론트의 `.env.example` 기본 포트와 위 백엔드 실행 포트가 다를 수 있으므로 `VITE_API_BASE`를 확인합니다. 배포 환경에서는 빌드 시점의 API 주소와 동일 origin 구성을 함께 맞춰야 합니다.
 
-### main 보호 설정 (GitHub에서 수동 설정 필요)
+### 개발 검증
 
-리포 코드만으로는 push 차단이 강제되지 않는다 — GitHub Settings에서 브랜치 보호 규칙을 켜야 실제로 막힌다.
+프론트는 `npm run typecheck`, `npm run lint`, `npm test`, `npm run build` 순서로 검사합니다. 백엔드 린트는 `uv run ruff check .`, 테스트는 `uv run pytest -q`입니다. 백엔드 테스트 전에는 대상 DB와 실 Azure API 사용 범위를 반드시 확인해야 합니다. CI는 별도 pgvector 서비스 컨테이너를 사용하는 경로가 있으므로 로컬 설정과 구분합니다.
 
-**Settings → Branches → Add branch ruleset (또는 Add rule) → Branch name pattern: `main`**
+Azure 리소스 구성·배포는 [인프라 설치 순서](https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4/blob/main/infra/README.md#배포-순서)를 따릅니다.
 
-- [x] Require a pull request before merging
-  - Require approvals: 1
-- [x] Require status checks to pass before merging
-  - `gitleaks` 체크 추가
-  - Require branches to be up to date before merging
-- [x] Do not allow bypassing the above settings (관리자 포함 — 1인이라도 실수 방지)
-- [x] Restrict deletions / Block force pushes
+## 저장소 구조와 상세 문서
 
-같은 방식으로 `backend`, `frontend` 브랜치에도 규칙 추가하고, 여기엔 **`path-guard` 체크를 required로 반드시 추가**할 것 —
-안 그러면 path-guard가 실패해도 그냥 머지가 가능해서 폴더 소유권 강제가 무력화된다.
+```text
+frontend/            화면·도메인 API·공통 UI·설계 문서
+backend/app/         라우터·서비스·스키마·모델·RAG·개인화·공통 설정
+backend/alembic/     DB 마이그레이션
+backend/tests/       API·서비스·검색·개인화·인증 테스트
+data/rag_corpus/     검색용 원자료와 정리한 코퍼스
+infra/bicep/         Azure 리소스 정의
+infra/ansible/       클러스터 부트스트랩
+infra/k8s/           Application·워크로드·환경별 매니페스트
+.github/workflows/   빌드·검증·배포·저장소 검사
+```
 
-## 보안
+| 살펴볼 내용 | 문서 |
+|---|---|
+| 화면·디자인·API 계약·SSE | [프론트 문서 지도](https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4/blob/main/frontend/docs/README.md) |
+| 인증·DB·RAG·개인화·실행·테스트 | [백엔드 README](https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4/blob/main/backend/README.md) |
+| Azure 리소스·Application·배포·자격증명 | [인프라 README](https://github.com/wownae-ct/MS-AI-Project-3rd-Team-4/blob/main/infra/README.md) |
+| 프로젝트 전체 설명·의사결정·추가 검증 | [Notion 프로젝트 기록](https://app.notion.com/p/3ba144faaffc80e4b89be457c49fe495) |
+| 주제 변경·브랜치 정책·당시 배포 이력 | [기존 루트 README 보존본](docs/development-notes.md) |
 
-모든 push/PR에서 [gitleaks](.github/workflows/gitleaks.yml)로 시크릿 유출을 스캔한다. 설정은 [`.gitleaks.toml`](.gitleaks.toml). 시크릿은 전부 Key Vault → CSI → K8s Secret 경로로만 주입되며 코드에 하드코딩하지 않는다.
-
-## 인프라
-
-Azure AKS + ArgoCD(GitOps) + Bicep(IaC). 자세한 내용은 [`infra/README.md`](infra/README.md) 참고.
-
-**Azure OpenAI 쿼터 상향(2026-08-31, 단위 1000 TPM)**: `chat` 250→500, `chat-mini` 250→**1000**,
-`embedding` 100→300. 근거는 staging 실측 — 온보딩 1건이 LLM 19회 / 34,333토큰 / 14.4초를 쓰기
-때문에, 25명이 1분 안에 몰리면 858K TPM으로 종전 한도(250K)의 343%가 돼 429가 난다. 1000이면
-같은 최악 케이스도 86% 선에서 버틴다. Bicep에서 `chat`/`chat-mini` 용량 파라미터를 분리했다
-(`infra/bicep/modules/openai.bicep`).
+화면과 수치는 2026년 8월 프로젝트 수행 당시 기록입니다. 실행에는 자신의 Azure 리소스와 환경 설정이 필요합니다.
